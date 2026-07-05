@@ -18,9 +18,16 @@ class UnityLogSummary:
     rig_errors: List[str] = field(default_factory=list)
     compiler_errors: List[str] = field(default_factory=list)
     playmode_blockers: List[str] = field(default_factory=list)
+    safe_mode: bool = False
 
     def render(self) -> str:
         lines = [f"Unity Editor.log: {self.path}"]
+        if self.safe_mode:
+            lines.append(
+                "\n⛔ Unity в Safe Mode — проект не компилируется.\n"
+                "  → Console: первая красная CS (часто Input System / PackageCache).\n"
+                "  → Package Manager: Remove Input System или Update пакет."
+            )
         if self.playmode_blockers:
             lines.append("\n⛔ Блокирует Play Mode:")
             for e in self.playmode_blockers[:10]:
@@ -67,6 +74,7 @@ class UnityLogSummary:
                     lines.append(f"  • {e[:200]}")
         if not any(
             [
+                self.safe_mode,
                 self.playmode_blockers,
                 self.compiler_errors,
                 self.rig_errors,
@@ -86,6 +94,7 @@ _PLAYMODE = re.compile(
     r"compiler errors have to be fixed|All compiler errors|ShowCompileErrorNotification",
     re.I,
 )
+_SAFE_MODE = re.compile(r"Safe Mode|safe mode", re.I)
 
 
 def default_editor_log() -> Path:
@@ -130,6 +139,8 @@ def parse_editor_log(path: Path, tail_lines: int = 3000) -> UnityLogSummary:
             continue
         if _PLAYMODE.search(low):
             summary.playmode_blockers.append(low)
+        if _SAFE_MODE.search(low):
+            summary.safe_mode = True
         if _RIG_ERROR.search(low):
             summary.rig_errors.append(low)
             summary.errors.append(low)

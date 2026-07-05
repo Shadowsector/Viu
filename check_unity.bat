@@ -24,4 +24,5 @@ echo   Otchet: %REPORT%
 echo   Esli proekt ne tam — zadaj peremenную:
 echo   set VIU_UNITY_PROJECT=U:\Anabarra\Unity\MyProject
 echo ============================================================
+if "%VIU_NO_PAUSE%"=="1" goto :eof
 pause

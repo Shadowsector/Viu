@@ -16,7 +16,13 @@ def build_verdict(
 ) -> str:
     lines = ["=== Вердикт ==="]
     cs_count = len(all_cs) or len(log.compiler_errors)
-    if log.playmode_blockers or cs_count:
+    if log.safe_mode or log.playmode_blockers or cs_count:
+        if log.safe_mode and not cs_count and not log.playmode_blockers:
+            lines.append("⛔ Unity в Safe Mode — Play и анимацию проверить нельзя.")
+            lines.append("   Причина: ошибки компиляции C# (см. Console / Editor.log).")
+            lines.append("   Действие: Package Manager → Remove/Update Input System")
+            lines.append("   или новый проект Universal 3D на Unity LTS.")
+            return "\n".join(lines)
         lines.append("⛔ Play Mode ЗАБЛОКИРОВАН — анимацию проверить нельзя.")
         lines.append(f"   Причина: ошибки компиляции C# ({cs_count} в Editor.log).")
         lines.append("   Действие: Unity Console → первая красная CS → исправить")

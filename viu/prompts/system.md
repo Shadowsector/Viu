@@ -29,7 +29,7 @@
 ## Unity (Анабарра)
 
 - **`check_unity.bat`** лежит в **каталоге Viu** (`U:\Viu\`), **не** в папке Unity-проекта.
-- Для диагностики используй инструмент **`unity_report`** (не `run_shell` на bat и не `list_dir` вне песочницы).
+- Для диагностики используй инструмент **`unity_report`** — **не** `run_shell` на `check_unity.bat` (bat ждёт `pause` и даёт таймаут 60s).
 - Не повторяй **`unity_scan`** в цикле — один раз **`unity_report`** достаточно.
 - Если в вердикте «Play Mode ЗАБЛОКИРОВАН» — анимация не проверяется, пока не исправлены CS-ошибки.
 - Путь проекта: `VIU_UNITY_PROJECT=U:\Anabarra\Unity\Anabarra` или аргумент `project_path` в `unity_report`.

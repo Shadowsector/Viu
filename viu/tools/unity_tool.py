@@ -38,7 +38,7 @@ class UnityLogTool(Tool):
         path = Path(log_path).expanduser() if log_path else default_editor_log()
         lines = int(args.get("lines") or 400)
         summary = parse_editor_log(path, tail_lines=lines)
-        ok = not (summary.playmode_blockers or summary.compiler_errors or summary.rig_errors)
+        ok = not (summary.playmode_blockers or summary.compiler_errors or summary.rig_errors or summary.safe_mode)
         return ToolResult(ok, summary.render())
 
 
@@ -100,7 +100,12 @@ class UnityReportTool(Tool):
             parts.extend(["", scan.render()])
         elif root:
             parts.append(f"\nUnity-проект не найден: {root}\nЗадай VIU_UNITY_PROJECT=путь")
-        ok = not (log_sum.rig_errors or log_sum.compiler_errors or log_sum.playmode_blockers)
+        ok = not (
+            log_sum.rig_errors
+            or log_sum.compiler_errors
+            or log_sum.playmode_blockers
+            or log_sum.safe_mode
+        )
         proj_note = ""
         if proj and ("..." in str(proj) or not root.is_dir()):
             proj_note = (
