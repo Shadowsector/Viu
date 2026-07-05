@@ -58,11 +58,24 @@ check_unity.bat
 
 ## Play не работает — чеклист
 
-1. Console → **красные CS** (скрипты) — исправить или удалить `TutorialInfo`  
-2. Console → **Rig Error** — Create From This Model на анимации  
-3. **▶ Play** смотреть вкладку **Game**, не Scene  
-4. Лишняя одежда выключена в Hierarchy  
-5. Animator: Controller + Avatar модели  
+### «All compiler errors have to be fixed before you can enter playmode!»
+
+**Это не анимация и не Rig.** Unity не компилирует C#-скрипты.
+
+1. **Window → General → Console** (Ctrl+Shift+C).
+2. Кликни **красную** строку с `error CS####` — откроется файл.
+3. **Частый фикс в новом URP-проекте:** удали папку **`Assets/TutorialInfo`** целиком
+   (ПКМ → Delete). Unity перекомпилирует — Play заработает.
+4. Если ошибка в **твоём** скрипте — поправь или удали его.
+
+Пока эта красная ошибка есть, **анимация не проверится** — Play просто не запускается.
+
+### После того как Play заработал
+
+1. Console → нет Rig Error  
+2. **▶ Play** → вкладка **Game**  
+3. Animator: Controller + Avatar модели  
+4. Лишняя одежда и WGT.* выключены в Hierarchy  
 
 ## Переменные окружения
 

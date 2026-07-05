@@ -9,16 +9,19 @@ from viu.integrations.unity.project_scan import scan_fbx_meta, scan_unity_projec
 def test_parse_editor_log_rig_and_wgt(tmp_path):
     log = tmp_path / "Editor.log"
     log.write_text(
+        "Assets/TutorialInfo/Scripts/Readme.cs(10,7): error CS0246: Type not found\n"
         "Rig Error: Copied Avatar mis-match Torso\n"
         "Can't calculate tangents, because mesh 'WGT-rig_root' doesn't contain normals.\n"
-        "Can't calculate tangents, because mesh 'WGT-rig_hands' doesn't contain normals.\n"
-        "All compiler errors have to be fixed before you can enter playmode!\n",
+        "All compiler errors have to be fixed before you can enter playmode!\n"
+        "UnityEditor.SceneView:ShowCompileErrorNotification ()\n",
         encoding="utf-8",
     )
     s = parse_editor_log(log)
     assert s.rig_errors
-    assert s.wgt_tangent_count == 2
+    assert s.wgt_tangent_count == 1
     assert s.playmode_blockers
+    assert s.compiler_errors
+    assert "CS0246" in s.compiler_errors[0]
 
 
 def test_scan_fbx_meta_copy_avatar(tmp_path):

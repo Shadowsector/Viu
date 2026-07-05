@@ -91,4 +91,11 @@ class UnityReportTool(Tool):
         elif root:
             parts.append(f"\nUnity-проект не найден: {root}\nЗадай VIU_UNITY_PROJECT=путь")
         ok = not (log_sum.rig_errors or log_sum.compiler_errors or log_sum.playmode_blockers)
-        return ToolResult(ok, "\n".join(parts))
+        proj_note = ""
+        if proj and ("..." in str(proj) or not root.is_dir()):
+            proj_note = (
+                f"\n⚠ Путь Unity-проекта неверный: {root}\n"
+                "  Задай реальный путь, например:\n"
+                "  set VIU_UNITY_PROJECT=C:\\Users\\Den\\My project\n"
+            )
+        return ToolResult(ok, "\n".join(parts) + proj_note)
