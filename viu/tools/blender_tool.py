@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Dict
 
 from ..integrations.blender import (
@@ -76,6 +77,43 @@ class BlenderCommandTool(Tool):
         except BlenderBridgeError as exc:
             return ToolResult(False, str(exc))
         return ToolResult(True, json.dumps(data, ensure_ascii=False, indent=2))
+
+
+class BlenderScanTool(Tool):
+    name = "blender_scan"
+    description = (
+        "Просканировать папку с .blend-файлами и составить сводку по каждому "
+        "(объекты, есть ли скелет/блендшейпы) — чтобы выбрать подходящие модели"
+    )
+    parameters = {"folder": "путь к папке с .blend"}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        folder = args.get("folder", "")
+        if not folder:
+            return ToolResult(False, "Не указан folder")
+        p = Path(folder)
+        if not p.is_dir():
+            return ToolResult(False, f"Папка не найдена: {folder}")
+        files = sorted(p.glob("*.blend"))
+        if not files:
+            return ToolResult(True, "В папке нет .blend-файлов.")
+
+        lines = []
+        for f in files:
+            try:
+                info = dump_blend_info(str(f), blender_exe=ctx.config.blender_exe)
+            except (FileNotFoundError, RuntimeError, ValueError) as exc:
+                lines.append(f"- {f.name}: ошибка чтения ({exc})")
+                continue
+            objects = info.get("objects", [])
+            meshes = [o for o in objects if o.get("type") == "MESH"]
+            has_arm = any(o.get("type") == "ARMATURE" for o in objects)
+            shape_keys = sorted({sk for o in meshes for sk in o.get("shape_keys", [])})
+            lines.append(
+                f"- {f.name}: мешей={len(meshes)}, скелет={'да' if has_arm else 'нет'}, "
+                f"блендшейпы={len(shape_keys)}"
+            )
+        return ToolResult(True, "Сводка по папке:\n" + "\n".join(lines))
 
 
 class BlenderScreenshotTool(Tool):

@@ -1,7 +1,13 @@
 """Система инструментов Вью."""
 
+from .affordance_tool import AffordanceMatchTool, AffordanceShowTool
 from .base import AgentContext, Tool, ToolRegistry, ToolResult
-from .blender_tool import BlenderCommandTool, BlenderInfoTool, BlenderScreenshotTool
+from .blender_tool import (
+    BlenderCommandTool,
+    BlenderInfoTool,
+    BlenderScanTool,
+    BlenderScreenshotTool,
+)
 from .filesystem import ListDirTool, ReadFileTool, WriteFileTool
 from .loader import load_custom_tools
 from .memory_tool import MemorySearchTool, MemoryWriteTool
@@ -41,10 +47,13 @@ def build_default_registry() -> ToolRegistry:
         ImprovePromptTool(),
         BlenderInfoTool(),
         BlenderCommandTool(),
+        BlenderScanTool(),
         BlenderScreenshotTool(),
         RigStandardTool(),
         RigCheckTool(),
         RigApplyTool(),
+        AffordanceShowTool(),
+        AffordanceMatchTool(),
     ):
         registry.register(tool)
     load_custom_tools(registry)

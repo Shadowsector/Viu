@@ -82,3 +82,9 @@ class BlenderClient:
 
     def rename_bones(self, armature: str, mapping: Dict[str, str]) -> Any:
         return self._post("rename_bones", {"armature": armature, "mapping": mapping})
+
+    def list_sockets(self, prefix: Optional[str] = None) -> Any:
+        return self._post("list_sockets", {"prefix": prefix} if prefix else {})
+
+    def append_object(self, blend_file: str, obj: str) -> Any:
+        return self._post("append_object", {"blend_file": blend_file, "object": obj})

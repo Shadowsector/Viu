@@ -6,6 +6,7 @@ import pytest
 
 from viu.config import Config
 from viu.integrations.blender import (
+    COMMANDS,
     BlenderClient,
     build_dump_command,
     dispatch,
@@ -184,6 +185,41 @@ def test_blender_info_headless(ctx, monkeypatch, tmp_path):
 def test_blender_command_unknown(ctx):
     r = BlenderCommandTool().run({"command": "fly_to_moon"}, ctx)
     assert not r.ok and "не поддерживается" in r.content
+
+
+def test_new_bridge_commands_present():
+    assert "list_sockets" in COMMANDS
+    assert "append_object" in COMMANDS
+    assert hasattr(BlenderClient, "list_sockets")
+    assert hasattr(BlenderClient, "append_object")
+
+
+def test_blender_scan_tool(ctx, monkeypatch, tmp_path):
+    import viu.tools.blender_tool as bt
+
+    (tmp_path / "a.blend").write_text("")
+    (tmp_path / "b.blend").write_text("")
+
+    def fake_dump(path, **kwargs):
+        return {"objects": [
+            {"name": "Mesh", "type": "MESH", "shape_keys": ["улыбка"]},
+            {"name": "Rig", "type": "ARMATURE", "bones": ["Hips"]},
+        ]}
+
+    monkeypatch.setattr(bt, "dump_blend_info", fake_dump)
+    from viu.tools.blender_tool import BlenderScanTool
+
+    r = BlenderScanTool().run({"folder": str(tmp_path)}, ctx)
+    assert r.ok
+    assert "a.blend" in r.content and "b.blend" in r.content
+    assert "скелет=да" in r.content
+
+
+def test_blender_scan_missing_folder(ctx):
+    from viu.tools.blender_tool import BlenderScanTool
+
+    r = BlenderScanTool().run({"folder": "/no/such/folder"}, ctx)
+    assert not r.ok
 
 
 def test_blender_registry_registered():

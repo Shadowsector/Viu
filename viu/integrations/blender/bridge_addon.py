@@ -49,6 +49,8 @@ COMMANDS = {
     "run_operator": ["operator"],
     "screenshot": [],
     "rename_bones": ["armature", "mapping"],
+    "list_sockets": [],
+    "append_object": ["blend_file", "object"],
 }
 
 
@@ -177,6 +179,36 @@ def _h_rename_bones(params):
     return {"armature": arm.name, "renamed": renamed, "vertex_groups_fixed": vgroups_fixed}
 
 
+def _h_list_sockets(params):
+    prefix = params.get("prefix")
+    sockets = []
+    for o in bpy.data.objects:
+        if o.type != "EMPTY":
+            continue
+        if prefix and not o.name.startswith(prefix):
+            continue
+        # Теги можно хранить в пользовательском свойстве "tags" (строка через запятую).
+        tags_raw = o.get("tags", "")
+        tags = [t.strip() for t in str(tags_raw).split(",") if t.strip()]
+        sockets.append({
+            "name": o.name,
+            "parent": o.parent.name if o.parent else None,
+            "parent_bone": o.parent_bone or None,
+            "location": [round(c, 4) for c in o.location],
+            "tags": tags,
+        })
+    return sockets
+
+
+def _h_append_object(params):
+    import os
+    blend_file = params["blend_file"]
+    obj = params["object"]
+    directory = os.path.join(blend_file, "Object") + os.sep
+    bpy.ops.wm.append(filepath=os.path.join(directory, obj), directory=directory, filename=obj)
+    return {"appended": obj, "from": blend_file}
+
+
 _HANDLERS = {
     "ping": _h_ping,
     "scene_info": _h_scene_info,
@@ -186,6 +218,8 @@ _HANDLERS = {
     "run_operator": _h_run_operator,
     "screenshot": _h_screenshot,
     "rename_bones": _h_rename_bones,
+    "list_sockets": _h_list_sockets,
+    "append_object": _h_append_object,
 }
 
 

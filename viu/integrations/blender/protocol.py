@@ -22,6 +22,8 @@ COMMANDS: Dict[str, List[str]] = {
     "run_operator": ["operator"],  # вызвать оператор Blender (аналог нажатия кнопки)
     "screenshot": [],            # снимок вьюпорта (для vision-модели), опц. параметр path
     "rename_bones": ["armature", "mapping"],  # переименовать кости арматуры по плану
+    "list_sockets": [],          # перечислить сокеты (Empty-метки) сцены
+    "append_object": ["blend_file", "object"],  # добавить объект из другого .blend
 }
 
 
