@@ -49,6 +49,11 @@ class Config:
     # Разрешать ли исходящие сетевые запросы (web-инструменты).
     allow_network: bool = field(default_factory=lambda: _env("VIU_ALLOW_NETWORK", "1") == "1")
 
+    # Интеграция с Blender.
+    blender_exe: str = field(default_factory=lambda: _env("VIU_BLENDER_EXE", "blender"))
+    blender_host: str = field(default_factory=lambda: _env("VIU_BLENDER_HOST", "127.0.0.1"))
+    blender_port: int = field(default_factory=lambda: int(_env("VIU_BLENDER_PORT", "8765")))
+
     def ensure_dirs(self) -> "Config":
         """Создаёт служебные каталоги, если их ещё нет."""
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -62,5 +67,6 @@ class Config:
             f"provider={self.provider}\n"
             f"model={self.model}\n"
             f"max_steps={self.max_steps}\n"
-            f"allow_shell={self.allow_shell} allow_network={self.allow_network}"
+            f"allow_shell={self.allow_shell} allow_network={self.allow_network}\n"
+            f"blender_exe={self.blender_exe} blender={self.blender_host}:{self.blender_port}"
         )

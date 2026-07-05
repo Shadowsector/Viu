@@ -1,6 +1,7 @@
 """Система инструментов Вью."""
 
 from .base import AgentContext, Tool, ToolRegistry, ToolResult
+from .blender_tool import BlenderCommandTool, BlenderInfoTool, BlenderScreenshotTool
 from .filesystem import ListDirTool, ReadFileTool, WriteFileTool
 from .loader import load_custom_tools
 from .memory_tool import MemorySearchTool, MemoryWriteTool
@@ -37,6 +38,9 @@ def build_default_registry() -> ToolRegistry:
         SelfInspectTool(),
         AddToolTool(),
         ImprovePromptTool(),
+        BlenderInfoTool(),
+        BlenderCommandTool(),
+        BlenderScreenshotTool(),
     ):
         registry.register(tool)
     load_custom_tools(registry)
