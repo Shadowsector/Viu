@@ -2,11 +2,19 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 title Viu - proverka Blender
-echo === blender_info (chto Vyu vidit v scene) ===
-python -m viu tool blender_info
+set "REPORT=%~dp0blender_report.txt"
+
+echo === blender_info (chto Vyu vidit v scene) ===> "%REPORT%"
+python -m viu tool blender_info >> "%REPORT%" 2>&1
+echo.>> "%REPORT%"
+echo === rig_check (sverka skeleta so standartom) ===>> "%REPORT%"
+python -m viu tool rig_check >> "%REPORT%" 2>&1
+
+type "%REPORT%"
 echo.
-echo === rig_check (sverka skeleta so standartom) ===
-python -m viu tool rig_check
-echo.
-echo Gotovo. Skopiruy vyvod vyshe i prishli ego.
+echo ============================================================
+echo   Otchet sohranen v fayl:
+echo   %REPORT%
+echo   Prishli mne etot fayl (ili skopiruy tekst vyshe).
+echo ============================================================
 pause
