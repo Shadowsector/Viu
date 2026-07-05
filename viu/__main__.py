@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from .agent import Agent, Step
@@ -55,6 +56,52 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return 0 if result.completed else 1
 
 
+def cmd_chat(args: argparse.Namespace) -> int:
+    """Интерактивное общение с Вью (для двойного клика по .bat)."""
+    agent = Agent(config=Config())
+    print("=" * 56)
+    print("  Вью — помощник и соавтор Анабарры")
+    print(f"  Модель: {agent.llm.name}")
+    print("  Пиши задачу и жми Enter. Выход: exit / выход / Ctrl+C")
+    print("=" * 56)
+    while True:
+        try:
+            task = input("\nты> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nПока!")
+            return 0
+        if not task:
+            continue
+        if task.lower() in ("exit", "quit", "выход", "пока"):
+            print("Пока!")
+            return 0
+        try:
+            result = agent.run(task, on_step=_print_step)
+            print(f"\nВью> {result.final}")
+        except Exception as exc:  # noqa: BLE001 — чат не должен падать из-за одной ошибки
+            print(f"\n[ошибка] {exc}")
+            print("Подсказка: запущена ли Ollama? Верна ли модель в start_viu.bat?")
+    return 0
+
+
+def cmd_tool(args: argparse.Namespace) -> int:
+    """Прямой вызов одного инструмента без участия модели (надёжно для тестов)."""
+    agent = Agent(config=Config())
+    tool = agent.registry.get(args.name)
+    if tool is None:
+        print(f"Инструмент {args.name!r} не найден. Доступные:")
+        print(", ".join(agent.registry.names()))
+        return 1
+    try:
+        params = json.loads(args.args) if args.args else {}
+    except json.JSONDecodeError as exc:
+        print(f"Неверный JSON в --args: {exc}")
+        return 1
+    result = tool.run(params, agent.ctx)
+    print(result.render())
+    return 0 if result.ok else 1
+
+
 def cmd_tools(args: argparse.Namespace) -> int:
     registry = build_default_registry()
     print(registry.spec())
@@ -93,6 +140,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_run = sub.add_parser("run", help="выполнить задачу")
     p_run.add_argument("task", help="описание задачи")
     p_run.set_defaults(func=cmd_run)
+
+    sub.add_parser("chat", help="интерактивное общение с Вью").set_defaults(func=cmd_chat)
+
+    p_tool = sub.add_parser("tool", help="вызвать один инструмент напрямую")
+    p_tool.add_argument("name", help="имя инструмента (см. viu tools)")
+    p_tool.add_argument("--args", help="параметры инструмента в виде JSON", default="")
+    p_tool.set_defaults(func=cmd_tool)
 
     sub.add_parser("demo", help="офлайн-демонстрация цикла").set_defaults(func=cmd_demo)
     sub.add_parser("tools", help="список инструментов").set_defaults(func=cmd_tools)
