@@ -43,6 +43,31 @@ Hierarchy → раскрыть `Shanya_Erisa` → снять галочки со
 - **Animator → Avatar** = `Shanya_ErisaAvatar` (от модели)  
 - **Animator → Controller** = твой Animator Controller  
 
+## Автонастройка Шани (новое в Viu)
+
+После импорта FBX в чистый проект **6.3 LTS**:
+
+### Вариант A — через меню Unity
+
+1. В Viu или вручную: положи Editor-скрипт — инструмент **`unity_deploy_setup`**
+   (или `python -m viu tool unity_deploy_setup`).
+2. Открой Unity → дождись компиляции.
+3. Меню **Viu → Setup Shanya (Idle)** — создаст Animator Controller, повесит Idle,
+   отключит WGT.* в сцене.
+
+### Вариант B — batchmode (Unity **закрыт**)
+
+```bat
+set VIU_UNITY_PROJECT=U:\Anabarra\Unity\Anabarra
+set VIU_UNITY_EXE=C:\Program Files\Unity\Hub\Editor\6000.3.19f1\Editor\Unity.exe
+python -m viu tool unity_run_setup
+```
+
+### Safe Mode из-за пакетов
+
+Инструмент **`unity_fix_manifest`** убирает Input System и AI Navigation из
+`Packages/manifest.json` (Unity закрыт), затем открой проект снова.
+
 ## Проверка через Viu
 
 ```bat

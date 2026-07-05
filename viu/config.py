@@ -57,6 +57,9 @@ class Config:
     # Unity-проект Анабарра (корень с Assets/).
     unity_project: str = field(default_factory=lambda: _env("VIU_UNITY_PROJECT", ""))
 
+    # Путь к Unity.exe для batchmode (опционально).
+    unity_exe: str = field(default_factory=lambda: _env("VIU_UNITY_EXE", ""))
+
     def ensure_dirs(self) -> "Config":
         """Создаёт служебные каталоги, если их ещё нет."""
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -72,5 +75,6 @@ class Config:
             f"max_steps={self.max_steps}\n"
             f"allow_shell={self.allow_shell} allow_network={self.allow_network}\n"
             f"blender_exe={self.blender_exe} blender={self.blender_host}:{self.blender_port}\n"
-            f"unity_project={self.unity_project or '(не задан)'}"
+            f"unity_project={self.unity_project or '(не задан)'}\n"
+            f"unity_exe={self.unity_exe or '(авто Hub)'}"
         )

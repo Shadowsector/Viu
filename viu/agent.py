@@ -160,6 +160,17 @@ class Agent:
                     f"Инструмент {tool_name!r} не найден. Доступны: {', '.join(self.registry.names())}"
                 )
                 ok = False
+            elif tool_name == "ask_user":
+                tr = tool.run(args, self.ctx)
+                question = tr.content
+                step = Step(kind="final", thought=thought, observation=question)
+                result.steps.append(step)
+                result.final = question
+                result.completed = True
+                if on_step:
+                    on_step(step)
+                self._log(f"ASK_USER: {question}")
+                return result
             else:
                 tr = tool.run(args, self.ctx)
                 observation = tr.render()

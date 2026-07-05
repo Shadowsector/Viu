@@ -32,4 +32,7 @@
 - Для диагностики используй инструмент **`unity_report`** — **не** `run_shell` на `check_unity.bat` (bat ждёт `pause` и даёт таймаут 60s).
 - Не повторяй **`unity_scan`** в цикле — один раз **`unity_report`** достаточно.
 - Если в вердикте «Play Mode ЗАБЛОКИРОВАН» — анимация не проверяется, пока не исправлены CS-ошибки.
-- Путь проекта: `VIU_UNITY_PROJECT=U:\Anabarra\Unity\Anabarra` или аргумент `project_path` в `unity_report`.
+- Если путь/версия Unity неизвестны — **`ask_user`**, не угадывай.
+- Для настройки Шани в Unity: **`unity_deploy_setup`** → меню Viu → Setup Shanya; или **`unity_run_setup`** (Unity закрыт).
+- **`unity_read` / `unity_write` / `unity_list`** — файлы в `VIU_UNITY_PROJECT` (не песочница Viu).
+- **`unity_fix_manifest`** — убрать Input System / AI Navigation из manifest (Safe Mode).
