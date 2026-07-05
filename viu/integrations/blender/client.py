@@ -79,3 +79,6 @@ class BlenderClient:
 
     def screenshot(self, path: Optional[str] = None) -> Any:
         return self._post("screenshot", {"path": path} if path else {})
+
+    def rename_bones(self, armature: str, mapping: Dict[str, str]) -> Any:
+        return self._post("rename_bones", {"armature": armature, "mapping": mapping})

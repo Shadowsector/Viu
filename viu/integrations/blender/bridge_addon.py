@@ -48,6 +48,7 @@ COMMANDS = {
     "set_shape_key": ["object", "key", "value"],
     "run_operator": ["operator"],
     "screenshot": [],
+    "rename_bones": ["armature", "mapping"],
 }
 
 
@@ -136,6 +137,30 @@ def _h_screenshot(params):
     return {"path": path}
 
 
+def _h_rename_bones(params):
+    arm = bpy.data.objects.get(params["armature"])
+    if arm is None or arm.type != "ARMATURE":
+        raise KeyError(f"арматура не найдена: {params['armature']}")
+    mapping = params["mapping"] or {}
+
+    prev_active = bpy.context.view_layer.objects.active
+    prev_mode = arm.mode if arm == prev_active else "OBJECT"
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode="EDIT")
+    renamed = []
+    try:
+        for old, new in mapping.items():
+            eb = arm.data.edit_bones.get(old)
+            if eb is not None:
+                eb.name = new
+                renamed.append([old, new])
+    finally:
+        bpy.ops.object.mode_set(mode="OBJECT")
+        if prev_active is not None:
+            bpy.context.view_layer.objects.active = prev_active
+    return {"armature": arm.name, "renamed": renamed}
+
+
 _HANDLERS = {
     "ping": _h_ping,
     "scene_info": _h_scene_info,
@@ -144,6 +169,7 @@ _HANDLERS = {
     "set_shape_key": _h_set_shape_key,
     "run_operator": _h_run_operator,
     "screenshot": _h_screenshot,
+    "rename_bones": _h_rename_bones,
 }
 
 

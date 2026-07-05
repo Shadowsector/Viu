@@ -22,7 +22,10 @@
     (создание новых инструментов на лету), `improve_prompt` (фиксация уроков);
   - **Blender**: `blender_info` (сведения о сцене/файле), `blender_command`
     (управление живым Blender), `blender_screenshot` (снимок для vision-модели) —
-    см. [`docs/BLENDER_SETUP.md`](./docs/BLENDER_SETUP.md).
+    см. [`docs/BLENDER_SETUP.md`](./docs/BLENDER_SETUP.md);
+  - **Единый скелет**: `rig_standard`, `rig_check`, `rig_apply` — сверка и
+    приведение скелета модели к стандарту Unity Humanoid, см.
+    [`docs/RIG_STANDARD.md`](./docs/RIG_STANDARD.md).
 - **Долгосрочная память** — JSON-хранилище с поиском по ключевым словам.
 - **Планирование** — многоэтапные планы со статусами, переживают перезапуски.
 - **Самоулучшение** — агент читает свой код, добавляет себе инструменты

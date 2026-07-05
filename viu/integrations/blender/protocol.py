@@ -21,6 +21,7 @@ COMMANDS: Dict[str, List[str]] = {
     "set_shape_key": ["object", "key", "value"],
     "run_operator": ["operator"],  # вызвать оператор Blender (аналог нажатия кнопки)
     "screenshot": [],            # снимок вьюпорта (для vision-модели), опц. параметр path
+    "rename_bones": ["armature", "mapping"],  # переименовать кости арматуры по плану
 }
 
 
