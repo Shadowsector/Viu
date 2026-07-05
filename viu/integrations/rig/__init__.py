@@ -6,6 +6,7 @@
 """
 
 from .analyze import RigReport, analyze_skeleton
+from .humanoid_map import HumanoidMap, detect_rig_type, map_to_humanoid
 from .standard import (
     ALIAS_MAP,
     BONES,
@@ -18,6 +19,9 @@ from .standard import (
 __all__ = [
     "analyze_skeleton",
     "RigReport",
+    "map_to_humanoid",
+    "HumanoidMap",
+    "detect_rig_type",
     "BONES",
     "CANON_ORDER",
     "REQUIRED",

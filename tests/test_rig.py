@@ -6,6 +6,8 @@ from viu.integrations.rig import (
     CANON_ORDER,
     REQUIRED,
     analyze_skeleton,
+    detect_rig_type,
+    map_to_humanoid,
     normalize,
     standard_summary,
 )
@@ -27,6 +29,19 @@ DOT_CONVENTION = [
     "Hips", "Spine", "Chest", "Neck", "Head",
     "UpperArm.L", "LowerArm.L", "Hand.L", "UpperArm.R", "LowerArm.R", "Hand.R",
     "UpperLeg.L", "LowerLeg.L", "Foot.L", "UpperLeg.R", "LowerLeg.R", "Foot.R",
+]
+
+RIGIFY = [
+    "root",
+    "DEF-spine", "DEF-spine.001", "DEF-spine.002", "DEF-spine.003",
+    "DEF-spine.004", "DEF-spine.005", "DEF-spine.006",
+    "ORG-spine", "MCH-spine", "tweak_spine", "hips", "chest", "neck", "head",
+    "DEF-shoulder.L", "DEF-upper_arm.L", "DEF-forearm.L", "DEF-hand.L",
+    "DEF-shoulder.R", "DEF-upper_arm.R", "DEF-forearm.R", "DEF-hand.R",
+    "DEF-thigh.L", "DEF-shin.L", "DEF-foot.L", "DEF-toe.L",
+    "DEF-thigh.R", "DEF-shin.R", "DEF-foot.R", "DEF-toe.R",
+    "DEF-breast.L", "DEF-breast.R", "DEF-spine.003.tweak.L",
+    "MCH-upper_arm_ik.L", "upper_arm_fk.L", "WGT-rig_hand", "ORG-upper_arm.L",
 ]
 
 RUS_TRANSLIT = [
@@ -104,6 +119,33 @@ def test_unmatched_bones_reported():
 
 # --------- Инструменты ---------
 
+# --------- Сопоставление сложного рига (Rigify) с Unity Humanoid ---------
+
+def test_detect_rig_type():
+    assert detect_rig_type(RIGIFY) == "rigify"
+    assert detect_rig_type(MIXAMO) == "mixamo"
+    assert detect_rig_type(DOT_CONVENTION) == "generic"
+
+
+def test_rigify_maps_to_deform_bones():
+    hm = map_to_humanoid(RIGIFY)
+    assert hm.rig_type == "rigify"
+    assert not hm.missing_required, hm.missing_required
+    # Берём именно DEF-кости, а не ORG-/MCH-/fk.
+    assert hm.mapping["LeftUpperArm"] == "DEF-upper_arm.L"
+    assert hm.mapping["LeftLowerArm"] == "DEF-forearm.L"
+    assert hm.mapping["LeftFoot"] == "DEF-foot.L"
+    # Позвоночник по сегментам, без tweak-костей.
+    assert hm.mapping["Hips"] == "DEF-spine"
+    assert hm.mapping["Head"] == "DEF-spine.006"
+    assert "tweak" not in hm.mapping["Chest"]
+
+
+def test_rigify_not_renamed():
+    hm = map_to_humanoid(RIGIFY)
+    assert hm.renaming_needed is False
+
+
 @pytest.fixture
 def ctx(tmp_path):
     config = Config(root=tmp_path, data_dir=tmp_path / ".viu", blender_port=59997).ensure_dirs()
@@ -143,7 +185,25 @@ def test_rename_bones_in_protocol_and_client():
     assert hasattr(BlenderClient, "rename_bones")
 
 
+def test_rig_check_rigify_uses_map(ctx):
+    r = RigCheckTool().run({"bones": RIGIFY}, ctx)
+    assert r.ok
+    assert "rigify" in r.content
+    assert "DEF-upper_arm.L" in r.content
+    # Для Rigify не должно быть плана переименования.
+    assert "rename_plan" not in r.content
+
+
+def test_rig_map_tool(ctx):
+    from viu.tools.rig_tool import RigMapTool
+
+    r = RigMapTool().run({"bones": RIGIFY}, ctx)
+    assert r.ok
+    assert "mapping (JSON)" in r.content
+    assert "DEF-hand.L" in r.content
+
+
 def test_rig_tools_registered():
     reg = build_default_registry()
-    for name in ("rig_standard", "rig_check", "rig_apply"):
+    for name in ("rig_standard", "rig_check", "rig_map", "rig_apply"):
         assert reg.get(name) is not None, name

@@ -13,7 +13,12 @@ import json
 from typing import Any, Dict, List, Optional
 
 from ..integrations.blender import BlenderBridgeError, BlenderClient, dump_blend_info
-from ..integrations.rig import analyze_skeleton, standard_summary
+from ..integrations.rig import (
+    analyze_skeleton,
+    detect_rig_type,
+    map_to_humanoid,
+    standard_summary,
+)
 from .base import AgentContext, Tool, ToolResult
 
 
@@ -29,6 +34,38 @@ def _armature_bones(objects: List[dict], armature: Optional[str]) -> Optional[Li
     return None
 
 
+def _resolve_bones(args: Dict[str, Any], ctx: AgentContext):
+    """Возвращает (bones, error_text). Кости: из args, из живого Blender или .blend."""
+    bones = args.get("bones")
+    if bones:
+        if isinstance(bones, str):
+            bones = [b.strip() for b in bones.split(",") if b.strip()]
+        return bones, None
+
+    armature = args.get("armature")
+    objects = None
+    client = _client(ctx)
+    if client.is_alive():
+        try:
+            scene = client.scene_info()
+            objects = scene.get("objects", []) if isinstance(scene, dict) else None
+        except BlenderBridgeError as exc:
+            return None, str(exc)
+    elif args.get("blend_file"):
+        try:
+            scene = dump_blend_info(args["blend_file"], blender_exe=ctx.config.blender_exe)
+            objects = scene.get("objects", [])
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            return None, str(exc)
+    else:
+        return None, "Нет данных о скелете. Передайте bones, blend_file или запустите Blender с мостом."
+
+    bones = _armature_bones(objects or [], armature)
+    if bones is None:
+        return None, "В сцене не найдено арматуры (скелета)."
+    return bones, None
+
+
 class RigStandardTool(Tool):
     name = "rig_standard"
     description = "Показать единый стандартный скелет (список костей и обязательность)"
@@ -41,8 +78,8 @@ class RigStandardTool(Tool):
 class RigCheckTool(Tool):
     name = "rig_check"
     description = (
-        "Сравнить скелет модели со стандартным ригом и предложить план переименования. "
-        "Кости берутся из bones (список), из blend_file или из живого Blender"
+        "Проанализировать скелет модели. Для сложных ригов (Rigify) строит карту "
+        "Unity Humanoid без переименования; для простых — план переименования"
     )
     parameters = {
         "bones": "список имён костей (опционально)",
@@ -51,43 +88,51 @@ class RigCheckTool(Tool):
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
-        bones = args.get("bones")
-        armature = args.get("armature")
+        bones, error = _resolve_bones(args, ctx)
+        if error:
+            return ToolResult(False, error)
 
-        if not bones:
-            objects = None
-            client = _client(ctx)
-            if client.is_alive():
-                try:
-                    scene = client.scene_info()
-                    objects = scene.get("objects", []) if isinstance(scene, dict) else None
-                except BlenderBridgeError as exc:
-                    return ToolResult(False, str(exc))
-            elif args.get("blend_file"):
-                try:
-                    scene = dump_blend_info(args["blend_file"], blender_exe=ctx.config.blender_exe)
-                    objects = scene.get("objects", [])
-                except (FileNotFoundError, RuntimeError, ValueError) as exc:
-                    return ToolResult(False, str(exc))
-            else:
-                return ToolResult(
-                    False,
-                    "Нет данных о скелете. Передайте bones, или blend_file, или запустите Blender с мостом.",
-                )
+        rig_type = detect_rig_type(bones)
+        has_deform = any(b.startswith("DEF-") for b in bones)
 
-            bones = _armature_bones(objects or [], armature)
-            if bones is None:
-                return ToolResult(False, "В сцене не найдено арматуры (скелета).")
+        if rig_type == "rigify" or has_deform:
+            # Сложный риг: сопоставляем, НЕ переименовываем.
+            hm = map_to_humanoid(bones)
+            text = hm.render()
+            text += (
+                "\n\nЭто карта для Unity (слот Humanoid → кость). Переименование не нужно — "
+                "в Unity эта карта подтверждается в настройке Avatar."
+            )
+            return ToolResult(hm.renaming_needed is False and not hm.missing_required, text)
 
-        if isinstance(bones, str):
-            bones = [b.strip() for b in bones.split(",") if b.strip()]
-
+        # Простой риг: предлагаем привести имена к стандарту.
         report = analyze_skeleton(bones)
         text = report.render()
-        # Отдаём план переименования отдельно в JSON, чтобы его можно было передать в rig_apply.
         if report.rename_plan:
             text += "\n\nrename_plan (JSON):\n" + json.dumps(report.rename_plan, ensure_ascii=False)
         return ToolResult(report.ok, text)
+
+
+class RigMapTool(Tool):
+    name = "rig_map"
+    description = (
+        "Построить карту соответствия костей модели слотам Unity Humanoid "
+        "(без переименования; подходит для Rigify и сложных ригов)"
+    )
+    parameters = {
+        "bones": "список имён костей (опционально)",
+        "blend_file": "путь к .blend (опционально)",
+        "armature": "имя арматуры (опционально)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        bones, error = _resolve_bones(args, ctx)
+        if error:
+            return ToolResult(False, error)
+        hm = map_to_humanoid(bones)
+        text = hm.render()
+        text += "\n\nmapping (JSON):\n" + json.dumps(hm.mapping, ensure_ascii=False)
+        return ToolResult(not hm.missing_required, text)
 
 
 class RigApplyTool(Tool):
