@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from viu.config import Config
@@ -7,6 +10,7 @@ from viu.integrations.rig import (
     REQUIRED,
     analyze_skeleton,
     detect_rig_type,
+    is_complex_rig,
     map_to_humanoid,
     normalize,
     standard_summary,
@@ -14,7 +18,13 @@ from viu.integrations.rig import (
 from viu.memory import MemoryStore
 from viu.planning import Planner
 from viu.tools import AgentContext, build_default_registry
-from viu.tools.rig_tool import RigApplyTool, RigCheckTool, RigStandardTool
+from viu.tools.rig_tool import (
+    RigApplyAutoTool,
+    RigApplyTool,
+    RigCheckTool,
+    RigStandardTool,
+    _pick_armature,
+)
 
 MIXAMO = [
     "mixamorig:Hips", "mixamorig:Spine", "mixamorig:Spine1", "mixamorig:Spine2",
@@ -64,6 +74,9 @@ def test_normalize_strips_prefix_and_separators():
     assert normalize("mixamorig:LeftUpLeg") == "leftupleg"
     assert normalize("upper_arm.L") == "upperarml"
     assert normalize("DEF-spine") == "spine"
+    assert normalize("L_ORG_thigh") == "lthigh"
+    assert normalize("ORG_upper_arm_L") == "upperarml"
+    assert normalize("L_ORG_shin") == "lshin"
 
 
 def test_standard_summary_readable():
@@ -125,6 +138,14 @@ def test_detect_rig_type():
     assert detect_rig_type(RIGIFY) == "rigify"
     assert detect_rig_type(MIXAMO) == "mixamo"
     assert detect_rig_type(DOT_CONVENTION) == "generic"
+    advanced = ["Root", "ORG_upper_arm_L", "L_ORG_thigh", "L_LegIK_BLEND", "R_LegIK_BLEND"]
+    assert detect_rig_type(advanced) == "advanced"
+
+
+def test_is_complex_rig():
+    assert is_complex_rig(RIGIFY)
+    assert not is_complex_rig(MIXAMO)
+    assert is_complex_rig(["Root", "ORG_upper_arm_L", "L_ORG_thigh"])
 
 
 def test_rigify_maps_to_deform_bones():
@@ -205,5 +226,50 @@ def test_rig_map_tool(ctx):
 
 def test_rig_tools_registered():
     reg = build_default_registry()
-    for name in ("rig_standard", "rig_check", "rig_map", "rig_apply"):
+    for name in ("rig_standard", "rig_check", "rig_map", "rig_apply", "rig_apply_auto"):
         assert reg.get(name) is not None, name
+
+
+def test_pick_main_armature_over_weapon_proxy():
+    objects = [
+        {
+            "name": "Avatar_Female_Size02_Yuzuha_Model.004",
+            "type": "ARMATURE",
+            "bones": ["Ctr_Wpn_01", "Ctr_Wpn_02", "Skn_Wpn_03"],
+        },
+        {"name": "rig_", "type": "ARMATURE", "bones": [f"bone_{i}" for i in range(200)]},
+    ]
+    name, bones = _pick_armature(objects)
+    assert name == "rig_"
+    assert len(bones) == 200
+
+
+def test_advanced_rig_check_uses_map_not_rename(ctx):
+    bones = [
+        "Root", "pelvis", "Torso", "abdomenLower", "chestUpper", "head",
+        "ORG_upper_arm_L", "ORG_forearm_L", "L_Hand",
+        "ORG_upper_arm_R", "ORG_forearm_R", "R_Hand",
+        "L_ORG_thigh", "L_ORG_shin", "L_Foot", "L_Toe",
+        "R_ORG_thigh", "R_ORG_shin", "R_Foot", "R_Toe",
+        "L_Collar", "R_Collar",
+    ]
+    r = RigCheckTool().run({"bones": bones}, ctx)
+    assert "mapping (JSON)" in r.content
+    assert "rename_plan" not in r.content
+    assert "LeftUpperLeg" in r.content
+    assert "Spine" in r.content
+
+
+def test_erisa_report_maps_required_bones():
+    report_path = Path("/home/ubuntu/.cursor/projects/workspace/uploads/blender_report_3940.txt")
+    if not report_path.exists():
+        pytest.skip("Erisa report not available")
+    text = report_path.read_text(encoding="utf-8")
+    idx = text.find("{")
+    data, _ = json.JSONDecoder().raw_decode(text, idx)
+    arm = next(o for o in data["objects"] if o["name"] == "_Armature")
+    hm = map_to_humanoid(arm["bones"])
+    assert detect_rig_type(arm["bones"]) == "advanced"
+    assert not hm.missing_required, hm.missing_required
+    assert hm.mapping["LeftUpperLeg"] == "L_ORG_thigh"
+    assert hm.mapping["Head"] == "head"

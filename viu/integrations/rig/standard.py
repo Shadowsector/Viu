@@ -32,6 +32,9 @@ def normalize(name: str) -> str:
         if s.startswith(p):
             s = s[len(p):]
             break
+    # Встроенный ORG в метаригах: L_ORG_thigh, ORG_upper_arm_L
+    s = re.sub(r"_?org_?", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
     return re.sub(r"[^a-z0-9]", "", s)
 
 
@@ -66,11 +69,11 @@ class Bone:
 # Центральные кости (без стороны).
 _CORE = [
     # name, required, parent, synonyms
-    ("Hips", True, None, ["hips", "hip", "pelvis", "root", "cog", "taz"]),
-    ("Spine", True, "Hips", ["spine", "spine0", "spine01", "lowerback", "pozvon", "pozvonochnik"]),
-    ("Chest", False, "Spine", ["chest", "spine1", "spine001", "upperback", "grud"]),
+    ("Hips", True, None, ["hips", "hip", "pelvis", "root", "cog", "taz", "torso"]),
+    ("Spine", True, "Hips", ["spine", "spine0", "spine01", "lowerback", "pozvon", "pozvonochnik", "abdomenlower", "abdomenupper"]),
+    ("Chest", False, "Spine", ["chest", "spine1", "spine001", "upperback", "grud", "chestlower", "chestupper"]),
     ("UpperChest", False, "Chest", ["upperchest", "spine2", "spine002"]),
-    ("Neck", False, "UpperChest", ["neck", "sheya", "sheia"]),
+    ("Neck", False, "UpperChest", ["neck", "sheya", "sheia", "neck01", "neck02"]),
     ("Head", True, "Neck", ["head", "golova"]),
 ]
 
@@ -80,10 +83,10 @@ _CENTRAL_NAMES = {"Hips", "Spine", "Chest", "UpperChest", "Neck", "Head"}
 _SIDED = [
     ("Shoulder", False, "UpperChest", ["shoulder", "clavicle", "collar", "klyuchica", "plecho"]),
     ("UpperArm", True, "Shoulder", ["upperarm", "arm", "ruka", "oberarm"]),
-    ("LowerArm", True, "UpperArm", ["lowerarm", "forearm", "elbow", "predplechie"]),
+    ("LowerArm", True, "UpperArm", ["lowerarm", "forearm", "predplechie"]),
     ("Hand", True, "LowerArm", ["hand", "wrist", "kist", "ladon"]),
     ("UpperLeg", True, "Hips", ["upperleg", "upleg", "thigh", "bedro"]),
-    ("LowerLeg", True, "UpperLeg", ["lowerleg", "leg", "shin", "calf", "knee", "golen"]),
+    ("LowerLeg", True, "UpperLeg", ["lowerleg", "leg", "shin", "calf", "golen", "orgshin"]),
     ("Foot", True, "LowerLeg", ["foot", "ankle", "stopa"]),
     ("Toes", False, "Foot", ["toe", "toes", "toebase", "paltsy"]),
 ]

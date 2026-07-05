@@ -7,7 +7,7 @@ from viu.llm import MockLLM
 
 
 def test_extract_json_plain():
-    assert extract_json('{"a": 1}') == {"a": 1}
+    assert extract_json('{"thought": "t", "final": "ok"}') == {"thought": "t", "final": "ok"}
 
 
 def test_extract_json_with_code_fence():
@@ -23,6 +23,20 @@ def test_extract_json_embedded_in_text():
 
 def test_extract_json_invalid():
     assert extract_json("совсем не json") is None
+
+
+def test_extract_json_rejects_rename_plan_only():
+    rename = '{"Root": "Hips", "head": "Head"}'
+    assert extract_json(rename) is None
+
+
+def test_extract_json_picks_agent_object_over_embedded_data():
+    text = (
+        'rename_plan: {"Root": "Hips"} '
+        '{"thought": "ok", "final": "готово"}'
+    )
+    parsed = extract_json(text)
+    assert parsed and parsed["final"] == "готово"
 
 
 def test_agent_single_tool_then_final(tmp_path):

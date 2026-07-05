@@ -12,7 +12,7 @@ from .filesystem import ListDirTool, ReadFileTool, WriteFileTool
 from .loader import load_custom_tools
 from .memory_tool import MemorySearchTool, MemoryWriteTool
 from .planning_tool import PlanCreateTool, PlanShowTool, PlanUpdateTool
-from .rig_tool import RigApplyTool, RigCheckTool, RigMapTool, RigStandardTool
+from .rig_tool import RigApplyAutoTool, RigApplyTool, RigCheckTool, RigMapTool, RigStandardTool
 from .self_improve import AddToolTool, ImprovePromptTool, SelfInspectTool
 from .shell import ShellTool
 from .web import WebFetchTool, WebSearchTool
@@ -53,6 +53,7 @@ def build_default_registry() -> ToolRegistry:
         RigCheckTool(),
         RigMapTool(),
         RigApplyTool(),
+        RigApplyAutoTool(),
         AffordanceShowTool(),
         AffordanceMatchTool(),
     ):

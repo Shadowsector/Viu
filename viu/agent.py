@@ -25,20 +25,39 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 def extract_json(text: str) -> Optional[dict]:
-    """Извлекает JSON-объект из ответа модели, устойчиво к обёрткам ```/тексту."""
+    """Извлекает JSON-объект протокола агента из ответа модели."""
     text = text.strip()
-    # Убираем markdown-обёртку ```json ... ```
     if text.startswith("```"):
         text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
         text = re.sub(r"\n?```$", "", text).strip()
+
+    def _valid_agent(obj: Any) -> bool:
+        return isinstance(obj, dict) and ("final" in obj or "action" in obj)
+
+    # Пробуем весь текст целиком.
     try:
-        return json.loads(text)
+        obj = json.loads(text)
+        if _valid_agent(obj):
+            return obj
     except json.JSONDecodeError:
         pass
+
+    # Ищем все JSON-объекты в тексте; берём первый с action/final (не rename_plan и т.п.).
+    for match in re.finditer(r"\{", text):
+        try:
+            obj, _end = json.JSONDecoder().raw_decode(text, match.start())
+        except json.JSONDecodeError:
+            continue
+        if _valid_agent(obj):
+            return obj
+
+    # Fallback: жадный regex для старых/коротких ответов.
     match = _JSON_RE.search(text)
     if match:
         try:
-            return json.loads(match.group(0))
+            obj = json.loads(match.group(0))
+            if _valid_agent(obj):
+                return obj
         except json.JSONDecodeError:
             return None
     return None
@@ -110,7 +129,11 @@ class Agent:
                 messages.append(
                     {
                         "role": "user",
-                        "content": "Ошибка: ответ должен быть одним JSON-объектом по протоколу. Повтори.",
+                        "content": (
+                            "Ошибка: ответ должен быть одним JSON-объектом протокола "
+                            'с ключом "action" или "final", без текста вне JSON. '
+                            'Пример: {"thought":"...", "action":{"tool":"rig_apply_auto","args":{}}}'
+                        ),
                     }
                 )
                 continue

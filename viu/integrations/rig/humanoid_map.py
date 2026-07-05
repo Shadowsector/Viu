@@ -1,9 +1,9 @@
 """Сопоставление сложного рига с Unity Humanoid БЕЗ переименования костей.
 
-Реальные модели часто на Rigify (кости DEF-/ORG-/MCH-/tweak/WGT-…). Такие
-риги переименовывать нельзя — они сломаются. Правильный путь: не трогая имена,
-построить **карту соответствия** «слот Unity Humanoid → реальная кость»,
-опираясь на деформирующие кости (DEF-). Финально карта подтверждается в
+Реальные модели часто на Rigify (кости DEF-/ORG-/MCH-/tweak/WGT-…) или
+метаригах (ORG_upper_arm_L, L_ORG_thigh). Такие риги переименовывать нельзя —
+они сломаются. Правильный путь: не трогая имена, построить **карту соответствия**
+«слот Unity Humanoid → реальная кость». Финально карта подтверждается в
 настройке Avatar внутри Unity.
 """
 
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from .standard import ALIAS_MAP, CANON_ORDER, REQUIRED, normalize
 
@@ -21,8 +21,19 @@ SPINE_SLOTS = ["Hips", "Spine", "Chest", "UpperChest", "Neck", "Head"]
 _CONTROL_SUBSTR = (
     "_ik", "_fk", "tweak", "_master", "_drv", "pole", "target",
     "parent", "roll", "widget", "heel", "_swing", "_spin",
+    "_ctl", "_mch", "blend",
 )
 _CONTROL_PREFIX = ("WGT-", "MCH-", "MCH_", "VIS_", "VIS-")
+
+# Именованные сегменты позвоночника в метаригах (Fortnite/RedEyes и т.п.).
+_NAMED_SPINE: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("Hips", ("pelvis", "hips", "root", "torso")),
+    ("Spine", ("abdomenlower", "abdomenupper", "spine")),
+    ("Chest", ("chestlower", "chestupper", "chest")),
+    ("UpperChest", ("upperchest", "spine2")),
+    ("Neck", ("neck01", "neck02", "neck")),
+    ("Head", ("head",)),
+)
 
 
 def detect_rig_type(bones: List[str]) -> str:
@@ -32,19 +43,48 @@ def detect_rig_type(bones: List[str]) -> str:
         return "rigify"
     if any(b.lower().startswith("mixamorig") for b in bones):
         return "mixamo"
+    has_org = any(re.search(r"(^|[_.-])org[_-]", b, re.I) for b in bones)
+    ik_controls = sum(1 for b in bones if re.search(r"IK_BLEND|_CTL$|_MCH$", b))
+    if has_org or (ik_controls >= 4 and len(bones) > 120):
+        return "advanced"
     return "generic"
+
+
+def is_complex_rig(bones: List[str]) -> bool:
+    """True, если риг нельзя безопасно переименовывать — только карта для Unity."""
+    rig_type = detect_rig_type(bones)
+    if rig_type in ("rigify", "advanced"):
+        return True
+    return any(b.startswith("DEF-") for b in bones)
 
 
 def _is_control(name: str) -> bool:
     if name.startswith(_CONTROL_PREFIX):
         return True
     low = name.lower()
-    return any(s in low for s in _CONTROL_SUBSTR)
+    if any(s in low for s in _CONTROL_SUBSTR):
+        return True
+    # IK-контроллеры колена/локтя, не деформирующие кости.
+    if re.fullmatch(r"[lr]_?(knee|elbow)", normalize(name)):
+        return True
+    return False
 
 
 def _spine_index(name: str) -> int:
     m = re.search(r"(\d+)$", normalize(name))
     return int(m.group(1)) if m else 0
+
+
+def _map_named_spine(pool: List[str], mapping: Dict[str, str]) -> None:
+    """Дополняет карту позвоночника по типичным именам метаригов."""
+    by_norm = {normalize(b): b for b in pool}
+    for slot, keys in _NAMED_SPINE:
+        if slot in mapping:
+            continue
+        for key in keys:
+            if key in by_norm:
+                mapping[slot] = by_norm[key]
+                break
 
 
 @dataclass
@@ -56,8 +96,10 @@ class HumanoidMap:
 
     def render(self) -> str:
         lines = [f"Тип рига: {self.rig_type}"]
-        if self.rig_type == "rigify":
-            lines.append("Rigify-риг: кости НЕ переименовываем, а сопоставляем (карта для Unity).")
+        if self.rig_type in ("rigify", "advanced"):
+            lines.append(
+                "Сложный риг: кости НЕ переименовываем, а сопоставляем (карта для Unity)."
+            )
         found = len(self.mapping)
         lines.append(f"\nСопоставлено слотов Humanoid: {found} из {len(CANON_ORDER)}")
         for slot in CANON_ORDER:
@@ -79,13 +121,13 @@ def map_to_humanoid(bones: List[str]) -> HumanoidMap:
 
     mapping: Dict[str, str] = {}
 
-    # Конечности/кисти/стопы/плечи — по псевдонимам (без спины).
+    # Конечности/кисти/стопы/плечи — по псевдонимам (без позвоночника).
     for b in pool:
         canon = ALIAS_MAP.get(normalize(b))
         if canon and canon not in SPINE_SLOTS and canon not in mapping:
             mapping[canon] = b
 
-    # Цепочка позвоночника — только чистые сегменты spine / spine.NNN.
+    # Цепочка позвоночника — сегменты spine / spine.NNN (Rigify).
     spine_bones = sorted(
         [b for b in pool if re.fullmatch(r"spine\d*", normalize(b))], key=_spine_index
     )
@@ -99,10 +141,12 @@ def map_to_humanoid(bones: List[str]) -> HumanoidMap:
         for slot, bone in zip(["Spine", "Chest", "UpperChest"], middle):
             mapping[slot] = bone
 
+    _map_named_spine(pool, mapping)
+
     missing = [s for s in CANON_ORDER if s in REQUIRED and s not in mapping]
     return HumanoidMap(
         rig_type=rig_type,
-        renaming_needed=(rig_type == "generic"),
+        renaming_needed=not is_complex_rig(bones),
         mapping=mapping,
         missing_required=missing,
     )
