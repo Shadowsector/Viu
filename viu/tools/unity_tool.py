@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 from ..integrations.unity import (
     default_editor_log,
+    extract_compiler_errors,
     parse_editor_log,
     scan_unity_project,
     workflow_status_text,
@@ -82,10 +83,15 @@ class UnityReportTool(Tool):
         log_path = args.get("log_path")
         path = Path(log_path).expanduser() if log_path else default_editor_log()
         log_sum = parse_editor_log(path)
-        proj = args.get("project_path")
-        root = Path(proj).expanduser() if proj else _unity_project(ctx)
-        scan = scan_unity_project(root) if root.is_dir() else None
-        parts = [log_sum.render(), "", workflow_status_text(current_step=5)]
+        all_cs = extract_compiler_errors(path)
+        parts = [log_sum.render()]
+        if all_cs:
+            parts.extend(["", f"=== Все CS-ошибки в логе ({len(all_cs)} уникальных) ==="])
+            parts.extend(all_cs[:80])
+            if len(all_cs) > 80:
+                parts.append(f"... и ещё {len(all_cs) - 80}")
+        parts.append("")
+        parts.append(workflow_status_text(current_step=5))
         if scan:
             parts.extend(["", scan.render()])
         elif root:

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from viu.integrations.unity import parse_editor_log, workflow_status_text
+from viu.integrations.unity import extract_compiler_errors, parse_editor_log, workflow_status_text
 from viu.integrations.unity.project_scan import scan_fbx_meta, scan_unity_project
 
 
@@ -35,6 +35,18 @@ def test_scan_fbx_meta_copy_avatar(tmp_path):
     info = scan_fbx_meta(fbx)
     assert info.copy_avatar
     assert info.issues
+
+
+def test_extract_compiler_errors_dedupe(tmp_path):
+    log = tmp_path / "Editor.log"
+    log.write_text(
+        "Assets/Foo.cs(1,1): error CS1002: ; expected\n"
+        "Assets/Foo.cs(1,1): error CS1002: ; expected\n"
+        "Assets/Bar.cs(2,3): error CS0246: missing type\n",
+        encoding="utf-8",
+    )
+    errs = extract_compiler_errors(log)
+    assert len(errs) == 2
 
 
 def test_workflow_has_steps():

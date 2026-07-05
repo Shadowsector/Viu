@@ -58,7 +58,38 @@ check_unity.bat
 
 ## Play не работает — чеклист
 
-### «All compiler errors have to be fixed before you can enter playmode!»
+### Ошибки в NavMeshLinkEditor / InputActionMapDrawer / AnimatorBindingCache
+
+Это **не твои скрипты** и **не Шаня** — это сломались **пакеты Unity**
+(AI Navigation, Input System, Animator). Часто после обновления редактора или битой папки `Library`.
+
+**Быстрый путь для проверки анимации (рекомендуем):**
+
+1. **File → New Project → Universal 3D** (новый чистый проект, другое имя, напр. `AnabarraTest`).
+2. Импорт только `Shanya_Erisa.fbx` + Mixamo Idle + Animator — **без лишних пакетов**.
+3. Play там — если работает, старый проект можно починить или забросить.
+
+**Починка текущего проекта:**
+
+1. Закрой Unity.
+2. Удали папку **`Library`** в корне проекта (Unity пересоберёт при открытии — 5–15 мин).
+3. Открой проект снова.
+4. **Window → Package Manager** → обнови **Universal RP**, **Input System**, **AI Navigation**.
+5. Удали **`Assets/TutorialInfo`** если есть.
+
+**Если NavMesh не нужен сейчас:** Package Manager → **AI Navigation** → Remove.
+
+### Как прислать все ошибки Viu
+
+```bat
+set VIU_UNITY_PROJECT=C:\Users\Den\My project
+check_unity.bat
+```
+
+Пришли файл **`unity_report.txt`** — там будут все CS-ошибки из Editor.log.
+
+Или в Unity Console: кнопка **Clear**, потом **Copy** (правый верхний угол Console) — вставь в чат.
+
 
 **Это не анимация и не Rig.** Unity не компилирует C#-скрипты.
 

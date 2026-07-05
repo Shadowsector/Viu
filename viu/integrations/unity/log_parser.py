@@ -106,6 +106,15 @@ def _collect_compiler_lines(lines: List[str], seen: Set[str]) -> List[str]:
     return found
 
 
+def extract_compiler_errors(path: Path) -> List[str]:
+    """Все уникальные CS-ошибки из полного Editor.log (для отчёта пользователю)."""
+    if not path.exists():
+        return []
+    raw = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    seen: Set[str] = set()
+    return _collect_compiler_lines(raw, seen)
+
+
 def parse_editor_log(path: Path, tail_lines: int = 3000) -> UnityLogSummary:
     if not path.exists():
         return UnityLogSummary(path=str(path), errors=[f"Файл не найден: {path}"])
