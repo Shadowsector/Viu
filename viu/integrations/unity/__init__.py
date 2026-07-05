@@ -2,6 +2,7 @@
 
 from .log_parser import UnityLogSummary, default_editor_log, extract_compiler_errors, parse_editor_log
 from .project_scan import UnityProjectScan, scan_unity_project
+from .verdict import build_verdict
 from .workflow import SHANYA_PIPELINE, workflow_status_text
 
 __all__ = [
@@ -13,4 +14,5 @@ __all__ = [
     "scan_unity_project",
     "SHANYA_PIPELINE",
     "workflow_status_text",
+    "build_verdict",
 ]

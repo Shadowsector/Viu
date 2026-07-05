@@ -4,6 +4,7 @@ from pathlib import Path
 
 from viu.integrations.unity import extract_compiler_errors, parse_editor_log, workflow_status_text
 from viu.integrations.unity.project_scan import scan_fbx_meta, scan_unity_project
+from viu.integrations.unity.verdict import build_verdict
 
 
 def test_parse_editor_log_rig_and_wgt(tmp_path):
@@ -59,3 +60,25 @@ def test_scan_unity_project_empty(tmp_path):
     (tmp_path / "Assets").mkdir()
     scan = scan_unity_project(tmp_path)
     assert "FBX" in scan.render()
+
+
+def test_build_verdict_playmode_blocked(tmp_path):
+    log = tmp_path / "Editor.log"
+    log.write_text(
+        "All compiler errors have to be fixed before you can enter playmode!\n"
+        "Assets/Foo.cs(1,1): error CS1002: ; expected\n",
+        encoding="utf-8",
+    )
+    summary = parse_editor_log(log)
+    cs = extract_compiler_errors(log)
+    text = build_verdict(summary, None, cs)
+    assert "Play Mode ЗАБЛОКИРОВАН" in text
+    assert "анимацию проверить нельзя" in text
+
+
+def test_build_verdict_ok_no_blockers(tmp_path):
+    log = tmp_path / "Editor.log"
+    log.write_text("Loading scene\n", encoding="utf-8")
+    summary = parse_editor_log(log)
+    text = build_verdict(summary, None, [])
+    assert "T-pose" in text

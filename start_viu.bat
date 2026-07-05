@@ -13,6 +13,9 @@ set VIU_MODEL=qwen2.5-coder:14b
 
 rem Put k Blender dlya chteniya .blend v fone (raskommentiruy i popravь):
 rem set VIU_BLENDER_EXE=C:\Program Files\Blender Foundation\Blender 5.1\blender.exe
+
+rem Put k Unity-proektu Anabarra:
+set VIU_UNITY_PROJECT=U:\Anabarra\Unity\Anabarra
 rem =======================================
 
 echo.

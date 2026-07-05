@@ -8,7 +8,7 @@ set "REPORT=%~dp0unity_report.txt"
 if not "%VIU_UNITY_PROJECT%"=="" (
   set "UNITY_PROJ=%VIU_UNITY_PROJECT%"
 ) else (
-  set "UNITY_PROJ=C:\Users\Den\Anabarra\Unity"
+  set "UNITY_PROJ=U:\Anabarra\Unity\Anabarra"
 )
 
 echo === unity_report ===> "%REPORT%"

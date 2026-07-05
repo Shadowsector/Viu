@@ -46,7 +46,8 @@ Hierarchy → раскрыть `Shanya_Erisa` → снять галочки со
 ## Проверка через Viu
 
 ```bat
-set VIU_UNITY_PROJECT=C:\Users\Den\Anabarra\Unity\My project
+cd U:\Viu
+set VIU_UNITY_PROJECT=U:\Anabarra\Unity\Anabarra
 check_unity.bat
 ```
 
@@ -82,11 +83,12 @@ check_unity.bat
 ### Как прислать все ошибки Viu
 
 ```bat
-set VIU_UNITY_PROJECT=C:\Users\Den\My project
+cd U:\Viu
+set VIU_UNITY_PROJECT=U:\Anabarra\Unity\Anabarra
 check_unity.bat
 ```
 
-Пришли файл **`unity_report.txt`** — там будут все CS-ошибки из Editor.log.
+Пришли файл **`U:\Viu\unity_report.txt`** — там будут вердикт и все CS-ошибки из Editor.log.
 
 Или в Unity Console: кнопка **Clear**, потом **Copy** (правый верхний угол Console) — вставь в чат.
 

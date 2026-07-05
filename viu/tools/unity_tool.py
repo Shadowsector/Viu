@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from ..integrations.unity import (
+    build_verdict,
     default_editor_log,
     extract_compiler_errors,
     parse_editor_log,
@@ -19,7 +20,7 @@ def _unity_project(ctx: AgentContext) -> Path:
     raw = ctx.config.unity_project or ""
     if raw:
         return Path(raw).expanduser().resolve()
-    return Path.home() / "Anabarra" / "Unity"  # типичный путь пользователя
+    return Path("U:/Anabarra/Unity/Anabarra")  # типичный путь пользователя
 
 
 class UnityLogTool(Tool):
@@ -84,7 +85,10 @@ class UnityReportTool(Tool):
         path = Path(log_path).expanduser() if log_path else default_editor_log()
         log_sum = parse_editor_log(path)
         all_cs = extract_compiler_errors(path)
-        parts = [log_sum.render()]
+        proj = args.get("project_path")
+        root = Path(proj).expanduser() if proj else _unity_project(ctx)
+        scan = scan_unity_project(root) if root.is_dir() else None
+        parts = [build_verdict(log_sum, scan, all_cs), "", log_sum.render()]
         if all_cs:
             parts.extend(["", f"=== Все CS-ошибки в логе ({len(all_cs)} уникальных) ==="])
             parts.extend(all_cs[:80])
@@ -102,6 +106,6 @@ class UnityReportTool(Tool):
             proj_note = (
                 f"\n⚠ Путь Unity-проекта неверный: {root}\n"
                 "  Задай реальный путь, например:\n"
-                "  set VIU_UNITY_PROJECT=C:\\Users\\Den\\My project\n"
+                "  set VIU_UNITY_PROJECT=U:\\Anabarra\\Unity\\Anabarra\n"
             )
         return ToolResult(ok, "\n".join(parts) + proj_note)
