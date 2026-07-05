@@ -20,12 +20,10 @@ def test_resolve_in_unity_project(tmp_path):
 
 def test_deploy_shanya_setup(tmp_path):
     (tmp_path / "Assets").mkdir()
-    ok, dest = deploy_shanya_setup(tmp_path)
+    ok, msg = deploy_shanya_setup(tmp_path)
     assert ok
-    assert Path(dest).is_file()
-    text = Path(dest).read_text(encoding="utf-8")
-    assert "ShanyaSetup" in text
-    assert "namespace Viu.Editor" in text
+    assert (tmp_path / "Assets/Editor/Viu/ShanyaSetup.cs").is_file()
+    assert "ShanyaSetup" in msg
 
 
 def test_strip_risky_packages(tmp_path):

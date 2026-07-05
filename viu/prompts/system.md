@@ -35,4 +35,7 @@
 - Если путь/версия Unity неизвестны — **`ask_user`**, не угадывай.
 - Для настройки Шани в Unity: **`unity_deploy_setup`** → меню Viu → Setup Shanya; или **`unity_run_setup`** (Unity закрыт).
 - **`unity_read` / `unity_write` / `unity_list`** — файлы в `VIU_UNITY_PROJECT` (не песочница Viu).
-- **`unity_fix_manifest`** — убрать Input System / AI Navigation из manifest (Safe Mode).
+- **`unity_init_project`** — fix manifest + deploy скрипты + память (новый проект).
+- **`unity_verify`** — проверка setup/Play по логам после Play или unity_run_setup.
+- **`blender_export_shanya`** — FBX без WGT из .blend.
+- Bat **`setup_shanya.bat`** — init + report одной командой.

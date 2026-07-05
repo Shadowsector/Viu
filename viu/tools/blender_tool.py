@@ -116,6 +116,34 @@ class BlenderScanTool(Tool):
         return ToolResult(True, "Сводка по папке:\n" + "\n".join(lines))
 
 
+class BlenderExportShanyaTool(Tool):
+    name = "blender_export_shanya"
+    description=(
+        "Экспорт FBX из Shanya_Erisa.blend для Unity: скрывает WGT/Circle/Sphere, "
+        "Mesh+Armature, без bake animation"
+    )
+    parameters = {
+        "blend_file": "путь к .blend",
+        "output_fbx": "куда сохранить .fbx (опционально, рядом с blend)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.blender.export_shanya import export_shanya_fbx
+
+        blend = args.get("blend_file", "")
+        if not blend:
+            return ToolResult(False, "Не указан blend_file")
+        out = args.get("output_fbx")
+        try:
+            path = export_shanya_fbx(blend, out, blender_exe=ctx.config.blender_exe)
+        except (FileNotFoundError, RuntimeError, OSError) as exc:
+            return ToolResult(False, str(exc))
+        return ToolResult(
+            True,
+            f"FBX готов: {path}\nСкопируй в Unity Assets/Characters/Shanya/",
+        )
+
+
 class BlenderScreenshotTool(Tool):
     name = "blender_screenshot"
     description = "Сделать снимок окна Blender и вернуть путь к файлу (для анализа vision-моделью)"

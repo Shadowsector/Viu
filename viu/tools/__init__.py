@@ -5,6 +5,7 @@ from .ask_tool import AskUserTool
 from .base import AgentContext, Tool, ToolRegistry, ToolResult
 from .blender_tool import (
     BlenderCommandTool,
+    BlenderExportShanyaTool,
     BlenderInfoTool,
     BlenderScanTool,
     BlenderScreenshotTool,
@@ -19,9 +20,11 @@ from .shell import ShellTool
 from .unity_project_tool import (
     UnityDeploySetupTool,
     UnityFixManifestTool,
+    UnityInitProjectTool,
     UnityListTool,
     UnityReadTool,
     UnityRunSetupTool,
+    UnityVerifyTool,
     UnityWriteTool,
 )
 from .unity_tool import UnityLogTool, UnityReportTool, UnityScanTool, UnityWorkflowTool
@@ -59,6 +62,7 @@ def build_default_registry() -> ToolRegistry:
         BlenderInfoTool(),
         BlenderCommandTool(),
         BlenderScanTool(),
+        BlenderExportShanyaTool(),
         BlenderScreenshotTool(),
         RigStandardTool(),
         RigCheckTool(),
@@ -77,6 +81,8 @@ def build_default_registry() -> ToolRegistry:
         UnityDeploySetupTool(),
         UnityFixManifestTool(),
         UnityRunSetupTool(),
+        UnityVerifyTool(),
+        UnityInitProjectTool(),
     ):
         registry.register(tool)
     load_custom_tools(registry)

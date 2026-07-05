@@ -56,6 +56,7 @@ namespace Viu.Editor
 
             var instance = PlaceCharacterInScene(modelPath, controller, avatar);
             DisableWgtMeshes(instance);
+            ShanyaOutfit.Apply(ShanyaOutfit.Mode.Dressed);
             AssetDatabase.SaveAssets();
             Debug.Log("[Viu] Setup готов: " + instance.name + " + " + controller.name);
         }

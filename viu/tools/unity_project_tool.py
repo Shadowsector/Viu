@@ -9,10 +9,12 @@ from typing import Any, Dict
 from ..integrations.unity.paths import resolve_in_unity_project, unity_project_root
 from ..integrations.unity.setup import (
     batch_setup_command,
+    deploy_editor_scripts,
     deploy_shanya_setup,
     find_unity_exe,
     strip_risky_packages,
 )
+from ..integrations.unity.verify import verify_unity_project
 from .base import AgentContext, Tool, ToolResult
 
 
@@ -182,3 +184,65 @@ class UnityRunSetupTool(Tool):
         ok_run = proc.returncode == 0
         body = f"exit={proc.returncode}\n{tail or proc.stderr or proc.stdout or '(нет вывода)'}"
         return ToolResult(ok_run, body)
+
+
+class UnityVerifyTool(Tool):
+    name = "unity_verify"
+    description=(
+        "Проверить результат setup: viu_setup.log, Controller, Editor.log, Play. "
+        "После unity_run_setup или Play в Unity."
+    )
+    parameters = {
+        "project_path": "корень проекта (опционально)",
+        "log_path": "Editor.log (опционально)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from pathlib import Path
+
+        from ..integrations.unity import default_editor_log
+
+        root = _root(ctx, args)
+        log_raw = args.get("log_path")
+        log_path = Path(log_raw).expanduser() if log_raw else default_editor_log()
+        result = verify_unity_project(root, log_path)
+        ok = (
+            result.setup_log_ok
+            and result.controller_found
+            and not result.cs_errors
+            and not (result.editor_log and (result.editor_log.safe_mode or result.editor_log.playmode_blockers))
+        )
+        return ToolResult(ok, result.render())
+
+
+class UnityInitProjectTool(Tool):
+    name = "unity_init_project"
+    description=(
+        "Подготовить чистый Unity-проект для Шани: fix manifest + deploy Editor-скрипты + "
+        "записать факты в память. Unity закрыт."
+    )
+    parameters = {"project_path": "корень проекта (опционально)"}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        root = _root(ctx, args)
+        if not (root / "Assets").is_dir():
+            return ToolResult(False, f"Не Unity-проект: {root}")
+        parts = []
+        ok1, msg1 = strip_risky_packages(root)
+        parts.append(f"manifest: {msg1}")
+        ok2, msg2 = deploy_editor_scripts(root)
+        parts.append(f"editor: {msg2}")
+        ctx.memory.add(
+            f"Unity Шани: проект={root}, LTS 6.3, Humanoid Create From This Model, "
+            "Avatar Shanya_ErisaAvatar, без Input System в manifest."
+        )
+        parts.append("Память: факты проекта записаны.")
+        parts.append(
+            "\nДальше:\n"
+            "1. Открой Unity, импортируй FBX в Assets/Characters/Shanya/\n"
+            "2. Модель → Rig → Humanoid → Configure → Apply\n"
+            "3. Viu → Setup Shanya (Idle) или unity_run_setup\n"
+            "4. unity_verify"
+        )
+        return ToolResult(ok1 and ok2, "\n".join(parts))
+

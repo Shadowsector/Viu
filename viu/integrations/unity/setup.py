@@ -9,8 +9,11 @@ from typing import List, Optional, Tuple
 
 from .paths import resolve_in_unity_project, unity_project_root
 
-_TEMPLATE = Path(__file__).parent / "templates" / "ShanyaSetup.cs"
-_EDITOR_REL = "Assets/Editor/Viu/ShanyaSetup.cs"
+_TEMPLATE_SETUP = Path(__file__).parent / "templates" / "ShanyaSetup.cs"
+_TEMPLATE_OUTFIT = Path(__file__).parent / "templates" / "ShanyaOutfit.cs"
+_EDITOR_DIR = "Assets/Editor/Viu"
+_SETUP_REL = f"{_EDITOR_DIR}/ShanyaSetup.cs"
+_OUTFIT_REL = f"{_EDITOR_DIR}/ShanyaOutfit.cs"
 
 # Пакеты, которые часто ломают новый URP-проект (Safe Mode) — опционально убрать.
 _RISKY_PACKAGES = (
@@ -19,14 +22,27 @@ _RISKY_PACKAGES = (
 )
 
 
+def deploy_editor_scripts(project_root: Path) -> Tuple[bool, str]:
+    """Копирует ShanyaSetup.cs и ShanyaOutfit.cs в Assets/Editor/Viu/."""
+    if not _TEMPLATE_SETUP.is_file():
+        return False, f"Шаблон не найден: {_TEMPLATE_SETUP}"
+    dest_dir = resolve_in_unity_project(project_root, _EDITOR_DIR)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    copied = []
+    for src, rel in ((_TEMPLATE_SETUP, _SETUP_REL), (_TEMPLATE_OUTFIT, _OUTFIT_REL)):
+        if not src.is_file():
+            continue
+        dest = resolve_in_unity_project(project_root, rel)
+        shutil.copy2(src, dest)
+        copied.append(rel)
+    if not copied:
+        return False, "Нет шаблонов для копирования"
+    return True, "Установлено: " + ", ".join(copied)
+
+
 def deploy_shanya_setup(project_root: Path) -> Tuple[bool, str]:
-    """Копирует ShanyaSetup.cs в Assets/Editor/Viu/."""
-    if not _TEMPLATE.is_file():
-        return False, f"Шаблон не найден: {_TEMPLATE}"
-    dest = resolve_in_unity_project(project_root, _EDITOR_REL)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(_TEMPLATE, dest)
-    return True, str(dest)
+    """Обратная совместимость — deploy обоих Editor-скриптов."""
+    return deploy_editor_scripts(project_root)
 
 
 def strip_risky_packages(project_root: Path, packages: Optional[List[str]] = None) -> Tuple[bool, str]:

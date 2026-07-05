@@ -49,6 +49,22 @@ Hierarchy → раскрыть `Shanya_Erisa` → снять галочки со
 
 ### Вариант A — через меню Unity
 
+1. **`setup_shanya.bat`** или **`unity_init_project`** (manifest + Editor-скрипты).
+2. Импорт FBX → Humanoid Configure на модели.
+3. Меню **Viu → Setup Shanya (Idle)**.
+4. Outfit: **Viu → Outfit → Dressed / Swimsuit / Shower**.
+5. **`unity_verify`** — проверка по логам.
+
+### Экспорт из Blender
+
+```bat
+python -m viu tool blender_export_shanya --blend_file "U:\...\Shanya_Erisa.blend"
+```
+
+Скрывает WGT/Circle/Sphere, экспортирует Mesh+Armature без bake animation.
+
+### Вариант A2 — через меню Unity (подробно)
+
 1. В Viu или вручную: положи Editor-скрипт — инструмент **`unity_deploy_setup`**
    (или `python -m viu tool unity_deploy_setup`).
 2. Открой Unity → дождись компиляции.

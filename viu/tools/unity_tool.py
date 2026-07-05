@@ -11,6 +11,7 @@ from ..integrations.unity import (
     extract_compiler_errors,
     parse_editor_log,
     scan_unity_project,
+    verify_unity_project,
     workflow_status_text,
 )
 from .base import AgentContext, Tool, ToolResult
@@ -88,7 +89,11 @@ class UnityReportTool(Tool):
         proj = args.get("project_path")
         root = Path(proj).expanduser() if proj else _unity_project(ctx)
         scan = scan_unity_project(root) if root.is_dir() else None
-        parts = [build_verdict(log_sum, scan, all_cs), "", log_sum.render()]
+        verify = verify_unity_project(root, path) if root.is_dir() else None
+        parts = [build_verdict(log_sum, scan, all_cs), ""]
+        if verify:
+            parts.extend([verify.render(), ""])
+        parts.append(log_sum.render())
         if all_cs:
             parts.extend(["", f"=== Все CS-ошибки в логе ({len(all_cs)} уникальных) ==="])
             parts.extend(all_cs[:80])
