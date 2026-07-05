@@ -144,7 +144,6 @@ def _h_rename_bones(params):
     mapping = params["mapping"] or {}
 
     prev_active = bpy.context.view_layer.objects.active
-    prev_mode = arm.mode if arm == prev_active else "OBJECT"
     bpy.context.view_layer.objects.active = arm
     bpy.ops.object.mode_set(mode="EDIT")
     renamed = []
@@ -158,7 +157,24 @@ def _h_rename_bones(params):
         bpy.ops.object.mode_set(mode="OBJECT")
         if prev_active is not None:
             bpy.context.view_layer.objects.active = prev_active
-    return {"armature": arm.name, "renamed": renamed}
+
+    # Переименовываем группы вершин у мешей, привязанных к этой арматуре,
+    # чтобы карта весов (скиннинг) осталась связанной с костями по имени.
+    vgroups_fixed = 0
+    for obj in bpy.data.objects:
+        if obj.type != "MESH":
+            continue
+        uses_arm = any(
+            m.type == "ARMATURE" and m.object == arm for m in obj.modifiers
+        ) or obj.find_armature() == arm
+        if not uses_arm:
+            continue
+        for old, new in mapping.items():
+            vg = obj.vertex_groups.get(old)
+            if vg is not None and obj.vertex_groups.get(new) is None:
+                vg.name = new
+                vgroups_fixed += 1
+    return {"armature": arm.name, "renamed": renamed, "vertex_groups_fixed": vgroups_fixed}
 
 
 _HANDLERS = {
