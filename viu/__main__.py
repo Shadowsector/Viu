@@ -168,7 +168,18 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _force_utf8_io() -> None:
+    """Вывод всегда в UTF-8 — иначе на Windows (cp1251) падает на кириллице/значках."""
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _force_utf8_io()
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)
