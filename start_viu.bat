@@ -18,7 +18,11 @@ echo.
 echo   Zapusk Vyu... (Ollama dolzhna byt zapushchena)
 echo.
 
-python -m viu chat
-echo.
-echo Vyu zavershila rabotu.
+rem Graficheskoe okno. Dlya konsoli zameni "gui" na "chat".
+python -m viu gui
+if errorlevel 1 (
+  echo.
+  echo Ne udalos otkryt okno, probuyu konsolnyy rezhim...
+  python -m viu chat
+)
 pause

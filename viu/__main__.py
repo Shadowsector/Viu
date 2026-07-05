@@ -84,6 +84,17 @@ def cmd_chat(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_gui(args: argparse.Namespace) -> int:
+    """Запуск графического окна Вью."""
+    try:
+        from .gui import main as gui_main
+    except ImportError as exc:
+        print(f"Не удалось загрузить графический интерфейс (tkinter): {exc}")
+        print("Запустите консольный режим: python -m viu chat")
+        return 1
+    return gui_main()
+
+
 def cmd_tool(args: argparse.Namespace) -> int:
     """Прямой вызов одного инструмента без участия модели (надёжно для тестов)."""
     agent = Agent(config=Config())
@@ -141,7 +152,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("task", help="описание задачи")
     p_run.set_defaults(func=cmd_run)
 
-    sub.add_parser("chat", help="интерактивное общение с Вью").set_defaults(func=cmd_chat)
+    sub.add_parser("chat", help="интерактивное общение с Вью (консоль)").set_defaults(func=cmd_chat)
+    sub.add_parser("gui", help="графическое окно Вью").set_defaults(func=cmd_gui)
 
     p_tool = sub.add_parser("tool", help="вызвать один инструмент напрямую")
     p_tool.add_argument("name", help="имя инструмента (см. viu tools)")
