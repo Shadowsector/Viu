@@ -15,6 +15,7 @@ from .planning_tool import PlanCreateTool, PlanShowTool, PlanUpdateTool
 from .rig_tool import RigApplyAutoTool, RigApplyTool, RigCheckTool, RigMapTool, RigStandardTool
 from .self_improve import AddToolTool, ImprovePromptTool, SelfInspectTool
 from .shell import ShellTool
+from .unity_tool import UnityLogTool, UnityReportTool, UnityScanTool, UnityWorkflowTool
 from .web import WebFetchTool, WebSearchTool
 
 __all__ = [
@@ -56,6 +57,10 @@ def build_default_registry() -> ToolRegistry:
         RigApplyAutoTool(),
         AffordanceShowTool(),
         AffordanceMatchTool(),
+        UnityLogTool(),
+        UnityScanTool(),
+        UnityWorkflowTool(),
+        UnityReportTool(),
     ):
         registry.register(tool)
     load_custom_tools(registry)
