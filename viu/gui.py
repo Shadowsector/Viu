@@ -805,9 +805,18 @@ def acquire_single_instance(port: int = _INSTANCE_PORT):
     import socket
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # SO_REUSEADDR: после закрытия/падения окна порт освобождается сразу,
-    # а не висит в TIME_WAIT минуту (иначе перезапуск ложно «уже открыта»).
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if os.name == "nt":
+        # На Windows SO_REUSEADDR разрешает ДВА процесса на одном порту (не то,
+        # что на Linux). Нужен SO_EXCLUSIVEADDRUSE, иначе замок не держит —
+        # открывается второе окно Вью.
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        except (AttributeError, OSError):
+            pass
+    else:
+        # На Linux/macOS SO_REUSEADDR избавляет от TIME_WAIT при перезапуске,
+        # но НЕ даёт второму процессу занять активно слушающий порт.
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         sock.bind(("127.0.0.1", port))
         sock.listen(1)

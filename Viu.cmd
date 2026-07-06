@@ -1,7 +1,7 @@
 @echo off
 rem ============================================================
 rem   VIU — запусти двойным кликом. Это единственный нужный файл.
-rem   Окно остаётся открытым, если что-то пошло не так.
+rem   Консоль сама закроется, окно Вью откроется отдельно.
 rem ============================================================
 chcp 65001 >nul
 cd /d "%~dp0"
@@ -19,7 +19,7 @@ set VIU_ANIM_STAGING=U:\Anabarra\Animations
 rem ---------------------------------
 
 echo.
-echo   Запускаю Вью из %~dp0
+echo   Готовлю Вью... (это окно закроется само)
 echo.
 
 where python >nul 2>&1
@@ -30,41 +30,24 @@ if errorlevel 1 (
   goto :fail
 )
 
-echo [1/3] Проверяю обновления с GitHub...
-if exist "%~dp0bootstrap_update.py" (
-  python bootstrap_update.py --auto
-) else (
-  echo   ^(bootstrap_update.py нет — пропускаю^)
-)
+echo [1/2] Проверяю обновления...
+if exist "%~dp0bootstrap_update.py" python bootstrap_update.py --auto
 
-echo.
-echo [2/3] Готовлю Вью...
+echo [2/2] Готовлю пакет...
 python -m pip install -e . -q
 if errorlevel 1 (
   echo [ОШИБКА] Не удалось установить пакет Viu.
   goto :fail
 )
 
-echo.
-echo [3/3] Открываю окно Вью...
-python run_gui.pyw
-if errorlevel 1 goto :showlog
-
-echo.
-echo Вью закрыта. До встречи!
-timeout /t 3 >nul
-exit /b 0
-
-:showlog
-echo.
-echo [ОШИБКА] Окно Вью не открылось. Подробности:
-if exist "%~dp0viu_startup.log" (
-  echo ------------------------------------------------------------
-  type "%~dp0viu_startup.log"
-  echo ------------------------------------------------------------
+rem Запускаем окно БЕЗ консоли (pythonw) и сразу выходим — чёрное окно не висит.
+where pythonw >nul 2>&1
+if %errorlevel%==0 (
+  start "" pythonw "%~dp0run_gui.pyw"
 ) else (
-  echo Лог пуст. Проверь tkinter:  python -c "import tkinter"
+  start "" python "%~dp0run_gui.pyw"
 )
+exit /b 0
 
 :fail
 echo.
