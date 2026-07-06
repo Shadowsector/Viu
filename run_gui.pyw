@@ -20,6 +20,7 @@ def _ensure_path() -> None:
 
 
 def _show_error(text: str) -> None:
+    print(text, file=sys.stderr)
     LOG.write_text(text, encoding="utf-8")
     try:
         import tkinter as tk

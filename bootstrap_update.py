@@ -35,6 +35,14 @@ RAW_BOOTSTRAP_URL = (
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
 
 
+def github_headers() -> dict:
+    token = os.environ.get("VIU_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    headers = {"User-Agent": "Viu-bootstrap/1.0", "Accept": "application/vnd.github+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
 def root_dir() -> Path:
     return Path(__file__).resolve().parent
 
@@ -48,10 +56,7 @@ def log(msg: str) -> None:
 
 
 def _api_request(url: str) -> dict:
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "Viu-bootstrap/1.0", "Accept": "application/vnd.github+json"},
-    )
+    req = urllib.request.Request(url, headers=github_headers())
     with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
         return json.loads(resp.read().decode("utf-8"))
 
@@ -97,10 +102,21 @@ def needs_update() -> tuple[bool, str, str]:
 
 
 def download_zip() -> bytes:
+    # Публичный zip
     url = f"https://github.com/{REPO}/archive/refs/heads/{BRANCH}.zip"
     log(f"Скачиваю {url} …")
-    req = urllib.request.Request(url, headers={"User-Agent": "Viu-bootstrap/1.0"})
-    with urllib.request.urlopen(req, timeout=300) as resp:  # noqa: S310
+    req = urllib.request.Request(url, headers=github_headers())
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:  # noqa: S310
+            return resp.read()
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            raise
+    # Приватный репо — zipball через API
+    api_url = f"https://api.github.com/repos/{REPO}/zipball/{BRANCH}"
+    log(f"Пробую API zipball (нужен VIU_GITHUB_TOKEN для private) …")
+    req2 = urllib.request.Request(api_url, headers=github_headers())
+    with urllib.request.urlopen(req2, timeout=300) as resp:  # noqa: S310
         return resp.read()
 
 

@@ -42,25 +42,24 @@ pip install -e ".[dev]"   # + pytest для разработки
 
 ## Запуск (Windows)
 
-### Первый раз или обновление без git
+### Репозиторий приватный?
 
-**Одна команда** (вставь в cmd):
+Пока **Shadowsector/Viu** private, ссылки `raw.githubusercontent.com` дают **404**.  
+Скачивай zip вручную из GitHub (в браузере) или сделай repo **Public**.  
+Подробно: [`docs/INSTALL_WINDOWS.md`](./docs/INSTALL_WINDOWS.md)
 
-```bat
-cd /d U:\Viu && powershell -NoProfile -Command "Invoke-WebRequest 'https://raw.githubusercontent.com/Shadowsector/Viu/cursor/viu-agent-core-65c2/get_viu.bat' -OutFile get_viu.bat -UseBasicParsing" && get_viu.bat
-```
+### Запуск из zip
 
-Или скачай вручную и запусти:
+1. Распакуй в `U:\Viu`
+2. Двойной клик **`Viu.cmd`** (не другие bat)
+3. Ошибка? → **`diagnose.bat`** и пришли текст окна
 
-https://raw.githubusercontent.com/Shadowsector/Viu/cursor/viu-agent-core-65c2/get_viu.bat
+`Viu.cmd` сам делает `pip install -e .` и открывает окно. При ошибке **не исчезает**.
 
-`get_viu.bat` скачает свежий Viu с GitHub, установит (`pip install -e .`) и откроет окно.
+### Автообновление
 
-### Каждый день
-
-Двойной клик **`start_viu.bat`** — сам проверит GitHub и обновится при необходимости (`VIU_AUTO_UPDATE=1`).
-
-**Один файл:** `start_viu.bat` — графическое окно без чёрной консоли (`pythonw`).
+Работает когда repo **public** или задан `VIU_GITHUB_TOKEN`.  
+В `Viu.cmd` по умолчанию `VIU_AUTO_UPDATE=0` (чтобы не падать на 404).
 
 1. Один раз: `make_shortcut.bat` → ярлык **«Вью»** на рабочем столе.
 2. Двойной клик по ярлыку или `start_viu.bat`.

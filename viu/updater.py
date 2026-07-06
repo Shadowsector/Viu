@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 import zipfile
 from dataclasses import dataclass
@@ -18,6 +19,16 @@ DEFAULT_REPO = "Shadowsector/Viu"
 DEFAULT_BRANCH = "cursor/viu-agent-core-65c2"
 _GIT_TIMEOUT = 120.0
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
+
+
+def github_headers() -> dict:
+    import os
+
+    token = os.environ.get("VIU_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    headers = {"User-Agent": "Viu-updater", "Accept": "application/vnd.github+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
 
 
 @dataclass
@@ -74,14 +85,10 @@ def remote_sha_github(
 ) -> str:
     """SHA последнего коммита ветки через GitHub API (без git)."""
     import json
-    import urllib.error
     import urllib.request
 
     url = f"https://api.github.com/repos/{repo}/commits/{branch}"
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "Viu-updater", "Accept": "application/vnd.github+json"},
-    )
+    req = urllib.request.Request(url, headers=github_headers())
     with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
         data = json.loads(resp.read().decode("utf-8"))
     sha = data.get("sha") or ""
@@ -304,8 +311,22 @@ def download_zip_update(
     dest = target or package_root()
     url = f"https://github.com/{repo}/archive/refs/heads/{branch}.zip"
     try:
-        with urllib.request.urlopen(url, timeout=180) as resp:  # noqa: S310
+        req = urllib.request.Request(url, headers=github_headers())
+        with urllib.request.urlopen(req, timeout=180) as resp:  # noqa: S310
             data = resp.read()
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            return UpdateResult(ok=False, message=f"Не скачать zip: {exc}")
+        api_url = f"https://api.github.com/repos/{repo}/zipball/{branch}"
+        try:
+            req2 = urllib.request.Request(api_url, headers=github_headers())
+            with urllib.request.urlopen(req2, timeout=180) as resp:  # noqa: S310
+                data = resp.read()
+        except OSError as exc2:
+            return UpdateResult(
+                ok=False,
+                message=f"Репозиторий private? Задай VIU_GITHUB_TOKEN или сделай repo public: {exc2}",
+            )
     except OSError as exc:
         return UpdateResult(ok=False, message=f"Не скачать zip: {exc}")
 
