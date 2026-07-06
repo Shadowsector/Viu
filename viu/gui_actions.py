@@ -56,47 +56,45 @@ GUI_ACTIONS: List[GuiAction] = [
         tool="roadmap_show",
         hint="Дорожная карта Анабарры и что сейчас в фокусе.",
     ),
-    # --- Unity: четыре шага человеческим языком ---
+    # --- Unity: по шагам, человеческим языком ---
     GuiAction(
-        "unity_grab",
-        "Забрать с диска U",
+        "add_animation",
+        "Добавить анимацию…",
         "Unity",
-        tool_chain=(
-            ("unity_import_staging", {}),
-            ("unity_scan_animations", {}),
-        ),
-        hint="FBX из U:\\Anabarra\\Animations → в Unity. Покажу, Idle/Walk или «Ден, что это?»",
+        tool="__add_animation__",
+        hint="Выбери FBX с анимацией (например, скачанный с Mixamo) — Вью положит его "
+        "в проект и соберёт Animator.",
     ),
     GuiAction(
         "unity_apply",
-        "Записать в Unity",
+        "Собрать анимации в Unity",
         "Unity",
         tool_chain=(
             ("unity_deploy_setup", {}),
             ("unity_sync_animations", {}),
         ),
-        hint="Скрипты Вью + Animator. Перед нажатием закрой Unity.",
+        hint="Обновить скрипты Вью и пересобрать Animator из всех клипов. Unity лучше закрыть.",
     ),
     GuiAction(
         "unity_open",
         "Открыть Unity",
         "Unity",
         tool="unity_open",
-        hint="Запустить редактор Unity с проектом, чтобы настроить сцену и нажать Play.",
+        hint="Запустить редактор Unity с проектом Анабарра — чтобы настроить сцену и нажать Play.",
     ),
     GuiAction(
         "unity_diagnose",
-        "Что не так с Unity?",
+        "Проверить Unity",
         "Unity",
         tool="unity_report",
-        hint="Логи, FBX, Humanoid, Safe Mode — всё в чат, можно скопировать в Cursor.",
+        hint="Собрать отчёт: логи, FBX, Humanoid, ошибки. Можно скопировать и прислать мне.",
     ),
     GuiAction(
         "unity_play",
-        "Play нормально?",
+        "Проверить после Play",
         "Unity",
         tool="unity_verify",
-        hint="После Play или настройки — ок ли анимация и нет ли ошибок.",
+        hint="Нажал Play в Unity? Эта кнопка скажет, всё ли в порядке с анимацией.",
     ),
     # --- Blender ---
     GuiAction(

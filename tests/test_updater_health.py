@@ -48,6 +48,37 @@ def test_version_label_zip(tmp_path, monkeypatch):
     assert "zip" in ref or "viu-agent" in ref
 
 
+def test_cleanup_obsolete(tmp_path):
+    from viu.updater import cleanup_obsolete
+
+    (tmp_path / "start_viu.bat").write_text("x", encoding="utf-8")
+    (tmp_path / "check_unity.bat").write_text("x", encoding="utf-8")
+    (tmp_path / "Viu.cmd").write_text("keep", encoding="utf-8")
+    legacy = tmp_path / "legacy_scripts"
+    legacy.mkdir()
+    (legacy / "old.bat").write_text("x", encoding="utf-8")
+
+    removed = cleanup_obsolete(tmp_path)
+    assert "start_viu.bat" in removed
+    assert "check_unity.bat" in removed
+    assert "legacy_scripts/" in removed
+    assert not (tmp_path / "start_viu.bat").exists()
+    assert not legacy.exists()
+    # Viu.cmd не трогаем.
+    assert (tmp_path / "Viu.cmd").exists()
+
+
+def test_single_instance_guard():
+    from viu.gui import acquire_single_instance
+
+    port = 47777
+    first = acquire_single_instance(port)
+    assert first is not None
+    second = acquire_single_instance(port)
+    assert second is None  # второй экземпляр не поднимется
+    first.close()
+
+
 @patch("urllib.request.urlopen")
 def test_ollama_available_mock(mock_urlopen):
     class Resp:

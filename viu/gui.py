@@ -30,6 +30,7 @@ from .updater import (
     apply_update_smart,
     auto_update_on_start,
     check_for_update,
+    cleanup_obsolete,
     find_git_root,
     install_package,
     update_viu_full,
@@ -53,8 +54,20 @@ class ViuGUI:
         self.log_path = self.agent.config.data_dir / "logs" / f"chat_{stamp}.txt"
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Тихо убираем старые батники из корня (наследие прошлых версий).
+        try:
+            removed = cleanup_obsolete()
+        except Exception:  # noqa: BLE001
+            removed = []
+
         self._build_ui()
         self._append("система", f"{version_label()}. Модель: {self.agent.llm.name}.")
+        if removed:
+            self._append(
+                "система",
+                "Прибралась в папке — убрала лишние файлы: " + ", ".join(removed),
+                tag="sys",
+            )
         self._append("система", f"Лог: {self.log_path}", tag="sys")
         self._start_anim_watcher()
         self.root.after(100, self._poll_queue)
@@ -226,6 +239,7 @@ class ViuGUI:
 
         m_file = tk.Menu(menubar, tearoff=0)
         m_file.add_command(label="Обновить Вью", command=self._update_viu_full)
+        m_file.add_command(label="Создать ярлык на рабочий стол", command=self._make_shortcut)
         m_file.add_command(label="Перезапустить Вью", command=self._restart)
         m_file.add_separator()
         m_file.add_command(label="Открыть папку логов", command=self._open_log_dir)
@@ -356,6 +370,9 @@ class ViuGUI:
         if action.tool == "__collect_logs__":
             self._collect_logs()
             return
+        if action.tool == "__add_animation__":
+            self._add_animation()
+            return
         if action.is_chain:
             self._run_tool_chain(action)
             return
@@ -400,6 +417,55 @@ class ViuGUI:
             self._queue.put(("tool", f"[{action.label}] {prefix}\n\n" + "\n\n".join(parts)))
         except Exception as exc:  # noqa: BLE001
             self._queue.put(("error", f"{action.label}: {exc}"))
+
+    def _add_animation(self) -> None:
+        from tkinter import filedialog
+
+        cfg = self.agent.config
+        if not cfg.unity_project:
+            self._append("ошибка", "Не задан путь к Unity-проекту (VIU_UNITY_PROJECT).", tag="err")
+            return
+        path = filedialog.askopenfilename(
+            title="Выбери FBX с анимацией",
+            filetypes=[("Анимация Unity (FBX)", "*.fbx"), ("Все файлы", "*.*")],
+        )
+        if not path:
+            return
+        self._append("ты", f"[Добавить анимацию] {Path(path).name}")
+        self._set_busy(True)
+
+        def work():
+            from .integrations.unity.animation_scan import ANIMATIONS_REL
+            from .integrations.unity.paths import resolve_in_unity_project
+
+            root = Path(cfg.unity_project).expanduser()
+            dest_dir = resolve_in_unity_project(root, ANIMATIONS_REL)
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            src = Path(path)
+            dest = dest_dir / src.name
+            import shutil as _sh
+
+            _sh.copy2(src, dest)
+
+            lines = [f"Скопировал: {src.name} → {dest_dir}"]
+            for name in ("unity_deploy_setup", "unity_sync_animations"):
+                tool = self.agent.registry.get(name)
+                if tool is None:
+                    continue
+                res = tool.run({}, self.agent.ctx)
+                mark = "✓" if res.ok else "✗"
+                lines.append(f"{mark} {name}")
+            lines.append("Готово. Открой Unity и нажми Play (или кнопка «Открыть Unity»).")
+            return "\n".join(lines)
+
+        def done(result):
+            self._set_busy(False)
+            if isinstance(result, Exception):
+                self._append("ошибка", str(result), tag="err")
+                return
+            self._append("Вью", result, tag="tool")
+
+        self._run_bg(work, done)
 
     def _collect_logs(self) -> None:
         self._append("ты", "[Отправить логи разработчику]")
@@ -699,11 +765,75 @@ class ViuGUI:
         except OSError:
             messagebox.showinfo("Логи", f"Папка логов:\n{folder}")
 
+    def _make_shortcut(self) -> None:
+        if os.name != "nt":
+            self._append("система", "Ярлык создаётся только на Windows.", tag="sys")
+            return
+        root = find_git_root() or Path(__file__).resolve().parent.parent
+        target = root / "Viu.cmd"
+        icon = root / "assets" / "viu_icon.ico"
+        ps = (
+            "$d=[Environment]::GetFolderPath('Desktop');"
+            "$n=-join([char]0x0412,[char]0x044C,[char]0x044E);"
+            "$s=(New-Object -ComObject WScript.Shell).CreateShortcut("
+            "(Join-Path $d ($n+'.lnk')));"
+            f"$s.TargetPath='{target}';$s.WorkingDirectory='{root}';"
+            f"$s.IconLocation='{icon}';$s.Description='Viu - Anabarra';$s.Save()"
+        )
+        try:
+            subprocess.run(  # noqa: S603
+                ["powershell", "-NoProfile", "-Command", ps],
+                cwd=str(root),
+                capture_output=True,
+                timeout=30,
+            )
+            self._append("система", "Ярлык «Вью» создан на рабочем столе.", tag="sys")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self._append("ошибка", f"Не удалось создать ярлык: {exc}", tag="err")
+
     def run(self) -> None:
         self.root.mainloop()
 
 
+# Единственный экземпляр окна: держим сокет на локальном порту.
+_INSTANCE_PORT = 47615
+_instance_sock = None
+
+
+def acquire_single_instance(port: int = _INSTANCE_PORT):
+    """Возвращает сокет-замок или None, если Вью уже открыта."""
+    import socket
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # SO_REUSEADDR: после закрытия/падения окна порт освобождается сразу,
+    # а не висит в TIME_WAIT минуту (иначе перезапуск ложно «уже открыта»).
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind(("127.0.0.1", port))
+        sock.listen(1)
+    except OSError:
+        sock.close()
+        return None
+    return sock
+
+
 def main() -> int:
+    global _instance_sock
+    _instance_sock = acquire_single_instance()
+    if _instance_sock is None:
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showinfo(
+                "Вью уже открыта",
+                "Окно Вью уже запущено. Найди его на панели задач.\n"
+                "Если окна не видно — заверши процесс python в Диспетчере задач и запусти снова.",
+            )
+            root.destroy()
+        except Exception:  # noqa: BLE001
+            pass
+        return 0
+
     try:
         ViuGUI().run()
         return 0
@@ -720,6 +850,6 @@ def main() -> int:
                 f"{exc}\n\nЛог: {log}",
             )
             root.destroy()
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
         return 1

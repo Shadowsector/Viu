@@ -58,8 +58,8 @@ def next_step(config: Config) -> str:
         if "Walk" not in states:
             return (
                 f"Фокус: «{focus.title}». Нет клипа Walk. "
-                "Действие: кнопка «Забрать с диска U» (unity_import_staging) — "
-                "перенести Walking FBX из папки-входа в Animations."
+                "Действие: кнопка «Добавить анимацию…» — выбрать Walking FBX "
+                "(например, скачанный с Mixamo). Вью положит его в проект и соберёт Animator."
             )
         non_humanoid = [c.file_name for c in scan.clips if not c.is_humanoid]
         if non_humanoid:

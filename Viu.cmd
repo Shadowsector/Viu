@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================
-rem   VIU — запусти этот файл двойным кликом. Он один, других не нужно.
+rem   VIU — запусти двойным кликом. Это единственный нужный файл.
 rem   Окно остаётся открытым, если что-то пошло не так.
 rem ============================================================
 chcp 65001 >nul
@@ -16,10 +16,7 @@ set VIU_API_KEY=ollama
 set VIU_MODEL=qwen2.5-coder:14b
 set VIU_UNITY_PROJECT=U:\Anabarra\Unity\Anabarra
 set VIU_ANIM_STAGING=U:\Anabarra\Animations
-rem Автообновление в окне выключено, чтобы не шуметь — обновление делает шаг ниже.
-set VIU_AUTO_UPDATE=0
-rem Чтобы Вью сама качала обновления с приватного GitHub, впиши токен:
-rem set VIU_GITHUB_TOKEN=ghp_xxxxxxxx
+rem ---------------------------------
 
 echo.
 echo   Запускаю Вью из %~dp0
@@ -29,7 +26,7 @@ where python >nul 2>&1
 if errorlevel 1 (
   echo [ОШИБКА] Python не найден.
   echo Установи Python 3.10+ с https://www.python.org/downloads/
-  echo При установке поставь галочку "Add python.exe to PATH".
+  echo и поставь галочку "Add python.exe to PATH".
   goto :fail
 )
 
@@ -60,7 +57,7 @@ exit /b 0
 
 :showlog
 echo.
-echo [ОШИБКА] Окно Вью не открылось. Подробности ниже:
+echo [ОШИБКА] Окно Вью не открылось. Подробности:
 if exist "%~dp0viu_startup.log" (
   echo ------------------------------------------------------------
   type "%~dp0viu_startup.log"
@@ -68,7 +65,6 @@ if exist "%~dp0viu_startup.log" (
 ) else (
   echo Лог пуст. Проверь tkinter:  python -c "import tkinter"
 )
-echo Для полной диагностики запусти diagnose.bat и пришли текст.
 
 :fail
 echo.

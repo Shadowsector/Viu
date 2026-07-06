@@ -49,7 +49,7 @@ def test_next_step_missing_walk(tmp_path):
     config = _config(tmp_path, unity_project=str(unity))
     msg = next_step(config)
     assert "Walk" in msg
-    assert "Забрать" in msg or "import" in msg.lower()
+    assert "Добавить анимацию" in msg
 
 
 def test_project_status_renders(tmp_path):

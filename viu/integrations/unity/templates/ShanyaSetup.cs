@@ -4,7 +4,9 @@ using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Viu.Editor
 {
@@ -65,7 +67,28 @@ namespace Viu.Editor
             DisableWgtMeshes(instance);
             ShanyaOutfit.Apply(ShanyaOutfit.Mode.Dressed);
             AssetDatabase.SaveAssets();
-            Debug.Log("[Viu] Setup готов: " + instance.name + " + " + controller.name);
+            SaveActiveScene();
+            Debug.Log("[Viu] Setup готов: " + instance.name + " + " + controller.name +
+                ". Открой сцену и нажми Play.");
+        }
+
+        static void SaveActiveScene()
+        {
+            var scene = SceneManager.GetActiveScene();
+            EditorSceneManager.MarkSceneDirty(scene);
+            if (string.IsNullOrEmpty(scene.path))
+            {
+                if (!AssetDatabase.IsValidFolder("Assets/Scenes"))
+                    AssetDatabase.CreateFolder("Assets", "Scenes");
+                var path = "Assets/Scenes/GameTest.unity";
+                EditorSceneManager.SaveScene(scene, path);
+                Debug.Log("[Viu] Сцена сохранена: " + path);
+            }
+            else
+            {
+                EditorSceneManager.SaveScene(scene);
+                Debug.Log("[Viu] Сцена сохранена: " + scene.path);
+            }
         }
 
         static string FindModelPath()

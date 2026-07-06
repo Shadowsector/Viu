@@ -48,6 +48,48 @@ def package_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+# Файлы и папки, которые остались от старых версий и больше не нужны.
+# Убираются при запуске/обновлении, чтобы в корне не копились батники.
+OBSOLETE_FILES = (
+    "check_blender.bat",
+    "check_unity.bat",
+    "console.bat",
+    "diagnose.bat",
+    "get_viu.bat",
+    "install_viu.bat",
+    "setup_shanya.bat",
+    "start_viu.bat",
+    "start_viu.vbs",
+    "update_viu.bat",
+    "make_shortcut.bat",
+    "create_shortcut.ps1",
+)
+OBSOLETE_DIRS = ("legacy_scripts", "setup")
+
+
+def cleanup_obsolete(root: Optional[Path] = None) -> list[str]:
+    """Удаляет устаревшие bat/vbs/ps1 и папки из корня Viu. Возвращает список удалённого."""
+    base = root or package_root()
+    removed: list[str] = []
+    for name in OBSOLETE_FILES:
+        p = base / name
+        if p.is_file():
+            try:
+                p.unlink()
+                removed.append(name)
+            except OSError:
+                pass
+    for name in OBSOLETE_DIRS:
+        p = base / name
+        if p.is_dir():
+            try:
+                shutil.rmtree(p)
+                removed.append(name + "/")
+            except OSError:
+                pass
+    return removed
+
+
 def find_git_root(start: Optional[Path] = None) -> Optional[Path]:
     path = (start or package_root()).resolve()
     for candidate in (path, *path.parents):
@@ -280,6 +322,8 @@ def apply_git_update(
     else:
         code, out = _run_git(["pull", "--ff-only", remote, branch], root, timeout=300.0)
 
+    if code == 0:
+        cleanup_obsolete(root)
     new_ref = current_commit(root)
     if code != 0:
         return UpdateResult(
@@ -357,6 +401,7 @@ def download_zip_update(
     except (OSError, RuntimeError):
         sha = ""
     write_install_stamp(dest, branch, note="zip", sha=sha)
+    cleanup_obsolete(dest)
     return UpdateResult(
         ok=True,
         checked=True,

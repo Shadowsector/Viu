@@ -147,6 +147,35 @@ def apply_zip(data: bytes) -> None:
                 shutil.copy2(item, target)
 
 
+OBSOLETE_FILES = (
+    "check_blender.bat", "check_unity.bat", "console.bat", "diagnose.bat",
+    "get_viu.bat", "install_viu.bat", "setup_shanya.bat", "start_viu.bat",
+    "start_viu.vbs", "update_viu.bat", "make_shortcut.bat", "create_shortcut.ps1",
+)
+OBSOLETE_DIRS = ("legacy_scripts", "setup")
+
+
+def cleanup_obsolete() -> None:
+    """Убирает старые батники/папки из корня (наследие прошлых версий)."""
+    base = root_dir()
+    for name in OBSOLETE_FILES:
+        p = base / name
+        if p.is_file():
+            try:
+                p.unlink()
+            except OSError:
+                pass
+    import shutil as _sh
+
+    for name in OBSOLETE_DIRS:
+        p = base / name
+        if p.is_dir():
+            try:
+                _sh.rmtree(p)
+            except OSError:
+                pass
+
+
 def pip_install() -> None:
     log("pip install -e . …")
     proc = subprocess.run(
@@ -243,6 +272,12 @@ def main(argv: list[str] | None = None) -> int:
         updated = run_update(force=True)
     elif auto:
         updated = run_update(force=False)
+
+    # Всегда прибираем старые файлы, даже если обновления не было.
+    try:
+        cleanup_obsolete()
+    except Exception:  # noqa: BLE001
+        pass
 
     if args.launch or (updated and auto):
         log("Запуск GUI …")

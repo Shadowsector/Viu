@@ -15,12 +15,14 @@ def test_gui_actions_grouped():
     grouped = actions_by_group()
     assert "Unity" in grouped
     assert "Игра" in grouped
-    assert any(a.action_id == "unity_grab" for a in GUI_ACTIONS)
-    assert any(a.action_id == "unity_grab" and a.is_chain for a in GUI_ACTIONS)
+    assert any(a.action_id == "add_animation" for a in GUI_ACTIONS)
+    assert any(a.action_id == "unity_apply" and a.is_chain for a in GUI_ACTIONS)
     assert any(a.tool == "__update_viu__" for a in GUI_ACTIONS)
     assert any(a.action_id == "autopilot" and a.uses_agent for a in GUI_ACTIONS)
-    grab = next(a for a in GUI_ACTIONS if a.action_id == "unity_grab")
-    assert "unity_import_staging" in [t[0] for t in grab.tool_chain]
+    # Больше нет запутанной кнопки про «диск U».
+    assert all("диска U" not in a.label for a in GUI_ACTIONS)
+    apply_btn = next(a for a in GUI_ACTIONS if a.action_id == "unity_apply")
+    assert "unity_sync_animations" in [t[0] for t in apply_btn.tool_chain]
 
 
 def test_find_git_root():
