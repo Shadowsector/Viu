@@ -67,6 +67,21 @@ def test_agent_handles_unknown_tool(tmp_path):
     assert "не найден" in result.steps[0].observation
 
 
+def test_agent_breaks_repeat_loop(tmp_path):
+    # Модель упорно зовёт один и тот же инструмент — агент должен остановиться сам.
+    same = json.dumps(
+        {"thought": "проверю", "action": {"tool": "list_dir", "args": {"path": "."}}}
+    )
+    config = Config(root=tmp_path, data_dir=tmp_path / ".viu", provider="mock")
+    agent = Agent(config=config, llm=MockLLM(responses=[same] * 10))
+    result = agent.run("зациклись")
+    assert result.completed
+    assert "повтор" in result.final.lower() or "ручной шаг" in result.final.lower()
+    # Остановились до исчерпания лимита шагов (3-й одинаковый вызов).
+    action_steps = [s for s in result.steps if s.kind == "action"]
+    assert len(action_steps) <= 3
+
+
 def test_agent_recovers_from_bad_json(tmp_path):
     responses = [
         "это не json",

@@ -61,7 +61,10 @@ class UnityVerifyResult:
         elif self.play_entered:
             lines.append("✓ Play Mode запускался (есть запись в Editor.log).")
         elif self.editor_log:
-            lines.append("? Play в логе не виден — нажми ▶ в Unity и повтори unity_verify.")
+            lines.append(
+                "? Play в логе не виден. Нажать ▶ Play может только человек в окне Unity — "
+                "это ручной шаг. Спроси пользователя (ask_user), НЕ повторяй unity_verify."
+            )
 
         if self.editor_log and self.editor_log.rig_errors:
             lines.append("⛔ Rig Error в Editor.log — проверь Humanoid Configure.")
@@ -79,7 +82,10 @@ class UnityVerifyResult:
         elif self.play_entered and not self.editor_log.rig_errors:
             lines.append("Вердикт: ✓ по логам всё готово — смотри Game tab, Idle должен играть.")
         else:
-            lines.append("Вердикт: 🚧 setup есть — нажми Play, затем unity_verify снова.")
+            lines.append(
+                "Вердикт: 🚧 setup есть. Дальше — ручной шаг: попроси пользователя нажать "
+                "▶ Play в Unity (ask_user). Не повторяй проверку в цикле."
+            )
 
         return "\n".join(lines)
 

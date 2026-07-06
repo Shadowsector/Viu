@@ -116,6 +116,11 @@ class Agent:
         result = RunResult(final="", completed=False)
         self._log(f"TASK: {task}")
 
+        # Защита от зацикливания: считаем повторы одинаковых вызовов (tool+args).
+        repeat_counts: Dict[str, int] = {}
+        REPEAT_NUDGE_AT = 2  # после 2-го одинакового вызова — предупреждение
+        REPEAT_STOP_AT = 3   # на 3-м — принудительно останавливаемся
+
         for _ in range(self.config.max_steps):
             raw = self.llm.complete(messages)
             parsed = extract_json(raw)
@@ -182,8 +187,41 @@ class Agent:
                 on_step(step)
             self._log(f"ACTION {tool_name} args={args} -> ok={ok}")
 
+            # Считаем повторы одинаковых действий, чтобы не крутиться в цикле.
+            try:
+                sig = tool_name + ":" + json.dumps(args, sort_keys=True, ensure_ascii=False)
+            except TypeError:
+                sig = tool_name + ":" + str(args)
+            repeat_counts[sig] = repeat_counts.get(sig, 0) + 1
+            count = repeat_counts[sig]
+
             messages.append({"role": "assistant", "content": raw})
-            messages.append({"role": "user", "content": f"Наблюдение:\n{observation}"})
+
+            if count >= REPEAT_STOP_AT:
+                final = (
+                    f"Я несколько раз повторил «{tool_name}» без изменений — похоже, "
+                    "дальше нужен твой ручной шаг (например, нажать ▶ Play в Unity или "
+                    "что-то настроить в окне). Вот что я вижу:\n\n"
+                    f"{observation}\n\n"
+                    "Скажи, что сделать дальше, или выполни ручной шаг и напиши мне."
+                )
+                step = Step(kind="final", thought=thought, observation=final)
+                result.steps.append(step)
+                result.final = final
+                result.completed = True
+                if on_step:
+                    on_step(step)
+                self._log(f"STOP: repeated {tool_name} x{count}")
+                return result
+
+            observation_msg = f"Наблюдение:\n{observation}"
+            if count >= REPEAT_NUDGE_AT:
+                observation_msg += (
+                    f"\n\n[Система] Ты уже вызывал «{tool_name}» с тем же результатом. "
+                    "НЕ повторяй его. Если нужен ручной шаг пользователя — вызови ask_user "
+                    "с конкретным вопросом. Иначе выбери другой инструмент или дай final."
+                )
+            messages.append({"role": "user", "content": observation_msg})
 
         result.final = "Достигнут лимит шагов без финального ответа."
         self._log("STOP: max_steps reached")
