@@ -27,6 +27,11 @@ def _root(ctx: AgentContext, args: Dict[str, Any]) -> Path:
     return unity_project_root(ctx.config, override)
 
 
+def _unity_is_open(root: Path) -> bool:
+    """Editor открыт с проектом, если есть Temp/UnityLockfile."""
+    return (root / "Temp" / "UnityLockfile").is_file()
+
+
 class UnityReadTool(Tool):
     name = "unity_read"
     description = (
@@ -161,6 +166,14 @@ class UnityRunSetupTool(Tool):
         ok, msg = deploy_shanya_setup(root)
         if not ok:
             return ToolResult(False, msg)
+        if _unity_is_open(root):
+            return ToolResult(
+                False,
+                "Unity сейчас ОТКРЫТ — фоновая настройка невозможна (проект залочен), "
+                "поэтому и был код 1. Сделай проще: в открытом Unity нажми меню сверху "
+                "**Viu → Setup Shanya (Idle)** — это соберёт сцену прямо там и покажет "
+                "ошибки в Console (если будут). Либо закрой Unity и повтори эту команду.",
+            )
         exe = find_unity_exe(ctx.config.unity_exe)
         if exe is None:
             return ToolResult(
@@ -304,6 +317,13 @@ class UnitySyncAnimationsTool(Tool):
         ok, msg = deploy_animation_pipeline(root)
         if not ok:
             return ToolResult(False, msg)
+        if _unity_is_open(root):
+            return ToolResult(
+                True,
+                "Unity открыт — фоновая сборка не нужна. Импорт FBX в Animations/ "
+                "подхватывается автоматически. Если нет — в Unity нажми меню "
+                "**Viu → Sync Animations (scan folder)**.",
+            )
         exe = find_unity_exe(ctx.config.unity_exe)
         if exe is None:
             return ToolResult(
