@@ -11,10 +11,11 @@ $lnkPath = Join-Path $desktop ($name + '.lnk')
 
 $shell = New-Object -ComObject WScript.Shell
 $lnk = $shell.CreateShortcut($lnkPath)
-$lnk.TargetPath = (Join-Path $root 'start_viu.bat')
+$lnk.TargetPath = (Join-Path $root 'start_viu.vbs')
 $lnk.WorkingDirectory = $root
 $lnk.IconLocation = (Join-Path $root 'assets\viu_icon.ico')
 $lnk.Description = 'Viu - Anabarra companion'
 $lnk.Save()
 
 Write-Host ('Done! Desktop shortcut created: ' + $name)
+Write-Host 'Launches start_viu.vbs (no black console flash).'

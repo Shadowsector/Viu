@@ -64,7 +64,7 @@ class ViuGUI:
 
         self._build_menu()
 
-        body = ttk.Panedwindow(self.root, orient=tk.HORIZONTAL)
+        body = ttk.Frame(self.root)
         body.pack(fill="both", expand=True)
 
         self._build_sidebar(body)
@@ -78,9 +78,10 @@ class ViuGUI:
         )
         self.status.pack(fill="x", side="bottom")
 
-    def _build_sidebar(self, parent: ttk.Panedwindow) -> None:
+    def _build_sidebar(self, parent: ttk.Frame) -> None:
         frame = ttk.Frame(parent, width=220)
-        parent.add(frame, weight=0)
+        frame.pack(side="left", fill="y", padx=(0, 0))
+        frame.pack_propagate(False)
 
         header = ttk.Label(frame, text="Действия", font=("Segoe UI", 11, "bold"))
         header.pack(anchor="w", padx=10, pady=(10, 6))
@@ -126,9 +127,9 @@ class ViuGUI:
         )
         chat_hint.pack(anchor="w", padx=10, pady=(0, 8))
 
-    def _build_chat(self, parent: ttk.Panedwindow) -> None:
+    def _build_chat(self, parent: ttk.Frame) -> None:
         frame = ttk.Frame(parent)
-        parent.add(frame, weight=1)
+        frame.pack(side="left", fill="both", expand=True)
 
         self.output = scrolledtext.ScrolledText(
             frame,
@@ -412,7 +413,6 @@ class ViuGUI:
         auto = os.environ.get("VIU_AUTO_UPDATE", "1") == "1"
         if not auto and not force:
             return
-        self._set_busy(True)
         self._append("система", "Проверка обновлений…", tag="sys")
 
         def work():
@@ -489,5 +489,22 @@ class ViuGUI:
 
 
 def main() -> int:
-    ViuGUI().run()
-    return 0
+    try:
+        ViuGUI().run()
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        import traceback
+
+        log = Path(__file__).resolve().parent.parent / "viu_startup.log"
+        log.write_text(traceback.format_exc(), encoding="utf-8")
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror(
+                "Вью — ошибка",
+                f"{exc}\n\nЛог: {log}",
+            )
+            root.destroy()
+        except Exception:
+            pass
+        return 1

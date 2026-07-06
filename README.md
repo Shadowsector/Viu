@@ -62,6 +62,17 @@ pip install -e ".[dev]"   # + pytest для разработки
 Старые `check_unity.bat`, `setup_shanya.bat` и т.д. только открывают то же окно.
 См. [`scripts/README.md`](./scripts/README.md).
 
+### Не открывается окно (мелькнул чёрный экран)
+
+1. Запусти **`start_viu.bat`** ещё раз — теперь при ошибке окно **останется** с текстом.
+2. Открой **`viu_startup.log`** в папке Viu.
+3. Частые причины:
+   - Python не в PATH → установи с [python.org](https://www.python.org/downloads/) (галочка «Add to PATH»).
+   - Пакет не виден → `cd U:\Viu` и `pip install -e .`
+   - Нет tkinter → переустанови Python с компонентом **tcl/tk**.
+4. Ярлык лучше пересоздать: `make_shortcut.bat` (теперь ведёт на `start_viu.vbs`).
+5. Прямой тест: `python run_gui.pyw` — должно открыться окно или показать ошибку.
+
 ## Быстрый старт
 
 ```bash
