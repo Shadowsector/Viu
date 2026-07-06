@@ -68,6 +68,16 @@ class Config:
         default_factory=lambda: float(_env("VIU_ANIM_SCAN_SEC", "300"))
     )
 
+    # Папка-«вход» для FBX перед Unity (Total Commander и т.п.).
+    unity_anim_staging: str = field(
+        default_factory=lambda: _env("VIU_ANIM_STAGING", "U:/Anabarra/Animations")
+    )
+
+    # Ветка git для автообновления GUI.
+    update_branch: str = field(
+        default_factory=lambda: _env("VIU_UPDATE_BRANCH", "cursor/viu-agent-core-65c2")
+    )
+
     def ensure_dirs(self) -> "Config":
         """Создаёт служебные каталоги, если их ещё нет."""
         self.data_dir.mkdir(parents=True, exist_ok=True)

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import subprocess
+import shutil
 from pathlib import Path
 from typing import Any, Dict
 
+from ..integrations.unity.animation_scan import ANIMATIONS_REL
 from ..integrations.unity.paths import resolve_in_unity_project, unity_project_root
 from ..integrations.unity.setup import (
     batch_setup_command,
@@ -316,3 +318,39 @@ class UnitySyncAnimationsTool(Tool):
         ok_run = proc.returncode == 0
         body = f"{msg}\n\nexit={proc.returncode}\n{tail or proc.stderr or proc.stdout or '(нет вывода)'}"
         return ToolResult(ok_run, body)
+
+
+class UnityImportStagingTool(Tool):
+    name = "unity_import_staging"
+    description = (
+        "Скопировать *.fbx из папки-входа (VIU_ANIM_STAGING, по умолчанию "
+        "U:\\Anabarra\\Animations) в Assets/Characters/Shanya/Animations/"
+    )
+    parameters = {
+        "staging_path": "папка с FBX (опционально)",
+        "project_path": "корень Unity-проекта (опционально)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        root = _root(ctx, args)
+        raw = args.get("staging_path") or ctx.config.unity_anim_staging
+        staging = Path(raw).expanduser().resolve()
+        if not staging.is_dir():
+            return ToolResult(
+                False,
+                f"Папка не найдена: {staging}\n"
+                "Положи FBX туда или задай VIU_ANIM_STAGING.",
+            )
+        dest = resolve_in_unity_project(root, ANIMATIONS_REL)
+        dest.mkdir(parents=True, exist_ok=True)
+        copied: list[str] = []
+        for fbx in sorted(staging.glob("*.fbx")):
+            target = dest / fbx.name
+            shutil.copy2(fbx, target)
+            copied.append(fbx.name)
+        if not copied:
+            return ToolResult(False, f"В {staging} нет *.fbx")
+        lines = [f"Скопировано в {dest}:"]
+        lines.extend(f"  + {name}" for name in copied)
+        lines.append("\nДальше: Sync Animations (Unity открыт → само, иначе кнопка).")
+        return ToolResult(True, "\n".join(lines))
