@@ -70,8 +70,9 @@ def next_step(config: Config) -> str:
             )
         return (
             f"Фокус: «{focus.title}». Idle и Walk на месте и Humanoid, Animator собран. "
-            "Действие: открой Unity (unity_open), помести Шаню в сцену "
-            "(Viu → Setup Shanya) и нажми Play — проверь Idle↔Walk на A/D. "
+            "Действие: если Unity ЗАКРЫТ — вызови unity_prepare_scene (сам соберёт сцену "
+            "и откроет Unity, пользователю останется нажать Play). Если Unity ОТКРЫТ — "
+            "попроси Дена нажать в Unity меню Viu → Setup Shanya (Idle), затем ▶ Play. "
             "После проверки отметь веху 4 как done (roadmap_update)."
         )
 

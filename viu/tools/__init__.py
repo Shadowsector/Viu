@@ -30,6 +30,7 @@ from .unity_project_tool import (
     UnityImportStagingTool,
     UnityListTool,
     UnityOpenTool,
+    UnityPrepareSceneTool,
     UnityReadTool,
     UnityRunSetupTool,
     UnityScanAnimationsTool,
@@ -99,6 +100,7 @@ def build_default_registry() -> ToolRegistry:
         UnitySyncAnimationsTool(),
         UnityImportStagingTool(),
         UnityOpenTool(),
+        UnityPrepareSceneTool(),
         UnityVerifyTool(),
         UnityInitProjectTool(),
     ):

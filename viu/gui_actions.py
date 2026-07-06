@@ -76,11 +76,19 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Обновить скрипты Вью и пересобрать Animator из всех клипов. Unity лучше закрыть.",
     ),
     GuiAction(
+        "unity_prepare",
+        "Собрать сцену с Шаней",
+        "Unity",
+        tool="unity_prepare_scene",
+        hint="Вью сама соберёт сцену и откроет Unity. От тебя — только нажать Play. "
+        "Unity перед этим должен быть закрыт.",
+    ),
+    GuiAction(
         "unity_open",
-        "Открыть Unity",
+        "Просто открыть Unity",
         "Unity",
         tool="unity_open",
-        hint="Запустить редактор Unity с проектом Анабарра — чтобы настроить сцену и нажать Play.",
+        hint="Открыть редактор Unity, ничего не собирая.",
     ),
     GuiAction(
         "unity_diagnose",

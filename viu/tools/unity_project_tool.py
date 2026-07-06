@@ -404,6 +404,84 @@ class UnityOpenTool(Tool):
         )
 
 
+class UnityPrepareSceneTool(Tool):
+    name = "unity_prepare_scene"
+    description = (
+        "Собрать всё сам и открыть Unity готовым к Play: deploy скриптов + Animator + "
+        "сцена с Шаней (batch, Unity должен быть ЗАКРЫТ), затем запуск редактора. "
+        "От пользователя нужен только Play. Не вызывай при открытом Unity."
+    )
+    parameters = {"project_path": "корень проекта (опционально)"}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        root = _root(ctx, args)
+        if not (root / "Assets").is_dir():
+            return ToolResult(False, f"Не Unity-проект: {root}")
+
+        if _unity_is_open(root):
+            return ToolResult(
+                False,
+                "Сейчас Unity открыт, а собрать сцену я могу только при закрытом.\n"
+                "Сделай так: полностью закрой окно Unity, потом снова нажми "
+                "«Собрать сцену с Шаней» — дальше я всё сделаю сам и открою Unity заново.",
+            )
+
+        deploy_animation_pipeline(root)
+        exe = find_unity_exe(ctx.config.unity_exe)
+        if exe is None:
+            return ToolResult(
+                False,
+                "Не нашёл Unity.exe. Впиши путь в настройки: "
+                "VIU_UNITY_EXE=C:\\Program Files\\Unity\\Hub\\Editor\\6000.3.19f1\\Editor\\Unity.exe",
+            )
+
+        cmd = batch_setup_command(root, exe)
+        timeout = float(args.get("timeout") or 600)
+        try:
+            proc = subprocess.run(
+                cmd, shell=True, capture_output=True, text=True, timeout=timeout, cwd=str(root)
+            )
+        except subprocess.TimeoutExpired:
+            return ToolResult(False, f"Сборка сцены заняла больше {timeout}s. Смотри viu_setup.log.")
+
+        log_path = root / "viu_setup.log"
+        important: list[str] = []
+        if log_path.is_file():
+            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            important = [
+                ln for ln in lines if "[Viu]" in ln or "error CS" in ln or "Exception" in ln
+            ][-12:]
+
+        if proc.returncode != 0:
+            detail = "\n".join(important) if important else "(подробности в viu_setup.log)"
+            return ToolResult(
+                False,
+                "Не удалось собрать сцену. Причина:\n" + detail +
+                "\n\nНажми «Отправить логи разработчику» и пришли мне файл — я разберусь.",
+            )
+
+        # Успех — открываем редактор со сценой.
+        try:
+            kwargs: Dict[str, Any] = {"cwd": str(root)}
+            if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+                kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            subprocess.Popen(open_editor_command(root, exe), **kwargs)  # noqa: S603
+        except OSError as exc:
+            return ToolResult(
+                True,
+                "Сцену собрал (Assets/Scenes/GameTest.unity), но открыть Unity не смог: "
+                f"{exc}. Открой проект вручную и нажми ▶ Play.",
+            )
+
+        return ToolResult(
+            True,
+            "Готово! Я сам собрал сцену с Шаней и открываю Unity.\n"
+            "Когда редактор загрузится (30–90 секунд), вверху ПО ЦЕНТРУ нажми "
+            "зелёную кнопку ▶ (Play). Шаня стоит на месте (Idle), а по клавишам "
+            "A/D должна пойти (Walk). Больше от тебя ничего не нужно — только Play.",
+        )
+
+
 class UnityImportStagingTool(Tool):
     name = "unity_import_staging"
     description = (

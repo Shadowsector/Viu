@@ -47,6 +47,24 @@ def test_unity_open_no_exe(tmp_path):
     assert "Unity.exe" in result.content
 
 
+def test_prepare_scene_blocks_when_unity_open(tmp_path):
+    unity = tmp_path / "unity"
+    (unity / "Assets").mkdir(parents=True)
+    (unity / "Temp").mkdir()
+    (unity / "Temp" / "UnityLockfile").write_bytes(b"")  # Unity «открыт»
+    ctx = _ctx(tmp_path, unity_project=str(unity))
+    from viu.tools.unity_project_tool import UnityPrepareSceneTool
+
+    result = UnityPrepareSceneTool().run({}, ctx)
+    assert not result.ok
+    assert "закрыт" in result.content.lower()
+
+
+def test_prepare_scene_registered():
+    reg = build_default_registry()
+    assert "unity_prepare_scene" in reg.names()
+
+
 def test_unity_open_launches(tmp_path, monkeypatch):
     unity = tmp_path / "unity"
     (unity / "Assets").mkdir(parents=True)
