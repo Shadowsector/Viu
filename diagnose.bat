@@ -29,7 +29,7 @@ python -m pip install -e . 2>&1
 
 echo.
 echo --- run_gui ---
-python "%~dp0run_gui.pyw" 2>&1
+python run_gui.pyw 2>&1
 echo exit code: %errorlevel%
 
 echo.

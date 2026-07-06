@@ -14,8 +14,11 @@ from viu.updater import find_git_root, package_root, version_label
 def test_gui_actions_grouped():
     grouped = actions_by_group()
     assert "Unity" in grouped
-    assert any(a.tool == "unity_report" for a in GUI_ACTIONS)
-    assert any(a.tool == "unity_import_staging" for a in GUI_ACTIONS)
+    assert any(a.action_id == "unity_grab" for a in GUI_ACTIONS)
+    assert any(a.action_id == "unity_grab" and a.is_chain for a in GUI_ACTIONS)
+    assert any(a.tool == "__update_viu__" for a in GUI_ACTIONS)
+    grab = next(a for a in GUI_ACTIONS if a.action_id == "unity_grab")
+    assert "unity_import_staging" in [t[0] for t in grab.tool_chain]
 
 
 def test_find_git_root():

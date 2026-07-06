@@ -45,7 +45,7 @@ if errorlevel 1 (
 
 echo.
 echo [3/3] Запуск окна Viu...
-python "%~dp0run_gui.pyw"
+python run_gui.pyw
 if errorlevel 1 goto :showlog
 
 echo.

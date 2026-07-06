@@ -408,3 +408,26 @@ def auto_update_on_start(
 def version_label() -> str:
     ref = current_commit()
     return f"Viu {ref}"
+
+
+def update_viu_full(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, bool]:
+    """Проверка → скачивание (если есть) → pip install. Возвращает (ok, текст, нужен_рестарт)."""
+    lines: List[str] = []
+    needs_restart = False
+
+    status = check_for_update(branch=branch)
+    lines.append(status.message)
+
+    if status.has_updates:
+        applied = apply_update_smart(branch=branch)
+        lines.append(applied.message)
+        if applied.updated:
+            needs_restart = True
+        if not applied.ok:
+            ok, pip_msg = install_package()
+            lines.append(pip_msg)
+            return ok and applied.ok, "\n\n".join(lines), needs_restart
+
+    ok, pip_msg = install_package()
+    lines.append(pip_msg)
+    return ok, "\n\n".join(lines), needs_restart

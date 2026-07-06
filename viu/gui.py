@@ -32,6 +32,7 @@ from .updater import (
     check_for_update,
     find_git_root,
     install_package,
+    update_viu_full,
     version_label,
 )
 
@@ -224,9 +225,7 @@ class ViuGUI:
         menubar = tk.Menu(self.root)
 
         m_file = tk.Menu(menubar, tearoff=0)
-        m_file.add_command(label="Проверить обновления", command=lambda: self._check_updates_async(force=True))
-        m_file.add_command(label="Обновить Viu сейчас", command=self._apply_update_confirmed)
-        m_file.add_command(label="pip install -e .", command=self._install_deps)
+        m_file.add_command(label="Обновить Вью", command=self._update_viu_full)
         m_file.add_command(label="Перезапустить Вью", command=self._restart)
         m_file.add_separator()
         m_file.add_command(label="Открыть папку логов", command=self._open_log_dir)
@@ -351,14 +350,11 @@ class ViuGUI:
         if action.tool == "__open_logs__":
             self._open_log_dir()
             return
-        if action.tool == "__update_check__":
-            self._check_updates_async(force=True, apply=False)
+        if action.tool == "__update_viu__":
+            self._update_viu_full()
             return
-        if action.tool == "__update_apply__":
-            self._apply_update_confirmed()
-            return
-        if action.tool == "__install_deps__":
-            self._install_deps()
+        if action.is_chain:
+            self._run_tool_chain(action)
             return
         if action.tool:
             self._run_tool(action.tool, action.tool_args, label=action.label)
@@ -376,6 +372,52 @@ class ViuGUI:
         self.status.config(
             text=("Вью думает…" if busy else f"{ver} | {self.agent.llm.name}")
         )
+
+    def _run_tool_chain(self, action: GuiAction) -> None:
+        self._append("ты", f"[{action.label}]")
+        self._set_busy(True)
+        threading.Thread(target=self._chain_worker, args=(action,), daemon=True).start()
+
+    def _chain_worker(self, action: GuiAction) -> None:
+        parts: list[str] = []
+        all_ok = True
+        try:
+            for name, args in action.tool_chain:
+                tool = self.agent.registry.get(name)
+                if tool is None:
+                    parts.append(f"⚠ {name}: не найден")
+                    all_ok = False
+                    continue
+                result = tool.run(args, self.agent.ctx)
+                mark = "✓" if result.ok else "✗"
+                parts.append(f"{mark} {name}\n{result.content}")
+                if not result.ok:
+                    all_ok = False
+            prefix = "OK" if all_ok else "ЧАСТИЧНО"
+            self._queue.put(("tool", f"[{action.label}] {prefix}\n\n" + "\n\n".join(parts)))
+        except Exception as exc:  # noqa: BLE001
+            self._queue.put(("error", f"{action.label}: {exc}"))
+
+    def _update_viu_full(self) -> None:
+        self._append("ты", "[Обновить Вью]")
+        self._set_busy(True)
+
+        def work():
+            return update_viu_full(branch=self.agent.config.update_branch)
+
+        def done(result):
+            self._set_busy(False)
+            if isinstance(result, Exception):
+                self._append("ошибка", str(result), tag="err")
+                return
+            ok, text, restart = result
+            tag = "sys" if ok else "err"
+            self._append("Вью", text, tag="tool" if ok else tag)
+            if restart:
+                self._append("система", "Перезапуск через 2 с…", tag="sys")
+                self.root.after(2000, self._restart)
+
+        self._run_bg(work, done)
 
     def _run_tool(self, name: str, args: dict, label: str = "") -> None:
         title = label or name

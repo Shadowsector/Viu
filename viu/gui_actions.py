@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+# (имя инструмента, аргументы)
+ToolStep = Tuple[str, Dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -15,119 +18,98 @@ class GuiAction:
     group: str
     tool: Optional[str] = None
     tool_args: Dict[str, Any] = field(default_factory=dict)
+    tool_chain: Tuple[ToolStep, ...] = ()
     prompt: Optional[str] = None
     hint: str = ""
 
     @property
     def uses_agent(self) -> bool:
-        return bool(self.prompt) and not self.tool
+        return bool(self.prompt) and not self.tool and not self.tool_chain
+
+    @property
+    def is_chain(self) -> bool:
+        return len(self.tool_chain) > 0
 
 
 # Порядок групп на панели.
-ACTION_GROUPS: List[str] = ["Unity", "Blender", "Сервис"]
+ACTION_GROUPS: List[str] = ["Unity", "Blender", "Вью"]
 
 GUI_ACTIONS: List[GuiAction] = [
+    # --- Unity: четыре шага человеческим языком ---
     GuiAction(
-        "unity_report",
-        "Отчёт Unity",
+        "unity_grab",
+        "Забрать с диска U",
+        "Unity",
+        tool_chain=(
+            ("unity_import_staging", {}),
+            ("unity_scan_animations", {}),
+        ),
+        hint="FBX из U:\\Anabarra\\Animations → в Unity. Покажу, Idle/Walk или «Ден, что это?»",
+    ),
+    GuiAction(
+        "unity_apply",
+        "Записать в Unity",
+        "Unity",
+        tool_chain=(
+            ("unity_deploy_setup", {}),
+            ("unity_sync_animations", {}),
+        ),
+        hint="Скрипты Вью + Animator. Перед нажатием закрой Unity.",
+    ),
+    GuiAction(
+        "unity_diagnose",
+        "Что не так с Unity?",
         "Unity",
         tool="unity_report",
-        hint="Editor.log + скан FBX (как check_unity)",
+        hint="Логи, FBX, Humanoid, Safe Mode — всё в чат, можно скопировать в Cursor.",
     ),
     GuiAction(
-        "unity_deploy",
-        "Deploy скрипты",
-        "Unity",
-        tool="unity_deploy_setup",
-        hint="ShanyaSetup, AnimationSync, Locomotion",
-    ),
-    GuiAction(
-        "unity_scan_anim",
-        "Скан Animations",
-        "Unity",
-        tool="unity_scan_animations",
-        hint="Папка Assets/Characters/Shanya/Animations",
-    ),
-    GuiAction(
-        "unity_sync_anim",
-        "Sync Animations",
-        "Unity",
-        tool="unity_sync_animations",
-        hint="Batchmode — Unity должен быть закрыт",
-    ),
-    GuiAction(
-        "unity_verify",
-        "Проверить setup",
+        "unity_play",
+        "Play нормально?",
         "Unity",
         tool="unity_verify",
-        hint="После Play или unity_run_setup",
+        hint="После Play или настройки — ок ли анимация и нет ли ошибок.",
     ),
-    GuiAction(
-        "unity_init",
-        "Init проект",
-        "Unity",
-        tool="unity_init_project",
-        hint="manifest + deploy + память",
-    ),
-    GuiAction(
-        "unity_import_staging",
-        "Импорт FBX → Unity",
-        "Unity",
-        tool="unity_import_staging",
-        hint="Копирует *.fbx из U:\\Anabarra\\Animations в проект",
-    ),
+    # --- Blender ---
     GuiAction(
         "blender_info",
-        "Blender: сцена",
+        "Что в Blender?",
         "Blender",
         tool="blender_info",
-        hint="Что Viu видит в .blend",
+        hint="Что Вью видит в открытой сцене.",
     ),
     GuiAction(
         "rig_check",
-        "Blender: rig",
+        "Скелет в порядке?",
         "Blender",
         tool="rig_check",
-        hint="Сверка скелета со стандартом",
+        hint="Сверка костей со стандартом для Unity.",
     ),
     GuiAction(
         "blender_export",
-        "Экспорт Шани",
+        "Выгрузить Шаню",
         "Blender",
         prompt="Экспортируй Shanya_Erisa.fbx через blender_export_shanya",
-        hint="Нужен путь к .blend в памяти или уточни",
+        hint="Через чат — нужен путь к .blend.",
     ),
+    # --- Вью ---
     GuiAction(
-        "check_update",
-        "Проверить обновления",
-        "Сервис",
-        tool="__update_check__",
-        hint="Git или подсказка про zip",
-    ),
-    GuiAction(
-        "apply_update",
-        "Обновить Viu",
-        "Сервис",
-        tool="__update_apply__",
-        hint="Git pull или zip с GitHub + pip",
-    ),
-    GuiAction(
-        "install_deps",
-        "Установить Viu (pip)",
-        "Сервис",
-        tool="__install_deps__",
-        hint="pip install -e . — после zip или первой установки",
+        "update_viu",
+        "Обновить Вью",
+        "Вью",
+        tool="__update_viu__",
+        hint="Проверить → скачать, если можно → pip install. Один раз нажал и забыл.",
     ),
     GuiAction(
         "open_logs",
-        "Папка логов",
-        "Сервис",
+        "Открыть логи",
+        "Вью",
         tool="__open_logs__",
     ),
     GuiAction(
         "clear_chat",
         "Очистить чат",
-        "Сервис",
+        "Вью",
         tool="__clear__",
     ),
 ]
