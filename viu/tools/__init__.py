@@ -24,6 +24,8 @@ from .unity_project_tool import (
     UnityListTool,
     UnityReadTool,
     UnityRunSetupTool,
+    UnityScanAnimationsTool,
+    UnitySyncAnimationsTool,
     UnityVerifyTool,
     UnityWriteTool,
 )
@@ -81,6 +83,8 @@ def build_default_registry() -> ToolRegistry:
         UnityDeploySetupTool(),
         UnityFixManifestTool(),
         UnityRunSetupTool(),
+        UnityScanAnimationsTool(),
+        UnitySyncAnimationsTool(),
         UnityVerifyTool(),
         UnityInitProjectTool(),
     ):

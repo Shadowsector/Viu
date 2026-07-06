@@ -60,6 +60,14 @@ class Config:
     # Путь к Unity.exe для batchmode (опционально).
     unity_exe: str = field(default_factory=lambda: _env("VIU_UNITY_EXE", ""))
 
+    # Автосинк Animations/: batchmode при изменении (Unity должен быть закрыт).
+    unity_auto_sync: bool = field(default_factory=lambda: _env("VIU_UNITY_AUTO_SYNC", "0") == "1")
+
+    # Интервал наблюдателя папки Animations/ (секунды).
+    unity_anim_scan_sec: float = field(
+        default_factory=lambda: float(_env("VIU_ANIM_SCAN_SEC", "300"))
+    )
+
     def ensure_dirs(self) -> "Config":
         """Создаёт служебные каталоги, если их ещё нет."""
         self.data_dir.mkdir(parents=True, exist_ok=True)

@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+using System;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -13,9 +14,8 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaSetup
     {
-        const string ControllerPath = "Assets/Characters/Shanya/Shanya_Idle_Stand.controller";
+        const string ControllerPath = ShanyaAnimationSync.ControllerPath;
         const string ModelNameHint = "Shanya_Erisa";
-        const string IdleNameHint = "Idle";
 
         [MenuItem("Viu/Setup Shanya (Idle)")]
         public static void RunMenu() => Run();
@@ -35,18 +35,24 @@ namespace Viu.Editor
                 return;
             }
 
-            var idlePath = FindIdleClipPath();
+            var idlePath = FindIdleInAnimationsFolder();
             if (string.IsNullOrEmpty(idlePath))
             {
-                Debug.LogError("[Viu] Mixamo Idle не найден (ищу *Idle*). Импортируй X Bot@Idle.fbx.");
-                return;
+                Debug.LogWarning("[Viu] Idle не найден в " + ShanyaAnimationSync.AnimationsFolder +
+                    " — положи X Bot@Idle.fbx туда.");
             }
 
             EnsureHumanoidImport(modelPath);
-            if (!string.IsNullOrEmpty(idlePath) && idlePath != modelPath)
-                EnsureHumanoidImport(idlePath);
+            ShanyaAnimationSync.SyncAll(log: false);
 
-            var controller = BuildController(idlePath);
+            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(
+                ShanyaAnimationSync.ControllerPath);
+            if (controller == null)
+            {
+                Debug.LogError("[Viu] Animator не создан. Положи FBX в " + ShanyaAnimationSync.AnimationsFolder);
+                return;
+            }
+
             var avatar = LoadModelAvatar(modelPath);
             if (avatar == null)
             {
@@ -55,6 +61,7 @@ namespace Viu.Editor
             }
 
             var instance = PlaceCharacterInScene(modelPath, controller, avatar);
+            EnsureLocomotion(instance);
             DisableWgtMeshes(instance);
             ShanyaOutfit.Apply(ShanyaOutfit.Mode.Dressed);
             AssetDatabase.SaveAssets();
@@ -74,19 +81,23 @@ namespace Viu.Editor
             return null;
         }
 
-        static string FindIdleClipPath()
+        static string FindIdleInAnimationsFolder()
         {
-            string best = null;
-            foreach (var guid in AssetDatabase.FindAssets("t:Model"))
+            foreach (var guid in AssetDatabase.FindAssets("t:Model", new[] { ShanyaAnimationSync.AnimationsFolder }))
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase)) continue;
                 var name = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
-                if (name.Contains("idle"))
-                    return path;
-                if (name.Contains("x bot") && best == null)
-                    best = path;
+                if (name.Contains("idle")) return path;
             }
-            return best;
+            return null;
+        }
+
+        static Avatar LoadModelAvatar(string modelPath)
+        {
+            return AssetDatabase.LoadAllAssetsAtPath(modelPath)
+                .OfType<Avatar>()
+                .FirstOrDefault();
         }
 
         static void EnsureHumanoidImport(string assetPath)
@@ -101,62 +112,10 @@ namespace Viu.Editor
             }
         }
 
-        static AnimatorController BuildController(string idleModelPath)
+        static void EnsureLocomotion(GameObject instance)
         {
-            var clip = LoadFirstAnimationClip(idleModelPath);
-            if (clip == null)
-                throw new System.InvalidOperationException("Нет AnimationClip в " + idleModelPath);
-
-            var dir = Path.GetDirectoryName(ControllerPath).Replace('\\', '/');
-            EnsureFolder(dir);
-
-            AnimatorController controller;
-            if (File.Exists(ControllerPath))
-            {
-                controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
-            }
-            else
-            {
-                controller = AnimatorController.CreateAnimatorControllerAtPath(ControllerPath);
-            }
-
-            var layer = controller.layers[0];
-            var sm = layer.stateMachine;
-            foreach (var child in sm.states.ToArray())
-                sm.RemoveState(child.state);
-
-            var state = sm.AddState("Idle");
-            state.motion = clip;
-            sm.defaultState = state;
-
-            EditorUtility.SetDirty(controller);
-            return controller;
-        }
-
-        static void EnsureFolder(string assetPath)
-        {
-            if (AssetDatabase.IsValidFolder(assetPath)) return;
-            var parts = assetPath.Split('/');
-            var current = parts[0];
-            for (int i = 1; i < parts.Length; i++)
-            {
-                var next = current + "/" + parts[i];
-                if (!AssetDatabase.IsValidFolder(next))
-                    AssetDatabase.CreateFolder(current, parts[i]);
-                current = next;
-            }
-        }
-
-        static AnimationClip LoadFirstAnimationClip(string modelPath)
-        {
-            var assets = AssetDatabase.LoadAllAssetsAtPath(modelPath);
-            return assets.OfType<AnimationClip>().FirstOrDefault(c => !c.name.StartsWith("__preview"));
-        }
-
-        static Avatar LoadModelAvatar(string modelPath)
-        {
-            var assets = AssetDatabase.LoadAllAssetsAtPath(modelPath);
-            return assets.OfType<Avatar>().FirstOrDefault();
+            if (instance.GetComponent<Viu.Runtime.ShanyaLocomotion>() == null)
+                instance.AddComponent<Viu.Runtime.ShanyaLocomotion>();
         }
 
         static GameObject PlaceCharacterInScene(string modelPath, RuntimeAnimatorController controller, Avatar avatar)

@@ -9,7 +9,8 @@ from typing import Any, Dict
 from ..integrations.unity.paths import resolve_in_unity_project, unity_project_root
 from ..integrations.unity.setup import (
     batch_setup_command,
-    deploy_editor_scripts,
+    batch_sync_animations_command,
+    deploy_animation_pipeline,
     deploy_shanya_setup,
     find_unity_exe,
     strip_risky_packages,
@@ -101,8 +102,8 @@ class UnityListTool(Tool):
 class UnityDeploySetupTool(Tool):
     name = "unity_deploy_setup"
     description=(
-        "Скопировать Editor-скрипт Viu (ShanyaSetup.cs) в Unity-проект. "
-        "После этого в Unity: меню Viu → Setup Shanya (Idle)"
+        "Скопировать скрипты Viu в Unity: ShanyaSetup, ShanyaAnimationSync, "
+        "ShanyaLocomotion, viu_clips.json. Меню: Viu → Setup Shanya / Sync Animations"
     )
     parameters = {"project_path": "корень проекта (опционально)"}
 
@@ -112,9 +113,10 @@ class UnityDeploySetupTool(Tool):
             return ToolResult(False, f"Не Unity-проект (нет Assets): {root}")
         ok, msg = deploy_shanya_setup(root)
         hint = (
-            "\nДальше: открой Unity → дождись компиляции → "
-            "меню **Viu → Setup Shanya (Idle)**\n"
-            "Или: unity_run_setup (batchmode, Unity закрыт)."
+            "\nДальше: открой Unity → дождись компиляции →\n"
+            "  **Viu → Sync Animations** (скан Animations/) или **Setup Shanya (Idle)**\n"
+            "Положи FBX в Assets/Characters/Shanya/Animations/ — при открытом Unity импорт подхватится сам.\n"
+            "Или: unity_sync_animations / unity_run_setup (batchmode, Unity закрыт)."
         )
         return ToolResult(ok, msg + hint)
 
@@ -230,8 +232,8 @@ class UnityInitProjectTool(Tool):
         parts = []
         ok1, msg1 = strip_risky_packages(root)
         parts.append(f"manifest: {msg1}")
-        ok2, msg2 = deploy_editor_scripts(root)
-        parts.append(f"editor: {msg2}")
+        ok2, msg2 = deploy_animation_pipeline(root)
+        parts.append(f"pipeline: {msg2}")
         ctx.memory.add(
             f"Unity Шани: проект={root}, LTS 6.3, Humanoid Create From This Model, "
             "Avatar Shanya_ErisaAvatar, без Input System в manifest."
@@ -240,9 +242,77 @@ class UnityInitProjectTool(Tool):
         parts.append(
             "\nДальше:\n"
             "1. Открой Unity, импортируй FBX в Assets/Characters/Shanya/\n"
-            "2. Модель → Rig → Humanoid → Configure → Apply\n"
-            "3. Viu → Setup Shanya (Idle) или unity_run_setup\n"
-            "4. unity_verify"
+            "2. Анимации (Idle, Walk…) — в Assets/Characters/Shanya/Animations/\n"
+            "3. Модель → Rig → Humanoid → Configure → Apply\n"
+            "4. Viu → Sync Animations или unity_sync_animations\n"
+            "5. Viu → Setup Shanya (Idle) или unity_run_setup\n"
+            "6. unity_verify"
         )
         return ToolResult(ok1 and ok2, "\n".join(parts))
 
+
+class UnityScanAnimationsTool(Tool):
+    name = "unity_scan_animations"
+    description = (
+        "Скан папки Assets/Characters/Shanya/Animations/: классификация FBX "
+        "(Idle/Walk/Run…), Humanoid, непонятные имена → ask_user / viu_clips.json"
+    )
+    parameters = {"project_path": "корень проекта (опционально)"}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.unity.animation_scan import scan_animations_folder
+
+        root = _root(ctx, args)
+        if not (root / "Assets").is_dir():
+            return ToolResult(False, f"Не Unity-проект: {root}")
+        scan = scan_animations_folder(root)
+        ok = bool(scan.clips) and not scan.questions
+        return ToolResult(ok, scan.render())
+
+
+class UnitySyncAnimationsTool(Tool):
+    name = "unity_sync_animations"
+    description = (
+        "Deploy скриптов + Unity batchmode: ShanyaAnimationSync — Humanoid, "
+        "Animator Controller из Animations/*.fbx. Unity Editor должен быть **закрыт**."
+    )
+    parameters = {
+        "project_path": "корень проекта (опционально)",
+        "timeout": "таймаут секунд (по умолчанию 600)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        root = _root(ctx, args)
+        if not (root / "Assets").is_dir():
+            return ToolResult(False, f"Не Unity-проект: {root}")
+        ok, msg = deploy_animation_pipeline(root)
+        if not ok:
+            return ToolResult(False, msg)
+        exe = find_unity_exe(ctx.config.unity_exe)
+        if exe is None:
+            return ToolResult(
+                False,
+                "Unity.exe не найден. Задай VIU_UNITY_EXE или открой Unity → "
+                "меню Viu → Sync Animations (scan folder).",
+            )
+        cmd = batch_sync_animations_command(root, exe)
+        timeout = float(args.get("timeout") or 600)
+        try:
+            proc = subprocess.run(
+                cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=str(root),
+            )
+        except subprocess.TimeoutExpired:
+            return ToolResult(False, f"Таймаут {timeout}s. Смотри {root / 'viu_anim_sync.log'}")
+        log_path = root / "viu_anim_sync.log"
+        tail = ""
+        if log_path.is_file():
+            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            tail = "\n".join(lines[-30:])
+        ok_run = proc.returncode == 0
+        body = f"{msg}\n\nexit={proc.returncode}\n{tail or proc.stderr or proc.stdout or '(нет вывода)'}"
+        return ToolResult(ok_run, body)

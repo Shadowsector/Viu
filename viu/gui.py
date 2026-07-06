@@ -24,6 +24,7 @@ from tkinter import messagebox, scrolledtext, ttk
 
 from .agent import Agent
 from .config import Config
+from .integrations.unity.watcher import AnimationFolderWatcher
 
 _ICON = Path(__file__).resolve().parent.parent / "assets" / "viu_icon.ico"
 _NAV_KEYS = {"Left", "Right", "Up", "Down", "Home", "End", "Prior", "Next", "Shift_L", "Shift_R"}
@@ -42,7 +43,27 @@ class ViuGUI:
 
         self._build_ui()
         self._append("система", f"Вью готова. Модель: {self.agent.llm.name}. Лог: {self.log_path}")
+        self._start_anim_watcher()
         self.root.after(100, self._poll_queue)
+
+    def _start_anim_watcher(self) -> None:
+        """Фоновый скан Animations/ — уведомления в окно чата."""
+        cfg = self.agent.config
+        if not cfg.unity_project:
+            return
+        interval = cfg.unity_anim_scan_sec
+        self._anim_watcher = AnimationFolderWatcher(
+            cfg,
+            interval_sec=interval,
+            on_notify=lambda msg: self._queue.put(("step", f"[анимации] {msg}")),
+        )
+        self._anim_watcher.start()
+        self._append(
+            "система",
+            f"Автоскан Animations/ каждые {int(interval)}с "
+            f"(VIU_ANIM_SCAN_SEC, проект: {cfg.unity_project})",
+            tag="sys",
+        )
 
     # ---------- построение интерфейса ----------
 

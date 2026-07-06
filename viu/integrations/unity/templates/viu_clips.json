@@ -1,0 +1,6 @@
+{
+  "comment": "Переименование непонятных FBX: file → состояние Animator",
+  "overrides": [
+    { "file": "Take 001.fbx", "state": "Walk" }
+  ]
+}

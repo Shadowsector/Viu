@@ -96,7 +96,38 @@ check_unity.bat
 
 > «Сделай unity_report и скажи, почему не работает Play»
 
-Инструменты: `unity_log`, `unity_scan`, `unity_workflow`, `unity_report`.
+Инструменты: `unity_log`, `unity_scan`, `unity_workflow`, `unity_report`, `unity_scan_animations`, `unity_sync_animations`.
+
+## Автоскан анимаций (новое)
+
+Папка для клипов:
+
+```
+Assets/Characters/Shanya/Animations/
+  X Bot@Idle.fbx
+  X Bot@Walking.fbx
+  Shanya_Idle_Stand.controller   ← создаётся автоматически
+  viu_clips.json                 ← опционально, для непонятных имён
+```
+
+### Как работает
+
+1. **`unity_deploy_setup`** или **`unity_init_project`** — копирует `ShanyaAnimationSync.cs`, `ShanyaLocomotion.cs`, `viu_clips.json`.
+2. Кладёшь FBX в `Animations/` → если Unity **открыт**, `AssetPostprocessor` вызывает **Viu → Sync Animations** автоматически.
+3. Если Unity **закрыт** — **`unity_sync_animations`** (batchmode) или `VIU_UNITY_AUTO_SYNC=1` + watcher в GUI.
+4. Имена: `Idle`, `Walk`, `Run` в имени файла; иначе — запись в `viu_clips.json`:
+   ```json
+   { "overrides": [{ "file": "Take 001.fbx", "state": "Walk" }] }
+   ```
+5. На персонаже: **ShanyaLocomotion** (A/D → параметр `Speed`, Idle ↔ Walk). **Setup Shanya** добавляет его сам.
+
+### Переменные окружения
+
+| Переменная | По умолчанию | Назначение |
+|------------|--------------|------------|
+| `VIU_UNITY_PROJECT` | — | Корень Unity-проекта |
+| `VIU_ANIM_SCAN_SEC` | `300` | Интервал фонового скана в GUI |
+| `VIU_UNITY_AUTO_SYNC` | `0` | `1` = batch sync при новых FBX (Unity закрыт) |
 
 ## Play не работает — чеклист
 

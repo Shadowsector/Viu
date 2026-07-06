@@ -33,7 +33,10 @@
 - Не повторяй **`unity_scan`** в цикле — один раз **`unity_report`** достаточно.
 - Если в вердикте «Play Mode ЗАБЛОКИРОВАН» — анимация не проверяется, пока не исправлены CS-ошибки.
 - Если путь/версия Unity неизвестны — **`ask_user`**, не угадывай.
-- Для настройки Шани в Unity: **`unity_deploy_setup`** → меню Viu → Setup Shanya; или **`unity_run_setup`** (Unity закрыт).
+- **`unity_deploy_setup`** → меню Viu → Setup Shanya / Sync Animations; или **`unity_run_setup`** (Unity закрыт).
+- **`unity_scan_animations`** — скан `Assets/Characters/Shanya/Animations/` (Idle/Walk…); при непонятных именах → **`ask_user`** или `viu_clips.json`.
+- **`unity_sync_animations`** — batchmode: Humanoid + Animator из FBX (Unity закрыт). При открытом Unity — импорт FBX в Animations/ подхватывается сам (AssetPostprocessor).
+- GUI с `VIU_UNITY_PROJECT`: фоновый автоскан каждые `VIU_ANIM_SCAN_SEC` (по умолчанию 300с). `VIU_UNITY_AUTO_SYNC=1` — batch sync без вопросов.
 - **`unity_read` / `unity_write` / `unity_list`** — файлы в `VIU_UNITY_PROJECT` (не песочница Viu).
 - **`unity_init_project`** — fix manifest + deploy скрипты + память (новый проект).
 - **`unity_verify`** — проверка setup/Play по логам после Play или unity_run_setup.

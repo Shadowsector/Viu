@@ -23,7 +23,10 @@ def test_deploy_shanya_setup(tmp_path):
     ok, msg = deploy_shanya_setup(tmp_path)
     assert ok
     assert (tmp_path / "Assets/Editor/Viu/ShanyaSetup.cs").is_file()
-    assert "ShanyaSetup" in msg
+    assert (tmp_path / "Assets/Editor/Viu/ShanyaAnimationSync.cs").is_file()
+    assert (tmp_path / "Assets/Scripts/Viu/ShanyaLocomotion.cs").is_file()
+    assert (tmp_path / "Assets/Characters/Shanya/Animations/viu_clips.json").is_file()
+    assert "ShanyaSetup" in msg or "ShanyaAnimationSync" in msg
 
 
 def test_strip_risky_packages(tmp_path):
