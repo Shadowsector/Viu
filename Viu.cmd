@@ -37,7 +37,7 @@ python --version
 
 echo.
 echo [2/3] Установка пакета Viu ^(pip install -e .^)...
-python -m pip install -e "%~dp0" -q
+python -m pip install -e . -q
 if errorlevel 1 (
   echo [ОШИБКА] pip install не удался.
   goto :fail

@@ -25,7 +25,7 @@ python -c "import sys; sys.path.insert(0, r'%~dp0'); import viu; print('viu OK',
 
 echo.
 echo --- pip install -e . ---
-python -m pip install -e "%~dp0" 2>&1
+python -m pip install -e . 2>&1
 
 echo.
 echo --- run_gui ---
