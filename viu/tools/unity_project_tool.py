@@ -182,12 +182,25 @@ class UnityRunSetupTool(Tool):
         except subprocess.TimeoutExpired:
             return ToolResult(False, f"Таймаут {timeout}s. Смотри {root / 'viu_setup.log'}")
         log_path = root / "viu_setup.log"
+        viu_lines: list[str] = []
         tail = ""
         if log_path.is_file():
             lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-            tail = "\n".join(lines[-30:])
+            tail = "\n".join(lines[-40:])
+            # Ключевые строки Viu/ошибки — чтобы сразу видеть причину.
+            viu_lines = [
+                ln for ln in lines
+                if "[Viu]" in ln or "error CS" in ln or "Exception" in ln
+            ][-15:]
         ok_run = proc.returncode == 0
-        body = f"exit={proc.returncode}\n{tail or proc.stderr or proc.stdout or '(нет вывода)'}"
+        head = "Настройка прошла." if ok_run else "Настройка не удалась."
+        important = ("\nГлавное:\n" + "\n".join(viu_lines)) if viu_lines else ""
+        hint = (
+            "\nСцена сохранена в Assets/Scenes/GameTest.unity — открой её и нажми Play."
+            if ok_run
+            else "\nПришли мне viu_setup.log (кнопка «Отправить логи разработчику»)."
+        )
+        body = f"{head} exit={proc.returncode}{important}{hint}\n\n--- хвост лога ---\n{tail or proc.stderr or '(нет вывода)'}"
         return ToolResult(ok_run, body)
 
 
@@ -356,11 +369,18 @@ class UnityOpenTool(Tool):
             subprocess.Popen(cmd, **kwargs)  # noqa: S603 — запуск без ожидания
         except OSError as exc:
             return ToolResult(False, f"Не удалось запустить Unity: {exc}")
+        scene = root / "Assets" / "Scenes" / "GameTest.unity"
+        scene_hint = (
+            "Открой сцену Assets/Scenes/GameTest.unity (двойной клик в панели Project) — "
+            "в ней уже стоит Шаня."
+            if scene.is_file()
+            else "Помести Шаню в сцену через меню Viu → Setup Shanya (Idle)."
+        )
         return ToolResult(
             True,
             f"Открываю Unity ({exe.name}) с проектом {root.name}. "
-            "Запуск занимает 30–90 секунд. Когда откроется: помести Шаню в сцену "
-            "(меню Viu → Setup Shanya (Idle)), затем нажми ▶ Play и проверь Idle↔Walk на A/D.",
+            f"Запуск занимает 30–90 секунд. Когда откроется: {scene_hint} "
+            "Затем нажми ▶ Play и проверь Idle↔Walk на A/D.",
         )
 
 

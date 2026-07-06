@@ -19,16 +19,33 @@ namespace Viu.Editor
         const string ControllerPath = ShanyaAnimationSync.ControllerPath;
         const string ModelNameHint = "Shanya_Erisa";
 
+        const string ScenePath = "Assets/Scenes/GameTest.unity";
+
         [MenuItem("Viu/Setup Shanya (Idle)")]
-        public static void RunMenu() => Run();
+        public static void RunMenu() => Run(null);
 
         public static void RunBatch()
         {
-            Run();
-            EditorApplication.Exit(0);
+            int code = 0;
+            try
+            {
+                // В пакетном режиме готовим отдельную сцену GameTest, чтобы результат
+                // было видно при открытии редактора, а не пустой Untitled.
+                if (File.Exists(ScenePath))
+                    EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+                else
+                    EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+                Run(ScenePath);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[Viu] Setup (batch) не удался: " + e.Message + "\n" + e.StackTrace);
+                code = 1;
+            }
+            EditorApplication.Exit(code);
         }
 
-        public static void Run()
+        public static void Run(string saveScenePath)
         {
             var modelPath = FindModelPath();
             if (string.IsNullOrEmpty(modelPath))
@@ -65,30 +82,30 @@ namespace Viu.Editor
             var instance = PlaceCharacterInScene(modelPath, controller, avatar);
             EnsureLocomotion(instance);
             DisableWgtMeshes(instance);
-            ShanyaOutfit.Apply(ShanyaOutfit.Mode.Dressed);
+            try { ShanyaOutfit.Apply(ShanyaOutfit.Mode.Dressed); }
+            catch (Exception e) { Debug.LogWarning("[Viu] Outfit пропущен: " + e.Message); }
             AssetDatabase.SaveAssets();
-            SaveActiveScene();
+            SaveActiveScene(saveScenePath);
             Debug.Log("[Viu] Setup готов: " + instance.name + " + " + controller.name +
-                ". Открой сцену и нажми Play.");
+                ". Сцена: " + (saveScenePath ?? "текущая") + ". Открой её и нажми Play.");
         }
 
-        static void SaveActiveScene()
+        static void SaveActiveScene(string saveScenePath)
         {
             var scene = SceneManager.GetActiveScene();
             EditorSceneManager.MarkSceneDirty(scene);
-            if (string.IsNullOrEmpty(scene.path))
-            {
-                if (!AssetDatabase.IsValidFolder("Assets/Scenes"))
-                    AssetDatabase.CreateFolder("Assets", "Scenes");
-                var path = "Assets/Scenes/GameTest.unity";
-                EditorSceneManager.SaveScene(scene, path);
-                Debug.Log("[Viu] Сцена сохранена: " + path);
-            }
-            else
-            {
-                EditorSceneManager.SaveScene(scene);
-                Debug.Log("[Viu] Сцена сохранена: " + scene.path);
-            }
+            var path = saveScenePath;
+            if (string.IsNullOrEmpty(path))
+                path = scene.path;
+            if (string.IsNullOrEmpty(path))
+                path = ScenePath;
+
+            var dir = Path.GetDirectoryName(path).Replace('\\', '/');
+            if (!string.IsNullOrEmpty(dir) && !AssetDatabase.IsValidFolder(dir))
+                AssetDatabase.CreateFolder("Assets", "Scenes");
+
+            EditorSceneManager.SaveScene(scene, path);
+            Debug.Log("[Viu] Сцена сохранена: " + path);
         }
 
         static string FindModelPath()
