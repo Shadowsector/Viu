@@ -62,6 +62,21 @@ pip install -e ".[dev]"   # + pytest для разработки
 Старые `check_unity.bat`, `setup_shanya.bat` и т.д. только открывают то же окно.
 См. [`scripts/README.md`](./scripts/README.md).
 
+### Не git? (скачал zip)
+
+```bat
+cd /d U:\Viu
+update_viu.bat
+```
+
+Или в окне Viu: **Обновить Viu** → **Установить Viu (pip)** → `start_viu.bat`.
+
+Чтобы потом обновляться одной командой `git pull`:
+
+```bat
+git clone -b cursor/viu-agent-core-65c2 https://github.com/Shadowsector/Viu.git U:\Viu-new
+```
+
 ### Не открывается окно (мелькнул чёрный экран)
 
 1. Запусти **`start_viu.bat`** ещё раз — теперь при ошибке окно **останется** с текстом.

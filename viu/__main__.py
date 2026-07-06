@@ -139,6 +139,30 @@ def cmd_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_update(args: argparse.Namespace) -> int:
+    """Обновление Viu: git pull или zip с GitHub."""
+    from .updater import apply_update_smart, check_for_update, find_git_root, install_package
+
+    config = Config()
+    branch = config.update_branch
+    if getattr(args, "apply", False):
+        result = apply_update_smart(branch=branch)
+        if result.updated:
+            ok, pip_msg = install_package()
+            print(result.message)
+            print(pip_msg if ok else f"WARN: {pip_msg}")
+        else:
+            print(result.message)
+        return 0 if result.ok else 1
+    result = check_for_update(branch=branch)
+    print(result.message)
+    if result.behind:
+        print(f"Коммитов позади: {result.behind}")
+    if not find_git_root() and result.has_updates:
+        print("Применить: python -m viu update --apply")
+    return 0 if result.ok else 1
+
+
 def cmd_config(args: argparse.Namespace) -> int:
     print(Config().summary())
     return 0
@@ -164,6 +188,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("tools", help="список инструментов").set_defaults(func=cmd_tools)
     sub.add_parser("memory", help="показать память").set_defaults(func=cmd_memory)
     sub.add_parser("plan", help="показать план").set_defaults(func=cmd_plan)
+    p_up = sub.add_parser("update", help="проверить/скачать обновление Viu")
+    p_up.add_argument("--apply", action="store_true", help="скачать и применить (git или zip)")
+    p_up.set_defaults(func=cmd_update)
     sub.add_parser("config", help="показать конфигурацию").set_defaults(func=cmd_config)
     return parser
 

@@ -23,8 +23,17 @@ from tkinter import messagebox, scrolledtext, ttk
 from .agent import Agent
 from .config import Config
 from .gui_actions import ACTION_GROUPS, GuiAction, actions_by_group
+from .health import ollama_available
 from .integrations.unity.watcher import AnimationFolderWatcher
-from .updater import auto_update_on_start, find_git_root, version_label
+from .runtime_settings import get_update_interval_min
+from .updater import (
+    apply_update_smart,
+    auto_update_on_start,
+    check_for_update,
+    find_git_root,
+    install_package,
+    version_label,
+)
 
 _ICON = Path(__file__).resolve().parent.parent / "assets" / "viu_icon.ico"
 _NAV_KEYS = {"Left", "Right", "Up", "Down", "Home", "End", "Prior", "Next", "Shift_L", "Shift_R"}
@@ -37,6 +46,7 @@ class ViuGUI:
         self._queue: queue.Queue = queue.Queue()
         self._busy = False
         self._action_buttons: list[ttk.Button] = []
+        self._auto_update_job: str | None = None
 
         stamp = time.strftime("%Y%m%d_%H%M%S")
         self.log_path = self.agent.config.data_dir / "logs" / f"chat_{stamp}.txt"
@@ -47,7 +57,9 @@ class ViuGUI:
         self._append("система", f"Лог: {self.log_path}", tag="sys")
         self._start_anim_watcher()
         self.root.after(100, self._poll_queue)
-        self.root.after(300, self._check_updates_async)
+        self.root.after(300, self._check_updates_on_start)
+        self._refresh_status()
+        self._schedule_auto_update()
 
     # ---------- UI ----------
 
@@ -63,6 +75,7 @@ class ViuGUI:
             pass
 
         self._build_menu()
+        self._build_top_status()
 
         body = ttk.Frame(self.root)
         body.pack(fill="both", expand=True)
@@ -77,6 +90,45 @@ class ViuGUI:
             text=f"Провайдер: {self.agent.llm.name}",
         )
         self.status.pack(fill="x", side="bottom")
+
+    def _build_top_status(self) -> None:
+        """Строка статуса как у Mia: Ollama, Unity, версия."""
+        bar = ttk.Frame(self.root)
+        bar.pack(fill="x", padx=8, pady=(6, 0))
+        self.top_status_var = tk.StringVar(value="…")
+        ttk.Label(bar, textvariable=self.top_status_var, font=("Segoe UI", 9)).pack(
+            side="left", anchor="w"
+        )
+
+    def _refresh_status(self) -> None:
+        cfg = self.agent.config
+
+        def compute() -> str:
+            ollama = "Ollama ✓" if ollama_available(cfg.base_url) else "Ollama ✗"
+            unity = Path(cfg.unity_project).name if cfg.unity_project else "Unity —"
+            git = "git" if find_git_root() else "zip"
+            return (
+                f"{ollama}  |  {unity}  |  {version_label()} ({git})  |  "
+                f"Модель: {self.agent.llm.name}"
+            )
+
+        self._run_bg(compute, self._set_top_status)
+        self.root.after(5000, self._refresh_status)
+
+    def _set_top_status(self, result) -> None:
+        if isinstance(result, Exception):
+            return
+        self.top_status_var.set(result)
+
+    def _run_bg(self, func, on_done) -> None:
+        def worker() -> None:
+            try:
+                result = func()
+            except Exception as exc:  # noqa: BLE001
+                result = exc
+            self.root.after(0, lambda: on_done(result))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _build_sidebar(self, parent: ttk.Frame) -> None:
         frame = ttk.Frame(parent, width=220)
@@ -172,7 +224,9 @@ class ViuGUI:
         menubar = tk.Menu(self.root)
 
         m_file = tk.Menu(menubar, tearoff=0)
-        m_file.add_command(label="Проверить обновления", command=self._check_updates_async)
+        m_file.add_command(label="Проверить обновления", command=lambda: self._check_updates_async(force=True))
+        m_file.add_command(label="Обновить Viu сейчас", command=self._apply_update_confirmed)
+        m_file.add_command(label="pip install -e .", command=self._install_deps)
         m_file.add_command(label="Перезапустить Вью", command=self._restart)
         m_file.add_separator()
         m_file.add_command(label="Открыть папку логов", command=self._open_log_dir)
@@ -297,8 +351,14 @@ class ViuGUI:
         if action.tool == "__open_logs__":
             self._open_log_dir()
             return
-        if action.tool == "__update__":
-            self._check_updates_async(force=True)
+        if action.tool == "__update_check__":
+            self._check_updates_async(force=True, apply=False)
+            return
+        if action.tool == "__update_apply__":
+            self._apply_update_confirmed()
+            return
+        if action.tool == "__install_deps__":
+            self._install_deps()
             return
         if action.tool:
             self._run_tool(action.tool, action.tool_args, label=action.label)
@@ -407,34 +467,115 @@ class ViuGUI:
             tag="sys",
         )
 
-    def _check_updates_async(self, force: bool = False) -> None:
-        if self._busy and not force:
-            return
+    def _check_updates_async(self, force: bool = False, apply: bool = False) -> None:
         auto = os.environ.get("VIU_AUTO_UPDATE", "1") == "1"
-        if not auto and not force:
+        if not auto and not force and not apply:
+            return
+        if apply:
+            self._apply_update_confirmed()
             return
         self._append("система", "Проверка обновлений…", tag="sys")
 
         def work():
-            try:
-                branch = self.agent.config.update_branch
-                result = auto_update_on_start(branch=branch)
-                lines = [result.message]
-                if result.local_ref:
-                    lines.append(f"Локально: {result.local_ref}")
-                if result.remote_ref and result.remote_ref != result.local_ref:
-                    lines.append(f"На сервере: {result.remote_ref}")
-                self._queue.put(("sys", "\n".join(lines)))
-                if result.updated:
-                    self._queue.put(("sys", "Обновлено. Перезапуск через секунду…"))
-                    self._queue.put(("update_done", "restart"))
-                else:
-                    self._queue.put(("update_done", "ok"))
-            except Exception as exc:  # noqa: BLE001
-                self._queue.put(("error", f"Обновление: {exc}"))
-                self._queue.put(("update_done", "ok"))
+            branch = self.agent.config.update_branch
+            return check_for_update(branch=branch)
 
-        threading.Thread(target=work, daemon=True).start()
+        def done(result):
+            if isinstance(result, Exception):
+                self._append("ошибка", str(result), tag="err")
+                return
+            lines = [result.message]
+            if result.behind:
+                lines.append(f"Отстаём на {result.behind} коммит(ов).")
+            if result.has_updates and not find_git_root():
+                lines.append("Нажми «Обновить Viu» или запусти update_viu.bat")
+            self._append("система", "\n".join(lines), tag="sys")
+
+        self._run_bg(work, done)
+
+    def _apply_update_confirmed(self) -> None:
+        if not messagebox.askyesno(
+            "Обновление Viu",
+            "Скачать/применить последнюю версию с GitHub?\n"
+            "(без git — zip поверх папки; .viu не трогаем)",
+        ):
+            return
+        self._append("система", "Обновление…", tag="sys")
+        self._set_busy(True)
+
+        def work():
+            branch = self.agent.config.update_branch
+            hard = os.environ.get("VIU_UPDATE_RESET", "0") == "1"
+            result = apply_update_smart(branch=branch, hard_reset=hard)
+            if result.updated:
+                ok, pip_msg = install_package()
+                result.message += f"\n{pip_msg}" if ok else f"\n⚠ {pip_msg}"
+            return result
+
+        def done(result):
+            self._set_busy(False)
+            if isinstance(result, Exception):
+                self._append("ошибка", str(result), tag="err")
+                return
+            self._append("система", result.message, tag="sys")
+            if result.updated:
+                self._append("система", "Перезапуск через 2 с…", tag="sys")
+                self.root.after(2000, self._restart)
+
+        self._run_bg(work, done)
+
+    def _install_deps(self) -> None:
+        self._append("система", "pip install -e . …", tag="sys")
+        self._set_busy(True)
+
+        def work():
+            return install_package()
+
+        def done(result):
+            self._set_busy(False)
+            if isinstance(result, Exception):
+                self._append("ошибка", str(result), tag="err")
+                return
+            ok, msg = result
+            self._append("система", msg, tag="sys" if ok else "err")
+
+        self._run_bg(work, done)
+
+    def _schedule_auto_update(self) -> None:
+        if self._auto_update_job:
+            self.root.after_cancel(self._auto_update_job)
+            self._auto_update_job = None
+        minutes = get_update_interval_min(self.agent.config)
+        if minutes <= 0:
+            return
+
+        def tick():
+            self._check_updates_async(force=True, apply=False)
+            self._auto_update_job = self.root.after(minutes * 60_000, tick)
+
+        self._auto_update_job = self.root.after(minutes * 60_000, tick)
+
+    def _check_updates_on_start(self) -> None:
+        """Тихая проверка при старте (только git, без zip)."""
+        if os.environ.get("VIU_AUTO_UPDATE", "1") != "1":
+            return
+        self._append("система", "Проверка обновлений…", tag="sys")
+
+        def work():
+            return auto_update_on_start(
+                branch=self.agent.config.update_branch,
+                allow_zip=False,
+            )
+
+        def done(result):
+            if isinstance(result, Exception):
+                return
+            self._append("система", result.message, tag="sys")
+            if result.updated:
+                self._append("система", "Перезапуск…", tag="sys")
+                self.root.after(1500, self._restart)
+
+        self._run_bg(work, done)
 
     def _restart(self) -> None:
         root = find_git_root()
