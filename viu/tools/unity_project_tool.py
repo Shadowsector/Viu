@@ -15,6 +15,7 @@ from ..integrations.unity.setup import (
     deploy_animation_pipeline,
     deploy_shanya_setup,
     find_unity_exe,
+    open_editor_command,
     strip_risky_packages,
 )
 from ..integrations.unity.verify import verify_unity_project
@@ -318,6 +319,49 @@ class UnitySyncAnimationsTool(Tool):
         ok_run = proc.returncode == 0
         body = f"{msg}\n\nexit={proc.returncode}\n{tail or proc.stderr or proc.stdout or '(нет вывода)'}"
         return ToolResult(ok_run, body)
+
+
+class UnityOpenTool(Tool):
+    name = "unity_open"
+    description = (
+        "Открыть Unity Editor (обычное окно) с проектом Анабарра, чтобы можно было "
+        "настроить сцену и нажать Play. Безопасно — движок просто запускается."
+    )
+    parameters = {"project_path": "корень Unity-проекта (опционально)"}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        root = _root(ctx, args)
+        if not (root / "Assets").is_dir():
+            return ToolResult(False, f"Не Unity-проект: {root}")
+        exe = find_unity_exe(ctx.config.unity_exe)
+        if exe is None:
+            return ToolResult(
+                False,
+                "Unity.exe не найден. Задай VIU_UNITY_EXE=путь\\к\\Unity.exe "
+                "или открой проект вручную через Unity Hub.",
+            )
+        # Если рядом лежит lock-файл, редактор, скорее всего, уже открыт.
+        lock = root / "Temp" / "UnityLockfile"
+        if lock.is_file():
+            return ToolResult(
+                True,
+                "Unity, похоже, уже открыт с этим проектом (есть Temp/UnityLockfile). "
+                "Переключись на его окно. Если нет — удали Temp/UnityLockfile и повтори.",
+            )
+        cmd = open_editor_command(root, exe)
+        try:
+            kwargs: Dict[str, Any] = {"cwd": str(root)}
+            if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+                kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            subprocess.Popen(cmd, **kwargs)  # noqa: S603 — запуск без ожидания
+        except OSError as exc:
+            return ToolResult(False, f"Не удалось запустить Unity: {exc}")
+        return ToolResult(
+            True,
+            f"Открываю Unity ({exe.name}) с проектом {root.name}. "
+            "Запуск занимает 30–90 секунд. Когда откроется: помести Шаню в сцену "
+            "(меню Viu → Setup Shanya (Idle)), затем нажми ▶ Play и проверь Idle↔Walk на A/D.",
+        )
 
 
 class UnityImportStagingTool(Tool):

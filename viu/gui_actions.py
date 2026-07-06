@@ -78,6 +78,13 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Скрипты Вью + Animator. Перед нажатием закрой Unity.",
     ),
     GuiAction(
+        "unity_open",
+        "Открыть Unity",
+        "Unity",
+        tool="unity_open",
+        hint="Запустить редактор Unity с проектом, чтобы настроить сцену и нажать Play.",
+    ),
+    GuiAction(
         "unity_diagnose",
         "Что не так с Unity?",
         "Unity",

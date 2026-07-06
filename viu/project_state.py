@@ -69,9 +69,10 @@ def next_step(config: Config) -> str:
                 "(unity_sync_animations) — выставит Humanoid и соберёт Animator."
             )
         return (
-            f"Фокус: «{focus.title}». Idle и Walk на месте и Humanoid. "
-            "Действие: «Записать в Unity», затем в Unity нажать Play и проверить "
-            "переход Idle↔Walk на A/D. После проверки — отметить веху 4 как done."
+            f"Фокус: «{focus.title}». Idle и Walk на месте и Humanoid, Animator собран. "
+            "Действие: открой Unity (unity_open), помести Шаню в сцену "
+            "(Viu → Setup Shanya) и нажми Play — проверь Idle↔Walk на A/D. "
+            "После проверки отметь веху 4 как done (roadmap_update)."
         )
 
     return (

@@ -29,6 +29,7 @@ from .unity_project_tool import (
     UnityInitProjectTool,
     UnityImportStagingTool,
     UnityListTool,
+    UnityOpenTool,
     UnityReadTool,
     UnityRunSetupTool,
     UnityScanAnimationsTool,
@@ -97,6 +98,7 @@ def build_default_registry() -> ToolRegistry:
         UnityScanAnimationsTool(),
         UnitySyncAnimationsTool(),
         UnityImportStagingTool(),
+        UnityOpenTool(),
         UnityVerifyTool(),
         UnityInitProjectTool(),
     ):

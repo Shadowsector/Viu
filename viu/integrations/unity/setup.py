@@ -137,3 +137,8 @@ def batch_sync_animations_command(project_root: Path, unity_exe: Path) -> str:
         f'-executeMethod Viu.Editor.ShanyaAnimationSync.RunBatch '
         f'-logFile "{proj}/viu_anim_sync.log"'
     )
+
+
+def open_editor_command(project_root: Path, unity_exe: Path) -> list[str]:
+    """Аргументы для запуска обычного (GUI) редактора Unity с проектом."""
+    return [str(unity_exe.resolve()), "-projectPath", str(project_root.resolve())]
