@@ -29,6 +29,14 @@ def test_deploy_shanya_setup(tmp_path):
     assert "ShanyaSetup" in msg or "ShanyaAnimationSync" in msg
 
 
+def test_locomotion_supports_input_system():
+    src = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates/ShanyaLocomotion.cs"
+    text = src.read_text(encoding="utf-8")
+    assert "ENABLE_INPUT_SYSTEM" in text
+    assert "Keyboard.current" in text
+    assert "ReadHorizontal" in text
+
+
 def test_strip_risky_packages(tmp_path):
     pkg = tmp_path / "Packages"
     pkg.mkdir()
