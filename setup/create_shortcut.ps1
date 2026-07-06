@@ -3,7 +3,8 @@
 # Unicode code points, so the script never depends on file encoding.
 
 $desktop = [Environment]::GetFolderPath('Desktop')
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Script lives in setup/ — the project root is one level up.
+$root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
 # Shortcut name = U+0412 U+044C U+044E (assembled without literal Cyrillic).
 $name = -join ([char]0x0412, [char]0x044C, [char]0x044E)

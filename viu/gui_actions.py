@@ -101,6 +101,13 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Проверить → скачать, если можно → pip install. Один раз нажал и забыл.",
     ),
     GuiAction(
+        "send_logs",
+        "Отправить логи разработчику",
+        "Вью",
+        tool="__collect_logs__",
+        hint="Соберу логи в один файл. С токеном — сама залью на GitHub, иначе покажу файл.",
+    ),
+    GuiAction(
         "open_logs",
         "Открыть логи",
         "Вью",

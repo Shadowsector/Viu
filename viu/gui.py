@@ -353,6 +353,9 @@ class ViuGUI:
         if action.tool == "__update_viu__":
             self._update_viu_full()
             return
+        if action.tool == "__collect_logs__":
+            self._collect_logs()
+            return
         if action.is_chain:
             self._run_tool_chain(action)
             return
@@ -397,6 +400,35 @@ class ViuGUI:
             self._queue.put(("tool", f"[{action.label}] {prefix}\n\n" + "\n\n".join(parts)))
         except Exception as exc:  # noqa: BLE001
             self._queue.put(("error", f"{action.label}: {exc}"))
+
+    def _collect_logs(self) -> None:
+        self._append("ты", "[Отправить логи разработчику]")
+        self._set_busy(True)
+
+        def work():
+            from .support import collect_support_bundle, upload_bundle_to_gist
+
+            bundle = collect_support_bundle(self.agent.config)
+            ok, msg = upload_bundle_to_gist(bundle, description="Viu logs — Анабарра")
+            return bundle, ok, msg
+
+        def done(result):
+            self._set_busy(False)
+            if isinstance(result, Exception):
+                self._append("ошибка", str(result), tag="err")
+                return
+            bundle, ok, msg = result
+            self._append("Вью", f"Логи собраны: {bundle}\n{msg}", tag="tool")
+            try:
+                folder = str(Path(bundle).parent)
+                if os.name == "nt":
+                    os.startfile(folder)  # type: ignore[attr-defined]
+                else:
+                    subprocess.Popen(["xdg-open", folder])
+            except OSError:
+                pass
+
+        self._run_bg(work, done)
 
     def _update_viu_full(self) -> None:
         self._append("ты", "[Обновить Вью]")
@@ -530,7 +562,7 @@ class ViuGUI:
             if result.behind:
                 lines.append(f"Отстаём на {result.behind} коммит(ов).")
             if result.has_updates and not find_git_root():
-                lines.append("Нажми «Обновить Viu» или запусти update_viu.bat")
+                lines.append("Нажми кнопку «Обновить Вью».")
             self._append("система", "\n".join(lines), tag="sys")
 
         self._run_bg(work, done)
