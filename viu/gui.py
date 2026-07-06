@@ -564,7 +564,7 @@ class ViuGUI:
         def work():
             return auto_update_on_start(
                 branch=self.agent.config.update_branch,
-                allow_zip=False,
+                allow_zip=True,
             )
 
         def done(result):

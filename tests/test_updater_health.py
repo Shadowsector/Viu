@@ -16,10 +16,15 @@ def test_check_for_update_no_git(tmp_path, monkeypatch):
     from viu import updater
 
     monkeypatch.setattr(updater, "find_git_root", lambda start=None: None)
+    monkeypatch.setattr(
+        updater,
+        "remote_sha_github",
+        lambda repo=updater.DEFAULT_REPO, branch=updater.DEFAULT_BRANCH: "abc123remote",
+    )
+    monkeypatch.setattr(updater, "read_local_sha", lambda root=None: "")
     result = check_for_update()
     assert result.checked
     assert result.has_updates
-    assert "zip" in result.message.lower() or "update_viu" in result.message.lower()
 
 
 def test_install_stamp(tmp_path):

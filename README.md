@@ -42,6 +42,24 @@ pip install -e ".[dev]"   # + pytest для разработки
 
 ## Запуск (Windows)
 
+### Первый раз или обновление без git
+
+**Одна команда** (вставь в cmd):
+
+```bat
+cd /d U:\Viu && powershell -NoProfile -Command "Invoke-WebRequest 'https://raw.githubusercontent.com/Shadowsector/Viu/cursor/viu-agent-core-65c2/get_viu.bat' -OutFile get_viu.bat -UseBasicParsing" && get_viu.bat
+```
+
+Или скачай вручную и запусти:
+
+https://raw.githubusercontent.com/Shadowsector/Viu/cursor/viu-agent-core-65c2/get_viu.bat
+
+`get_viu.bat` скачает свежий Viu с GitHub, установит (`pip install -e .`) и откроет окно.
+
+### Каждый день
+
+Двойной клик **`start_viu.bat`** — сам проверит GitHub и обновится при необходимости (`VIU_AUTO_UPDATE=1`).
+
 **Один файл:** `start_viu.bat` — графическое окно без чёрной консоли (`pythonw`).
 
 1. Один раз: `make_shortcut.bat` → ярлык **«Вью»** на рабочем столе.
@@ -64,18 +82,11 @@ pip install -e ".[dev]"   # + pytest для разработки
 
 ### Не git? (скачал zip)
 
-```bat
-cd /d U:\Viu
-update_viu.bat
-```
+Автообновление встроено — **`start_viu.bat`** или **`get_viu.bat`** (см. выше).
 
-Или в окне Viu: **Обновить Viu** → **Установить Viu (pip)** → `start_viu.bat`.
+Ссылка на bootstrap (если нужна вручную):
 
-Чтобы потом обновляться одной командой `git pull`:
-
-```bat
-git clone -b cursor/viu-agent-core-65c2 https://github.com/Shadowsector/Viu.git U:\Viu-new
-```
+https://raw.githubusercontent.com/Shadowsector/Viu/cursor/viu-agent-core-65c2/bootstrap_update.py
 
 ### Не открывается окно (мелькнул чёрный экран)
 
