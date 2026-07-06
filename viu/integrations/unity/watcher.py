@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from ..config import Config
+from ...config import Config
 from .animation_scan import folder_fingerprint, scan_animations_folder
 from .setup import batch_sync_animations_command, deploy_animation_pipeline, find_unity_exe
 
