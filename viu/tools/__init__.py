@@ -14,6 +14,12 @@ from .filesystem import ListDirTool, ReadFileTool, WriteFileTool
 from .loader import load_custom_tools
 from .memory_tool import MemorySearchTool, MemoryWriteTool
 from .planning_tool import PlanCreateTool, PlanShowTool, PlanUpdateTool
+from .roadmap_tool import (
+    NextStepTool,
+    ProjectStatusTool,
+    RoadmapShowTool,
+    RoadmapUpdateTool,
+)
 from .rig_tool import RigApplyAutoTool, RigApplyTool, RigCheckTool, RigMapTool, RigStandardTool
 from .self_improve import AddToolTool, ImprovePromptTool, SelfInspectTool
 from .shell import ShellTool
@@ -59,6 +65,10 @@ def build_default_registry() -> ToolRegistry:
         PlanCreateTool(),
         PlanUpdateTool(),
         PlanShowTool(),
+        RoadmapShowTool(),
+        RoadmapUpdateTool(),
+        ProjectStatusTool(),
+        NextStepTool(),
         SelfInspectTool(),
         AddToolTool(),
         ImprovePromptTool(),
