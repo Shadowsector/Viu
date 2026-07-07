@@ -88,7 +88,7 @@ GUI_ACTIONS: List[GuiAction] = [
     ),
     GuiAction(
         "unity_overlay",
-        "Оверлей: Шаня на панели",
+        "Оверлей: у панели задач",
         "Unity",
         tool="unity_overlay",
         hint="Собрать Windows-оверлей (Unity закрыт, 5–15 мин): прозрачная полоса "
