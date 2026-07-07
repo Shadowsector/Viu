@@ -12,6 +12,8 @@ namespace Viu.Runtime
     {
         public float walkSpeed = 1.5f;
         public string speedParameter = "Speed";
+        /// <summary>Если модель смотрит боком, подкрути: 0, 90, -90, 180.</summary>
+        public float modelYawOffset;
 
         Animator _animator;
         int _speedHash;
@@ -30,9 +32,11 @@ namespace Viu.Runtime
 
             if (Mathf.Abs(h) > 0.01f)
             {
-                var pos = transform.position;
-                pos.x += h * walkSpeed * Time.deltaTime;
-                transform.position = pos;
+                // D — вперёд по взгляду персонажа, A — назад (анимация совпадает с движением).
+                float yaw = (h > 0f ? 0f : 180f) + modelYawOffset;
+                var euler = transform.eulerAngles;
+                transform.rotation = Quaternion.Euler(euler.x, yaw, euler.z);
+                transform.position += transform.forward * (Mathf.Abs(h) * walkSpeed * Time.deltaTime);
             }
         }
 

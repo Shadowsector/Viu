@@ -75,6 +75,7 @@ def test_animation_sync_sets_loop():
     assert "using UnityEngine.InputSystem" not in text
     assert "Unity.InputSystem" in text
     assert "ReadHorizontalNewInput" in text
+    assert "transform.forward" in text
 
 
 def test_strip_risky_packages(tmp_path):
