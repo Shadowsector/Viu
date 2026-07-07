@@ -561,8 +561,8 @@ class UnityOverlayTool(Tool):
                     kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
                 subprocess.Popen([str(out_exe)], **kwargs)  # noqa: S603
                 launched = (
-                    "\n\nЗапускаю оверлей. Внизу экрана должна появиться полоса с Шаней; "
-                    "A/D — ходьба. Закрыть — Alt+F4 или диспетчер задач (AnabarraOverlay.exe)."
+                    "\n\nЗапускаю оверлей. Внизу экрана — Шаня на прозрачном фоне; "
+                    "A/D — ходьба. Закрыть: **Esc** (или диспетчер задач → AnabarraOverlay.exe)."
                 )
             except OSError as exc:
                 launched = f"\n\nСобрано, но запустить не смог: {exc}. Запусти вручную: {out_exe}"

@@ -16,7 +16,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 9
+        // @viu-deploy-rev 10
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
@@ -95,13 +95,18 @@ namespace Viu.Editor
         {
             PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
             PlayerSettings.defaultScreenWidth = 1920;
-            PlayerSettings.defaultScreenHeight = 300;
+            PlayerSettings.defaultScreenHeight = 280;
             PlayerSettings.resizableWindow = false;
             PlayerSettings.runInBackground = true;
             PlayerSettings.visibleInBackground = true;
+            PlayerSettings.colorSpace = ColorSpace.Gamma;
 #if UNITY_2022_2_OR_NEWER
             PlayerSettings.useFlipModelSwapchain = false;
 #endif
+            PlayerSettings.SetUseDefaultGraphicsAPIs(false);
+            PlayerSettings.SetGraphicsAPIs(
+                BuildTarget.StandaloneWindows64,
+                new[] { UnityEngine.Rendering.GraphicsDeviceType.Direct3D11 });
             PlayerSettings.productName = "AnabarraOverlay";
         }
 
@@ -164,6 +169,9 @@ namespace Viu.Editor
 
         static void EnsureOverlayEnvironment(GameObject shanya)
         {
+            RenderSettings.skybox = null;
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.92f, 0.92f, 0.92f);
             EnsureInvisibleFloor();
             EnsureLighting();
             ScaleToHeight(shanya, TargetHeightMeters);
@@ -197,7 +205,7 @@ namespace Viu.Editor
             cam.orthographic = true;
             cam.orthographicSize = CameraOrthoHalfHeight;
             cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            cam.backgroundColor = Viu.Runtime.ShanyaDesktopOverlay.ChromaKey;
 
             var follow = cam.GetComponent<Viu.Runtime.ShanyaOverlayCamera>();
             if (follow == null)

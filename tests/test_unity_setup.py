@@ -95,14 +95,15 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 9" in text
+    assert "@viu-deploy-rev 10" in text
 
 
 def test_overlay_templates():
     root = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates"
     overlay = (root / "ShanyaDesktopOverlay.cs").read_text(encoding="utf-8")
-    assert "WS_EX_LAYERED" in overlay
-    assert "stripHeightPixels" in overlay
+    assert "DwmExtendFrameIntoClientArea" in overlay
+    assert "ChromaKey" in overlay
+    assert "Escape" in overlay
     cam = (root / "ShanyaOverlayCamera.cs").read_text(encoding="utf-8")
     assert "viewCenterAboveFeet" in cam
     setup = (root / "ShanyaOverlaySetup.cs").read_text(encoding="utf-8")
