@@ -14,6 +14,7 @@ from ..integrations.unity.setup import (
     batch_sync_animations_command,
     deploy_animation_pipeline,
     deploy_shanya_setup,
+    editor_scripts_healthy,
     find_unity_exe,
     open_editor_command,
     strip_risky_packages,
@@ -320,6 +321,9 @@ class UnitySyncAnimationsTool(Tool):
         ok, msg = deploy_animation_pipeline(root)
         if not ok:
             return ToolResult(False, msg)
+        healthy, hint = editor_scripts_healthy(root)
+        if not healthy:
+            return ToolResult(False, hint)
         prep, _prep_msg = _ensure_batch_ready(root, auto_kill=True)
         if prep is not None:
             return prep
@@ -350,6 +354,12 @@ class UnitySyncAnimationsTool(Tool):
             tail = "\n".join(lines[-30:])
         ok_run = proc.returncode == 0
         body = f"{msg}\n\nexit={proc.returncode}\n{tail or proc.stderr or proc.stdout or '(нет вывода)'}"
+        if not ok_run and "activeInputHandler" in body:
+            body += (
+                "\n\n→ В проекте всё ещё старый ShanyaSetup.cs. "
+                "Нажми «Обновить Вью», дождись «Зависимости установлены», "
+                "затем «Обновить аниматор»."
+            )
         return ToolResult(ok_run, body)
 
 

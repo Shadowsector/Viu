@@ -23,10 +23,34 @@ _SYNC_REL = f"{_EDITOR_DIR}/ShanyaAnimationSync.cs"
 _LOCOMOTION_REL = f"{_RUNTIME_DIR}/ShanyaLocomotion.cs"
 _MANIFEST_REL = f"{ANIMATIONS_REL}/{MANIFEST_NAME}"
 
+VIU_DEPLOY_REV = "3"
+VIU_DEPLOY_MARKER = f"@viu-deploy-rev {VIU_DEPLOY_REV}"
+_BROKEN_EDITOR_MARKERS = ("activeInputHandler", "EnsureInputCompatible")
+
 _RISKY_PACKAGES = (
     "com.unity.inputsystem",
     "com.unity.ai.navigation",
 )
+
+
+def editor_scripts_healthy(project_root: Path) -> Tuple[bool, str]:
+    """Проверить, что в Unity лежат актуальные Editor-скрипты Viu (не старый кэш)."""
+    setup = resolve_in_unity_project(project_root, _SETUP_REL)
+    if not setup.is_file():
+        return False, "В проекте нет Assets/Editor/Viu/ShanyaSetup.cs — нужен deploy скриптов."
+    text = setup.read_text(encoding="utf-8", errors="replace")
+    for bad in _BROKEN_EDITOR_MARKERS:
+        if bad in text:
+            return False, (
+                f"В Unity лежит **старый** ShanyaSetup.cs (внутри «{bad}»). "
+                "Сначала нажми **«Обновить Вью»**, потом снова «Импорт FBX» или «Обновить аниматор»."
+            )
+    if VIU_DEPLOY_MARKER not in text:
+        return False, (
+            "Скрипты Viu в проекте устарели (нет метки версии deploy). "
+            "Нажми **«Обновить Вью»** и повтори операцию."
+        )
+    return True, ""
 
 
 def deploy_editor_scripts(project_root: Path) -> Tuple[bool, str]:
@@ -45,6 +69,9 @@ def deploy_editor_scripts(project_root: Path) -> Tuple[bool, str]:
         copied.append(rel)
     if not copied:
         return False, "Нет шаблонов Editor-скриптов"
+    ok, hint = editor_scripts_healthy(project_root)
+    if not ok:
+        return False, f"Скопировал файлы, но проверка не прошла: {hint}"
     return True, "Editor: " + ", ".join(Path(p).name for p in copied)
 
 

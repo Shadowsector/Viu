@@ -6,7 +6,11 @@ import pytest
 
 from viu.agent import Agent
 from viu.integrations.unity.paths import resolve_in_unity_project, unity_project_root
-from viu.integrations.unity.setup import deploy_shanya_setup, strip_risky_packages
+from viu.integrations.unity.setup import (
+    deploy_shanya_setup,
+    editor_scripts_healthy,
+    strip_risky_packages,
+)
 from viu.llm.mock import MockLLM
 
 
