@@ -47,17 +47,33 @@ def test_unity_open_no_exe(tmp_path):
     assert "Unity.exe" in result.content
 
 
-def test_prepare_scene_blocks_when_unity_open(tmp_path):
+def test_prepare_scene_clears_stale_lock(tmp_path, monkeypatch):
+    """Зависший lockfile без процесса Unity — не блокирует сборку."""
     unity = tmp_path / "unity"
     (unity / "Assets").mkdir(parents=True)
     (unity / "Temp").mkdir()
-    (unity / "Temp" / "UnityLockfile").write_bytes(b"")  # Unity «открыт»
+    (unity / "Temp" / "UnityLockfile").write_bytes(b"")
+
+    monkeypatch.setattr(
+        "viu.integrations.unity.process.unity_process_running",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "viu.integrations.unity.process.kill_unity_processes",
+        lambda wait_seconds=2.0: (True, ""),
+    )
+
     ctx = _ctx(tmp_path, unity_project=str(unity))
+    from viu.tools import unity_project_tool as upt
     from viu.tools.unity_project_tool import UnityPrepareSceneTool
 
+    monkeypatch.setattr(upt, "find_unity_exe", lambda cfg: None)
+
     result = UnityPrepareSceneTool().run({}, ctx)
+    # Unity.exe не найден — но до этого stale lock должен быть снят
+    assert not (unity / "Temp" / "UnityLockfile").exists()
     assert not result.ok
-    assert "закрыт" in result.content.lower()
+    assert "Unity.exe" in result.content
 
 
 def test_prepare_scene_registered():
@@ -74,6 +90,12 @@ def test_unity_open_launches(tmp_path, monkeypatch):
     from viu.tools import unity_project_tool as upt
 
     monkeypatch.setattr(upt, "find_unity_exe", lambda cfg: fake_exe)
+    monkeypatch.setattr(upt, "unity_process_running", lambda: False)
+    monkeypatch.setattr(
+        upt,
+        "prepare_unity_for_batch",
+        lambda root, auto_kill=True: (True, ""),
+    )
 
     launched = {}
 

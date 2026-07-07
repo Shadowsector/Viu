@@ -58,21 +58,21 @@ def next_step(config: Config) -> str:
         if "Walk" not in states:
             return (
                 f"Фокус: «{focus.title}». Нет клипа Walk. "
-                "Действие: кнопка «Добавить анимацию…» — выбрать Walking FBX "
+                "Действие: кнопка «Импорт FBX анимации…» — выбрать Walking FBX "
                 "(например, скачанный с Mixamo). Вью положит его в проект и соберёт Animator."
             )
         non_humanoid = [c.file_name for c in scan.clips if not c.is_humanoid]
         if non_humanoid:
             return (
                 f"Фокус: «{focus.title}». Клипы есть, но не Humanoid: "
-                f"{', '.join(non_humanoid)}. Действие: «Записать в Unity» "
+                f"{', '.join(non_humanoid)}. Действие: «Обновить аниматор» "
                 "(unity_sync_animations) — выставит Humanoid и соберёт Animator."
             )
         return (
             f"Фокус: «{focus.title}». Idle и Walk на месте и Humanoid, Animator собран. "
-            "Действие: если Unity ЗАКРЫТ — вызови unity_prepare_scene (сам соберёт сцену "
-            "и откроет Unity, пользователю останется нажать Play). Если Unity ОТКРЫТ — "
-            "попроси Дена нажать в Unity меню Viu → Setup Shanya (Idle), затем ▶ Play. "
+            "Действие: unity_prepare_scene («Тест: Шаня стоит и ходит») — Вью сама "
+            "закроет Unity если мешает, соберёт пробную сцену и откроет редактор; "
+            "пользователю останется нажать Play. "
             "После проверки отметь веху 4 как done (roadmap_update)."
         )
 

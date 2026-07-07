@@ -431,7 +431,7 @@ class ViuGUI:
         )
         if not path:
             return
-        self._append("ты", f"[Добавить анимацию] {Path(path).name}")
+        self._append("ты", f"[Импорт FBX] {Path(path).name}")
         self._set_busy(True)
 
         def work():

@@ -18,6 +18,11 @@ from ..integrations.unity.setup import (
     open_editor_command,
     strip_risky_packages,
 )
+from ..integrations.unity.process import (
+    prepare_unity_for_batch,
+    unity_lockfile,
+    unity_process_running,
+)
 from ..integrations.unity.verify import verify_unity_project
 from .base import AgentContext, Tool, ToolResult
 
@@ -27,9 +32,12 @@ def _root(ctx: AgentContext, args: Dict[str, Any]) -> Path:
     return unity_project_root(ctx.config, override)
 
 
-def _unity_is_open(root: Path) -> bool:
-    """Editor открыт с проектом, если есть Temp/UnityLockfile."""
-    return (root / "Temp" / "UnityLockfile").is_file()
+def _ensure_batch_ready(root: Path, *, auto_kill: bool = True) -> tuple[ToolResult | None, str]:
+    """(ошибка или None, заметка о подготовке)."""
+    ok, msg = prepare_unity_for_batch(root, auto_kill=auto_kill)
+    if not ok:
+        return ToolResult(False, msg), ""
+    return None, msg
 
 
 class UnityReadTool(Tool):
@@ -166,14 +174,9 @@ class UnityRunSetupTool(Tool):
         ok, msg = deploy_shanya_setup(root)
         if not ok:
             return ToolResult(False, msg)
-        if _unity_is_open(root):
-            return ToolResult(
-                False,
-                "Unity сейчас ОТКРЫТ — фоновая настройка невозможна (проект залочен), "
-                "поэтому и был код 1. Сделай проще: в открытом Unity нажми меню сверху "
-                "**Viu → Setup Shanya (Idle)** — это соберёт сцену прямо там и покажет "
-                "ошибки в Console (если будут). Либо закрой Unity и повтори эту команду.",
-            )
+        prep, _prep_msg = _ensure_batch_ready(root, auto_kill=True)
+        if prep is not None:
+            return prep
         exe = find_unity_exe(ctx.config.unity_exe)
         if exe is None:
             return ToolResult(
@@ -317,13 +320,9 @@ class UnitySyncAnimationsTool(Tool):
         ok, msg = deploy_animation_pipeline(root)
         if not ok:
             return ToolResult(False, msg)
-        if _unity_is_open(root):
-            return ToolResult(
-                True,
-                "Unity открыт — фоновая сборка не нужна. Импорт FBX в Animations/ "
-                "подхватывается автоматически. Если нет — в Unity нажми меню "
-                "**Viu → Sync Animations (scan folder)**.",
-            )
+        prep, _prep_msg = _ensure_batch_ready(root, auto_kill=True)
+        if prep is not None:
+            return prep
         exe = find_unity_exe(ctx.config.unity_exe)
         if exe is None:
             return ToolResult(
@@ -373,14 +372,12 @@ class UnityOpenTool(Tool):
                 "Unity.exe не найден. Задай VIU_UNITY_EXE=путь\\к\\Unity.exe "
                 "или открой проект вручную через Unity Hub.",
             )
-        # Если рядом лежит lock-файл, редактор, скорее всего, уже открыт.
-        lock = root / "Temp" / "UnityLockfile"
-        if lock.is_file():
+        if unity_process_running():
             return ToolResult(
                 True,
-                "Unity, похоже, уже открыт с этим проектом (есть Temp/UnityLockfile). "
-                "Переключись на его окно. Если нет — удали Temp/UnityLockfile и повтори.",
+                "Unity уже запущен — переключись на его окно.",
             )
+        prepare_unity_for_batch(root, auto_kill=False)  # убрать зависший lockfile
         cmd = open_editor_command(root, exe)
         try:
             kwargs: Dict[str, Any] = {"cwd": str(root)}
@@ -418,13 +415,9 @@ class UnityPrepareSceneTool(Tool):
         if not (root / "Assets").is_dir():
             return ToolResult(False, f"Не Unity-проект: {root}")
 
-        if _unity_is_open(root):
-            return ToolResult(
-                False,
-                "Сейчас Unity открыт, а собрать сцену я могу только при закрытом.\n"
-                "Сделай так: полностью закрой окно Unity, потом снова нажми "
-                "«Собрать сцену с Шаней» — дальше я всё сделаю сам и открою Unity заново.",
-            )
+        prep, prep_msg = _ensure_batch_ready(root, auto_kill=True)
+        if prep is not None:
+            return prep
 
         deploy_animation_pipeline(root)
         exe = find_unity_exe(ctx.config.unity_exe)
@@ -475,6 +468,7 @@ class UnityPrepareSceneTool(Tool):
 
         return ToolResult(
             True,
+            (f"{prep_msg}\n\n" if prep_msg else "") +
             "Готово! Я сам собрал сцену с Шаней и открываю Unity.\n"
             "Когда редактор загрузится (30–90 секунд), вверху ПО ЦЕНТРУ нажми "
             "зелёную кнопку ▶ (Play). Шаня стоит на месте (Idle), а по клавишам "
