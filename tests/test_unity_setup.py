@@ -69,7 +69,9 @@ def test_animation_sync_sets_loop():
     src = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates/ShanyaAnimationSync.cs"
     text = src.read_text(encoding="utf-8")
     assert "EnsureClipLoops" in text
+    assert "EnsureFbxClipLoops" in text
     assert "loopTime" in text
+    assert "loopPose" in text
     src = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates/ShanyaLocomotion.cs"
     text = src.read_text(encoding="utf-8")
     assert "using UnityEngine.InputSystem" not in text

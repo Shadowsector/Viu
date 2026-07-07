@@ -149,7 +149,31 @@ namespace Viu.Editor
                 importer.importAnimation = true;
                 changed = true;
             }
+            if (EnsureFbxClipLoops(importer))
+                changed = true;
             if (changed) importer.SaveAndReimport();
+        }
+
+        /// <summary>Loop Time на FBX — иначе Idle/Walk играют один раз и замирают.</summary>
+        static bool EnsureFbxClipLoops(ModelImporter importer)
+        {
+            var clips = importer.clipAnimations;
+            if (clips == null || clips.Length == 0)
+                clips = importer.defaultClipAnimations;
+            if (clips == null || clips.Length == 0)
+                return false;
+
+            var changed = false;
+            for (int i = 0; i < clips.Length; i++)
+            {
+                if (clips[i].loopTime && clips[i].loopPose) continue;
+                clips[i].loopTime = true;
+                clips[i].loopPose = true;
+                changed = true;
+            }
+            if (changed)
+                importer.clipAnimations = clips;
+            return changed;
         }
 
         static AnimatorController BuildOrLoadController()

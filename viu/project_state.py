@@ -76,6 +76,13 @@ def next_step(config: Config) -> str:
             "После проверки отметь веху 4 как done (roadmap_update)."
         )
 
+    if "рост" in focus.title.lower() or "gametest" in focus.title.lower() or "сцена" in focus.title.lower():
+        return (
+            f"Фокус: «{focus.title}». Walk/Idle работают — дальше нормальная сцена: "
+            "пол, свет, камера за Шаней, масштаб ~1.7 м. "
+            "Сначала «Обновить аниматор» (loop на FBX), потом «Что делаем дальше?»."
+        )
+
     return (
         f"Фокус: «{focus.title}». "
         + (f"Заметка: {focus.note}. " if focus.note else "")
