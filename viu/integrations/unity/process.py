@@ -29,7 +29,7 @@ def unity_pids() -> List[int]:
         except (OSError, subprocess.TimeoutExpired):
             return []
         pids: List[int] = []
-        for line in proc.stdout.splitlines():
+        for line in (proc.stdout or "").splitlines():
             if "Unity.exe" not in line:
                 continue
             # "Unity.exe","12345","Console","1","123 456 K"
@@ -52,7 +52,7 @@ def unity_pids() -> List[int]:
     except (OSError, subprocess.TimeoutExpired):
         return []
     pids: List[int] = []
-    for line in proc.stdout.splitlines():
+    for line in (proc.stdout or "").splitlines():
         line = line.strip()
         if line.isdigit():
             pids.append(int(line))

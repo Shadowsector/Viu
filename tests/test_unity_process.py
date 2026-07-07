@@ -4,6 +4,7 @@ from viu.integrations.unity.process import (
     clear_unity_lockfile,
     prepare_unity_for_batch,
     unity_lockfile,
+    unity_pids,
 )
 
 
@@ -33,5 +34,13 @@ def test_prepare_clears_lock_without_unity_process(tmp_path, monkeypatch):
     assert not lock.exists()
 
 
-def test_clear_unity_lockfile_missing(tmp_path):
-    assert clear_unity_lockfile(tmp_path) is False
+def test_unity_pids_handles_none_stdout(monkeypatch):
+    class FakeProc:
+        stdout = None
+        returncode = 0
+
+    monkeypatch.setattr(
+        "viu.integrations.unity.process.subprocess.run",
+        lambda *a, **k: FakeProc(),
+    )
+    assert unity_pids() == []

@@ -451,11 +451,20 @@ class ViuGUI:
             for name in ("unity_deploy_setup", "unity_sync_animations"):
                 tool = self.agent.registry.get(name)
                 if tool is None:
+                    lines.append(f"⚠ {name}: не найден")
                     continue
-                res = tool.run({}, self.agent.ctx)
+                try:
+                    res = tool.run({}, self.agent.ctx)
+                except Exception as exc:  # noqa: BLE001
+                    lines.append(f"✗ {name}: {exc}")
+                    break
                 mark = "✓" if res.ok else "✗"
                 lines.append(f"{mark} {name}")
-            lines.append("Готово. Открой Unity и нажми Play (или кнопка «Открыть Unity»).")
+                if not res.ok:
+                    lines.append(res.content)
+                    break
+            else:
+                lines.append("Готово. Открой Unity и нажми Play (или кнопка «Открыть Unity»).")
             return "\n".join(lines)
 
         def done(result):
