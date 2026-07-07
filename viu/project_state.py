@@ -85,7 +85,7 @@ def next_step(config: Config) -> str:
 
     if "панел" in focus.title.lower() or "оверлей" in focus.title.lower() or "дом" in focus.title.lower():
         return (
-            f"Фокус: «{focus.title}». Действие: кнопка «Оверлей: Шаня на панели» "
+            f"Фокус: «{focus.title}». Действие: кнопка «Оверлей: у панели задач» "
             "(unity_overlay) — Unity закрыт, сборка 5–15 мин. После запуска A/D на рабочем столе."
         )
 
