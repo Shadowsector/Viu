@@ -47,8 +47,6 @@ namespace Viu.Editor
 
         public static void Run(string saveScenePath)
         {
-            EnsureInputCompatible();
-
             var modelPath = FindModelPath();
             if (string.IsNullOrEmpty(modelPath))
             {

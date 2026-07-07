@@ -37,13 +37,6 @@ def test_locomotion_supports_input_system():
     assert "ReadHorizontalNewInput" in text
 
 
-def test_setup_ensures_input_compatible():
-    src = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates/ShanyaSetup.cs"
-    text = src.read_text(encoding="utf-8")
-    assert "EnsureInputCompatible" in text
-    assert "ActiveInputHandler.Both" in text
-
-
 def test_strip_risky_packages(tmp_path):
     pkg = tmp_path / "Packages"
     pkg.mkdir()
