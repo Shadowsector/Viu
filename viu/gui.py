@@ -448,7 +448,7 @@ class ViuGUI:
             _sh.copy2(src, dest)
 
             lines = [f"Скопировал: {src.name} → {dest_dir}"]
-            for name in ("unity_deploy_setup", "unity_sync_animations"):
+            for name in ("unity_deploy_setup", "unity_sync_animations", "unity_run_setup"):
                 tool = self.agent.registry.get(name)
                 if tool is None:
                     lines.append(f"⚠ {name}: не найден")
@@ -464,7 +464,10 @@ class ViuGUI:
                     lines.append(res.content)
                     break
             else:
-                lines.append("Готово. Открой Unity и нажми Play (или кнопка «Открыть Unity»).")
+                lines.append(
+                    "Готово: Walk в Animator, сцена GameTest с Шаней собрана.\n"
+                    "«Открыть Unity» → GameTest.unity → ▶ Play → кликни окно Game → A/D."
+                )
             return "\n".join(lines)
 
         def done(result):

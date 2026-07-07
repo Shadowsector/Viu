@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -23,7 +24,7 @@ _SYNC_REL = f"{_EDITOR_DIR}/ShanyaAnimationSync.cs"
 _LOCOMOTION_REL = f"{_RUNTIME_DIR}/ShanyaLocomotion.cs"
 _MANIFEST_REL = f"{ANIMATIONS_REL}/{MANIFEST_NAME}"
 
-VIU_DEPLOY_REV = "3"
+VIU_DEPLOY_REV = "4"
 VIU_DEPLOY_MARKER = f"@viu-deploy-rev {VIU_DEPLOY_REV}"
 _BROKEN_EDITOR_MARKERS = ("activeInputHandler", "EnsureInputCompatible")
 
@@ -50,6 +51,23 @@ def editor_scripts_healthy(project_root: Path) -> Tuple[bool, str]:
             "Скрипты Viu в проекте устарели (нет метки версии deploy). "
             "Нажми **«Обновить Вью»** и повтори операцию."
         )
+    return True, ""
+
+
+def ensure_input_both(project_root: Path) -> Tuple[bool, str]:
+    """Input System only без пакета ломает A/D — ставим Both в ProjectSettings.asset."""
+    settings = project_root / "ProjectSettings" / "ProjectSettings.asset"
+    if not settings.is_file():
+        return True, ""
+    text = settings.read_text(encoding="utf-8", errors="replace")
+    new_text, n = re.subn(
+        r"(?m)^(\s*)activeInputHandler:\s*1\s*$",
+        r"\1activeInputHandler: 2",
+        text,
+    )
+    if n:
+        settings.write_text(new_text, encoding="utf-8")
+        return True, "Player Settings: Input → Both (A/D через старый Input Manager)."
     return True, ""
 
 
@@ -105,6 +123,10 @@ def deploy_animation_pipeline(project_root: Path) -> Tuple[bool, str]:
         part_ok, msg = fn(project_root)
         parts.append(msg)
         ok = ok and part_ok
+    in_ok, in_msg = ensure_input_both(project_root)
+    if in_msg:
+        parts.append(in_msg)
+    ok = ok and in_ok
     return ok, "\n".join(parts)
 
 

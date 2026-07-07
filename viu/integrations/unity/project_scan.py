@@ -111,8 +111,9 @@ def scan_unity_project(project_root: Path) -> UnityProjectScan:
                 scan.unity_version = line.split(":", 1)[1].strip()
                 break
     scan.has_controller = (
-        project_root / "Assets/Characters/Shanya/Shanya_Idle_Stand.controller"
-    ).is_file()
+        (project_root / "Assets/Characters/Shanya/Animations/Shanya_Idle_Stand.controller").is_file()
+        or (project_root / "Assets/Characters/Shanya/Shanya_Idle_Stand.controller").is_file()
+    )
     scan.has_viu_editor = (project_root / "Assets/Editor/Viu/ShanyaSetup.cs").is_file()
     if not assets.is_dir():
         scan.issues.append(f"Нет папки Assets: {assets}")

@@ -16,7 +16,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaSetup
     {
-        // @viu-deploy-rev 3
+        // @viu-deploy-rev 4
         const string ControllerPath = ShanyaAnimationSync.ControllerPath;
         const string ModelNameHint = "Shanya_Erisa";
 

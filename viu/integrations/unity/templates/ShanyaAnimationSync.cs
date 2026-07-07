@@ -180,6 +180,7 @@ namespace Viu.Editor
             {
                 var st = sm.AddState(e.StateName);
                 st.motion = e.Clip;
+                EnsureClipLoops(e.Clip);
                 byName[e.StateName] = st;
                 if (e.StateName.Equals("Idle", StringComparison.OrdinalIgnoreCase))
                     idleState = st;
@@ -205,6 +206,16 @@ namespace Viu.Editor
             }
 
             EditorUtility.SetDirty(controller);
+        }
+
+        static void EnsureClipLoops(AnimationClip clip)
+        {
+            if (clip == null) return;
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            if (settings.loopTime) return;
+            settings.loopTime = true;
+            AnimationUtility.SetAnimationClipSettings(clip, settings);
+            EditorUtility.SetDirty(clip);
         }
 
         static AnimationClip LoadFirstAnimationClip(string modelPath)

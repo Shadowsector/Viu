@@ -38,10 +38,28 @@ namespace Viu.Runtime
 
         static float ReadHorizontal()
         {
-#if ENABLE_LEGACY_INPUT_MANAGER
-            return Input.GetAxisRaw("Horizontal");
-#else
+            float h = TryLegacyHorizontal();
+            if (Mathf.Abs(h) > 0.01f) return h;
             return ReadHorizontalNewInput();
+        }
+
+        static float TryLegacyHorizontal()
+        {
+#if ENABLE_LEGACY_INPUT_MANAGER
+            try
+            {
+                float h = Input.GetAxisRaw("Horizontal");
+                if (Mathf.Abs(h) > 0.01f) return h;
+                if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) h -= 1f;
+                if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) h += 1f;
+                return h;
+            }
+            catch
+            {
+                return 0f;
+            }
+#else
+            return 0f;
 #endif
         }
 

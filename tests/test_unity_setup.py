@@ -31,9 +31,45 @@ def test_deploy_shanya_setup(tmp_path):
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaLocomotion.cs").is_file()
     assert (tmp_path / "Assets/Characters/Shanya/Animations/viu_clips.json").is_file()
     assert "ShanyaSetup" in msg or "ShanyaAnimationSync" in msg
+    ok, _ = editor_scripts_healthy(tmp_path)
+    assert ok
 
 
-def test_locomotion_supports_input_system():
+def test_editor_scripts_rejects_stale_active_input(tmp_path):
+    (tmp_path / "Assets").mkdir()
+    editor = tmp_path / "Assets/Editor/Viu"
+    editor.mkdir(parents=True)
+    (editor / "ShanyaSetup.cs").write_text(
+        "class X { void M() { PlayerSettings.activeInputHandler = 0; } }",
+        encoding="utf-8",
+    )
+    ok, msg = editor_scripts_healthy(tmp_path)
+    assert not ok
+    assert "activeInputHandler" in msg
+    assert "Обновить Вью" in msg
+
+
+def test_ensure_input_both(tmp_path):
+    settings_dir = tmp_path / "ProjectSettings"
+    settings_dir.mkdir()
+    settings = settings_dir / "ProjectSettings.asset"
+    settings.write_text(
+        "PlayerSettings:\n  activeInputHandler: 1\n",
+        encoding="utf-8",
+    )
+    from viu.integrations.unity.setup import ensure_input_both
+
+    ok, msg = ensure_input_both(tmp_path)
+    assert ok
+    assert "activeInputHandler: 2" in settings.read_text(encoding="utf-8")
+    assert "Both" in msg
+
+
+def test_animation_sync_sets_loop():
+    src = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates/ShanyaAnimationSync.cs"
+    text = src.read_text(encoding="utf-8")
+    assert "EnsureClipLoops" in text
+    assert "loopTime" in text
     src = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates/ShanyaLocomotion.cs"
     text = src.read_text(encoding="utf-8")
     assert "using UnityEngine.InputSystem" not in text
