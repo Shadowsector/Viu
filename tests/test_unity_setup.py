@@ -29,6 +29,7 @@ def test_deploy_shanya_setup(tmp_path):
     assert (tmp_path / "Assets/Editor/Viu/ShanyaSetup.cs").is_file()
     assert (tmp_path / "Assets/Editor/Viu/ShanyaAnimationSync.cs").is_file()
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaLocomotion.cs").is_file()
+    assert (tmp_path / "Assets/Scripts/Viu/ShanyaFollowCamera.cs").is_file()
     assert (tmp_path / "Assets/Characters/Shanya/Animations/viu_clips.json").is_file()
     assert "ShanyaSetup" in msg or "ShanyaAnimationSync" in msg
     ok, _ = editor_scripts_healthy(tmp_path)
@@ -77,7 +78,16 @@ def test_animation_sync_sets_loop():
     assert "using UnityEngine.InputSystem" not in text
     assert "Unity.InputSystem" in text
     assert "ReadHorizontalNewInput" in text
-    assert "transform.forward" in text
+    assert "transform.forward" not in text or "Vector3.right" in text
+
+
+def test_setup_builds_test_scene_environment():
+    src = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates/ShanyaSetup.cs"
+    text = src.read_text(encoding="utf-8")
+    assert "EnsureTestSceneEnvironment" in text
+    assert "TargetHeightMeters = 1.7f" in text
+    assert "SnapFeetToGround" in text
+    assert "orthographic" in text
 
 
 def test_strip_risky_packages(tmp_path):

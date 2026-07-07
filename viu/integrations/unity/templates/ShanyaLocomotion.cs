@@ -4,16 +4,17 @@ using UnityEngine;
 namespace Viu.Runtime
 {
     /// <summary>
-    /// Простая ходьба: стрелки / A-D → параметр Speed в Animator (Idle ↔ Walk).
-    /// Без прямой ссылки на Input System package (собирается даже если пакет не в manifest).
+    /// Ходьба вдоль X (A/D) для вида сбоку. Walk-анимация вперёд, поворот по направлению.
     /// </summary>
     [RequireComponent(typeof(Animator))]
     public class ShanyaLocomotion : MonoBehaviour
     {
         public float walkSpeed = 1.5f;
         public string speedParameter = "Speed";
-        /// <summary>Если модель смотрит боком, подкрути: 0, 90, -90, 180.</summary>
+        /// <summary>Подкрутка, если модель смотрит не в +Z: 0, 90, -90, 180.</summary>
         public float modelYawOffset;
+
+        const float SideFaceRightYaw = 90f;
 
         Animator _animator;
         int _speedHash;
@@ -24,6 +25,12 @@ namespace Viu.Runtime
             _speedHash = Animator.StringToHash(speedParameter);
         }
 
+        void Start()
+        {
+            // Стоя — профиль для камеры с −Z (как Terraria).
+            transform.rotation = Quaternion.Euler(0f, SideFaceRightYaw + modelYawOffset, 0f);
+        }
+
         void Update()
         {
             float h = ReadHorizontal();
@@ -32,11 +39,9 @@ namespace Viu.Runtime
 
             if (Mathf.Abs(h) > 0.01f)
             {
-                // D — вперёд по взгляду персонажа, A — назад (анимация совпадает с движением).
-                float yaw = (h > 0f ? 0f : 180f) + modelYawOffset;
-                var euler = transform.eulerAngles;
-                transform.rotation = Quaternion.Euler(euler.x, yaw, euler.z);
-                transform.position += transform.forward * (Mathf.Abs(h) * walkSpeed * Time.deltaTime);
+                float yaw = (h > 0f ? SideFaceRightYaw : -SideFaceRightYaw) + modelYawOffset;
+                transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+                transform.position += Vector3.right * (h * walkSpeed * Time.deltaTime);
             }
         }
 
@@ -67,7 +72,6 @@ namespace Viu.Runtime
 #endif
         }
 
-        /// <summary>Читает A/D и стрелки через Input System без compile-time ссылки на пакет.</summary>
         static float ReadHorizontalNewInput()
         {
             var keyboardType = System.Type.GetType("UnityEngine.InputSystem.Keyboard, Unity.InputSystem");

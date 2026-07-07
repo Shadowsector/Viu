@@ -15,6 +15,7 @@ _TEMPLATE_SETUP = Path(__file__).parent / "templates" / "ShanyaSetup.cs"
 _TEMPLATE_OUTFIT = Path(__file__).parent / "templates" / "ShanyaOutfit.cs"
 _TEMPLATE_SYNC = Path(__file__).parent / "templates" / "ShanyaAnimationSync.cs"
 _TEMPLATE_LOCOMOTION = Path(__file__).parent / "templates" / "ShanyaLocomotion.cs"
+_TEMPLATE_CAMERA = Path(__file__).parent / "templates" / "ShanyaFollowCamera.cs"
 _TEMPLATE_MANIFEST = Path(__file__).parent / "templates" / "viu_clips.json"
 _EDITOR_DIR = "Assets/Editor/Viu"
 _RUNTIME_DIR = "Assets/Scripts/Viu"
@@ -22,9 +23,10 @@ _SETUP_REL = f"{_EDITOR_DIR}/ShanyaSetup.cs"
 _OUTFIT_REL = f"{_EDITOR_DIR}/ShanyaOutfit.cs"
 _SYNC_REL = f"{_EDITOR_DIR}/ShanyaAnimationSync.cs"
 _LOCOMOTION_REL = f"{_RUNTIME_DIR}/ShanyaLocomotion.cs"
+_CAMERA_REL = f"{_RUNTIME_DIR}/ShanyaFollowCamera.cs"
 _MANIFEST_REL = f"{ANIMATIONS_REL}/{MANIFEST_NAME}"
 
-VIU_DEPLOY_REV = "4"
+VIU_DEPLOY_REV = "6"
 VIU_DEPLOY_MARKER = f"@viu-deploy-rev {VIU_DEPLOY_REV}"
 _BROKEN_EDITOR_MARKERS = ("activeInputHandler", "EnsureInputCompatible")
 
@@ -94,13 +96,21 @@ def deploy_editor_scripts(project_root: Path) -> Tuple[bool, str]:
 
 
 def deploy_runtime_scripts(project_root: Path) -> Tuple[bool, str]:
-    """Копирует runtime-скрипты (ShanyaLocomotion) в Assets/Scripts/Viu/."""
-    if not _TEMPLATE_LOCOMOTION.is_file():
-        return False, "Шаблон locomotion не найден"
-    dest = resolve_in_unity_project(project_root, _LOCOMOTION_REL)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(_TEMPLATE_LOCOMOTION, dest)
-    return True, str(dest)
+    """Копирует runtime-скрипты в Assets/Scripts/Viu/."""
+    dest_dir = resolve_in_unity_project(project_root, _RUNTIME_DIR)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    copied: List[str] = []
+    for src, rel in (
+        (_TEMPLATE_LOCOMOTION, _LOCOMOTION_REL),
+        (_TEMPLATE_CAMERA, _CAMERA_REL),
+    ):
+        if not src.is_file():
+            continue
+        shutil.copy2(src, resolve_in_unity_project(project_root, rel))
+        copied.append(Path(rel).name)
+    if not copied:
+        return False, "Нет runtime-шаблонов"
+    return True, ", ".join(copied)
 
 
 def deploy_clips_manifest(project_root: Path, overwrite: bool = False) -> Tuple[bool, str]:

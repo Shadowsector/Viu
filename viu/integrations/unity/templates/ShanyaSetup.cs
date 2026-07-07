@@ -16,9 +16,11 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaSetup
     {
-        // @viu-deploy-rev 4
+        // @viu-deploy-rev 6
         const string ControllerPath = ShanyaAnimationSync.ControllerPath;
         const string ModelNameHint = "Shanya_Erisa";
+        const float TargetHeightMeters = 1.7f;
+        const float GroundSinkMeters = 0.03f;
 
         const string ScenePath = "Assets/Scenes/GameTest.unity";
 
@@ -81,10 +83,12 @@ namespace Viu.Editor
             }
 
             var instance = PlaceCharacterInScene(modelPath, controller, avatar);
-            EnsureLocomotion(instance);
             DisableWgtMeshes(instance);
             try { ShanyaOutfit.Apply(ShanyaOutfit.Mode.Dressed); }
             catch (Exception e) { Debug.LogWarning("[Viu] Outfit пропущен: " + e.Message); }
+            EnsureLocomotion(instance);
+            EnsureTestSceneEnvironment(instance);
+            SnapFeetToGround(instance);
             AssetDatabase.SaveAssets();
             SaveActiveScene(saveScenePath);
             Debug.Log("[Viu] Setup готов: " + instance.name + " + " + controller.name +
@@ -157,6 +161,90 @@ namespace Viu.Editor
         {
             if (instance.GetComponent<Viu.Runtime.ShanyaLocomotion>() == null)
                 instance.AddComponent<Viu.Runtime.ShanyaLocomotion>();
+        }
+
+        static void EnsureTestSceneEnvironment(GameObject shanya)
+        {
+            EnsureFloor();
+            EnsureLighting();
+            ScaleToHeight(shanya, TargetHeightMeters);
+            EnsureFollowCamera(shanya.transform);
+        }
+
+        static void EnsureFloor()
+        {
+            if (GameObject.Find("Viu_Floor") != null) return;
+            var plane = GameObject.CreatePrimitive(PrimitiveType.Plane);
+            plane.name = "Viu_Floor";
+            plane.transform.position = Vector3.zero;
+            plane.transform.localScale = new Vector3(2f, 1f, 2f);
+        }
+
+        static void EnsureLighting()
+        {
+            var light = UnityEngine.Object.FindFirstObjectByType<Light>();
+            if (light == null) return;
+            light.type = LightType.Directional;
+            light.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+            light.intensity = 1.1f;
+        }
+
+        static void ScaleToHeight(GameObject root, float targetHeight)
+        {
+            root.transform.localScale = Vector3.one;
+            root.transform.position = Vector3.zero;
+            var renderers = root.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0) return;
+
+            Bounds bounds = renderers[0].bounds;
+            foreach (var r in renderers)
+                bounds.Encapsulate(r.bounds);
+            float h = bounds.size.y;
+            if (h < 0.01f) return;
+
+            float factor = targetHeight / h;
+            root.transform.localScale = Vector3.one * factor;
+
+            bounds = renderers[0].bounds;
+            foreach (var r in renderers)
+                bounds.Encapsulate(r.bounds);
+            var pos = root.transform.position;
+            pos.y = -bounds.min.y - GroundSinkMeters;
+            root.transform.position = pos;
+            Debug.Log("[Viu] Рост ~" + targetHeight + " м (scale " + factor.ToString("F2") + ").");
+        }
+
+        static void SnapFeetToGround(GameObject root)
+        {
+            var renderers = root.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0) return;
+            Bounds bounds = renderers[0].bounds;
+            foreach (var r in renderers)
+                bounds.Encapsulate(r.bounds);
+            var pos = root.transform.position;
+            pos.y = -bounds.min.y - GroundSinkMeters;
+            root.transform.position = pos;
+        }
+
+        static void EnsureFollowCamera(Transform target)
+        {
+            var cam = Camera.main;
+            if (cam == null)
+            {
+                var go = new GameObject("Main Camera");
+                go.tag = "MainCamera";
+                cam = go.AddComponent<Camera>();
+                go.AddComponent<AudioListener>();
+            }
+            cam.orthographic = true;
+            cam.orthographicSize = 2.8f;
+            var follow = cam.GetComponent<Viu.Runtime.ShanyaFollowCamera>();
+            if (follow == null)
+                follow = cam.gameObject.AddComponent<Viu.Runtime.ShanyaFollowCamera>();
+            follow.target = target;
+            follow.height = 1.25f;
+            follow.distanceZ = 10f;
+            follow.lookAtHeight = 0.85f;
         }
 
         static GameObject PlaceCharacterInScene(string modelPath, RuntimeAnimatorController controller, Avatar avatar)
