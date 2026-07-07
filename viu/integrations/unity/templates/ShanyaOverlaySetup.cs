@@ -103,7 +103,7 @@ namespace Viu.Editor
 #if UNITY_2022_2_OR_NEWER
             PlayerSettings.useFlipModelSwapchain = false;
 #endif
-            PlayerSettings.SetUseDefaultGraphicsAPIs(false);
+            PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.StandaloneWindows64, false);
             PlayerSettings.SetGraphicsAPIs(
                 BuildTarget.StandaloneWindows64,
                 new[] { UnityEngine.Rendering.GraphicsDeviceType.Direct3D11 });
