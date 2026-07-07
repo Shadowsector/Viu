@@ -21,6 +21,7 @@ from ..integrations.unity.setup import (
     strip_risky_packages,
 )
 from ..integrations.unity.overlay import overlay_exe_path
+from ..integrations.unity.overlay_tune import deploy_tune_template, write_tune_lane
 from ..integrations.unity.process import (
     prepare_unity_for_batch,
     unity_lockfile,
@@ -552,6 +553,7 @@ class UnityOverlayTool(Tool):
             )
 
         out_exe = overlay_exe_path(root)
+        deploy_tune_template(root)
         launch = str(args.get("launch", "true")).lower() not in ("0", "false", "no")
         launched = ""
         if launch and out_exe.is_file():
@@ -561,8 +563,8 @@ class UnityOverlayTool(Tool):
                     kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
                 subprocess.Popen([str(out_exe)], **kwargs)  # noqa: S603
                 launched = (
-                    "\n\nЗапускаю оверлей. Внизу экрана — Шаня на прозрачном фоне; "
-                    "A/D — ходьба. Закрыть: **Esc** (или диспетчер задач → AnabarraOverlay.exe)."
+                    "\n\nЗапускаю оверлей. A/D — ходьба, Esc — выход. "
+                    "Глубина: **[** у панели, **]** на экран, **F5** — сохранить настройки."
                 )
             except OSError as exc:
                 launched = f"\n\nСобрано, но запустить не смог: {exc}. Запусти вручную: {out_exe}"
@@ -576,6 +578,34 @@ class UnityOverlayTool(Tool):
         if important:
             body += "\n\n--- лог ---\n" + "\n".join(important)
         return ToolResult(True, body)
+
+
+class UnityOverlayTuneTool(Tool):
+    name = "unity_overlay_tune"
+    description = (
+        "Переключить глубину оверлея без пересборки: записать overlay_tune.json "
+        "и перезапустить AnabarraOverlay.exe. lane=taskbar (в глубину) или attention (на экран)."
+    )
+    parameters = {
+        "lane": "taskbar | attention",
+        "project_path": "корень проекта (опционально)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        root = _root(ctx, args)
+        lane = (args.get("lane") or "taskbar").strip().lower()
+        try:
+            path = write_tune_lane(root, lane)
+        except ValueError as exc:
+            return ToolResult(False, str(exc))
+        label = "у панели (в глубину)" if lane == "taskbar" else "на экран (ближе)"
+        return ToolResult(
+            True,
+            f"Записал {path}\n"
+            f"Режим: {label}.\n"
+            "Закрой AnabarraOverlay.exe и запусти снова (или из папки Builds/AnabarraOverlay). "
+            "В оверлее: [ / ] — переключить на лету, F5 — сохранить удачные цифры.",
+        )
 
 
 class UnityImportStagingTool(Tool):

@@ -91,8 +91,24 @@ GUI_ACTIONS: List[GuiAction] = [
         "Оверлей: у панели задач",
         "Unity",
         tool="unity_overlay",
-        hint="Собрать Windows-оверлей (Unity закрыт, 5–15 мин): полоса у панели задач, "
-        "A/D — ходьба, Esc — закрыть. Сначала «Обновить аниматор».",
+        hint="Собрать Windows-оверлей (Unity закрыт, 5–15 мин). Esc — закрыть. "
+        "Сначала «Обновить аниматор».",
+    ),
+    GuiAction(
+        "overlay_depth_far",
+        "Оверлей: в глубину",
+        "Unity",
+        tool="unity_overlay_tune",
+        tool_args={"lane": "taskbar"},
+        hint="Без пересборки: Шаня дальше, у панели. Перезапусти AnabarraOverlay.exe.",
+    ),
+    GuiAction(
+        "overlay_depth_close",
+        "Оверлей: на экран",
+        "Unity",
+        tool="unity_overlay_tune",
+        tool_args={"lane": "attention"},
+        hint="Без пересборки: Шаня ближе, крупнее. Перезапусти exe. F5 в оверлее — сохранить.",
     ),
     GuiAction(
         "unity_open",

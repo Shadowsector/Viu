@@ -32,7 +32,7 @@ def test_deploy_shanya_setup(tmp_path):
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaLocomotion.cs").is_file()
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaFollowCamera.cs").is_file()
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaDesktopOverlay.cs").is_file()
-    assert (tmp_path / "Assets/Scripts/Viu/ShanyaOverlayCamera.cs").is_file()
+    assert (tmp_path / "Assets/Scripts/Viu/ShanyaOverlayDepth.cs").is_file()
     assert (tmp_path / "Assets/Characters/Shanya/Animations/viu_clips.json").is_file()
     assert "ShanyaSetup" in msg or "ShanyaAnimationSync" in msg
     ok, _ = editor_scripts_healthy(tmp_path)
@@ -95,10 +95,10 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 10" in text
+    assert "@viu-deploy-rev 11" in text
 
 
-def test_overlay_templates():
+def test_overlay_templates(tmp_path):
     root = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates"
     overlay = (root / "ShanyaDesktopOverlay.cs").read_text(encoding="utf-8")
     assert "DwmExtendFrameIntoClientArea" in overlay
@@ -110,6 +110,14 @@ def test_overlay_templates():
     assert "OverlayDesktop.unity" in setup
     assert "BuildWindowsBatch" in setup
     assert "AnabarraOverlay.exe" in setup
+
+    from viu.integrations.unity.overlay_tune import load_tune, write_tune_lane
+
+    tune = load_tune(None)
+    assert tune["characterHeightMeters"] == 1.77
+    path = write_tune_lane(tmp_path, "attention")
+    assert path.is_file()
+    assert "attention" in path.read_text(encoding="utf-8")
 
     from viu.integrations.unity.overlay import batch_overlay_build_command, overlay_exe_path
 

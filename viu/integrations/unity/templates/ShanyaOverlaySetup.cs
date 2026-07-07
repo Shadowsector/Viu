@@ -16,12 +16,13 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 10
+        // @viu-deploy-rev 11
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
-        const float TargetHeightMeters = 1.75f;
+        const float TargetHeightMeters = 1.77f;
         const float GroundSinkMeters = 0.03f;
+        const float FeetLiftMeters = 0.005f;
         const float CameraOrthoHalfHeight = 1.15f;
 
         [MenuItem("Viu/Overlay/Prepare Overlay Scene")]
@@ -152,6 +153,7 @@ namespace Viu.Editor
             EnsureLocomotion(instance);
             EnsureOverlayEnvironment(instance);
             SnapFeetToGround(instance);
+            LiftFeet(instance, FeetLiftMeters);
             EnsureOverlayManager();
             AssetDatabase.SaveAssets();
             SaveActiveScene(saveScenePath);
@@ -165,6 +167,16 @@ namespace Viu.Editor
                 root = new GameObject("Viu_OverlayRoot");
             if (root.GetComponent<Viu.Runtime.ShanyaDesktopOverlay>() == null)
                 root.AddComponent<Viu.Runtime.ShanyaDesktopOverlay>();
+            if (root.GetComponent<Viu.Runtime.ShanyaOverlayDepth>() == null)
+                root.AddComponent<Viu.Runtime.ShanyaOverlayDepth>();
+        }
+
+        static void LiftFeet(GameObject root, float liftMeters)
+        {
+            if (liftMeters <= 0f) return;
+            var pos = root.transform.position;
+            pos.y += liftMeters;
+            root.transform.position = pos;
         }
 
         static void EnsureOverlayEnvironment(GameObject shanya)
@@ -216,7 +228,7 @@ namespace Viu.Editor
                 follow = cam.gameObject.AddComponent<Viu.Runtime.ShanyaOverlayCamera>();
             }
             follow.target = target;
-            follow.viewCenterAboveFeet = 0.95f;
+            follow.viewCenterAboveFeet = 1.0f;
             follow.distanceZ = 10f;
             follow.transform.position = new Vector3(
                 target.position.x,
