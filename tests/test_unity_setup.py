@@ -78,7 +78,10 @@ def test_animation_sync_sets_loop():
     assert "using UnityEngine.InputSystem" not in text
     assert "Unity.InputSystem" in text
     assert "ReadHorizontalNewInput" in text
-    assert "transform.forward" not in text or "Vector3.right" in text
+    cam = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates/ShanyaFollowCamera.cs"
+    cam_text = cam.read_text(encoding="utf-8")
+    assert "Quaternion.identity" in cam_text
+    assert "cameraY" in cam_text
 
 
 def test_setup_builds_test_scene_environment():

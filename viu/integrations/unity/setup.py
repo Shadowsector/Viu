@@ -26,7 +26,7 @@ _LOCOMOTION_REL = f"{_RUNTIME_DIR}/ShanyaLocomotion.cs"
 _CAMERA_REL = f"{_RUNTIME_DIR}/ShanyaFollowCamera.cs"
 _MANIFEST_REL = f"{ANIMATIONS_REL}/{MANIFEST_NAME}"
 
-VIU_DEPLOY_REV = "6"
+VIU_DEPLOY_REV = "7"
 VIU_DEPLOY_MARKER = f"@viu-deploy-rev {VIU_DEPLOY_REV}"
 _BROKEN_EDITOR_MARKERS = ("activeInputHandler", "EnsureInputCompatible")
 
