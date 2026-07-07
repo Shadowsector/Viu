@@ -16,7 +16,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 12
+        // @viu-deploy-rev 13
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";

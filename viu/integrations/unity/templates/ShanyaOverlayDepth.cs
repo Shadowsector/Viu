@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Viu.Runtime
 {
     /// <summary>
-    /// Глубина коридора: S — отойти (у панели), W — подойти (на экран). F5 — сохранить overlay_tune.json.
+    /// Глубина коридора: S — отойти, W — подойти. F5 — сохранить overlay_tune.json.
     /// </summary>
     public class ShanyaOverlayDepth : MonoBehaviour
     {
@@ -16,7 +16,6 @@ namespace Viu.Runtime
             public float orthoHalfHeight;
         }
 
-        /// <summary>0 = далеко у панели, 1 = близко (~пол-экрана).</summary>
         [Range(0f, 1f)]
         public float depthBlend;
 
@@ -33,11 +32,9 @@ namespace Viu.Runtime
         };
 
         public float depthMoveSpeed = 0.55f;
-        public float blendSmooth = 8f;
         public float feetLiftMeters = 0.015f;
 
-        float _currentBlend;
-        LaneSettings _applied;
+        float _smoothBlend;
         ShanyaOverlayCamera _follow;
         Camera _camera;
         Transform _character;
@@ -50,9 +47,8 @@ namespace Viu.Runtime
             _camera = Camera.main;
             _character = _follow != null ? _follow.target : null;
             LoadTuneFile();
-            _currentBlend = depthBlend;
-            _applied = Evaluate(_currentBlend);
-            ApplyInstant(_applied);
+            _smoothBlend = depthBlend;
+            ApplyForBlend(_smoothBlend);
             Debug.Log("[Viu] Глубина: S — отойти, W — подойти, F5 — сохранить overlay_tune.json");
         }
 
@@ -62,24 +58,33 @@ namespace Viu.Runtime
             if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) dir += 1f;
             if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) dir -= 1f;
             if (Mathf.Abs(dir) > 0.01f)
-            {
                 depthBlend = Mathf.Clamp01(depthBlend + dir * depthMoveSpeed * Time.deltaTime);
-            }
 
             if (Input.GetKeyDown(KeyCode.F5))
                 SaveTuneFile();
 
-            _currentBlend = Mathf.Lerp(_currentBlend, depthBlend, blendSmooth * Time.deltaTime);
-            var target = Evaluate(_currentBlend);
-            _applied.distanceZ = Mathf.Lerp(_applied.distanceZ, target.distanceZ, blendSmooth * Time.deltaTime);
-            _applied.orthoHalfHeight = Mathf.Lerp(
-                _applied.orthoHalfHeight, target.orthoHalfHeight, blendSmooth * Time.deltaTime);
-            ApplyInstant(_applied);
+            _smoothBlend = Mathf.MoveTowards(_smoothBlend, depthBlend, depthMoveSpeed * 1.8f * Time.deltaTime);
+            ApplyForBlend(_smoothBlend);
         }
 
         public void SetDepthBlend(float blend)
         {
             depthBlend = Mathf.Clamp01(blend);
+            _smoothBlend = depthBlend;
+            ApplyForBlend(_smoothBlend);
+        }
+
+        void ApplyForBlend(float t)
+        {
+            var s = Evaluate(t);
+            if (_follow != null)
+            {
+                _follow.distanceZ = s.distanceZ;
+                _follow.depthBlend = t;
+            }
+            if (_camera != null)
+                _camera.orthographicSize = s.orthoHalfHeight;
+            ApplyFeetLift();
         }
 
         LaneSettings Evaluate(float t)
@@ -89,15 +94,6 @@ namespace Viu.Runtime
                 distanceZ = Mathf.Lerp(taskbar.distanceZ, attention.distanceZ, t),
                 orthoHalfHeight = Mathf.Lerp(taskbar.orthoHalfHeight, attention.orthoHalfHeight, t),
             };
-        }
-
-        void ApplyInstant(LaneSettings s)
-        {
-            if (_follow != null)
-                _follow.distanceZ = s.distanceZ;
-            if (_camera != null)
-                _camera.orthographicSize = s.orthoHalfHeight;
-            ApplyFeetLift();
         }
 
         void ApplyFeetLift()
@@ -135,8 +131,6 @@ namespace Viu.Runtime
                     depthBlend = Mathf.Clamp01(tune.depthBlend);
                 else if (string.Equals(tune.activeLane, "attention", StringComparison.OrdinalIgnoreCase))
                     depthBlend = 1f;
-                else
-                    depthBlend = 0f;
             }
             catch (Exception e)
             {
@@ -168,9 +162,8 @@ namespace Viu.Runtime
             };
             try
             {
-                var path = TunePath();
-                File.WriteAllText(path, JsonUtility.ToJson(data, true));
-                Debug.Log("[Viu] Сохранено: " + path + $" (depth={depthBlend:F2})");
+                File.WriteAllText(TunePath(), JsonUtility.ToJson(data, true));
+                Debug.Log("[Viu] Сохранено overlay_tune.json (depth=" + depthBlend.ToString("F2") + ")");
             }
             catch (Exception e)
             {
@@ -194,7 +187,7 @@ namespace Viu.Runtime
         {
             public float distanceZ;
             public float orthoHalfHeight;
-            public float viewCenterAboveFeet; // legacy, ignored
+            public float viewCenterAboveFeet;
 
             public LaneSettings ToSettings() => new LaneSettings
             {

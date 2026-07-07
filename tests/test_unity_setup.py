@@ -95,7 +95,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 12" in text
+    assert "@viu-deploy-rev 13" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -105,7 +105,7 @@ def test_overlay_templates(tmp_path):
     assert "ChromaKey" in overlay
     assert "Escape" in overlay
     cam = (root / "ShanyaOverlayCamera.cs").read_text(encoding="utf-8")
-    assert "feetScreenFraction" in cam
+    assert "feetFractionCloseBoost" in cam
     depth = (root / "ShanyaOverlayDepth.cs").read_text(encoding="utf-8")
     assert "KeyCode.W" in depth
     assert "fullScreenOverlay" in (root / "ShanyaDesktopOverlay.cs").read_text(encoding="utf-8")

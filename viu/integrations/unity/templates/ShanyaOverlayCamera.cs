@@ -3,16 +3,19 @@ using UnityEngine;
 namespace Viu.Runtime
 {
     /// <summary>
-    /// Камера оверлея: стопы прибиты к линии у низа экрана (над панелью задач).
-    /// При изменении zoom (ortho) макушка двигается, стопы — нет.
+    /// Камера оверлея: стопы на фиксированной линии экрана. Y без сглаживания (иначе «волны» при W/S).
     /// </summary>
     public class ShanyaOverlayCamera : MonoBehaviour
     {
         public Transform target;
-        /// <summary>Доля высоты окна от низа, где стоят стопы (0.06 ≈ 65 px на 1080p).</summary>
+        /// <summary>Доля высоты окна от низа для стоп (0.06 ≈ 65 px на 1080p).</summary>
         public float feetScreenFraction = 0.06f;
+        /// <summary>Доп. подъём стоп при приближении (компенсация перспективы меша).</summary>
+        public float feetFractionCloseBoost = 0.011f;
+        /// <summary>Текущая глубина 0…1 — задаёт ShanyaOverlayDepth.</summary>
+        [HideInInspector] public float depthBlend;
         public float distanceZ = 12f;
-        public float followSmooth = 18f;
+        public float followSmoothX = 16f;
 
         Camera _camera;
 
@@ -27,10 +30,15 @@ namespace Viu.Runtime
             if (_camera == null) _camera = GetComponent<Camera>();
             float ortho = _camera != null ? _camera.orthographicSize : 1f;
             var t = target.position;
-            // Низ кадра = camY - ortho. Стопы на fraction от низа окна.
-            float camY = t.y + ortho * (1f - 2f * feetScreenFraction);
-            float y = Mathf.Lerp(transform.position.y, camY, followSmooth * Time.deltaTime);
-            transform.position = new Vector3(t.x, y, t.z - distanceZ);
+
+            float frac = feetScreenFraction + depthBlend * feetFractionCloseBoost;
+            float camY = t.y + ortho * (1f - 2f * frac);
+
+            float x = followSmoothX > 0f
+                ? Mathf.Lerp(transform.position.x, t.x, followSmoothX * Time.deltaTime)
+                : t.x;
+
+            transform.position = new Vector3(x, camY, t.z - distanceZ);
             transform.rotation = Quaternion.identity;
         }
     }
