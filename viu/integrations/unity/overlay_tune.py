@@ -10,18 +10,17 @@ from typing import Any, Dict
 from .overlay import OVERLAY_BUILD_DIR
 
 DEFAULT_TUNE: Dict[str, Any] = {
-    "feetLiftMeters": 0.005,
+    "feetLiftMeters": 0.015,
     "characterHeightMeters": 1.77,
+    "depthBlend": 0.0,
     "activeLane": "taskbar",
     "taskbar": {
-        "viewCenterAboveFeet": 1.0,
-        "distanceZ": 10.0,
-        "orthoHalfHeight": 1.15,
+        "distanceZ": 14.0,
+        "orthoHalfHeight": 5.5,
     },
     "attention": {
-        "viewCenterAboveFeet": 1.15,
-        "distanceZ": 6.0,
-        "orthoHalfHeight": 0.88,
+        "distanceZ": 4.5,
+        "orthoHalfHeight": 0.95,
     },
 }
 
@@ -43,23 +42,24 @@ def load_tune(project_root: Path | None = None) -> Dict[str, Any]:
 
 
 def write_tune_lane(project_root: Path, lane: str) -> Path:
-    """lane: taskbar | attention"""
+    """lane: taskbar | attention — выставляет depthBlend 0 или 1."""
     lane = lane.strip().lower()
     if lane not in ("taskbar", "attention"):
         raise ValueError(f"lane must be taskbar or attention, got {lane!r}")
     data = load_tune(project_root)
     data["activeLane"] = lane
+    data["depthBlend"] = 1.0 if lane == "attention" else 0.0
     dest = tune_file_path(project_root)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return dest
 
 
-def deploy_tune_template(project_root: Path) -> Path:
+def deploy_tune_template(project_root: Path, *, overwrite: bool = False) -> Path:
     dest = tune_file_path(project_root)
-    if dest.is_file():
-        return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.is_file() and not overwrite:
+        return dest
     data = load_tune(None)
     dest.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return dest

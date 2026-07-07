@@ -95,7 +95,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 11" in text
+    assert "@viu-deploy-rev 12" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -105,7 +105,10 @@ def test_overlay_templates(tmp_path):
     assert "ChromaKey" in overlay
     assert "Escape" in overlay
     cam = (root / "ShanyaOverlayCamera.cs").read_text(encoding="utf-8")
-    assert "viewCenterAboveFeet" in cam
+    assert "feetScreenFraction" in cam
+    depth = (root / "ShanyaOverlayDepth.cs").read_text(encoding="utf-8")
+    assert "KeyCode.W" in depth
+    assert "fullScreenOverlay" in (root / "ShanyaDesktopOverlay.cs").read_text(encoding="utf-8")
     setup = (root / "ShanyaOverlaySetup.cs").read_text(encoding="utf-8")
     assert "OverlayDesktop.unity" in setup
     assert "BuildWindowsBatch" in setup
@@ -114,7 +117,7 @@ def test_overlay_templates(tmp_path):
     from viu.integrations.unity.overlay_tune import load_tune, write_tune_lane
 
     tune = load_tune(None)
-    assert tune["characterHeightMeters"] == 1.77
+    assert tune["taskbar"]["orthoHalfHeight"] == 5.5
     path = write_tune_lane(tmp_path, "attention")
     assert path.is_file()
     assert "attention" in path.read_text(encoding="utf-8")

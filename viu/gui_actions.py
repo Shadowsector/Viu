@@ -100,7 +100,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Unity",
         tool="unity_overlay_tune",
         tool_args={"lane": "taskbar"},
-        hint="Без пересборки: Шаня дальше, у панели. Перезапусти AnabarraOverlay.exe.",
+        hint="Без пересборки: Шаня дальше, мелко. W/S в оверлее точнее. Перезапусти exe.",
     ),
     GuiAction(
         "overlay_depth_close",
@@ -108,7 +108,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Unity",
         tool="unity_overlay_tune",
         tool_args={"lane": "attention"},
-        hint="Без пересборки: Шаня ближе, крупнее. Перезапусти exe. F5 в оверлее — сохранить.",
+        hint="Без пересборки: Шаня ближе, крупнее (~пол-экрана). W/S + F5 сохранить.",
     ),
     GuiAction(
         "unity_open",

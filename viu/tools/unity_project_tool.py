@@ -553,7 +553,7 @@ class UnityOverlayTool(Tool):
             )
 
         out_exe = overlay_exe_path(root)
-        deploy_tune_template(root)
+        deploy_tune_template(root, overwrite=True)
         launch = str(args.get("launch", "true")).lower() not in ("0", "false", "no")
         launched = ""
         if launch and out_exe.is_file():
@@ -563,8 +563,8 @@ class UnityOverlayTool(Tool):
                     kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
                 subprocess.Popen([str(out_exe)], **kwargs)  # noqa: S603
                 launched = (
-                    "\n\nЗапускаю оверлей. A/D — ходьба, Esc — выход. "
-                    "Глубина: **[** у панели, **]** на экран, **F5** — сохранить настройки."
+                    "\n\nЗапускаю оверлей (на весь экран). A/D — ходьба, Esc — выход. "
+                    "Глубина: **W** подойти, **S** отойти, **F5** — сохранить настройки."
                 )
             except OSError as exc:
                 launched = f"\n\nСобрано, но запустить не смог: {exc}. Запусти вручную: {out_exe}"
@@ -603,8 +603,8 @@ class UnityOverlayTuneTool(Tool):
             True,
             f"Записал {path}\n"
             f"Режим: {label}.\n"
-            "Закрой AnabarraOverlay.exe и запусти снова (или из папки Builds/AnabarraOverlay). "
-            "В оверлее: [ / ] — переключить на лету, F5 — сохранить удачные цифры.",
+            "Закрой AnabarraOverlay.exe и запусти снова. "
+            "В оверлее: W/S — глубина на лету, F5 — сохранить удачные цифры.",
         )
 
 

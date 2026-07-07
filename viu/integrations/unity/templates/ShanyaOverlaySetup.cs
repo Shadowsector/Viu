@@ -16,14 +16,14 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 11
+        // @viu-deploy-rev 12
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
         const float TargetHeightMeters = 1.77f;
         const float GroundSinkMeters = 0.03f;
-        const float FeetLiftMeters = 0.005f;
-        const float CameraOrthoHalfHeight = 1.15f;
+        const float FeetLiftMeters = 0.015f;
+        const float CameraOrthoHalfHeight = 5.5f;
 
         [MenuItem("Viu/Overlay/Prepare Overlay Scene")]
         public static void RunMenu() => Run(ScenePath);
@@ -96,7 +96,7 @@ namespace Viu.Editor
         {
             PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
             PlayerSettings.defaultScreenWidth = 1920;
-            PlayerSettings.defaultScreenHeight = 280;
+            PlayerSettings.defaultScreenHeight = 1080;
             PlayerSettings.resizableWindow = false;
             PlayerSettings.runInBackground = true;
             PlayerSettings.visibleInBackground = true;
@@ -228,11 +228,11 @@ namespace Viu.Editor
                 follow = cam.gameObject.AddComponent<Viu.Runtime.ShanyaOverlayCamera>();
             }
             follow.target = target;
-            follow.viewCenterAboveFeet = 1.0f;
-            follow.distanceZ = 10f;
+            follow.feetScreenFraction = 0.06f;
+            follow.distanceZ = 14f;
             follow.transform.position = new Vector3(
                 target.position.x,
-                target.position.y + follow.viewCenterAboveFeet,
+                target.position.y + CameraOrthoHalfHeight * (1f - 2f * follow.feetScreenFraction),
                 target.position.z - follow.distanceZ);
             follow.transform.rotation = Quaternion.identity;
         }
