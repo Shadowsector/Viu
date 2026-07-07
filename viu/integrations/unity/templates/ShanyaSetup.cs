@@ -16,11 +16,14 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaSetup
     {
-        // @viu-deploy-rev 7
+        // @viu-deploy-rev 8
         const string ControllerPath = ShanyaAnimationSync.ControllerPath;
         const string ModelNameHint = "Shanya_Erisa";
-        const float TargetHeightMeters = 1.7f;
+        /// <summary>Целевой рост персонажа в метрах (можно подкрутить).</summary>
+        const float TargetHeightMeters = 1.75f;
         const float GroundSinkMeters = 0.03f;
+        /// <summary>Половина высоты кадра в метрах (2*size = видимая высота мира).</summary>
+        const float CameraOrthoHalfHeight = 5.5f;
 
         const string ScenePath = "Assets/Scenes/GameTest.unity";
 
@@ -237,14 +240,19 @@ namespace Viu.Editor
                 go.AddComponent<AudioListener>();
             }
             cam.orthographic = true;
-            cam.orthographicSize = 2.8f;
+            // Игровой кадр: ~11 м по вертикали — деревья, дома, не только Шаня.
+            cam.orthographicSize = CameraOrthoHalfHeight;
             var follow = cam.GetComponent<Viu.Runtime.ShanyaFollowCamera>();
             if (follow == null)
                 follow = cam.gameObject.AddComponent<Viu.Runtime.ShanyaFollowCamera>();
             follow.target = target;
-            follow.height = 1.25f;
-            follow.distanceZ = 10f;
-            follow.lookAtHeight = 0.85f;
+            follow.viewCenterAboveFeet = 2.2f;
+            follow.distanceZ = 12f;
+            follow.transform.position = new Vector3(
+                target.position.x,
+                target.position.y + follow.viewCenterAboveFeet,
+                target.position.z - follow.distanceZ);
+            follow.transform.rotation = Quaternion.identity;
         }
 
         static GameObject PlaceCharacterInScene(string modelPath, RuntimeAnimatorController controller, Avatar avatar)

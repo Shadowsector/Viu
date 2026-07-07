@@ -81,14 +81,15 @@ def test_animation_sync_sets_loop():
     cam = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates/ShanyaFollowCamera.cs"
     cam_text = cam.read_text(encoding="utf-8")
     assert "Quaternion.identity" in cam_text
-    assert "cameraY" in cam_text
+    assert "viewCenterAboveFeet" in cam_text
 
 
 def test_setup_builds_test_scene_environment():
     src = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates/ShanyaSetup.cs"
     text = src.read_text(encoding="utf-8")
     assert "EnsureTestSceneEnvironment" in text
-    assert "TargetHeightMeters = 1.7f" in text
+    assert "TargetHeightMeters = 1.75f" in text
+    assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
 

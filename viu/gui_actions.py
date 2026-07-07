@@ -83,8 +83,8 @@ GUI_ACTIONS: List[GuiAction] = [
         "Тест: Шаня стоит и ходит",
         "Unity",
         tool="unity_prepare_scene",
-        hint="Вид сбоку (Terraria): пол, рост ~1.7 м, A/D вдоль экрана. "
-        "Вью закроет Unity если мешает и откроет заново.",
+        hint="Вид сбоку (Terraria), полный кадр мира на экран, рост ~1.75 м, A/D. "
+        "Обнови Viu перед запуском — скрипты Setup и Camera должны совпадать.",
     ),
     GuiAction(
         "unity_open",
