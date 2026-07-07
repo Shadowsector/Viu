@@ -34,7 +34,7 @@ _OVERLAY_CAM_REL = f"{_RUNTIME_DIR}/ShanyaOverlayCamera.cs"
 _OVERLAY_DEPTH_REL = f"{_RUNTIME_DIR}/ShanyaOverlayDepth.cs"
 _MANIFEST_REL = f"{ANIMATIONS_REL}/{MANIFEST_NAME}"
 
-VIU_DEPLOY_REV = "13"
+VIU_DEPLOY_REV = "14"
 VIU_DEPLOY_MARKER = f"@viu-deploy-rev {VIU_DEPLOY_REV}"
 _BROKEN_EDITOR_MARKERS = (
     "activeInputHandler",

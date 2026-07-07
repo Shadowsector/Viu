@@ -32,7 +32,7 @@ namespace Viu.Runtime
         };
 
         public float depthMoveSpeed = 0.55f;
-        public float feetLiftMeters = 0.015f;
+        public float feetLiftMeters = 0.006f;
 
         float _smoothBlend;
         ShanyaOverlayCamera _follow;

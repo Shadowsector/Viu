@@ -19,7 +19,7 @@ namespace Viu.Runtime
         public int stripHeightPixels = 280;
 
         [Tooltip("Стопы на этой высоте от низа экрана (над панелью задач), в пикселях.")]
-        public int feetLineFromBottomPixels = 64;
+        public int feetLineFromBottomPixels = 46;
 
         public bool clickThrough = false;
         public bool alwaysOnTop = true;

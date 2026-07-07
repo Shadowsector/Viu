@@ -10,7 +10,7 @@ from typing import Any, Dict
 from .overlay import OVERLAY_BUILD_DIR
 
 DEFAULT_TUNE: Dict[str, Any] = {
-    "feetLiftMeters": 0.015,
+    "feetLiftMeters": 0.006,
     "characterHeightMeters": 1.77,
     "depthBlend": 0.0,
     "activeLane": "taskbar",

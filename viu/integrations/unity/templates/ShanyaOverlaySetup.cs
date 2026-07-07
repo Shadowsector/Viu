@@ -16,13 +16,13 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 13
+        // @viu-deploy-rev 14
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
         const float TargetHeightMeters = 1.77f;
         const float GroundSinkMeters = 0.03f;
-        const float FeetLiftMeters = 0.015f;
+        const float FeetLiftMeters = 0.006f;
         const float CameraOrthoHalfHeight = 5.5f;
 
         [MenuItem("Viu/Overlay/Prepare Overlay Scene")]
