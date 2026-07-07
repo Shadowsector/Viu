@@ -1,13 +1,11 @@
+using System.Reflection;
 using UnityEngine;
-#if ENABLE_INPUT_SYSTEM
-using UnityEngine.InputSystem;
-#endif
 
 namespace Viu.Runtime
 {
     /// <summary>
     /// Простая ходьба: стрелки / A-D → параметр Speed в Animator (Idle ↔ Walk).
-    /// Работает и со старым Input Manager, и с новым Input System package.
+    /// Без прямой ссылки на Input System package (собирается даже если пакет не в manifest).
     /// </summary>
     [RequireComponent(typeof(Animator))]
     public class ShanyaLocomotion : MonoBehaviour
@@ -40,16 +38,37 @@ namespace Viu.Runtime
 
         static float ReadHorizontal()
         {
-#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
-            var kb = Keyboard.current;
-            if (kb == null) return 0f;
-            float h = 0f;
-            if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) h -= 1f;
-            if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) h += 1f;
-            return h;
-#else
+#if ENABLE_LEGACY_INPUT_MANAGER
             return Input.GetAxisRaw("Horizontal");
+#else
+            return ReadHorizontalNewInput();
 #endif
+        }
+
+        /// <summary>Читает A/D и стрелки через Input System без compile-time ссылки на пакет.</summary>
+        static float ReadHorizontalNewInput()
+        {
+            var keyboardType = System.Type.GetType("UnityEngine.InputSystem.Keyboard, Unity.InputSystem");
+            if (keyboardType == null) return 0f;
+
+            var current = keyboardType.GetProperty("current", BindingFlags.Static | BindingFlags.Public);
+            var keyboard = current?.GetValue(null);
+            if (keyboard == null) return 0f;
+
+            float h = 0f;
+            if (IsKeyPressed(keyboard, "aKey") || IsKeyPressed(keyboard, "leftArrowKey")) h -= 1f;
+            if (IsKeyPressed(keyboard, "dKey") || IsKeyPressed(keyboard, "rightArrowKey")) h += 1f;
+            return h;
+        }
+
+        static bool IsKeyPressed(object keyboard, string keyName)
+        {
+            var key = keyboard.GetType().GetProperty(keyName, BindingFlags.Instance | BindingFlags.Public);
+            var keyControl = key?.GetValue(keyboard);
+            if (keyControl == null) return false;
+
+            var isPressed = keyControl.GetType().GetProperty("isPressed", BindingFlags.Instance | BindingFlags.Public);
+            return isPressed != null && (bool)isPressed.GetValue(keyControl);
         }
     }
 }

@@ -47,6 +47,8 @@ namespace Viu.Editor
 
         public static void Run(string saveScenePath)
         {
+            EnsureInputCompatible();
+
             var modelPath = FindModelPath();
             if (string.IsNullOrEmpty(modelPath))
             {
@@ -106,6 +108,19 @@ namespace Viu.Editor
 
             EditorSceneManager.SaveScene(scene, path);
             Debug.Log("[Viu] Сцена сохранена: " + path);
+        }
+
+        /// <summary>
+        /// Если в Player Settings только Input System — включаем Both,
+        /// чтобы ShanyaLocomotion мог читать A/D через legacy Input.
+        /// </summary>
+        static void EnsureInputCompatible()
+        {
+            if (PlayerSettings.activeInputHandler == ActiveInputHandler.InputSystemPackage)
+            {
+                PlayerSettings.activeInputHandler = ActiveInputHandler.Both;
+                Debug.Log("[Viu] Input → Both (старый + новый), чтобы ходьба A/D работала без ошибок.");
+            }
         }
 
         static string FindModelPath()
