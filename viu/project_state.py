@@ -83,6 +83,12 @@ def next_step(config: Config) -> str:
             "Сначала «Обновить аниматор» (loop на FBX), потом «Что делаем дальше?»."
         )
 
+    if "панел" in focus.title.lower() or "оверлей" in focus.title.lower() or "дом" in focus.title.lower():
+        return (
+            f"Фокус: «{focus.title}». Действие: кнопка «Оверлей: Шаня на панели» "
+            "(unity_overlay) — Unity закрыт, сборка 5–15 мин. После запуска A/D на рабочем столе."
+        )
+
     return (
         f"Фокус: «{focus.title}». "
         + (f"Заметка: {focus.note}. " if focus.note else "")

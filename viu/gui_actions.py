@@ -87,6 +87,14 @@ GUI_ACTIONS: List[GuiAction] = [
         "Обнови Viu перед запуском — скрипты Setup и Camera должны совпадать.",
     ),
     GuiAction(
+        "unity_overlay",
+        "Оверлей: Шаня на панели",
+        "Unity",
+        tool="unity_overlay",
+        hint="Собрать Windows-оверлей (Unity закрыт, 5–15 мин): прозрачная полоса "
+        "у панели задач, A/D — ходьба. Сначала «Обновить аниматор».",
+    ),
+    GuiAction(
         "unity_open",
         "Открыть Unity",
         "Unity",

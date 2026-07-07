@@ -16,17 +16,23 @@ _TEMPLATE_OUTFIT = Path(__file__).parent / "templates" / "ShanyaOutfit.cs"
 _TEMPLATE_SYNC = Path(__file__).parent / "templates" / "ShanyaAnimationSync.cs"
 _TEMPLATE_LOCOMOTION = Path(__file__).parent / "templates" / "ShanyaLocomotion.cs"
 _TEMPLATE_CAMERA = Path(__file__).parent / "templates" / "ShanyaFollowCamera.cs"
+_TEMPLATE_OVERLAY = Path(__file__).parent / "templates" / "ShanyaDesktopOverlay.cs"
+_TEMPLATE_OVERLAY_CAM = Path(__file__).parent / "templates" / "ShanyaOverlayCamera.cs"
+_TEMPLATE_OVERLAY_SETUP = Path(__file__).parent / "templates" / "ShanyaOverlaySetup.cs"
 _TEMPLATE_MANIFEST = Path(__file__).parent / "templates" / "viu_clips.json"
 _EDITOR_DIR = "Assets/Editor/Viu"
 _RUNTIME_DIR = "Assets/Scripts/Viu"
 _SETUP_REL = f"{_EDITOR_DIR}/ShanyaSetup.cs"
 _OUTFIT_REL = f"{_EDITOR_DIR}/ShanyaOutfit.cs"
 _SYNC_REL = f"{_EDITOR_DIR}/ShanyaAnimationSync.cs"
+_OVERLAY_SETUP_REL = f"{_EDITOR_DIR}/ShanyaOverlaySetup.cs"
 _LOCOMOTION_REL = f"{_RUNTIME_DIR}/ShanyaLocomotion.cs"
 _CAMERA_REL = f"{_RUNTIME_DIR}/ShanyaFollowCamera.cs"
+_OVERLAY_REL = f"{_RUNTIME_DIR}/ShanyaDesktopOverlay.cs"
+_OVERLAY_CAM_REL = f"{_RUNTIME_DIR}/ShanyaOverlayCamera.cs"
 _MANIFEST_REL = f"{ANIMATIONS_REL}/{MANIFEST_NAME}"
 
-VIU_DEPLOY_REV = "8"
+VIU_DEPLOY_REV = "9"
 VIU_DEPLOY_MARKER = f"@viu-deploy-rev {VIU_DEPLOY_REV}"
 _BROKEN_EDITOR_MARKERS = (
     "activeInputHandler",
@@ -88,6 +94,7 @@ def deploy_editor_scripts(project_root: Path) -> Tuple[bool, str]:
         (_TEMPLATE_SETUP, _SETUP_REL),
         (_TEMPLATE_OUTFIT, _OUTFIT_REL),
         (_TEMPLATE_SYNC, _SYNC_REL),
+        (_TEMPLATE_OVERLAY_SETUP, _OVERLAY_SETUP_REL),
     ):
         if not src.is_file():
             continue
@@ -109,6 +116,8 @@ def deploy_runtime_scripts(project_root: Path) -> Tuple[bool, str]:
     for src, rel in (
         (_TEMPLATE_LOCOMOTION, _LOCOMOTION_REL),
         (_TEMPLATE_CAMERA, _CAMERA_REL),
+        (_TEMPLATE_OVERLAY, _OVERLAY_REL),
+        (_TEMPLATE_OVERLAY_CAM, _OVERLAY_CAM_REL),
     ):
         if not src.is_file():
             continue
@@ -207,3 +216,9 @@ def batch_sync_animations_command(project_root: Path, unity_exe: Path) -> str:
 def open_editor_command(project_root: Path, unity_exe: Path) -> list[str]:
     """Аргументы для запуска обычного (GUI) редактора Unity с проектом."""
     return [str(unity_exe.resolve()), "-projectPath", str(project_root.resolve())]
+
+
+def batch_overlay_build_command(project_root: Path, unity_exe: Path) -> str:
+    from .overlay import batch_overlay_build_command as _cmd
+
+    return _cmd(project_root, unity_exe)

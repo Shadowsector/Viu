@@ -28,8 +28,11 @@ def test_deploy_shanya_setup(tmp_path):
     assert ok
     assert (tmp_path / "Assets/Editor/Viu/ShanyaSetup.cs").is_file()
     assert (tmp_path / "Assets/Editor/Viu/ShanyaAnimationSync.cs").is_file()
+    assert (tmp_path / "Assets/Editor/Viu/ShanyaOverlaySetup.cs").is_file()
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaLocomotion.cs").is_file()
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaFollowCamera.cs").is_file()
+    assert (tmp_path / "Assets/Scripts/Viu/ShanyaDesktopOverlay.cs").is_file()
+    assert (tmp_path / "Assets/Scripts/Viu/ShanyaOverlayCamera.cs").is_file()
     assert (tmp_path / "Assets/Characters/Shanya/Animations/viu_clips.json").is_file()
     assert "ShanyaSetup" in msg or "ShanyaAnimationSync" in msg
     ok, _ = editor_scripts_healthy(tmp_path)
@@ -92,6 +95,26 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
+    assert "@viu-deploy-rev 9" in text
+
+
+def test_overlay_templates():
+    root = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates"
+    overlay = (root / "ShanyaDesktopOverlay.cs").read_text(encoding="utf-8")
+    assert "WS_EX_LAYERED" in overlay
+    assert "stripHeightPixels" in overlay
+    cam = (root / "ShanyaOverlayCamera.cs").read_text(encoding="utf-8")
+    assert "viewCenterAboveFeet" in cam
+    setup = (root / "ShanyaOverlaySetup.cs").read_text(encoding="utf-8")
+    assert "OverlayDesktop.unity" in setup
+    assert "BuildWindowsBatch" in setup
+    assert "AnabarraOverlay.exe" in setup
+
+    from viu.integrations.unity.overlay import batch_overlay_build_command, overlay_exe_path
+
+    cmd = batch_overlay_build_command(Path("U:/Anabarra/Unity/Anabarra"), Path("C:/Unity/Unity.exe"))
+    assert "ShanyaOverlaySetup.BuildWindowsBatch" in cmd
+    assert overlay_exe_path(Path("/proj")).name == "AnabarraOverlay.exe"
 
 
 def test_strip_risky_packages(tmp_path):

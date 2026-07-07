@@ -10,6 +10,7 @@ from typing import Any, Dict
 from ..integrations.unity.animation_scan import ANIMATIONS_REL
 from ..integrations.unity.paths import resolve_in_unity_project, unity_project_root
 from ..integrations.unity.setup import (
+    batch_overlay_build_command,
     batch_setup_command,
     batch_sync_animations_command,
     deploy_animation_pipeline,
@@ -19,6 +20,7 @@ from ..integrations.unity.setup import (
     open_editor_command,
     strip_risky_packages,
 )
+from ..integrations.unity.overlay import overlay_exe_path
 from ..integrations.unity.process import (
     prepare_unity_for_batch,
     unity_lockfile,
@@ -484,6 +486,96 @@ class UnityPrepareSceneTool(Tool):
             "зелёную кнопку ▶ (Play). Шаня стоит на месте (Idle), а по клавишам "
             "A/D должна пойти (Walk). Больше от тебя ничего не нужно — только Play.",
         )
+
+
+class UnityOverlayTool(Tool):
+    name = "unity_overlay"
+    description = (
+        "Собрать и запустить десктоп-оверлей: прозрачная полоса у панели задач, "
+        "Шаня ходит по A/D. Unity Editor должен быть **закрыт**. Долгая сборка (~5–15 мин)."
+    )
+    parameters = {
+        "project_path": "корень проекта (опционально)",
+        "timeout": "таймаут секунд (по умолчанию 1800)",
+        "launch": "запустить exe после сборки (по умолчанию true)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        root = _root(ctx, args)
+        if not (root / "Assets").is_dir():
+            return ToolResult(False, f"Не Unity-проект: {root}")
+
+        ok, msg = deploy_animation_pipeline(root)
+        if not ok:
+            return ToolResult(False, msg)
+        healthy, hint = editor_scripts_healthy(root)
+        if not healthy:
+            return ToolResult(False, hint)
+
+        prep, prep_msg = _ensure_batch_ready(root, auto_kill=True)
+        if prep is not None:
+            return prep
+
+        exe = find_unity_exe(ctx.config.unity_exe)
+        if exe is None:
+            return ToolResult(
+                False,
+                "Unity.exe не найден. Задай VIU_UNITY_EXE или установи Unity 6.3 LTS через Hub.",
+            )
+
+        cmd = batch_overlay_build_command(root, exe)
+        timeout = float(args.get("timeout") or 1800)
+        try:
+            proc = subprocess.run(
+                cmd, shell=True, capture_output=True, text=True, timeout=timeout, cwd=str(root)
+            )
+        except subprocess.TimeoutExpired:
+            return ToolResult(
+                False,
+                f"Сборка оверлея заняла больше {timeout}s. Смотри {root / 'viu_overlay_build.log'}.",
+            )
+
+        log_path = root / "viu_overlay_build.log"
+        important: list[str] = []
+        if log_path.is_file():
+            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            important = [
+                ln for ln in lines if "[Viu]" in ln or "error CS" in ln or "Exception" in ln
+            ][-15:]
+
+        if proc.returncode != 0:
+            detail = "\n".join(important) if important else "(подробности в viu_overlay_build.log)"
+            return ToolResult(
+                False,
+                "Сборка оверлея не удалась.\n" + detail +
+                "\n\nПришли viu_overlay_build.log через «Отправить логи разработчику».",
+            )
+
+        out_exe = overlay_exe_path(root)
+        launch = str(args.get("launch", "true")).lower() not in ("0", "false", "no")
+        launched = ""
+        if launch and out_exe.is_file():
+            try:
+                kwargs: Dict[str, Any] = {"cwd": str(out_exe.parent)}
+                if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+                    kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+                subprocess.Popen([str(out_exe)], **kwargs)  # noqa: S603
+                launched = (
+                    "\n\nЗапускаю оверлей. Внизу экрана должна появиться полоса с Шаней; "
+                    "A/D — ходьба. Закрыть — Alt+F4 или диспетчер задач (AnabarraOverlay.exe)."
+                )
+            except OSError as exc:
+                launched = f"\n\nСобрано, но запустить не смог: {exc}. Запусти вручную: {out_exe}"
+
+        body = (
+            (f"{prep_msg}\n" if prep_msg else "")
+            + f"{msg}\n\n"
+            + f"Сборка OK: {out_exe}"
+            + launched
+        )
+        if important:
+            body += "\n\n--- лог ---\n" + "\n".join(important)
+        return ToolResult(True, body)
 
 
 class UnityImportStagingTool(Tool):

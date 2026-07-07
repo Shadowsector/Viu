@@ -17,6 +17,7 @@ def test_gui_actions_grouped():
     assert "Игра" in grouped
     assert any(a.action_id == "add_animation" for a in GUI_ACTIONS)
     assert any(a.action_id == "unity_apply" and a.is_chain for a in GUI_ACTIONS)
+    assert any(a.action_id == "unity_overlay" and a.tool == "unity_overlay" for a in GUI_ACTIONS)
     assert any(a.tool == "__update_viu__" for a in GUI_ACTIONS)
     assert any(a.action_id == "autopilot" and a.uses_agent for a in GUI_ACTIONS)
     # Больше нет запутанной кнопки про «диск U».

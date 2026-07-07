@@ -9,12 +9,12 @@ def _config(tmp_path, **kw):
     return Config(root=tmp_path, data_dir=tmp_path / ".viu", **kw).ensure_dirs()
 
 
-def test_roadmap_default_focus_is_scale():
+def test_roadmap_default_focus_is_overlay():
     rm = Roadmap.default()
     focus = rm.current_focus()
     assert focus is not None
-    assert focus.id == 5
-    assert "рост" in focus.title.lower() or "1.7" in focus.title
+    assert focus.id == 7
+    assert "панел" in focus.title.lower() or "дом" in focus.title.lower()
 
 
 def test_roadmap_store_persists(tmp_path):
@@ -38,7 +38,7 @@ def test_roadmap_invalid_status(tmp_path):
 def test_next_step_no_unity(tmp_path):
     config = _config(tmp_path, unity_project="")
     msg = next_step(config)
-    assert "рост" in msg.lower() or "сцен" in msg.lower() or "1.7" in msg
+    assert "оверлей" in msg.lower() or "unity_overlay" in msg.lower()
 
 
 def test_next_step_missing_walk(tmp_path):

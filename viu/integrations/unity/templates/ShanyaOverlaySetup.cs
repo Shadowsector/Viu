@@ -3,7 +3,7 @@ using System;
 using System.IO;
 using System.Linq;
 using UnityEditor;
-using UnityEditor.Animations;
+using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -11,32 +11,34 @@ using UnityEngine.SceneManagement;
 namespace Viu.Editor
 {
     /// <summary>
-    /// Автонастройка Шани: Animator Controller, Idle-клип, отключение WGT-виджетов.
-    /// Меню: Viu → Setup Shanya (Idle). Batchmode: Viu.Editor.ShanyaSetup.RunBatch
+    /// Сцена оверлея + Windows-сборка: прозрачная полоса у панели задач.
+    /// Batch: Viu.Editor.ShanyaOverlaySetup.RunBatch / BuildWindows
     /// </summary>
-    public static class ShanyaSetup
+    public static class ShanyaOverlaySetup
     {
         // @viu-deploy-rev 9
-        const string ControllerPath = ShanyaAnimationSync.ControllerPath;
-        const string ModelNameHint = "Shanya_Erisa";
-        /// <summary>Целевой рост персонажа в метрах (можно подкрутить).</summary>
+        const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
+        const string BuildFolder = "Builds/AnabarraOverlay";
+        const string BuildExe = "AnabarraOverlay.exe";
         const float TargetHeightMeters = 1.75f;
         const float GroundSinkMeters = 0.03f;
-        /// <summary>Половина высоты кадра в метрах (2*size = видимая высота мира).</summary>
-        const float CameraOrthoHalfHeight = 5.5f;
+        const float CameraOrthoHalfHeight = 1.15f;
 
-        const string ScenePath = "Assets/Scenes/GameTest.unity";
+        [MenuItem("Viu/Overlay/Prepare Overlay Scene")]
+        public static void RunMenu() => Run(ScenePath);
 
-        [MenuItem("Viu/Setup Shanya (Idle)")]
-        public static void RunMenu() => Run(null);
+        [MenuItem("Viu/Overlay/Build Windows Overlay")]
+        public static void BuildMenu()
+        {
+            Run(ScenePath);
+            BuildWindows();
+        }
 
         public static void RunBatch()
         {
             int code = 0;
             try
             {
-                // В пакетном режиме готовим отдельную сцену GameTest, чтобы результат
-                // было видно при открытии редактора, а не пустой Untitled.
                 if (File.Exists(ScenePath))
                     EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
                 else
@@ -45,10 +47,70 @@ namespace Viu.Editor
             }
             catch (Exception e)
             {
-                Debug.LogError("[Viu] Setup (batch) не удался: " + e.Message + "\n" + e.StackTrace);
+                Debug.LogError("[Viu] Overlay scene: " + e.Message + "\n" + e.StackTrace);
                 code = 1;
             }
             EditorApplication.Exit(code);
+        }
+
+        public static void BuildWindowsBatch()
+        {
+            int code = 0;
+            try
+            {
+                BuildWindows();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[Viu] Overlay build: " + e.Message + "\n" + e.StackTrace);
+                code = 1;
+            }
+            EditorApplication.Exit(code);
+        }
+
+        public static void BuildWindows()
+        {
+            Run(ScenePath);
+            EnsureBuildFolder();
+            ConfigurePlayerForOverlay();
+
+            var scenes = new[] { ScenePath };
+            var report = BuildPipeline.BuildPlayer(
+                new BuildPlayerOptions
+                {
+                    scenes = scenes,
+                    locationPathName = Path.Combine(BuildFolder, BuildExe).Replace('\\', '/'),
+                    target = BuildTarget.StandaloneWindows64,
+                    options = BuildOptions.None,
+                });
+
+            if (report.summary.result == BuildResult.Succeeded)
+                Debug.Log("[Viu] Overlay build OK: " + report.summary.outputPath);
+            else
+                throw new InvalidOperationException(
+                    "Overlay build failed: " + report.summary.result + " — см. Console.");
+        }
+
+        static void ConfigurePlayerForOverlay()
+        {
+            PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
+            PlayerSettings.defaultScreenWidth = 1920;
+            PlayerSettings.defaultScreenHeight = 300;
+            PlayerSettings.resizableWindow = false;
+            PlayerSettings.runInBackground = true;
+            PlayerSettings.visibleInBackground = true;
+#if UNITY_2022_2_OR_NEWER
+            PlayerSettings.useFlipModelSwapchain = false;
+#endif
+            PlayerSettings.productName = "AnabarraOverlay";
+        }
+
+        static void EnsureBuildFolder()
+        {
+            if (!AssetDatabase.IsValidFolder("Assets/Builds"))
+                AssetDatabase.CreateFolder("Assets", "Builds");
+            var full = Path.Combine(Application.dataPath, "..", BuildFolder);
+            Directory.CreateDirectory(full);
         }
 
         public static void Run(string saveScenePath)
@@ -56,64 +118,116 @@ namespace Viu.Editor
             var modelPath = FindModelPath();
             if (string.IsNullOrEmpty(modelPath))
             {
-                Debug.LogError("[Viu] FBX модели не найден (ищу *Shanya* / *Erisa*). Положи FBX в Assets/.");
+                Debug.LogError("[Viu] FBX модели не найден. Сначала GameTest или импорт Shanya_Erisa.");
                 return;
-            }
-
-            var idlePath = FindIdleInAnimationsFolder();
-            if (string.IsNullOrEmpty(idlePath))
-            {
-                Debug.LogWarning("[Viu] Idle не найден в " + ShanyaAnimationSync.AnimationsFolder +
-                    " — положи X Bot@Idle.fbx туда.");
             }
 
             EnsureHumanoidImport(modelPath);
             ShanyaAnimationSync.SyncAll(log: false);
 
-            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(
+            var controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
                 ShanyaAnimationSync.ControllerPath);
             if (controller == null)
             {
-                Debug.LogError("[Viu] Animator не создан. Положи FBX в " + ShanyaAnimationSync.AnimationsFolder);
+                Debug.LogError("[Viu] Animator не создан. Положи Idle/Walk в Animations/.");
                 return;
             }
 
             var avatar = LoadModelAvatar(modelPath);
             if (avatar == null)
             {
-                Debug.LogError("[Viu] Avatar не найден. Открой модель → Rig → Humanoid → Configure → Apply.");
+                Debug.LogError("[Viu] Avatar не найден на модели.");
                 return;
             }
 
             var instance = PlaceCharacterInScene(modelPath, controller, avatar);
             DisableWgtMeshes(instance);
             try { ShanyaOutfit.Apply(ShanyaOutfit.Mode.Dressed); }
-            catch (Exception e) { Debug.LogWarning("[Viu] Outfit пропущен: " + e.Message); }
+            catch (Exception e) { Debug.LogWarning("[Viu] Outfit: " + e.Message); }
             EnsureLocomotion(instance);
-            EnsureTestSceneEnvironment(instance);
+            EnsureOverlayEnvironment(instance);
             SnapFeetToGround(instance);
+            EnsureOverlayManager();
             AssetDatabase.SaveAssets();
             SaveActiveScene(saveScenePath);
-            Debug.Log("[Viu] Setup готов: " + instance.name + " + " + controller.name +
-                ". Сцена: " + (saveScenePath ?? "текущая") + ". Открой её и нажми Play.");
+            Debug.Log("[Viu] Overlay scene готова: " + saveScenePath);
+        }
+
+        static void EnsureOverlayManager()
+        {
+            var root = GameObject.Find("Viu_OverlayRoot");
+            if (root == null)
+                root = new GameObject("Viu_OverlayRoot");
+            if (root.GetComponent<Viu.Runtime.ShanyaDesktopOverlay>() == null)
+                root.AddComponent<Viu.Runtime.ShanyaDesktopOverlay>();
+        }
+
+        static void EnsureOverlayEnvironment(GameObject shanya)
+        {
+            EnsureInvisibleFloor();
+            EnsureLighting();
+            ScaleToHeight(shanya, TargetHeightMeters);
+            EnsureOverlayCamera(shanya.transform);
+        }
+
+        static void EnsureInvisibleFloor()
+        {
+            var floor = GameObject.Find("Viu_Floor");
+            if (floor == null)
+            {
+                floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
+                floor.name = "Viu_Floor";
+                floor.transform.position = Vector3.zero;
+                floor.transform.localScale = new Vector3(4f, 1f, 1f);
+            }
+            foreach (var r in floor.GetComponentsInChildren<Renderer>())
+                r.enabled = false;
+        }
+
+        static void EnsureOverlayCamera(Transform target)
+        {
+            var cam = Camera.main;
+            if (cam == null)
+            {
+                var go = new GameObject("Main Camera");
+                go.tag = "MainCamera";
+                cam = go.AddComponent<Camera>();
+                go.AddComponent<AudioListener>();
+            }
+            cam.orthographic = true;
+            cam.orthographicSize = CameraOrthoHalfHeight;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+            var follow = cam.GetComponent<Viu.Runtime.ShanyaOverlayCamera>();
+            if (follow == null)
+            {
+                var old = cam.GetComponent<Viu.Runtime.ShanyaFollowCamera>();
+                if (old != null)
+                    UnityEngine.Object.DestroyImmediate(old);
+                follow = cam.gameObject.AddComponent<Viu.Runtime.ShanyaOverlayCamera>();
+            }
+            follow.target = target;
+            follow.viewCenterAboveFeet = 0.95f;
+            follow.distanceZ = 10f;
+            follow.transform.position = new Vector3(
+                target.position.x,
+                target.position.y + follow.viewCenterAboveFeet,
+                target.position.z - follow.distanceZ);
+            follow.transform.rotation = Quaternion.identity;
         }
 
         static void SaveActiveScene(string saveScenePath)
         {
             var scene = SceneManager.GetActiveScene();
             EditorSceneManager.MarkSceneDirty(scene);
-            var path = saveScenePath;
-            if (string.IsNullOrEmpty(path))
-                path = scene.path;
+            var path = string.IsNullOrEmpty(saveScenePath) ? scene.path : saveScenePath;
             if (string.IsNullOrEmpty(path))
                 path = ScenePath;
-
             var dir = Path.GetDirectoryName(path).Replace('\\', '/');
             if (!string.IsNullOrEmpty(dir) && !AssetDatabase.IsValidFolder(dir))
                 AssetDatabase.CreateFolder("Assets", "Scenes");
-
             EditorSceneManager.SaveScene(scene, path);
-            Debug.Log("[Viu] Сцена сохранена: " + path);
         }
 
         static string FindModelPath()
@@ -122,21 +236,9 @@ namespace Viu.Editor
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
                 var name = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
-                if (name.Contains("shanya") || name.Contains("erisa"))
-                    if (!name.Contains("idle") && !name.Contains("walk"))
-                        return path;
-            }
-            return null;
-        }
-
-        static string FindIdleInAnimationsFolder()
-        {
-            foreach (var guid in AssetDatabase.FindAssets("t:Model", new[] { ShanyaAnimationSync.AnimationsFolder }))
-            {
-                var path = AssetDatabase.GUIDToAssetPath(guid);
-                if (!path.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase)) continue;
-                var name = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
-                if (name.Contains("idle")) return path;
+                if ((name.Contains("shanya") || name.Contains("erisa"))
+                    && !name.Contains("idle") && !name.Contains("walk"))
+                    return path;
             }
             return null;
         }
@@ -166,23 +268,6 @@ namespace Viu.Editor
                 instance.AddComponent<Viu.Runtime.ShanyaLocomotion>();
         }
 
-        static void EnsureTestSceneEnvironment(GameObject shanya)
-        {
-            EnsureFloor();
-            EnsureLighting();
-            ScaleToHeight(shanya, TargetHeightMeters);
-            EnsureFollowCamera(shanya.transform);
-        }
-
-        static void EnsureFloor()
-        {
-            if (GameObject.Find("Viu_Floor") != null) return;
-            var plane = GameObject.CreatePrimitive(PrimitiveType.Plane);
-            plane.name = "Viu_Floor";
-            plane.transform.position = Vector3.zero;
-            plane.transform.localScale = new Vector3(2f, 1f, 2f);
-        }
-
         static void EnsureLighting()
         {
             var light = UnityEngine.Object.FindFirstObjectByType<Light>();
@@ -198,23 +283,19 @@ namespace Viu.Editor
             root.transform.position = Vector3.zero;
             var renderers = root.GetComponentsInChildren<Renderer>();
             if (renderers.Length == 0) return;
-
             Bounds bounds = renderers[0].bounds;
             foreach (var r in renderers)
                 bounds.Encapsulate(r.bounds);
             float h = bounds.size.y;
             if (h < 0.01f) return;
-
             float factor = targetHeight / h;
             root.transform.localScale = Vector3.one * factor;
-
             bounds = renderers[0].bounds;
             foreach (var r in renderers)
                 bounds.Encapsulate(r.bounds);
             var pos = root.transform.position;
             pos.y = -bounds.min.y - GroundSinkMeters;
             root.transform.position = pos;
-            Debug.Log("[Viu] Рост ~" + targetHeight + " м (scale " + factor.ToString("F2") + ").");
         }
 
         static void SnapFeetToGround(GameObject root)
@@ -229,71 +310,34 @@ namespace Viu.Editor
             root.transform.position = pos;
         }
 
-        static void EnsureFollowCamera(Transform target)
-        {
-            var cam = Camera.main;
-            if (cam == null)
-            {
-                var go = new GameObject("Main Camera");
-                go.tag = "MainCamera";
-                cam = go.AddComponent<Camera>();
-                go.AddComponent<AudioListener>();
-            }
-            cam.orthographic = true;
-            // Игровой кадр: ~11 м по вертикали — деревья, дома, не только Шаня.
-            cam.orthographicSize = CameraOrthoHalfHeight;
-            var follow = cam.GetComponent<Viu.Runtime.ShanyaFollowCamera>();
-            if (follow == null)
-                follow = cam.gameObject.AddComponent<Viu.Runtime.ShanyaFollowCamera>();
-            follow.target = target;
-            follow.viewCenterAboveFeet = 2.2f;
-            follow.distanceZ = 12f;
-            follow.transform.position = new Vector3(
-                target.position.x,
-                target.position.y + follow.viewCenterAboveFeet,
-                target.position.z - follow.distanceZ);
-            follow.transform.rotation = Quaternion.identity;
-        }
-
         static GameObject PlaceCharacterInScene(string modelPath, RuntimeAnimatorController controller, Avatar avatar)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
-            var existing = GameObject.Find(prefab != null ? prefab.name : ModelNameHint);
+            var existing = GameObject.Find(prefab != null ? prefab.name : "Shanya_Erisa");
             GameObject instance;
             if (existing != null)
-            {
                 instance = existing;
-            }
             else
             {
                 instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
                 instance.name = prefab.name;
                 instance.transform.position = Vector3.zero;
             }
-
             var animator = instance.GetComponent<Animator>() ?? instance.AddComponent<Animator>();
             animator.runtimeAnimatorController = controller;
             animator.avatar = avatar;
-
             if (!instance.activeInHierarchy)
                 instance.SetActive(true);
-
             return instance;
         }
 
         static void DisableWgtMeshes(GameObject root)
         {
-            int n = 0;
             foreach (var t in root.GetComponentsInChildren<Transform>(true))
             {
                 if (t.name.StartsWith("WGT") || t.name.StartsWith("WGT."))
-                {
                     t.gameObject.SetActive(false);
-                    n++;
-                }
             }
-            if (n > 0)
-                Debug.Log("[Viu] Отключено WGT-объектов: " + n);
         }
     }
 }
