@@ -553,7 +553,7 @@ class UnityOverlayTool(Tool):
             )
 
         out_exe = overlay_exe_path(root)
-        deploy_tune_template(root, overwrite=True)
+        deploy_tune_template(root, overwrite=False)
         launch = str(args.get("launch", "true")).lower() not in ("0", "false", "no")
         launched = ""
         if launch and out_exe.is_file():
