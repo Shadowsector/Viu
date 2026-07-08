@@ -13,6 +13,7 @@ from .blender_tool import (
 from .filesystem import ListDirTool, ReadFileTool, WriteFileTool
 from .loader import load_custom_tools
 from .memory_tool import MemorySearchTool, MemoryWriteTool
+from .planning_tool import PlanCreateTool, PlanShowTool, PlanUpdateTool
 from .prop_catalog_tool import PropCatalogListTool, PropCatalogScanTool, PropOrganizeDownloadsTool
 from .roadmap_tool import (
     NextStepTool,
