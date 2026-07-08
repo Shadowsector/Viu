@@ -8,7 +8,15 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Callable, Optional
 
-from .models import INTERACTION_CHOICES, PROP_CATEGORIES, PropEntry, suggest_can_lift
+from .models import (
+    INTERACTION_CHOICES,
+    PROP_CATEGORIES,
+    PROP_ROLES,
+    PropEntry,
+    suggest_can_lift,
+    suggest_category_for_role,
+    suggest_role,
+)
 from .store import PropCatalogStore
 
 
@@ -63,26 +71,46 @@ class PropCatalogReviewWindow:
         self.name_var = tk.StringVar()
         ttk.Entry(form, textvariable=self.name_var, width=40).grid(row=0, column=1, sticky="ew", pady=2)
 
-        ttk.Label(form, text="Категория:").grid(row=1, column=0, sticky="w", padx=2, pady=2)
+        ttk.Label(form, text="Меш в файле:").grid(row=1, column=0, sticky="w", padx=2, pady=2)
+        self.mesh_var = tk.StringVar()
+        mesh_entry = ttk.Entry(form, textvariable=self.mesh_var, width=40, state="readonly")
+        mesh_entry.grid(row=1, column=1, sticky="ew", pady=2)
+
+        ttk.Label(form, text="Роль:").grid(row=2, column=0, sticky="w", padx=2, pady=2)
+        self.role_var = tk.StringVar(value="")
+        role_combo = ttk.Combobox(
+            form,
+            textvariable=self.role_var,
+            values=[r for r in PROP_ROLES if r],
+            width=18,
+        )
+        role_combo.grid(row=2, column=1, sticky="w", pady=2)
+        ttk.Label(
+            form,
+            text="shell = стены/пол; interactive = стул, дверь; decor = без действий",
+            font=("Segoe UI", 8),
+        ).grid(row=3, column=1, sticky="w", pady=(0, 4))
+
+        ttk.Label(form, text="Категория:").grid(row=4, column=0, sticky="w", padx=2, pady=2)
         self.category_var = tk.StringVar(value="unknown")
         ttk.Combobox(
             form, textvariable=self.category_var, values=list(PROP_CATEGORIES), width=18
-        ).grid(row=1, column=1, sticky="w", pady=2)
+        ).grid(row=4, column=1, sticky="w", pady=2)
 
-        ttk.Label(form, text="Вес (кг):").grid(row=2, column=0, sticky="w", padx=2, pady=2)
+        ttk.Label(form, text="Вес (кг):").grid(row=5, column=0, sticky="w", padx=2, pady=2)
         self.weight_var = tk.StringVar()
         wrow = ttk.Frame(form)
-        wrow.grid(row=2, column=1, sticky="w")
+        wrow.grid(row=5, column=1, sticky="w")
         ttk.Entry(wrow, textvariable=self.weight_var, width=10).pack(side="left")
         ttk.Label(wrow, text=f"  (Шаня ~до {max_lift_kg:.0f} кг — поднять)").pack(side="left")
 
         self.can_lift_var = tk.BooleanVar()
         self.can_push_var = tk.BooleanVar()
         ttk.Checkbutton(form, text="Можно поднять", variable=self.can_lift_var).grid(
-            row=3, column=1, sticky="w"
+            row=6, column=1, sticky="w"
         )
         ttk.Checkbutton(form, text="Можно толкать / сдвинуть", variable=self.can_push_var).grid(
-            row=4, column=1, sticky="w"
+            row=7, column=1, sticky="w"
         )
         form.columnconfigure(1, weight=1)
 
@@ -103,6 +131,7 @@ class PropCatalogReviewWindow:
         btns = ttk.Frame(right)
         btns.pack(fill="x", pady=10)
         ttk.Button(btns, text="Сохранить и дальше →", command=self._save_next).pack(side="left", padx=2)
+        ttk.Button(btns, text="Shell — без разметки →", command=self._save_shell).pack(side="left", padx=2)
         ttk.Button(btns, text="Пропустить", command=self._skip).pack(side="left", padx=2)
         ttk.Button(btns, text="Открыть файл…", command=self._open_file).pack(side="left", padx=2)
 
@@ -113,7 +142,7 @@ class PropCatalogReviewWindow:
         self.listbox.delete(0, "end")
         self._pending = self.store.pending()
         for e in self._pending:
-            self.listbox.insert("end", f"{Path(e.source_path).name}")
+            self.listbox.insert("end", e.list_label())
         if self._pending:
             self.listbox.selection_set(0)
             self._load_entry(self._pending[0])
@@ -129,9 +158,15 @@ class PropCatalogReviewWindow:
     def _load_entry(self, entry: PropEntry) -> None:
         self._current = entry
         path = Path(entry.source_path)
-        self.file_label.config(text=str(path))
+        self.file_label.config(text=entry.list_label() + f"\n{path}")
+        self.mesh_var.set(entry.mesh_name or "— (весь файл)")
+        role = entry.role or suggest_role(entry.mesh_name)
+        self.role_var.set(role)
         self.name_var.set(entry.guess_display_name())
-        self.category_var.set(entry.category if entry.category in PROP_CATEGORIES else "unknown")
+        cat = entry.category if entry.category in PROP_CATEGORIES else "unknown"
+        if cat == "unknown" and role:
+            cat = suggest_category_for_role(role)
+        self.category_var.set(cat)
         self.weight_var.set("" if entry.weight_kg is None else str(entry.weight_kg))
         self.can_lift_var.set(entry.can_lift)
         self.can_push_var.set(entry.can_push)
@@ -144,9 +179,13 @@ class PropCatalogReviewWindow:
             f"Файл: {path.name}",
             f"Размер: {path.stat().st_size // 1024} KB" if path.is_file() else "",
         ]
+        if entry.mesh_name:
+            preview_lines.append(f"Размечаем меш: {entry.mesh_name}")
         if entry.mesh_names:
-            preview_lines.append("Меши в .blend:")
-            preview_lines.extend(f"  • {n}" for n in entry.mesh_names[:25])
+            preview_lines.append("Все меши в .blend:")
+            for n in entry.mesh_names[:40]:
+                mark = " ←" if n == entry.mesh_name else ""
+                preview_lines.append(f"  • {n}{mark}")
         thumb = path.with_suffix(".png")
         if thumb.is_file():
             preview_lines.append(f"Превью: {thumb}")
@@ -174,6 +213,7 @@ class PropCatalogReviewWindow:
             return None
         e = PropEntry.from_dict(self._current.to_dict())
         e.display_name = self.name_var.get().strip() or e.guess_display_name()
+        e.role = self.role_var.get().strip()
         e.category = self.category_var.get().strip() or "unknown"
         raw_w = self.weight_var.get().strip().replace(",", ".")
         e.weight_kg = float(raw_w) if raw_w else None
@@ -184,10 +224,7 @@ class PropCatalogReviewWindow:
         e.reviewed = True
         return e
 
-    def _save_next(self) -> None:
-        entry = self._collect_form()
-        if entry is None:
-            return
+    def _persist_entry(self, entry: PropEntry) -> None:
         self.store.upsert(entry)
         aff_path = self.store.path.parent / "affordances" / f"{entry.id}.json"
         aff_path.parent.mkdir(parents=True, exist_ok=True)
@@ -197,6 +234,31 @@ class PropCatalogReviewWindow:
         )
         if self.on_saved:
             self.on_saved(entry)
+
+    def _save_next(self) -> None:
+        entry = self._collect_form()
+        if entry is None:
+            return
+        self._persist_entry(entry)
+        self._reload_list()
+        if not self._pending:
+            messagebox.showinfo("Каталог", "Все предметы в очереди размечены.", parent=self.win)
+
+    def _save_shell(self) -> None:
+        """Быстро пометить стены/пол — без веса и галочек."""
+        if self._current is None:
+            return
+        e = PropEntry.from_dict(self._current.to_dict())
+        e.role = "shell"
+        e.category = "building"
+        e.interactions = []
+        e.can_lift = False
+        e.can_push = False
+        e.weight_kg = None
+        e.reviewed = True
+        if not e.display_name.strip():
+            e.display_name = e.mesh_name.replace("_", " ") if e.mesh_name else e.guess_display_name()
+        self._persist_entry(e)
         self._reload_list()
         if not self._pending:
             messagebox.showinfo("Каталог", "Все предметы в очереди размечены.", parent=self.win)

@@ -138,8 +138,8 @@ GUI_ACTIONS: List[GuiAction] = [
         "Разметить предметы",
         "Blender",
         tool="__prop_catalog__",
-        hint="Каталог props: показ файла, название, вес, галочки (сидеть, поднять…). "
-        "Не «item№32» — нормальный GUI.",
+        hint="Каталог props: для .blend — карточка на каждый меш (стул, стена…). "
+        "Shell — кнопка «Shell — без разметки». См. docs/ANABARRA_FOLDERS.md.",
     ),
     GuiAction(
         "prop_sort_downloads",
@@ -147,7 +147,8 @@ GUI_ACTIONS: List[GuiAction] = [
         "Blender",
         tool="prop_organize_downloads",
         tool_args={"dry_run": "0"},
-        hint="FBX/blend/zip из Downloads → папки библиотеки. Сначала dry_run=1 в чате, если страшно.",
+        hint="Downloads → U:\\Anabarra\\Library (файлы и папки-паки). Архивы не распаковывает. "
+        "После переноса исчезает из Downloads. См. docs/ANABARRA_FOLDERS.md.",
     ),
     # --- Blender ---
     GuiAction(

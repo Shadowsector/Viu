@@ -47,7 +47,7 @@ class PropCatalogStore:
     def pending(self) -> List[PropEntry]:
         return sorted(
             [e for e in self.items.values() if not e.reviewed],
-            key=lambda e: e.source_path.lower(),
+            key=lambda e: (e.source_path.lower(), e.mesh_name.lower()),
         )
 
     def reviewed(self) -> List[PropEntry]:
@@ -61,7 +61,9 @@ class PropCatalogStore:
         total = len(self.items)
         lines = [f"Каталог предметов: {total} всего, {pending} ждут разметки."]
         for e in self.pending()[:20]:
-            lines.append(f"  • [{e.id[:8]}] {Path(e.source_path).name}")
+            label = e.list_label()
+            role = f" [{e.role}]" if e.role else ""
+            lines.append(f"  • [{e.id[:8]}] {label}{role}")
         if pending > 20:
             lines.append(f"  … и ещё {pending - 20}")
         return "\n".join(lines)

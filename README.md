@@ -55,7 +55,11 @@ pip install -e ".[dev]"   # + pytest для разработки
 |------------|------------|
 | `VIU_UNITY_PROJECT` | Unity-проект Анабарра |
 | `VIU_ANIM_STAGING` | Папка входа для FBX (`U:\Anabarra\Animations`) |
+| `VIU_DATA_DIR` | Данные Вью (`U:\Anabarra\.viu`) |
+| `VIU_LIBRARY_ROOT` | Библиотека ассетов (`U:\Anabarra\Library`) |
 | `VIU_GITHUB_TOKEN` | токен для авто-обновления приватного репозитория |
+
+Структура папок на диске: [`docs/ANABARRA_FOLDERS.md`](./docs/ANABARRA_FOLDERS.md).
 
 ### Автообновление
 

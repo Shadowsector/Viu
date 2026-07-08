@@ -17,6 +17,23 @@ def _env(name: str, default: str) -> str:
     return value if value not in (None, "") else default
 
 
+def _default_data_dir() -> Path:
+    explicit = os.environ.get("VIU_DATA_DIR")
+    if explicit not in (None, ""):
+        return Path(explicit).expanduser().resolve()
+    unity = os.environ.get("VIU_UNITY_PROJECT", "").strip()
+    if unity:
+        root = Path(unity).expanduser().resolve()
+        if root.name.lower() == "anabarra" and root.parent.name.lower() == "unity":
+            return (root.parent.parent / ".viu").resolve()
+    cwd = Path(os.getcwd()).resolve()
+    if cwd.name.lower() == "viu":
+        sibling = cwd.parent / "Anabarra" / ".viu"
+        if sibling.parent.is_dir():
+            return sibling.resolve()
+    return (cwd / ".viu").resolve()
+
+
 @dataclass
 class Config:
     """Настройки запуска агента."""
@@ -25,9 +42,7 @@ class Config:
     root: Path = field(default_factory=lambda: Path(_env("VIU_ROOT", os.getcwd())).resolve())
 
     # Каталог для служебных данных агента (память, планы, логи).
-    data_dir: Path = field(
-        default_factory=lambda: Path(_env("VIU_DATA_DIR", str(Path(os.getcwd()) / ".viu"))).resolve()
-    )
+    data_dir: Path = field(default_factory=_default_data_dir)
 
     # Провайдер LLM: "mock" (офлайн, детерминированный) или "openai" (OpenAI-совместимый API).
     provider: str = field(default_factory=lambda: _env("VIU_PROVIDER", "mock"))
@@ -89,6 +104,12 @@ class Config:
         """Создаёт служебные каталоги, если их ещё нет."""
         self.data_dir.mkdir(parents=True, exist_ok=True)
         (self.data_dir / "logs").mkdir(parents=True, exist_ok=True)
+        try:
+            from .anabarra_layout import ensure_layout
+
+            ensure_layout(self)
+        except OSError:
+            pass
         return self
 
     def summary(self) -> str:

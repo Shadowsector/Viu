@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Callable, List, Tuple
 
-from .models import ASSET_SUFFIXES, PropEntry, prop_id_for_path
+from .models import (
+    ASSET_SUFFIXES,
+    PropEntry,
+    prop_id_for_mesh,
+    prop_id_for_path,
+    suggest_category_for_role,
+    suggest_role,
+)
 from .store import PropCatalogStore
 
 
-def _mesh_hints_for_file(path: Path, blender_exe: str = "") -> List[str]:
+def mesh_objects_in_blend(path: Path, blender_exe: str = "") -> List[str]:
+    """Имена MESH-объектов в .blend (через фоновый Blender)."""
     if path.suffix.lower() != ".blend":
         return []
     try:
@@ -17,9 +25,77 @@ def _mesh_hints_for_file(path: Path, blender_exe: str = "") -> List[str]:
 
         data = dump_blend_info(str(path), blender_exe=blender_exe or "blender")
         objs = data.get("objects") or []
-        return [o.get("name", "") for o in objs if o.get("type") == "MESH"][:40]
+        return sorted(
+            {o.get("name", "") for o in objs if o.get("type") == "MESH" and o.get("name")}
+        )
     except (OSError, RuntimeError, ValueError, ImportError):
         return []
+
+
+def _remove_stale_file_entry(path: Path, store: PropCatalogStore) -> None:
+    """Убирает старую карточку «целый файл», если появились меши."""
+    file_pid = prop_id_for_path(path)
+    old = store.get(file_pid)
+    if old and not old.reviewed and not old.mesh_name:
+        del store.items[file_pid]
+        store.save()
+
+
+def _entry_for_mesh(path: Path, mesh_name: str, all_meshes: List[str]) -> PropEntry:
+    role = suggest_role(mesh_name)
+    category = suggest_category_for_role(role)
+    return PropEntry(
+        id=prop_id_for_mesh(path, mesh_name),
+        source_path=str(path),
+        display_name=mesh_name.replace("_", " "),
+        category=category if category != "unknown" else "unknown",
+        mesh_name=mesh_name,
+        role=role,
+        mesh_names=list(all_meshes),
+        reviewed=False,
+    )
+
+
+def _entry_for_file(path: Path, mesh_names: List[str]) -> PropEntry:
+    return PropEntry(
+        id=prop_id_for_path(path),
+        source_path=str(path),
+        display_name=path.stem.replace("_", " "),
+        mesh_names=mesh_names,
+        reviewed=False,
+    )
+
+
+def scan_blend_file(
+    path: Path,
+    store: PropCatalogStore,
+    *,
+    blender_exe: str = "",
+    mesh_reader: Callable[[Path, str], List[str]] | None = None,
+) -> Tuple[int, int]:
+    """Скан одного .blend: по карточке на каждый MESH."""
+    path = path.expanduser().resolve()
+    reader = mesh_reader or mesh_objects_in_blend
+    meshes = reader(path, blender_exe)
+    new_count = 0
+    seen = 0
+
+    if meshes:
+        _remove_stale_file_entry(path, store)
+        for mesh_name in meshes:
+            pid = prop_id_for_mesh(path, mesh_name)
+            if store.get(pid):
+                seen += 1
+                continue
+            store.upsert(_entry_for_mesh(path, mesh_name, meshes))
+            new_count += 1
+        return new_count, seen
+
+    pid = prop_id_for_path(path)
+    if store.get(pid):
+        return 0, 1
+    store.upsert(_entry_for_file(path, []))
+    return 1, 0
 
 
 def scan_folder(
@@ -28,6 +104,7 @@ def scan_folder(
     *,
     recursive: bool = True,
     blender_exe: str = "",
+    mesh_reader: Callable[[Path, str], List[str]] | None = None,
 ) -> Tuple[int, int]:
     """Возвращает (новых, уже в каталоге)."""
     folder = folder.expanduser().resolve()
@@ -42,18 +119,17 @@ def scan_folder(
             continue
         if path.suffix.lower() not in ASSET_SUFFIXES:
             continue
+        if path.suffix.lower() == ".blend":
+            n, s = scan_blend_file(
+                path, store, blender_exe=blender_exe, mesh_reader=mesh_reader
+            )
+            new_count += n
+            seen += s
+            continue
         pid = prop_id_for_path(path)
         if store.get(pid):
             seen += 1
             continue
-        mesh_names = _mesh_hints_for_file(path, blender_exe)
-        entry = PropEntry(
-            id=pid,
-            source_path=str(path),
-            display_name=path.stem.replace("_", " "),
-            mesh_names=mesh_names,
-            reviewed=False,
-        )
-        store.upsert(entry)
+        store.upsert(_entry_for_file(path, []))
         new_count += 1
     return new_count, seen

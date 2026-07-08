@@ -117,6 +117,14 @@ def project_status(config: Config) -> str:
             parts.append(f"Скан анимаций не удался: {exc}")
 
     parts.append("")
+    try:
+        from .anabarra_layout import describe_layout
+
+        parts.append(describe_layout(config))
+    except OSError:
+        pass
+
+    parts.append("")
     parts.append("Следующий шаг:")
     parts.append("  " + next_step(config).replace("\n", "\n  "))
     return "\n".join(parts)

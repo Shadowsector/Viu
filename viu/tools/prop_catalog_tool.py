@@ -9,6 +9,7 @@ from ..prop_catalog import (
     PropCatalogStore,
     catalog_path,
     downloads_dir,
+    ensure_layout,
     library_root,
     scan_folder,
     sort_downloads_and_catalog,
@@ -64,7 +65,9 @@ class PropCatalogListTool(Tool):
         for e in store.reviewed()[:30]:
             w = f", {e.weight_kg} кг" if e.weight_kg else ""
             acts = ", ".join(e.interactions) if e.interactions else "—"
-            lines.append(f"  ✓ {e.guess_display_name()} [{e.category}]{w} — {acts}")
+            mesh = f" / {e.mesh_name}" if e.mesh_name else ""
+            role = f" [{e.role}]" if e.role else ""
+            lines.append(f"  ✓ {e.guess_display_name()}{mesh}{role} [{e.category}]{w} — {acts}")
         return ToolResult(True, "\n".join(lines))
 
 
@@ -85,6 +88,7 @@ class PropOrganizeDownloadsTool(Tool):
         dry = str(args.get("dry_run", "1")).lower() in ("1", "true", "yes")
         store = _store(ctx)
         try:
+            ensure_layout(ctx.config)
             lines, new_cat = sort_downloads_and_catalog(
                 Path(dl_raw),
                 lib,

@@ -34,12 +34,51 @@ PROP_CATEGORIES = (
     "building",
 )
 
+# Роль меша внутри составного .blend (домик, комната).
+PROP_ROLES = ("", "shell", "interactive", "decor")
+
 ASSET_SUFFIXES = {".fbx", ".blend", ".obj", ".glb", ".gltf"}
 
 
 def prop_id_for_path(path: Path) -> str:
     norm = str(path.expanduser().resolve()).lower()
     return hashlib.sha256(norm.encode("utf-8")).hexdigest()[:16]
+
+
+def prop_id_for_mesh(path: Path, mesh_name: str) -> str:
+    norm = f"{path.expanduser().resolve()}|{mesh_name}".lower()
+    return hashlib.sha256(norm.encode("utf-8")).hexdigest()[:16]
+
+
+def suggest_role(mesh_name: str) -> str:
+    """Угадывает роль по имени объекта в Blender (Shell_, Interactive_, Decor_)."""
+    lower = mesh_name.lower().replace(" ", "_")
+    for prefix, role in (
+        ("shell_", "shell"),
+        ("shell.", "shell"),
+        ("interactive_", "interactive"),
+        ("inter_", "interactive"),
+        ("decor_", "decor"),
+    ):
+        if lower.startswith(prefix) or lower == prefix.rstrip("_."):
+            return role
+    if lower.startswith("shell"):
+        return "shell"
+    if lower.startswith("interactive") or lower.startswith("inter"):
+        return "interactive"
+    if lower.startswith("decor"):
+        return "decor"
+    return ""
+
+
+def suggest_category_for_role(role: str) -> str:
+    if role == "shell":
+        return "building"
+    if role == "interactive":
+        return "furniture"
+    if role == "decor":
+        return "decor"
+    return "unknown"
 
 
 @dataclass
@@ -55,6 +94,8 @@ class PropEntry:
     can_push: bool = False
     interactions: List[str] = field(default_factory=list)
     mesh_names: List[str] = field(default_factory=list)
+    mesh_name: str = ""
+    role: str = ""
     reviewed: bool = False
     notes: str = ""
     library_rel: str = ""
@@ -74,6 +115,8 @@ class PropEntry:
             can_push=bool(d.get("can_push", False)),
             interactions=list(d.get("interactions") or []),
             mesh_names=list(d.get("mesh_names") or []),
+            mesh_name=d.get("mesh_name", ""),
+            role=d.get("role", ""),
             reviewed=bool(d.get("reviewed", False)),
             notes=d.get("notes", ""),
             library_rel=d.get("library_rel", ""),
@@ -82,7 +125,16 @@ class PropEntry:
     def guess_display_name(self) -> str:
         if self.display_name.strip():
             return self.display_name.strip()
+        if self.mesh_name.strip():
+            return self.mesh_name.replace("_", " ").strip()
         return Path(self.source_path).stem.replace("_", " ").strip()
+
+    def list_label(self) -> str:
+        """Подпись в очереди GUI: файл › меш."""
+        file_name = Path(self.source_path).name
+        if self.mesh_name:
+            return f"{file_name} › {self.mesh_name}"
+        return file_name
 
     def to_affordance_dict(self) -> Dict[str, Any]:
         """Экспорт для integrations/affordances и Unity."""
@@ -95,9 +147,15 @@ class PropEntry:
             sockets.append({"name": "top", "tags": ["stand_surface"]})
         if "grab" in self.interactions:
             sockets.append({"name": "grip_center", "tags": ["grip_point"]})
+        tags = [self.category, "prop"]
+        if self.role:
+            tags.append(self.role)
         return {
             "name": self.guess_display_name(),
-            "tags": [self.category, "prop"],
+            "source_file": self.source_path,
+            "mesh_name": self.mesh_name,
+            "role": self.role,
+            "tags": tags,
             "sockets": sockets,
             "interactions": list(self.interactions),
             "weight_kg": self.weight_kg,
