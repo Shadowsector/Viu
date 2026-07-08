@@ -373,6 +373,9 @@ class ViuGUI:
         if action.tool == "__add_animation__":
             self._add_animation()
             return
+        if action.tool == "__prop_catalog__":
+            self._open_prop_catalog()
+            return
         if action.is_chain:
             self._run_tool_chain(action)
             return
@@ -478,6 +481,22 @@ class ViuGUI:
             self._append("Вью", result, tag="tool")
 
         self._run_bg(work, done)
+
+    def _open_prop_catalog(self) -> None:
+        from .prop_catalog import PropCatalogStore, catalog_path, open_prop_catalog_review
+
+        cfg = self.agent.config
+        store = PropCatalogStore(catalog_path(cfg))
+        self._append("система", "Открываю каталог предметов…", tag="sys")
+
+        def open_win() -> None:
+            open_prop_catalog_review(
+                self.root,
+                store,
+                max_lift_kg=cfg.shanya_max_lift_kg,
+            )
+
+        self.root.after(0, open_win)
 
     def _collect_logs(self) -> None:
         self._append("ты", "[Отправить логи разработчику]")

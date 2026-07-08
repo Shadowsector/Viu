@@ -73,6 +73,13 @@ class Config:
         default_factory=lambda: _env("VIU_ANIM_STAGING", "U:/Anabarra/Animations")
     )
 
+    # Библиотека ассетов и каталог предметов.
+    library_root: str = field(default_factory=lambda: _env("VIU_LIBRARY_ROOT", ""))
+    downloads_dir: str = field(default_factory=lambda: _env("VIU_DOWNLOADS_DIR", ""))
+    shanya_max_lift_kg: float = field(
+        default_factory=lambda: float(_env("VIU_SHANYA_MAX_LIFT_KG", "35"))
+    )
+
     # Ветка git для автообновления GUI.
     update_branch: str = field(
         default_factory=lambda: _env("VIU_UPDATE_BRANCH", "cursor/viu-agent-core-65c2")

@@ -133,6 +133,22 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Ты уже нажал Play в Unity? Проверю логи: вошла ли игра в Play Mode, "
         "нет ли ошибок анимации и компиляции.",
     ),
+    GuiAction(
+        "prop_catalog",
+        "Разметить предметы",
+        "Blender",
+        tool="__prop_catalog__",
+        hint="Каталог props: показ файла, название, вес, галочки (сидеть, поднять…). "
+        "Не «item№32» — нормальный GUI.",
+    ),
+    GuiAction(
+        "prop_sort_downloads",
+        "Разобрать Downloads",
+        "Blender",
+        tool="prop_organize_downloads",
+        tool_args={"dry_run": "0"},
+        hint="FBX/blend/zip из Downloads → папки библиотеки. Сначала dry_run=1 в чате, если страшно.",
+    ),
     # --- Blender ---
     GuiAction(
         "blender_info",
