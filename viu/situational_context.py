@@ -46,36 +46,24 @@ def build_situational_context(config: Config, *, recent_chat: str = "") -> str:
 
 
 def build_reflect_notes(config: Config) -> str:
-    """Фон для reflect — без director-баннера (он делает речь роботом)."""
+    """Минимум фона — без vision/roadmap (они делают робота)."""
     parts: list[str] = []
 
     try:
         from .integrations.unity.process import unity_process_running
 
-        parts.append(
-            "Unity открыт — Ден может быть не у ПК."
-            if unity_process_running()
-            else "Unity закрыт."
-        )
-    except OSError:
-        pass
-
-    try:
-        from .vision import read_vision
-
-        parts.append(read_vision(config, max_chars=1800))
+        if unity_process_running():
+            parts.append("(Unity открыт — Play может быть некому.)")
     except OSError:
         pass
 
     try:
         from .memory import MemoryStore
 
-        recent = MemoryStore(config.data_dir / "memory.json").recent(limit=3)
+        recent = MemoryStore(config.data_dir / "memory.json").recent(limit=2)
         if recent:
-            parts.append(
-                "Память:\n" + "\n".join(f"- {r.text}" for r in recent)
-            )
+            parts.append("Память: " + "; ".join(r.text[:120] for r in recent))
     except OSError:
         pass
 
-    return "\n\n".join(parts) if parts else "(заметок пока мало)"
+    return "\n".join(parts) if parts else ""

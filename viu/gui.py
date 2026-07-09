@@ -804,7 +804,10 @@ class ViuGUI:
         heartbeat: bool = False,
     ) -> None:
         def on_step(step):
-            if step.kind == "action":
+            if step.kind == "think":
+                preview = step.thought[:280] + ("…" if len(step.thought) > 280 else "")
+                self._queue.put(("thinking", preview))
+            elif step.kind == "action":
                 self._queue.put(("step", f"[{step.tool}] {step.thought}"))
                 if step.observation:
                     self._queue.put(
@@ -824,7 +827,13 @@ class ViuGUI:
             else:
                 result = self.agent.run(task, on_step=on_step)
             self._queue.put(
-                ("final", result.final, result.waiting_for_user, result.chat_only)
+                (
+                    "final",
+                    result.final,
+                    result.waiting_for_user,
+                    result.chat_only,
+                    result.inner_thought,
+                )
             )
         except Exception as exc:  # noqa: BLE001
             self._queue.put(("error", f"{exc}\nПодсказка: запущена ли Ollama?"))
@@ -842,22 +851,35 @@ class ViuGUI:
                     chat_only = False
                 elif isinstance(item, tuple) and len(item) == 4:
                     kind, text, waiting, chat_only = item
+                    inner_thought = ""
+                elif isinstance(item, tuple) and len(item) == 5:
+                    kind, text, waiting, chat_only, inner_thought = item
                 else:
                     continue
                 if kind == "step":
                     self._append("шаг", text, tag="step")
+                elif kind == "thinking":
+                    self._append("размышляет", text, tag="step")
                 elif kind == "tool":
                     self._append("Вью", text, tag="tool")
                     self._set_busy(False)
                     if text.startswith("[") and "ОШИБКА" in text:
                         self._telegram_notify_error(text)
                 elif kind == "final":
+                    if inner_thought and not self._last_via_telegram:
+                        preview = inner_thought[:280] + ("…" if len(inner_thought) > 280 else "")
+                        self._append("размышляет", preview, tag="step")
                     self._append("Вью", text, tag="viu")
                     self._set_busy(False)
                     if waiting:
                         self._telegram_waiting_reply = True
                         self._telegram_notify_question(text)
                     elif chat_only and self._last_via_telegram:
+                        if inner_thought:
+                            preview = inner_thought[:180] + (
+                                "…" if len(inner_thought) > 180 else ""
+                            )
+                            self._telegram_notify_chat(f"💭 {preview}")
                         msg = ("💭 " + text) if self._heartbeat_notify else text
                         self._heartbeat_notify = False
                         self._telegram_notify_chat(msg)

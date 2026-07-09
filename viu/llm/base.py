@@ -20,6 +20,6 @@ class LLMProvider(ABC):
     name: str = "base"
 
     @abstractmethod
-    def complete(self, messages: List[Message]) -> str:
+    def complete(self, messages: List[Message], *, temperature: float | None = None) -> str:
         """Возвращает текстовый ответ модели на переданный диалог."""
         raise NotImplementedError

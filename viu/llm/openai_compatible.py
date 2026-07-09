@@ -32,16 +32,17 @@ class OpenAICompatibleLLM(LLMProvider):
         self.temperature = temperature
         self.timeout = timeout
 
-    def complete(self, messages: List[Message]) -> str:
+    def complete(self, messages: List[Message], *, temperature: float | None = None) -> str:
         if not self.api_key:
             raise RuntimeError(
                 "Не задан VIU_API_KEY. Укажите ключ или используйте VIU_PROVIDER=mock."
             )
         url = f"{self.base_url}/chat/completions"
+        temp = self.temperature if temperature is None else temperature
         payload = {
             "model": self.model,
             "messages": messages,
-            "temperature": self.temperature,
+            "temperature": temp,
         }
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(

@@ -29,7 +29,7 @@ class MockLLM(LLMProvider):
         self._responses = list(responses) if responses else []
         self._responder = responder
 
-    def complete(self, messages: List[Message]) -> str:
+    def complete(self, messages: List[Message], *, temperature: float | None = None) -> str:
         if self._responses:
             return self._responses.pop(0)
         if self._responder is not None:

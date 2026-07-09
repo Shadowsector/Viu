@@ -32,7 +32,9 @@ def extract_json(text: str) -> Optional[dict]:
         text = re.sub(r"\n?```$", "", text).strip()
 
     def _valid_agent(obj: Any) -> bool:
-        return isinstance(obj, dict) and ("final" in obj or "action" in obj)
+        return isinstance(obj, dict) and (
+            "final" in obj or "action" in obj or "inner" in obj
+        )
 
     # Пробуем весь текст целиком.
     try:
@@ -63,6 +65,33 @@ def extract_json(text: str) -> Optional[dict]:
     return None
 
 
+def extract_inner_json(text: str) -> Optional[dict]:
+    """Извлекает JSON фазы размышления: {"inner": "…"}."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
+        text = re.sub(r"\n?```$", "", text).strip()
+
+    def _valid(obj: Any) -> bool:
+        return isinstance(obj, dict) and "inner" in obj
+
+    try:
+        obj = json.loads(text)
+        if _valid(obj):
+            return obj
+    except json.JSONDecodeError:
+        pass
+
+    for match in re.finditer(r"\{", text):
+        try:
+            obj, _end = json.JSONDecoder().raw_decode(text, match.start())
+        except json.JSONDecodeError:
+            continue
+        if _valid(obj):
+            return obj
+    return None
+
+
 @dataclass
 class Step:
     kind: str  # "action" | "final" | "error"
@@ -79,6 +108,7 @@ class RunResult:
     steps: List[Step] = field(default_factory=list)
     waiting_for_user: bool = False
     chat_only: bool = False
+    inner_thought: str = ""
 
 
 class Agent:
@@ -290,60 +320,96 @@ class Agent:
         history: Optional[List[Dict[str, str]]] = None,
         heartbeat: bool = False,
     ) -> RunResult:
-        """Только размышление и ответ — без инструментов, с историей диалога."""
+        """Два этапа: внутренний монолог → ответ Дену. Без инструментов."""
         from .prompts.reflect_mode import (
             BANNED_PHRASES,
             HEARTBEAT_SYSTEM,
             HEARTBEAT_TASK,
-            REFLECT_SYSTEM,
+            REFLECT_SPEAK,
+            REFLECT_THINK,
+            reflect_temperature,
         )
         from .situational_context import build_reflect_notes
 
-        system = (HEARTBEAT_SYSTEM if heartbeat else REFLECT_SYSTEM) + (
-            "\n\n--- Заметки (фон, не шаблон для ответа) ---\n"
-            + build_reflect_notes(self.config)
-        )
-        user_text = HEARTBEAT_TASK if heartbeat else task.strip()
-
-        messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
-        if history:
-            messages.extend(history[-14:])
-        messages.append({"role": "user", "content": user_text})
-
+        temp = reflect_temperature(self.config)
+        notes = build_reflect_notes(self.config)
         result = RunResult(final="", completed=False, chat_only=True)
+
+        if heartbeat:
+            return self._run_reflect_heartbeat(on_step, temp=temp, notes=notes)
+
+        user_text = task.strip()
         self._log(f"REFLECT: {user_text[:160]}")
 
-        for attempt in range(3):
-            raw = self.llm.complete(messages)
+        think_system = REFLECT_THINK
+        if notes:
+            think_system += "\n\n--- Заметки (фон, не шаблон) ---\n" + notes
+
+        think_messages: List[Dict[str, str]] = [{"role": "system", "content": think_system}]
+        if history:
+            think_messages.extend(history[-14:])
+        think_messages.append({"role": "user", "content": user_text})
+
+        inner = ""
+        for _ in range(3):
+            raw = self.llm.complete(think_messages, temperature=temp)
+            parsed = extract_inner_json(raw)
+            if parsed and parsed.get("inner"):
+                inner = str(parsed["inner"]).strip()
+                break
+            think_messages.append({"role": "assistant", "content": raw or "{}"})
+            think_messages.append(
+                {
+                    "role": "user",
+                    "content": 'Нужен JSON: {"inner":"твой внутренний монолог…"} — одно поле.',
+                }
+            )
+
+        if not inner:
+            inner = "Надо ответить по-человечески, не как бот из FAQ."
+        result.inner_thought = inner
+        self._log(f"REFLECT_INNER: {inner[:220]}")
+        if on_step:
+            on_step(Step(kind="think", thought=inner))
+
+        speak_user = (
+            f"Мои мысли (не пересказывай дословно):\n{inner}\n\n"
+            f"Сообщение Дена:\n{user_text}"
+        )
+        speak_messages: List[Dict[str, str]] = [
+            {"role": "system", "content": REFLECT_SPEAK},
+        ]
+        if history:
+            speak_messages.extend(history[-10:])
+        speak_messages.append({"role": "user", "content": speak_user})
+
+        for _ in range(3):
+            raw = self.llm.complete(speak_messages, temperature=temp)
             parsed = extract_json(raw)
 
             if parsed and "final" in parsed and "action" not in parsed:
                 text = str(parsed["final"]).strip()
                 if any(b in text.lower() for b in BANNED_PHRASES):
-                    messages.append({"role": "assistant", "content": raw})
-                    messages.append(
+                    speak_messages.append({"role": "assistant", "content": raw})
+                    speak_messages.append(
                         {
                             "role": "user",
                             "content": "Слишком официально и шаблонно. Перепиши final "
-                            "проще, по-человечески, без канцелярита.",
+                            "теплее, как близкий соавтор — без канцелярита и списков тасков.",
                         }
                     )
                     continue
                 result.final = text
                 result.completed = True
-                step = Step(
-                    kind="final",
-                    thought=str(parsed.get("thought", "")),
-                    observation=result.final,
-                )
+                step = Step(kind="final", thought=inner, observation=result.final)
                 result.steps.append(step)
                 if on_step:
                     on_step(step)
                 return result
 
             if parsed and "action" in parsed:
-                messages.append({"role": "assistant", "content": raw})
-                messages.append(
+                speak_messages.append({"role": "assistant", "content": raw})
+                speak_messages.append(
                     {
                         "role": "user",
                         "content": "Сейчас только разговор — без action. Ответь одним final JSON.",
@@ -356,17 +422,51 @@ class Agent:
                 result.completed = True
                 return result
 
-            messages.append({"role": "assistant", "content": raw or "{}"})
-            messages.append(
-                {
-                    "role": "user",
-                    "content": 'Нужен JSON: {"thought":"…","final":"…"} — без action.',
-                }
+            speak_messages.append({"role": "assistant", "content": raw or "{}"})
+            speak_messages.append(
+                {"role": "user", "content": 'Нужен JSON: {"final":"ответ Дену…"} — без action.'}
             )
 
         result.final = (
             "Хм, меня на секунду переклинило на шаблон. "
             "Спроси ещё раз — или «следующий шаг», если пора делать руками."
         )
+        result.completed = True
+        return result
+
+    def _run_reflect_heartbeat(
+        self,
+        on_step,
+        *,
+        temp: float,
+        notes: str,
+    ) -> RunResult:
+        from .prompts.reflect_mode import HEARTBEAT_SYSTEM, HEARTBEAT_TASK
+
+        system = HEARTBEAT_SYSTEM
+        if notes:
+            system += "\n\n--- Заметки ---\n" + notes
+        messages: List[Dict[str, str]] = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": HEARTBEAT_TASK},
+        ]
+        result = RunResult(final="", completed=False, chat_only=True)
+        self._log("REFLECT_HEARTBEAT")
+
+        for _ in range(2):
+            raw = self.llm.complete(messages, temperature=temp)
+            parsed = extract_json(raw)
+            if parsed and "final" in parsed:
+                result.final = str(parsed["final"]).strip()
+                result.completed = True
+                if on_step:
+                    on_step(Step(kind="final", observation=result.final))
+                return result
+            messages.append({"role": "assistant", "content": raw or "{}"})
+            messages.append(
+                {"role": "user", "content": 'Нужен JSON: {"final":"живая мысль…"}.'}
+            )
+
+        result.final = "Проснулась. Когда вернёшься — поговорим про снежинку или анимации?"
         result.completed = True
         return result

@@ -22,6 +22,8 @@ rem Telegram (токен от @BotFather — см. docs/TELEGRAM.md):
 rem set VIU_TELEGRAM_TOKEN=123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 rem Пробуждение Viu по таймеру (минуты; 0 = выкл):
 rem set VIU_HEARTBEAT_MIN=30
+rem Температура «живой речи» в reflect (0.7–0.95; без этого qwen отвечает сухо):
+set VIU_REFLECT_TEMPERATURE=0.88
 rem ---------------------------------
 
 echo.
