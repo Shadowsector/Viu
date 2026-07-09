@@ -60,6 +60,9 @@ class PropCatalogReviewWindow:
         ttk.Button(left, text="Разложить по объектам Blender", command=self._expand_blends).pack(
             fill="x", pady=2
         )
+        ttk.Button(left, text="Building/Landscape → shell (все)", command=self._bulk_shell).pack(
+            fill="x", pady=2
+        )
         ttk.Button(left, text="Сканировать папку…", command=self._scan_folder).pack(fill="x", pady=2)
 
         # Правая колонка — карточка
@@ -149,6 +152,16 @@ class PropCatalogReviewWindow:
         ttk.Button(btns, text="Открыть файл…", command=self._open_file).pack(side="left", padx=2)
 
         self.weight_var.trace_add("write", lambda *_: self._auto_lift())
+        from .scanner import apply_auto_reviews_to_store
+
+        auto_n = apply_auto_reviews_to_store(self.store)
+        if auto_n:
+            messagebox.showinfo(
+                "Каталог",
+                f"Авто-разметка: {auto_n} объектов (Building, Landscape, пыль/туман…).\n"
+                "Тебе остались в основном Props.",
+                parent=self.win,
+            )
         self._reload_list()
 
     def _reload_list(self) -> None:
@@ -306,6 +319,31 @@ class PropCatalogReviewWindow:
                 subprocess.run(["xdg-open", str(path)], check=False)
         except OSError as exc:
             messagebox.showerror("Каталог", str(exc), parent=self.win)
+
+    def _bulk_shell(self) -> None:
+        from .models import AUTO_SHELL_COLLECTIONS
+
+        n = 0
+        for entry in list(self.store.pending()):
+            col = (entry.collection or "").lower().strip()
+            if col not in AUTO_SHELL_COLLECTIONS:
+                continue
+            e = PropEntry.from_dict(entry.to_dict())
+            e.role = "shell"
+            e.category = "building"
+            e.reviewed = True
+            e.interactions = []
+            e.can_lift = False
+            e.can_push = False
+            e.weight_kg = None
+            self._persist_entry(e)
+            n += 1
+        messagebox.showinfo(
+            "Каталог",
+            f"Помечено shell: {n} (Building/Landscape).",
+            parent=self.win,
+        )
+        self._reload_list()
 
     def _expand_blends(self) -> None:
         from .scanner import rescan_file_level_blends

@@ -88,10 +88,12 @@ def test_format_prepare_report():
             "relinked_images": [{"name": "wood", "path": "/t/wood.png"}],
             "packed_count": 1,
             "hidden_objects": ["Ground"],
-            "meshes": [{"name": "Shell_Wall", "suggest_role": "shell"}],
+            "catalog_auto_reviewed": 12,
+            "catalog_pending": 3,
             "blender_opened": True,
         }
     )
     assert "hut_prepared.blend" in text
     assert "Ground" in text
-    assert "Shell_Wall" in text
+    assert "авто-разметка" in text.lower()
+    assert "переименовывать" in text.lower()

@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 
 from .anabarra_layout import inbox_dir, library_root, unity_project_path
 from .config import Config
-from .integrations.blender.prepare_asset import find_inbox_blend
+from .integrations.blender.prepare_asset import find_inbox_blend, prepared_output_path
 from .integrations.unity.overlay import overlay_exe_path
 from .prop_catalog.paths import catalog_path
 from .prop_catalog.store import PropCatalogStore
@@ -42,12 +42,19 @@ def _catalog_store(config: Config) -> PropCatalogStore:
     return PropCatalogStore(catalog_path(config))
 
 
-def _inbox_has_blend(config: Config) -> bool:
+def _inbox_needs_prepare(config: Config) -> bool:
+    """Inbox с .blend, для которого ещё нет свежего *_prepared.blend."""
     try:
-        find_inbox_blend(inbox_dir(config))
-        return True
+        blend = find_inbox_blend(inbox_dir(config))
     except FileNotFoundError:
         return False
+    prepared = prepared_output_path(blend, library_root(config))
+    try:
+        if prepared.is_file() and prepared.stat().st_mtime >= blend.stat().st_mtime:
+            return False
+    except OSError:
+        pass
+    return True
 
 
 def _pending_catalog(config: Config) -> tuple[list, list]:
@@ -73,16 +80,16 @@ def _overlay_exe_exists(config: Config) -> bool:
 
 def plan_next_step(config: Config) -> StepPlan:
     """Приоритет: Inbox → разложить blend → разметка → дом/оверлей → подсказка."""
-    if _inbox_has_blend(config):
+    if _inbox_needs_prepare(config):
         return StepPlan(
             message=(
                 "В Inbox лежит новый файл.\n"
                 "Сейчас: приму asset — текстуры, pack, уберу лишний фон, открою Blender.\n"
-                "Тебе: глянуть в Blender, поправить если надо, сохранить (Ctrl+S)."
+                "Тебе: глянуть в Blender — всё ли на месте. Переименовывать меши не нужно."
             ),
             tool="prepare_unity_asset",
             tool_args={"open_blender": "1"},
-            human_after="Когда в Blender всё ок — снова нажми «Следующий шаг».",
+            human_after="После prepare — снова «Следующий шаг» → разметка Props во Вью.",
         )
 
     file_level, mesh_level = _pending_catalog(config)
@@ -102,11 +109,12 @@ def plan_next_step(config: Config) -> StepPlan:
         sample = mesh_level[0].list_label()
         return StepPlan(
             message=(
-                f"Осталось разметить {n} предметов (например: {sample}).\n"
-                "Building → «Shell без разметки». Props → вес и галочки (сидеть, открыть…)."
+                f"Осталось разметить {n} предметов из Props (например: {sample}).\n"
+                "Building и Landscape Вью уже пометила shell — не трогай.\n"
+                "На каждом Prop: вес + галочки (сидеть, открыть…). Shell — кнопка «Shell без разметки»."
             ),
             tool="__prop_catalog__",
-            human_after="Разметил всё — снова «Следующий шаг».",
+            human_after="Разметил Props — снова «Следующий шаг».",
         )
 
     focus = _roadmap_store(config).roadmap.current_focus()

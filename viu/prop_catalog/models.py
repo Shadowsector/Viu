@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -106,6 +107,54 @@ def suggest_role_and_category(mesh_name: str, collection: str = "") -> tuple[str
     if cr:
         return cr, cc
     return role, category
+
+
+# Коллекции Blender — разметка без участия Дена (стены, трава, фон).
+AUTO_SHELL_COLLECTIONS = frozenset({"building", "buildings", "landscape", "environment", "terrain"})
+AUTO_DECOR_COLLECTIONS = frozenset({"stuff", "decor", "decoration"})
+# Пыль, туман, трава, пламя (шейдер/меш) — не интерактив.
+AUTO_DECOR_NAME_RE = re.compile(
+    r"(dust|fog|smoke|particle|spark|ember|flame|great\s*brome|brome|grass|foliage|mist)",
+    re.IGNORECASE,
+)
+
+
+def apply_auto_review(entry: "PropEntry") -> "PropEntry":
+    """Авто-разметка по коллекции/имени — не заставляем Дена кликать 90 раз."""
+    if entry.reviewed:
+        return entry
+    col = (entry.collection or "").lower().strip()
+    name = (entry.mesh_name or entry.display_name or "").replace("_", " ")
+
+    if col in AUTO_SHELL_COLLECTIONS:
+        entry.role = "shell"
+        entry.category = "building"
+        entry.reviewed = True
+        entry.interactions = []
+        entry.can_lift = False
+        entry.can_push = False
+        entry.weight_kg = None
+        return entry
+
+    if col in AUTO_DECOR_COLLECTIONS:
+        entry.role = "decor"
+        entry.category = "decor"
+        entry.reviewed = True
+        entry.interactions = []
+        return entry
+
+    if AUTO_DECOR_NAME_RE.search(name):
+        entry.role = "decor"
+        entry.category = "decor"
+        entry.reviewed = True
+        entry.interactions = []
+        return entry
+
+    if col in ("props", "prop", "furniture") and not entry.role:
+        entry.role = "interactive"
+        entry.category = "furniture"
+
+    return entry
 
 
 @dataclass

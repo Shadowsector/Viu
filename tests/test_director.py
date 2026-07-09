@@ -112,6 +112,37 @@ def test_director_idle_when_nothing_pending(tmp_path):
     assert plan.tool == ""
 
 
+def test_director_skips_inbox_when_already_prepared(tmp_path):
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    blend = inbox / "hut.blend"
+    blend.write_bytes(b"fake")
+    lib = tmp_path / "Library"
+    prepared = lib / "Processed" / "hut" / "hut_prepared.blend"
+    prepared.parent.mkdir(parents=True)
+    prepared.write_bytes(b"prepared")
+    import os
+    import time
+
+    os.environ["VIU_INBOX_DIR"] = str(inbox)
+    os.environ["VIU_LIBRARY_ROOT"] = str(lib)
+    try:
+        now = time.time()
+        os.utime(blend, (now - 10, now - 10))
+        os.utime(prepared, (now, now))
+        config = Config(
+            root=tmp_path,
+            data_dir=tmp_path / ".viu",
+            inbox_dir=str(inbox),
+            library_root=str(lib),
+        ).ensure_dirs()
+        plan = plan_next_step(config)
+        assert plan.tool != "prepare_unity_asset"
+    finally:
+        os.environ.pop("VIU_INBOX_DIR", None)
+        os.environ.pop("VIU_LIBRARY_ROOT", None)
+
+
 def test_format_banner_includes_human_after(tmp_path):
     config = _config(tmp_path)
     plan = plan_next_step(config)

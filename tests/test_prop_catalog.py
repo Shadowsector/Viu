@@ -173,3 +173,51 @@ def test_sidecar_notes_in_scan(tmp_path):
     n, _ = scan_blend_file(blend, store, mesh_reader=fake_reader)
     assert n == 1
     assert "домик" in store.pending()[0].notes
+
+
+def test_apply_auto_review_building_collection():
+    from viu.prop_catalog.models import apply_auto_review
+
+    blend = Path("/tmp/hut.blend")
+    entry = PropEntry(
+        id=prop_id_for_mesh(blend, "poor_stables_door"),
+        source_path=str(blend),
+        display_name="door",
+        mesh_name="poor_stables_door",
+        collection="Building",
+    )
+    out = apply_auto_review(entry)
+    assert out.reviewed
+    assert out.role == "shell"
+
+
+def test_apply_auto_review_great_brome_is_shell():
+    from viu.prop_catalog.models import apply_auto_review
+
+    blend = Path("/tmp/hut.blend")
+    entry = PropEntry(
+        id=prop_id_for_mesh(blend, "Great Brome.003"),
+        source_path=str(blend),
+        display_name="Great Brome.003",
+        mesh_name="Great Brome.003",
+        collection="Landscape",
+    )
+    out = apply_auto_review(entry)
+    assert out.reviewed
+    assert out.role == "shell"
+
+
+def test_apply_auto_review_props_stays_pending():
+    from viu.prop_catalog.models import apply_auto_review
+
+    blend = Path("/tmp/hut.blend")
+    entry = PropEntry(
+        id=prop_id_for_mesh(blend, "simple_chair"),
+        source_path=str(blend),
+        display_name="chair",
+        mesh_name="simple_chair",
+        collection="Props",
+    )
+    out = apply_auto_review(entry)
+    assert not out.reviewed
+    assert out.role == "interactive"

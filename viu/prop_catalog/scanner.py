@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Tuple
 from .models import (
     ASSET_SUFFIXES,
     PropEntry,
+    apply_auto_review,
     prop_id_for_mesh,
     prop_id_for_path,
     suggest_role_and_category,
@@ -123,8 +124,8 @@ def _entry_for_mesh(
     role, category = suggest_role_and_category(mesh_name, collection)
     notes = _sidecar_notes(path)
     if collection and collection.lower() in ("landscape", "environment"):
-        notes = (notes + f"\nКоллекция {collection} — обычно фон, можно «Shell без разметки».").strip()
-    return PropEntry(
+        notes = (notes + f"\nКоллекция {collection} — фон, Вью пометит shell автоматически.").strip()
+    entry = PropEntry(
         id=prop_id_for_mesh(path, mesh_name),
         source_path=str(path),
         display_name=mesh_name.replace("_", " "),
@@ -136,6 +137,23 @@ def _entry_for_mesh(
         notes=notes.strip(),
         reviewed=False,
     )
+    return apply_auto_review(entry)
+
+
+def apply_auto_reviews_to_store(store: PropCatalogStore) -> int:
+    """Пересмотреть очередь — авто-shell для Building/Landscape и decor по имени."""
+    changed = 0
+    for entry in list(store.items.values()):
+        if entry.reviewed:
+            continue
+        before = entry.reviewed
+        updated = apply_auto_review(PropEntry.from_dict(entry.to_dict()))
+        if updated.reviewed and not before:
+            store.upsert(updated)
+            changed += 1
+    if changed:
+        store.save()
+    return changed
 
 
 def _entry_for_file(path: Path, mesh_names: List[str]) -> PropEntry:

@@ -432,9 +432,14 @@ def run_inbox_prepare_pipeline(
     report["repairs"] = repairs
 
     if catalog_store is not None:
+        from ...prop_catalog.scanner import apply_auto_reviews_to_store
+
         n, seen = scan_folder(output.parent, catalog_store, blender_exe=config.blender_exe)
+        auto_n = apply_auto_reviews_to_store(catalog_store)
         report["catalog_new"] = n
         report["catalog_seen"] = seen
+        report["catalog_auto_reviewed"] = auto_n
+        report["catalog_pending"] = len(catalog_store.pending())
 
     if open_blender:
         try:
@@ -484,19 +489,24 @@ def format_prepare_report(report: Dict[str, Any]) -> str:
         for name in removed:
             lines.append(f"  ✗ убран {name} (SUN/global)")
 
+    if report.get("catalog_pending") is not None:
+        pending = int(report["catalog_pending"])
+        auto_n = int(report.get("catalog_auto_reviewed") or 0)
+        lines.append(
+            f"\nКаталог: авто-разметка {auto_n} (Building/Landscape/фон). "
+            f"Осталось Props: {pending}."
+        )
+        if pending:
+            lines.append("Нажми «Следующий шаг» — откроется окно разметки (не Blender!).")
+
     meshes = report.get("meshes") or []
-    if meshes:
-        lines.append(f"\nМеши для разметки ({len(meshes)}) — открой «Разметить предметы» после доводки:")
-        for m in meshes[:20]:
-            role = m.get("suggest_role") or "?"
-            lines.append(f"  • {m.get('name')} [{role}]")
-        if len(meshes) > 20:
-            lines.append(f"  … ещё {len(meshes) - 20}")
+    if meshes and report.get("catalog_pending") is None:
+        lines.append(f"\nОбъектов в файле: {len(meshes)} (разметка — во Вью, не переименовывай в Blender).")
 
     if report.get("blender_opened"):
-        lines.append("\nBlender открыт с подготовленным файлом.")
-        lines.append("Доведи вручную: переименуй Shell_/Interactive_, удали лишнее, сохрани (Ctrl+S).")
-        lines.append("Потом: «Разметить предметы» → экспорт в Unity (позже автоматизируем).")
+        lines.append("\nBlender открыт — только осмотр: стены, свет, нет ли явного мусора.")
+        lines.append("Переименовывать 90 объектов НЕ нужно. Ctrl+S — если что-то поправил руками.")
+        lines.append("Разметка ролей — «Следующий шаг» во Вью.")
 
     errors = report.get("errors") or []
     if errors:
