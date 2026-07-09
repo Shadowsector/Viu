@@ -78,6 +78,7 @@ class RunResult:
     completed: bool
     steps: List[Step] = field(default_factory=list)
     waiting_for_user: bool = False
+    chat_only: bool = False
 
 
 class Agent:
@@ -227,4 +228,44 @@ class Agent:
 
         result.final = "Достигнут лимит шагов без финального ответа."
         self._log("STOP: max_steps reached")
+        return result
+
+    def run_chat(self, task: str, on_step=None) -> RunResult:
+        """Короткий ответ без инструментов — приветствия и small talk."""
+        from .prompts.chat_mode import CHAT_SYSTEM
+
+        messages: List[Dict[str, str]] = [
+            {"role": "system", "content": CHAT_SYSTEM},
+            {"role": "user", "content": task.strip()},
+        ]
+        result = RunResult(final="", completed=False, chat_only=True)
+        self._log(f"CHAT: {task}")
+
+        raw = self.llm.complete(messages)
+        parsed = extract_json(raw)
+        if parsed and "final" in parsed:
+            result.final = str(parsed["final"]).strip()
+            result.completed = True
+            step = Step(kind="final", thought=str(parsed.get("thought", "")), observation=result.final)
+            result.steps.append(step)
+            if on_step:
+                on_step(step)
+            self._log(f"CHAT_FINAL: {result.final[:120]}")
+            return result
+
+        if parsed and "action" in parsed:
+            result.final = (
+                "Привет! Я на связи. Если нужна работа — напиши «следующий шаг» "
+                "или конкретную задачу."
+            )
+            result.completed = True
+            self._log("CHAT: model tried action — fallback reply")
+            return result
+
+        fallback = (raw or "").strip()
+        if fallback and not fallback.startswith("{"):
+            result.final = fallback[:500]
+        else:
+            result.final = "Привет! Я здесь. Напиши «следующий шаг», когда будешь готов работать."
+        result.completed = True
         return result

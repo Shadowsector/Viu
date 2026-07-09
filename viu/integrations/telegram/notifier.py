@@ -157,6 +157,9 @@ class TelegramNotifier:
             preview = preview[:497] + "…"
         return self.send(f"✅ Готово\n\n{preview}")
 
+    def notify_chat(self, text: str) -> bool:
+        return self.send(text.strip(), force=True)
+
     def notify_info(self, text: str) -> bool:
         return self.send(text)
 

@@ -51,6 +51,7 @@ class ViuGUI:
         self._auto_update_job: str | None = None
         self._telegram = None
         self._telegram_waiting_reply = False
+        self._last_via_telegram = False
 
         stamp = time.strftime("%Y%m%d_%H%M%S")
         self.log_path = self.agent.config.data_dir / "logs" / f"chat_{stamp}.txt"
@@ -357,7 +358,13 @@ class ViuGUI:
         if text.lower() in ("exit", "quit", "выход", "пока"):
             self.root.destroy()
             return
-        self._run_agent_task(text)
+        from .integrations.telegram.router import route_user_message
+
+        mode = route_user_message(text, waiting_for_user=self._telegram_waiting_reply)
+        if mode == "chat":
+            self._run_agent_chat(text)
+        else:
+            self._run_agent_task(text)
 
     def _on_action(self, action: GuiAction) -> None:
         if self._busy:
@@ -676,7 +683,13 @@ class ViuGUI:
         if self._telegram is not None and not self._telegram_waiting_reply:
             self._telegram.notify_done(text)
 
+    def _telegram_notify_chat(self, text: str) -> None:
+        if self._telegram is not None:
+            self._telegram.notify_chat(text)
+
     def _handle_telegram_reply(self, text: str) -> None:
+        from .integrations.telegram.router import route_telegram_message
+
         self._append("ты", f"[Telegram] {text}")
         if self._busy:
             self._append(
@@ -685,8 +698,15 @@ class ViuGUI:
                 tag="sys",
             )
             return
+        mode = route_telegram_message(text, waiting_for_user=self._telegram_waiting_reply)
         self._telegram_waiting_reply = False
-        self._run_agent_task(text)
+        if mode == "chat":
+            self._run_agent_chat(text, via_telegram=True)
+        else:
+            self._run_agent_task(
+                f"[Telegram — команда] {text}",
+                via_telegram=True,
+            )
 
     def _telegram_test(self) -> None:
         self._append("ты", "[Тест Telegram]")
@@ -728,12 +748,29 @@ class ViuGUI:
         except Exception as exc:  # noqa: BLE001
             self._queue.put(("error", f"{title}: {exc}"))
 
-    def _run_agent_task(self, task: str) -> None:
-        self._append("ты", task)
+    def _run_agent_task(self, task: str, *, via_telegram: bool = False) -> None:
+        if not via_telegram:
+            self._append("ты", task)
         self._set_busy(True)
-        threading.Thread(target=self._agent_worker, args=(task,), daemon=True).start()
+        self._last_via_telegram = via_telegram
+        threading.Thread(
+            target=self._agent_worker,
+            args=(task, False),
+            daemon=True,
+        ).start()
 
-    def _agent_worker(self, task: str) -> None:
+    def _run_agent_chat(self, task: str, *, via_telegram: bool = False) -> None:
+        if not via_telegram:
+            self._append("ты", task)
+        self._set_busy(True)
+        self._last_via_telegram = via_telegram
+        threading.Thread(
+            target=self._agent_worker,
+            args=(task, True),
+            daemon=True,
+        ).start()
+
+    def _agent_worker(self, task: str, chat_only: bool) -> None:
         def on_step(step):
             if step.kind == "action":
                 self._queue.put(("step", f"[{step.tool}] {step.thought}"))
@@ -745,8 +782,13 @@ class ViuGUI:
                 self._queue.put(("step", step.observation))
 
         try:
-            result = self.agent.run(task, on_step=on_step)
-            self._queue.put(("final", result.final, result.waiting_for_user))
+            if chat_only:
+                result = self.agent.run_chat(task, on_step=on_step)
+            else:
+                result = self.agent.run(task, on_step=on_step)
+            self._queue.put(
+                ("final", result.final, result.waiting_for_user, result.chat_only)
+            )
         except Exception as exc:  # noqa: BLE001
             self._queue.put(("error", f"{exc}\nПодсказка: запущена ли Ollama?"))
 
@@ -757,8 +799,12 @@ class ViuGUI:
                 if isinstance(item, tuple) and len(item) == 2:
                     kind, text = item
                     waiting = False
+                    chat_only = False
                 elif isinstance(item, tuple) and len(item) == 3:
                     kind, text, waiting = item
+                    chat_only = False
+                elif isinstance(item, tuple) and len(item) == 4:
+                    kind, text, waiting, chat_only = item
                 else:
                     continue
                 if kind == "step":
@@ -774,6 +820,10 @@ class ViuGUI:
                     if waiting:
                         self._telegram_waiting_reply = True
                         self._telegram_notify_question(text)
+                    elif chat_only and self._last_via_telegram:
+                        self._telegram_notify_chat(text)
+                    elif chat_only:
+                        pass
                     else:
                         self._telegram_notify_done(text)
                 elif kind == "error":
