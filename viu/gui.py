@@ -72,6 +72,7 @@ class ViuGUI:
         self._start_anim_watcher()
         self.root.after(100, self._poll_queue)
         self.root.after(300, self._check_updates_on_start)
+        self.root.after(600, self._show_next_step_banner)
         self._refresh_status()
         self._schedule_auto_update()
 
@@ -376,6 +377,12 @@ class ViuGUI:
         if action.tool == "__prop_catalog__":
             self._open_prop_catalog()
             return
+        if action.tool == "__next_step__":
+            self._run_next_step()
+            return
+        if action.tool == "__rescan_catalog__":
+            self._open_prop_catalog()
+            return
         if action.is_chain:
             self._run_tool_chain(action)
             return
@@ -481,6 +488,51 @@ class ViuGUI:
             self._append("Вью", result, tag="tool")
 
         self._run_bg(work, done)
+
+    def _show_next_step_banner(self) -> None:
+        from .director import format_banner, plan_next_step
+
+        def work():
+            return format_banner(plan_next_step(self.agent.config))
+
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                return
+            self._append("система", result, tag="sys")
+
+        self._run_bg(work, done)
+
+    def _run_next_step(self) -> None:
+        from .director import format_banner, plan_next_step
+
+        plan = plan_next_step(self.agent.config)
+        self._append("система", format_banner(plan), tag="sys")
+        if plan.idle or not plan.tool:
+            return
+
+        tool, args = plan.tool, plan.tool_args
+        if tool == "__rescan_catalog__":
+            self._open_prop_catalog()
+            return
+        if tool == "__prop_catalog__":
+            self._open_prop_catalog()
+            return
+        if tool == "__collect_logs__":
+            self._collect_logs()
+            return
+        if tool == "__clear__":
+            self._clear_output()
+            return
+        if tool == "__open_logs__":
+            self._open_log_dir()
+            return
+        if tool == "__update_viu__":
+            self._update_viu_full()
+            return
+        if tool == "__add_animation__":
+            self._add_animation()
+            return
+        self._run_tool(tool, args, label="Следующий шаг")
 
     def _open_prop_catalog(self) -> None:
         from .prop_catalog import PropCatalogStore, catalog_path, open_prop_catalog_review

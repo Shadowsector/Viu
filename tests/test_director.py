@@ -1,0 +1,121 @@
+"""Тесты режиссёра «Следующий шаг»."""
+
+from pathlib import Path
+
+from viu.config import Config
+from viu.director import format_banner, plan_next_step
+from viu.prop_catalog.models import PropEntry, prop_id_for_mesh, prop_id_for_path
+from viu.prop_catalog.paths import catalog_path
+from viu.prop_catalog.store import PropCatalogStore
+from viu.roadmap import RoadmapStore
+
+
+def _config(tmp_path: Path, *, inbox: Path | None = None, unity: Path | None = None) -> Config:
+    inbox = inbox or (tmp_path / "Inbox")
+    inbox.mkdir(parents=True, exist_ok=True)
+    cfg = Config(
+        root=tmp_path,
+        data_dir=tmp_path / ".viu",
+        inbox_dir=str(inbox),
+        unity_project=str(unity) if unity else "",
+    )
+    return cfg.ensure_dirs()
+
+
+def test_director_inbox_has_priority(tmp_path):
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    (inbox / "hut.blend").write_bytes(b"fake")
+    config = _config(tmp_path, inbox=inbox)
+
+    plan = plan_next_step(config)
+
+    assert plan.tool == "prepare_unity_asset"
+    assert plan.tool_args.get("open_blender") == "1"
+    assert "Inbox" in plan.message
+
+
+def test_director_file_level_blend_needs_rescan(tmp_path):
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    blend = tmp_path / "hut.blend"
+    blend.write_bytes(b"fake")
+    config = _config(tmp_path, inbox=inbox)
+    store = PropCatalogStore(catalog_path(config))
+    store.upsert(
+        PropEntry(
+            id=prop_id_for_path(blend),
+            source_path=str(blend),
+            display_name="hut",
+            reviewed=False,
+        )
+    )
+    store.save()
+
+    plan = plan_next_step(config)
+
+    assert plan.tool == "__rescan_catalog__"
+    assert "объект" in plan.message.lower() or "Building" in plan.message
+
+
+def test_director_mesh_level_opens_catalog(tmp_path):
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    blend = tmp_path / "hut.blend"
+    blend.write_bytes(b"fake")
+    config = _config(tmp_path, inbox=inbox)
+    store = PropCatalogStore(catalog_path(config))
+    store.upsert(
+        PropEntry(
+            id=prop_id_for_mesh(blend, "simple_chair"),
+            source_path=str(blend),
+            display_name="simple_chair",
+            mesh_name="simple_chair",
+            collection="Props",
+            reviewed=False,
+        )
+    )
+    store.save()
+
+    plan = plan_next_step(config)
+
+    assert plan.tool == "__prop_catalog__"
+    assert "размет" in plan.message.lower()
+
+
+def test_director_overlay_build_when_focus(tmp_path):
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    unity = tmp_path / "unity"
+    (unity / "Assets").mkdir(parents=True)
+    config = _config(tmp_path, inbox=inbox, unity=unity)
+    RoadmapStore(config.data_dir / "roadmap.json").save()
+
+    plan = plan_next_step(config)
+
+    assert plan.tool == "unity_overlay"
+    assert "оверлей" in plan.message.lower() or "панел" in plan.message.lower()
+
+
+def test_director_idle_when_nothing_pending(tmp_path):
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    config = _config(tmp_path, inbox=inbox)
+    store = RoadmapStore(config.data_dir / "roadmap.json")
+    for m in store.roadmap.milestones:
+        m.status = "done"
+    store.save()
+
+    plan = plan_next_step(config)
+
+    assert plan.idle
+    assert plan.tool == ""
+
+
+def test_format_banner_includes_human_after(tmp_path):
+    config = _config(tmp_path)
+    plan = plan_next_step(config)
+    banner = format_banner(plan)
+    assert banner.startswith("▶")
+    if plan.human_after:
+        assert "→" in banner

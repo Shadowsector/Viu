@@ -14,6 +14,7 @@ from .filesystem import ListDirTool, ReadFileTool, WriteFileTool
 from .loader import load_custom_tools
 from .memory_tool import MemorySearchTool, MemoryWriteTool
 from .planning_tool import PlanCreateTool, PlanShowTool, PlanUpdateTool
+from .director_tool import RunNextStepTool
 from .prepare_asset_tool import PrepareUnityAssetTool
 from .prop_catalog_tool import PropCatalogListTool, PropCatalogScanTool, PropOrganizeDownloadsTool
 from .roadmap_tool import (
@@ -75,6 +76,7 @@ def build_default_registry() -> ToolRegistry:
         PropCatalogListTool(),
         PropOrganizeDownloadsTool(),
         PrepareUnityAssetTool(),
+        RunNextStepTool(),
         RoadmapShowTool(),
         RoadmapUpdateTool(),
         ProjectStatusTool(),
