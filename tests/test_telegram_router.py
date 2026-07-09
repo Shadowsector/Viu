@@ -102,6 +102,14 @@ def test_run_reflect_two_phase_with_history(tmp_path):
     assert llm.calls >= 2
 
 
+def test_reflect_reply_issues_formal_and_masculine():
+    from viu.prompts.reflect_mode import reflect_reply_issues
+
+    issues = reflect_reply_issues("Здравствуйте! Рад, что проект получает новый толстик.")
+    assert any("здравствуйте" in i for i in issues)
+    assert any("мужской" in i for i in issues)
+
+
 def test_run_reflect_rejects_banned_phrase(tmp_path):
     llm = RetrySpeakLLM()
     agent = Agent(

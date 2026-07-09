@@ -322,11 +322,11 @@ class Agent:
     ) -> RunResult:
         """Два этапа: внутренний монолог → ответ Дену. Без инструментов."""
         from .prompts.reflect_mode import (
-            BANNED_PHRASES,
             HEARTBEAT_SYSTEM,
             HEARTBEAT_TASK,
             REFLECT_SPEAK,
             REFLECT_THINK,
+            reflect_reply_issues,
             reflect_temperature,
         )
         from .situational_context import build_reflect_notes
@@ -389,13 +389,16 @@ class Agent:
 
             if parsed and "final" in parsed and "action" not in parsed:
                 text = str(parsed["final"]).strip()
-                if any(b in text.lower() for b in BANNED_PHRASES):
+                issues = reflect_reply_issues(text)
+                if issues:
                     speak_messages.append({"role": "assistant", "content": raw})
                     speak_messages.append(
                         {
                             "role": "user",
-                            "content": "Слишком официально и шаблонно. Перепиши final "
-                            "теплее, как близкий соавтор — без канцелярита и списков тасков.",
+                            "content": "Плохой тон: "
+                            + ", ".join(issues)
+                            + ". Перепиши final теплее, женским родом, без канцелярита — "
+                            "как продолжение мыслей, одно сообщение Дену.",
                         }
                     )
                     continue

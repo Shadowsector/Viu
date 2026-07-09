@@ -875,11 +875,6 @@ class ViuGUI:
                         self._telegram_waiting_reply = True
                         self._telegram_notify_question(text)
                     elif chat_only and self._last_via_telegram:
-                        if inner_thought:
-                            preview = inner_thought[:180] + (
-                                "…" if len(inner_thought) > 180 else ""
-                            )
-                            self._telegram_notify_chat(f"💭 {preview}")
                         msg = ("💭 " + text) if self._heartbeat_notify else text
                         self._heartbeat_notify = False
                         self._telegram_notify_chat(msg)
