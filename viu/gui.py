@@ -553,12 +553,21 @@ class ViuGUI:
             except RuntimeError as exc:
                 self._append("система", f"Каталог: {exc}", tag="sys")
 
+            def on_catalog_finished() -> None:
+                self._append(
+                    "система",
+                    "Каталог закрыт. Разметка в .viu/prop_catalog.json",
+                    tag="sys",
+                )
+                self._show_next_step_banner()
+
             open_prop_catalog_review(
                 self.root,
                 store,
                 max_lift_kg=cfg.shanya_max_lift_kg,
                 blender_exe=cfg.blender_exe,
                 config=cfg,
+                on_finished=on_catalog_finished,
             )
 
         self.root.after(0, open_win)

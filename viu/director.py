@@ -111,12 +111,13 @@ def plan_next_step(config: Config) -> StepPlan:
             message=(
                 f"Осталось разметить {n} предметов из Props (например: {sample}).\n"
                 "Building и Landscape Вью уже пометила shell — не трогай.\n"
-                "На каждом Prop: вес + галочки (сидеть, открыть…). Shell — кнопка «Shell без разметки»."
+                "На каждом Prop: вес + галочки (сидеть, открыть…). Shell — кнопка «Shell — пропустить»."
             ),
             tool="__prop_catalog__",
-            human_after="Разметил Props — снова «Следующий шаг».",
+            human_after="Разметил Props — «Готово — закрыть» в окне каталога.",
         )
 
+    # Asset Old Stables разметен — следующий большой шаг по roadmap.
     focus = _roadmap_store(config).roadmap.current_focus()
     title = (focus.title if focus else "").lower()
 

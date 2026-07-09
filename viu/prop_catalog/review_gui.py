@@ -37,12 +37,14 @@ class PropCatalogReviewWindow:
         *,
         max_lift_kg: float = 35.0,
         on_saved: Optional[Callable[[PropEntry], None]] = None,
+        on_finished: Optional[Callable[[], None]] = None,
         blender_exe: str = "",
         config: Optional[Any] = None,
     ) -> None:
         self.store = store
         self.max_lift_kg = max_lift_kg
         self.on_saved = on_saved
+        self.on_finished = on_finished
         self._current: Optional[PropEntry] = None
         self._interaction_vars: dict[str, tk.BooleanVar] = {}
         self._flag_vars: dict[str, tk.BooleanVar] = {}
@@ -69,10 +71,13 @@ class PropCatalogReviewWindow:
         ttk.Label(left, text="Очередь разметки", font=("Segoe UI", 10, "bold")).pack(anchor="w")
         ttk.Label(
             left,
-            text="Тяни разделитель — шире список.\nProps = мебель. Shell = стены/деревья.",
+            text="Сохранение автоматическое.\nКогда список пуст — жми «Готово».",
             font=("Segoe UI", 8),
             wraplength=300,
         ).pack(anchor="w", pady=(0, 4))
+
+        self.queue_status = ttk.Label(left, text="", font=("Segoe UI", 9))
+        self.queue_status.pack(anchor="w", pady=(0, 4))
 
         tree_frame = ttk.Frame(left)
         tree_frame.pack(fill="both", expand=True, pady=4)
@@ -95,14 +100,30 @@ class PropCatalogReviewWindow:
         tree_scroll.pack(side="right", fill="y")
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
-        ttk.Button(left, text="Обновить список", command=self._reload_list).pack(fill="x", pady=2)
-        ttk.Button(left, text="Разложить по объектам Blender", command=self._expand_blends).pack(
-            fill="x", pady=2
+        ttk.Button(
+            left,
+            text="✓ Готово — закрыть",
+            command=self._finish_and_close,
+        ).pack(fill="x", pady=(8, 2))
+
+        adv = ttk.LabelFrame(left, text="Ещё (обычно не нужно)", padding=4)
+        adv.pack(fill="x", pady=4)
+        ttk.Button(adv, text="Обновить список", command=self._reload_list).pack(fill="x", pady=1)
+        ttk.Button(adv, text="Building/Landscape → shell", command=self._bulk_shell).pack(
+            fill="x", pady=1
         )
-        ttk.Button(left, text="Building/Landscape → shell (все)", command=self._bulk_shell).pack(
-            fill="x", pady=2
+        ttk.Button(adv, text="Пересканировать .blend", command=self._expand_blends).pack(
+            fill="x", pady=1
         )
-        ttk.Button(left, text="Сканировать папку…", command=self._scan_folder).pack(fill="x", pady=2)
+
+        self.done_panel = ttk.LabelFrame(right, text="Готово", padding=12)
+        self.done_text = tk.Text(self.done_panel, height=10, wrap="word", font=("Segoe UI", 10))
+        self.done_text.pack(fill="both", expand=True)
+        ttk.Button(
+            self.done_panel,
+            text="✓ Закрыть и вернуться во Вью",
+            command=self._finish_and_close,
+        ).pack(pady=(8, 0))
 
         self.file_label = ttk.Label(right, text="Выбери предмет слева", wraplength=640)
         self.file_label.pack(anchor="w", pady=(0, 4))
@@ -112,6 +133,7 @@ class PropCatalogReviewWindow:
 
         form = ttk.Frame(right)
         form.pack(fill="x", pady=6)
+        self.form_frame = form
         ttk.Label(form, text="Название:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
         self.name_var = tk.StringVar()
         ttk.Entry(form, textvariable=self.name_var, width=48).grid(
@@ -235,9 +257,16 @@ class PropCatalogReviewWindow:
         btns = ttk.Frame(right)
         btns.pack(fill="x", pady=10)
         ttk.Button(btns, text="Сохранить и дальше →", command=self._save_next).pack(side="left", padx=2)
-        ttk.Button(btns, text="Shell — без разметки →", command=self._save_shell).pack(side="left", padx=2)
-        ttk.Button(btns, text="Пропустить", command=self._skip).pack(side="left", padx=2)
-        ttk.Button(btns, text="Открыть файл…", command=self._open_file).pack(side="left", padx=2)
+        ttk.Button(btns, text="Shell — пропустить →", command=self._save_shell).pack(side="left", padx=2)
+        self._form_widgets = [
+            self.file_label,
+            self.preview,
+            self.form_frame,
+            self.sections_frame,
+            self.notes_text,
+            btns,
+        ]
+        self.done_panel.pack_forget()
 
         self.weight_var.trace_add("write", lambda *_: self._auto_lift())
         self.role_var.trace_add("write", lambda *_: self._update_form_mode())
@@ -307,14 +336,77 @@ class PropCatalogReviewWindow:
         for item in self.tree.get_children():
             self.tree.delete(item)
         self._pending = self.store.pending()
+        n = len(self._pending)
+        self.queue_status.config(
+            text=f"В очереди: {n}" if n else "✓ Очередь пуста — можно закрыть"
+        )
         for i, e in enumerate(self._pending):
             col = e.collection or "—"
             mesh = e.mesh_name or Path(e.source_path).name
             self.tree.insert("", "end", iid=str(i), values=(col, mesh, e.short_source()))
         if self._pending:
+            self._show_form()
             self.tree.selection_set("0")
             self.tree.focus("0")
             self._load_entry(self._pending[0])
+        else:
+            self._show_done_panel()
+
+    def _show_form(self) -> None:
+        self.done_panel.pack_forget()
+        self.file_label.pack(anchor="w", pady=(0, 4))
+        self.preview.pack(fill="x", pady=4)
+        self.form_frame.pack(fill="x", pady=6)
+        self.sections_frame.pack(fill="x", pady=6)
+        self.notes_text.pack(fill="x")
+        self._form_widgets[-1].pack(fill="x", pady=10)
+
+    def _show_done_panel(self) -> None:
+        for w in self._form_widgets:
+            w.pack_forget()
+        self.done_panel.pack(fill="both", expand=True, pady=8)
+        msg = self._completion_message()
+        self.done_text.config(state="normal")
+        self.done_text.delete("1.0", "end")
+        self.done_text.insert("1.0", msg)
+        self.done_text.config(state="disabled")
+
+    def _completion_message(self) -> str:
+        lines = [
+            "Разметка сохранена автоматически (U:\\Viu\\.viu\\prop_catalog.json).\n",
+            "Отдельно «сохранять» ничего не нужно.\n",
+        ]
+        if self._config is not None:
+            try:
+                from ..director import format_banner, plan_next_step
+
+                plan = plan_next_step(self._config)
+                lines.append("Что дальше:\n")
+                lines.append(format_banner(plan))
+            except Exception:  # noqa: BLE001
+                lines.append("Закрой окно → во Вью нажми «▶ Следующий шаг».")
+        else:
+            lines.append("Закрой окно → во Вью нажми «▶ Следующий шаг».")
+        lines.append(
+            "\n\nПро траву: если удалили в Blender, но она вылезла снова — "
+            "это старая запись в каталоге или второй .blend (Old Stables_1). "
+            "Жми Shell — пропустить или «Building/Landscape → shell» в «Ещё»."
+        )
+        return "\n".join(lines)
+
+    def _finish_and_close(self) -> None:
+        n = len(self.store.pending())
+        if n > 0:
+            if not messagebox.askyesno(
+                "Закрыть?",
+                f"В очереди ещё {n} предмет(ов).\n"
+                "Закрыть всё равно? (разметка уже сохранённых не потеряется)",
+                parent=self.win,
+            ):
+                return
+        if self.on_finished:
+            self.on_finished()
+        self.win.destroy()
 
     def _on_select(self, _event=None) -> None:
         sel = self.tree.selection()
@@ -437,7 +529,7 @@ class PropCatalogReviewWindow:
         self._persist_entry(entry)
         self._reload_list()
         if not self._pending:
-            messagebox.showinfo("Каталог", "Все предметы в очереди размечены.", parent=self.win)
+            self._show_done_panel()
 
     def _save_shell(self) -> None:
         if self._current is None:
@@ -455,7 +547,7 @@ class PropCatalogReviewWindow:
         self._persist_entry(e)
         self._reload_list()
         if not self._pending:
-            messagebox.showinfo("Каталог", "Все предметы в очереди размечены.", parent=self.win)
+            self._show_done_panel()
 
     def _skip(self) -> None:
         sel = self.tree.selection()
@@ -561,6 +653,7 @@ def open_prop_catalog_review(
     max_lift_kg: float = 35.0,
     blender_exe: str = "",
     config: Any = None,
+    on_finished: Optional[Callable[[], None]] = None,
 ) -> PropCatalogReviewWindow:
     return PropCatalogReviewWindow(
         master,
@@ -568,4 +661,5 @@ def open_prop_catalog_review(
         max_lift_kg=max_lift_kg,
         blender_exe=blender_exe,
         config=config,
+        on_finished=on_finished,
     )
