@@ -8,8 +8,14 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Any, Callable, Optional
 
+from .interactions import (
+    INTERACTION_CHOICES_PROPS,
+    INTERACTION_CHOICES_SHELL,
+    PROP_FLAG_CHOICES,
+    SHELL_FLAG_CHOICES,
+    normalize_interactions,
+)
 from .models import (
-    INTERACTION_CHOICES,
     PROP_CATEGORIES,
     PROP_ROLES,
     PropEntry,
@@ -38,24 +44,53 @@ class PropCatalogReviewWindow:
         self.on_saved = on_saved
         self._current: Optional[PropEntry] = None
         self._interaction_vars: dict[str, tk.BooleanVar] = {}
+        self._flag_vars: dict[str, tk.BooleanVar] = {}
         self._blender_exe = blender_exe
         self._config = config
 
         self.win = tk.Toplevel(master)
         self.win.title("Вью — каталог предметов")
-        self.win.geometry("920x620")
-        self.win.minsize(760, 520)
+        self.win.geometry("1040x680")
+        self.win.minsize(860, 560)
 
         body = ttk.Frame(self.win, padding=8)
         body.pack(fill="both", expand=True)
 
-        # Левая колонка — очередь
-        left = ttk.Frame(body)
-        left.pack(side="left", fill="y", padx=(0, 8))
+        paned = ttk.PanedWindow(body, orient="horizontal")
+        paned.pack(fill="both", expand=True)
+
+        left = ttk.Frame(paned, width=320)
+        right = ttk.Frame(paned)
+        paned.add(left, weight=1)
+        paned.add(right, weight=3)
+
         ttk.Label(left, text="Очередь разметки", font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        self.listbox = tk.Listbox(left, width=36, height=28, exportselection=False)
-        self.listbox.pack(fill="y", expand=True, pady=4)
-        self.listbox.bind("<<ListboxSelect>>", self._on_select)
+        ttk.Label(
+            left,
+            text="Тяни разделитель — шире список.\nProps = мебель. Shell = стены/деревья.",
+            font=("Segoe UI", 8),
+            wraplength=300,
+        ).pack(anchor="w", pady=(0, 4))
+
+        tree_frame = ttk.Frame(left)
+        tree_frame.pack(fill="both", expand=True, pady=4)
+        self.tree = ttk.Treeview(
+            tree_frame,
+            columns=("collection", "mesh"),
+            show="headings",
+            selectmode="browse",
+            height=24,
+        )
+        self.tree.heading("collection", text="Коллекция")
+        self.tree.heading("mesh", text="Объект")
+        self.tree.column("collection", width=90, minwidth=60, stretch=False)
+        self.tree.column("mesh", width=200, minwidth=120, stretch=True)
+        tree_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=tree_scroll.set)
+        self.tree.pack(side="left", fill="both", expand=True)
+        tree_scroll.pack(side="right", fill="y")
+        self.tree.bind("<<TreeviewSelect>>", self._on_select)
+
         ttk.Button(left, text="Обновить список", command=self._reload_list).pack(fill="x", pady=2)
         ttk.Button(left, text="Разложить по объектам Blender", command=self._expand_blends).pack(
             fill="x", pady=2
@@ -65,31 +100,30 @@ class PropCatalogReviewWindow:
         )
         ttk.Button(left, text="Сканировать папку…", command=self._scan_folder).pack(fill="x", pady=2)
 
-        # Правая колонка — карточка
-        right = ttk.Frame(body)
-        right.pack(side="left", fill="both", expand=True)
-
-        self.file_label = ttk.Label(right, text="Выбери предмет слева", wraplength=520)
+        self.file_label = ttk.Label(right, text="Выбери предмет слева", wraplength=640)
         self.file_label.pack(anchor="w", pady=(0, 4))
 
-        self.preview = tk.Text(right, height=8, wrap="word", state="disabled", font=("Consolas", 9))
+        self.preview = tk.Text(right, height=6, wrap="word", state="disabled", font=("Consolas", 9))
         self.preview.pack(fill="x", pady=4)
 
         form = ttk.Frame(right)
         form.pack(fill="x", pady=6)
         ttk.Label(form, text="Название:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
         self.name_var = tk.StringVar()
-        ttk.Entry(form, textvariable=self.name_var, width=40).grid(row=0, column=1, sticky="ew", pady=2)
+        ttk.Entry(form, textvariable=self.name_var, width=48).grid(
+            row=0, column=1, sticky="ew", pady=2, columnspan=2
+        )
 
         ttk.Label(form, text="Меш в файле:").grid(row=1, column=0, sticky="w", padx=2, pady=2)
         self.mesh_var = tk.StringVar()
-        mesh_entry = ttk.Entry(form, textvariable=self.mesh_var, width=40, state="readonly")
-        mesh_entry.grid(row=1, column=1, sticky="ew", pady=2)
+        ttk.Entry(form, textvariable=self.mesh_var, width=48, state="readonly").grid(
+            row=1, column=1, sticky="ew", pady=2, columnspan=2
+        )
 
         ttk.Label(form, text="Коллекция:").grid(row=2, column=0, sticky="w", padx=2, pady=2)
         self.collection_var = tk.StringVar()
-        ttk.Entry(form, textvariable=self.collection_var, width=40, state="readonly").grid(
-            row=2, column=1, sticky="ew", pady=2
+        ttk.Entry(form, textvariable=self.collection_var, width=48, state="readonly").grid(
+            row=2, column=1, sticky="ew", pady=2, columnspan=2
         )
 
         ttk.Label(form, text="Роль:").grid(row=3, column=0, sticky="w", padx=2, pady=2)
@@ -101,44 +135,72 @@ class PropCatalogReviewWindow:
             width=18,
         )
         role_combo.grid(row=3, column=1, sticky="w", pady=2)
-        ttk.Label(
+        self.role_hint = ttk.Label(
             form,
-            text="Building=стены, Props=мебель, Landscape=фон",
+            text="shell = геометрия без веса; interactive = Props",
             font=("Segoe UI", 8),
-        ).grid(row=4, column=1, sticky="w", pady=(0, 4))
+        )
+        self.role_hint.grid(row=4, column=1, columnspan=2, sticky="w", pady=(0, 4))
 
-        ttk.Label(form, text="Категория:").grid(row=5, column=0, sticky="w", padx=2, pady=2)
+        self.category_label = ttk.Label(form, text="Категория:")
+        self.category_label.grid(row=5, column=0, sticky="w", padx=2, pady=2)
         self.category_var = tk.StringVar(value="unknown")
-        ttk.Combobox(
+        self.category_combo = ttk.Combobox(
             form, textvariable=self.category_var, values=list(PROP_CATEGORIES), width=18
-        ).grid(row=5, column=1, sticky="w", pady=2)
+        )
+        self.category_combo.grid(row=5, column=1, sticky="w", pady=2)
 
-        ttk.Label(form, text="Вес (кг):").grid(row=6, column=0, sticky="w", padx=2, pady=2)
+        self.weight_label = ttk.Label(form, text="Вес (кг):")
+        self.weight_label.grid(row=6, column=0, sticky="w", padx=2, pady=2)
         self.weight_var = tk.StringVar()
         wrow = ttk.Frame(form)
         wrow.grid(row=6, column=1, sticky="w")
-        ttk.Entry(wrow, textvariable=self.weight_var, width=10).pack(side="left")
-        ttk.Label(wrow, text=f"  (Шаня ~до {max_lift_kg:.0f} кг — поднять)").pack(side="left")
+        self.weight_entry = ttk.Entry(wrow, textvariable=self.weight_var, width=10)
+        self.weight_entry.pack(side="left")
+        self.weight_hint = ttk.Label(wrow, text=f"  (Шаня ~до {max_lift_kg:.0f} кг — поднять)")
+        self.weight_hint.pack(side="left")
 
         self.can_lift_var = tk.BooleanVar()
         self.can_push_var = tk.BooleanVar()
-        ttk.Checkbutton(form, text="Можно поднять", variable=self.can_lift_var).grid(
-            row=7, column=1, sticky="w"
+        self.can_lift_cb = ttk.Checkbutton(form, text="Можно поднять", variable=self.can_lift_var)
+        self.can_lift_cb.grid(row=7, column=1, sticky="w")
+        self.can_push_cb = ttk.Checkbutton(
+            form, text="Толкать / тянуть (legacy)", variable=self.can_push_var
         )
-        ttk.Checkbutton(form, text="Можно толкать / сдвинуть", variable=self.can_push_var).grid(
-            row=8, column=1, sticky="w"
-        )
+        self.can_push_cb.grid(row=8, column=1, sticky="w")
         form.columnconfigure(1, weight=1)
 
-        ttk.Label(right, text="Что можно делать:", font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(8, 2))
-        checks = ttk.Frame(right)
-        checks.pack(fill="x")
-        for i, (key, label) in enumerate(INTERACTION_CHOICES):
+        self.shell_section = ttk.LabelFrame(right, text="Shell — геометрия (без веса и grab)", padding=6)
+        self.shell_section.pack(fill="x", pady=(6, 2))
+        self._shell_checks = ttk.Frame(self.shell_section)
+        self._shell_checks.pack(fill="x")
+        for i, (key, label) in enumerate(INTERACTION_CHOICES_SHELL):
+            var = self._interaction_var(key)
+            ttk.Checkbutton(self._shell_checks, text=label, variable=var).grid(
+                row=i // 2, column=i % 2, sticky="w", padx=4, pady=1
+            )
+        self._shell_flags = ttk.Frame(self.shell_section)
+        self._shell_flags.pack(fill="x", pady=(4, 0))
+        for key, label in SHELL_FLAG_CHOICES:
             var = tk.BooleanVar()
-            self._interaction_vars[key] = var
-            ttk.Checkbutton(checks, text=label, variable=var).grid(
+            self._flag_vars[key] = var
+            ttk.Checkbutton(self._shell_flags, text=label, variable=var).pack(side="left", padx=4)
+
+        self.props_section = ttk.LabelFrame(right, text="Props — что можно делать", padding=6)
+        self.props_section.pack(fill="x", pady=(6, 2))
+        self._props_checks = ttk.Frame(self.props_section)
+        self._props_checks.pack(fill="x")
+        for i, (key, label) in enumerate(INTERACTION_CHOICES_PROPS):
+            var = self._interaction_var(key)
+            ttk.Checkbutton(self._props_checks, text=label, variable=var).grid(
                 row=i // 3, column=i % 3, sticky="w", padx=4, pady=1
             )
+        self._prop_flags = ttk.Frame(self.props_section)
+        self._prop_flags.pack(fill="x", pady=(4, 0))
+        for key, label in PROP_FLAG_CHOICES:
+            var = tk.BooleanVar()
+            self._flag_vars[key] = var
+            ttk.Checkbutton(self._prop_flags, text=label, variable=var).pack(side="left", padx=4)
 
         ttk.Label(right, text="Заметки:").pack(anchor="w", pady=(8, 2))
         self.notes_text = tk.Text(right, height=3, wrap="word")
@@ -152,29 +214,86 @@ class PropCatalogReviewWindow:
         ttk.Button(btns, text="Открыть файл…", command=self._open_file).pack(side="left", padx=2)
 
         self.weight_var.trace_add("write", lambda *_: self._auto_lift())
+        self.role_var.trace_add("write", lambda *_: self._update_form_mode())
+
         from .scanner import apply_auto_reviews_to_store
 
         auto_n = apply_auto_reviews_to_store(self.store)
         if auto_n:
             messagebox.showinfo(
                 "Каталог",
-                f"Авто-разметка: {auto_n} объектов (Building, Landscape, пыль/туман…).\n"
+                f"Авто-разметка: {auto_n} объектов (Building, деревья, туман…).\n"
                 "Тебе остались в основном Props.",
                 parent=self.win,
             )
         self._reload_list()
 
+    def _interaction_var(self, key: str) -> tk.BooleanVar:
+        if key not in self._interaction_vars:
+            self._interaction_vars[key] = tk.BooleanVar()
+        return self._interaction_vars[key]
+
+    def _update_form_mode(self) -> None:
+        role = self.role_var.get().strip()
+        is_shell = role in ("shell", "atmosphere")
+        is_decor = role == "decor"
+        is_interactive = role == "interactive" or role == ""
+
+        show_props = is_interactive and not is_shell and not is_decor
+        show_shell = is_shell or (role == "" and not show_props)
+
+        if is_decor or role == "atmosphere":
+            show_props = False
+            show_shell = False
+
+        for w in (
+            self.category_label,
+            self.category_combo,
+            self.weight_label,
+            self.weight_entry,
+            self.weight_hint,
+            self.can_lift_cb,
+            self.can_push_cb,
+        ):
+            if is_shell or is_decor or role == "atmosphere":
+                w.grid_remove()
+            else:
+                w.grid()
+
+        if show_shell and not is_decor:
+            self.shell_section.pack(fill="x", pady=(6, 2), before=self.props_section)
+        else:
+            self.shell_section.pack_forget()
+
+        if show_props:
+            self.props_section.pack(fill="x", pady=(6, 2))
+        else:
+            self.props_section.pack_forget()
+
+        if role == "shell":
+            self.role_hint.config(text="Стены, деревья, крыша — без веса. Лазable — отдельная галочка.")
+        elif role == "interactive":
+            self.role_hint.config(text="Мебель, инструменты — вес и grab имеют смысл.")
+        elif role == "atmosphere":
+            self.role_hint.config(text="Туман, пыль — атмосфера, в игре остаётся как есть.")
+        else:
+            self.role_hint.config(text="shell = геометрия; interactive = Props")
+
     def _reload_list(self) -> None:
-        self.listbox.delete(0, "end")
+        for item in self.tree.get_children():
+            self.tree.delete(item)
         self._pending = self.store.pending()
-        for e in self._pending:
-            self.listbox.insert("end", e.list_label())
+        for i, e in enumerate(self._pending):
+            col = e.collection or "—"
+            mesh = e.mesh_name or Path(e.source_path).name
+            self.tree.insert("", "end", iid=str(i), values=(col, mesh))
         if self._pending:
-            self.listbox.selection_set(0)
+            self.tree.selection_set("0")
+            self.tree.focus("0")
             self._load_entry(self._pending[0])
 
     def _on_select(self, _event=None) -> None:
-        sel = self.listbox.curselection()
+        sel = self.tree.selection()
         if not sel:
             return
         idx = int(sel[0])
@@ -196,9 +315,12 @@ class PropCatalogReviewWindow:
         self.category_var.set(cat)
         self.weight_var.set("" if entry.weight_kg is None else str(entry.weight_kg))
         self.can_lift_var.set(entry.can_lift)
-        self.can_push_var.set(entry.can_push)
+        self.can_push_var.set(entry.can_push or "move" in entry.interactions)
+        interactions = normalize_interactions(entry.interactions)
         for key, var in self._interaction_vars.items():
-            var.set(key in entry.interactions)
+            var.set(key in interactions)
+        for key, var in self._flag_vars.items():
+            var.set(getattr(entry, key, False))
         self.notes_text.delete("1.0", "end")
         self.notes_text.insert("1.0", entry.notes)
 
@@ -208,15 +330,10 @@ class PropCatalogReviewWindow:
         ]
         if entry.mesh_name:
             preview_lines.append(f"Размечаем меш: {entry.mesh_name}")
-        if entry.mesh_names:
-            preview_lines.append("Объекты в .blend (как в Outliner):")
-            for n in entry.mesh_names[:50]:
-                mark = " ←" if n == entry.mesh_name else ""
-                preview_lines.append(f"  • {n}{mark}")
-        thumb = path.with_suffix(".png")
-        if thumb.is_file():
-            preview_lines.append(f"Превью: {thumb}")
+        if entry.role == "shell" and entry.can_climb:
+            preview_lines.append("Подсказка: climbable — Шаня залезет, алхимичка только если can_climb у персонажа.")
         self._set_preview("\n".join(preview_lines))
+        self._update_form_mode()
 
     def _set_preview(self, text: str) -> None:
         self.preview.config(state="normal")
@@ -242,11 +359,28 @@ class PropCatalogReviewWindow:
         e.display_name = self.name_var.get().strip() or e.guess_display_name()
         e.role = self.role_var.get().strip()
         e.category = self.category_var.get().strip() or "unknown"
-        raw_w = self.weight_var.get().strip().replace(",", ".")
-        e.weight_kg = float(raw_w) if raw_w else None
-        e.can_lift = self.can_lift_var.get()
-        e.can_push = self.can_push_var.get()
-        e.interactions = [k for k, v in self._interaction_vars.items() if v.get()]
+        role = e.role
+
+        if role in ("shell", "atmosphere", "decor"):
+            e.weight_kg = None
+            e.can_lift = False
+            e.can_push = False
+            e.category = suggest_category_for_role(role) if role else e.category
+        else:
+            raw_w = self.weight_var.get().strip().replace(",", ".")
+            e.weight_kg = float(raw_w) if raw_w else None
+            e.can_lift = self.can_lift_var.get()
+            e.can_push = self.can_push_var.get()
+
+        e.interactions = normalize_interactions(
+            [k for k, v in self._interaction_vars.items() if v.get()]
+        )
+        if e.can_push and "move" not in e.interactions:
+            e.interactions.append("move")
+
+        for key, var in self._flag_vars.items():
+            setattr(e, key, var.get())
+
         e.notes = self.notes_text.get("1.0", "end").strip()
         e.reviewed = True
         return e
@@ -272,7 +406,6 @@ class PropCatalogReviewWindow:
             messagebox.showinfo("Каталог", "Все предметы в очереди размечены.", parent=self.win)
 
     def _save_shell(self) -> None:
-        """Быстро пометить стены/пол — без веса и галочек."""
         if self._current is None:
             return
         e = PropEntry.from_dict(self._current.to_dict())
@@ -291,14 +424,14 @@ class PropCatalogReviewWindow:
             messagebox.showinfo("Каталог", "Все предметы в очереди размечены.", parent=self.win)
 
     def _skip(self) -> None:
-        sel = self.listbox.curselection()
+        sel = self.tree.selection()
         if not sel:
             return
         idx = int(sel[0]) + 1
         self._reload_list()
-        if idx < self.listbox.size():
-            self.listbox.selection_clear(0, "end")
-            self.listbox.selection_set(idx)
+        if idx < len(self._pending):
+            self.tree.selection_set(str(idx))
+            self.tree.focus(str(idx))
             self._on_select()
 
     def _open_file(self) -> None:
@@ -321,12 +454,13 @@ class PropCatalogReviewWindow:
             messagebox.showerror("Каталог", str(exc), parent=self.win)
 
     def _bulk_shell(self) -> None:
-        from .models import AUTO_SHELL_COLLECTIONS
+        from .models import AUTO_LANDSCAPE_COLLECTIONS, AUTO_SHELL_COLLECTIONS
 
+        targets = AUTO_SHELL_COLLECTIONS | AUTO_LANDSCAPE_COLLECTIONS
         n = 0
         for entry in list(self.store.pending()):
             col = (entry.collection or "").lower().strip()
-            if col not in AUTO_SHELL_COLLECTIONS:
+            if col not in targets:
                 continue
             e = PropEntry.from_dict(entry.to_dict())
             e.role = "shell"

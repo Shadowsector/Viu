@@ -124,7 +124,7 @@ DEFAULT_LIBRARY: Dict[str, Affordance] = {
             Socket("backrest", tags=["lean_surface"]),
             Socket("top", tags=["stand_surface"]),
         ],
-        interactions=["sit", "sit_reversed", "lean_on", "stand_on"],
+        interactions=["sit", "lean_on", "stand_on"],
     ),
     "палка": Affordance(
         name="Палка",

@@ -18,11 +18,11 @@ from ...prop_catalog.pack_layout import repair_split_pack
 _MARK_BEGIN = "<<<VIU_PREPARE_JSON_BEGIN>>>"
 _MARK_END = "<<<VIU_PREPARE_JSON_END>>>"
 
-# Имена мешей/объектов — прячем (не удаляем), чтобы можно было вернуть в Blender.
+# Имена мешей/объектов — прячем только явную «землю под ногами», не деревья/туман.
 BACKGROUND_NAME_RE = re.compile(
-    r"(ground|terrain|landscape|environment|backdrop|background|"
-    r"sky|skydome|horizon|grass_field|exterior_ground|world_floor|"
-    r"plane_ground|floor_outside|outside_ground)",
+    r"^(ground|terrain|world_floor|plane_ground|floor_outside|outside_ground|"
+    r"exterior_ground|skydome|horizon|backdrop)$|"
+    r"(^ground_|_ground$|ground_plane|terrain_plane)",
     re.IGNORECASE,
 )
 

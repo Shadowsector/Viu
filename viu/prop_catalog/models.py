@@ -9,20 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Доступные взаимодействия (стыкуются с affordances.py).
-INTERACTION_CHOICES: List[tuple[str, str]] = [
-    ("sit", "Сидеть"),
-    ("sit_reversed", "Сидеть задом"),
-    ("lean_on", "Опереться"),
-    ("stand_on", "Встать на"),
-    ("grab", "Взять / поднять"),
-    ("push", "Толкать"),
-    ("pull", "Тянуть"),
-    ("open", "Открыть"),
-    ("close", "Закрыть"),
-    ("sleep", "Лечь / спать"),
-    ("read", "Читать"),
-    ("eat", "Есть"),
-]
+from .interactions import INTERACTION_CHOICES, INTERACTION_CHOICES_PROPS, normalize_interactions
 
 PROP_CATEGORIES = (
     "unknown",
@@ -36,7 +23,7 @@ PROP_CATEGORIES = (
 )
 
 # Роль меша внутри составного .blend (домик, комната).
-PROP_ROLES = ("", "shell", "interactive", "decor")
+PROP_ROLES = ("", "shell", "interactive", "decor", "atmosphere")
 
 ASSET_SUFFIXES = {".fbx", ".blend", ".obj", ".glb", ".gltf"}
 
@@ -79,6 +66,8 @@ def suggest_category_for_role(role: str) -> str:
         return "furniture"
     if role == "decor":
         return "decor"
+    if role == "atmosphere":
+        return "decor"
     return "unknown"
 
 
@@ -109,22 +98,34 @@ def suggest_role_and_category(mesh_name: str, collection: str = "") -> tuple[str
     return role, category
 
 
-# Коллекции Blender — разметка без участия Дена (стены, трава, фон).
-AUTO_SHELL_COLLECTIONS = frozenset({"building", "buildings", "landscape", "environment", "terrain"})
+# Коллекции Blender — стены/пол без ручной разметки.
+AUTO_SHELL_COLLECTIONS = frozenset({"building", "buildings"})
+AUTO_LANDSCAPE_COLLECTIONS = frozenset({"landscape", "environment", "terrain"})
 AUTO_DECOR_COLLECTIONS = frozenset({"stuff", "decor", "decoration"})
-# Пыль, туман, трава, пламя (шейдер/меш) — не интерактив.
-AUTO_DECOR_NAME_RE = re.compile(
-    r"(dust|fog|smoke|particle|spark|ember|flame|great\s*brome|brome|grass|foliage|mist)",
+# Только чистая атмосфера — не скрываем в Blender, не трогаем в разметке.
+AUTO_ATMOSPHERE_NAME_RE = re.compile(r"^(dust|fog|mist|smoke)$", re.IGNORECASE)
+# Деревья / кусты — shell + climb, остаются в сцене.
+AUTO_TREE_NAME_RE = re.compile(
+    r"(pine|tree|brome|foliage|spruce|oak|shrub|bush)",
     re.IGNORECASE,
 )
 
 
 def apply_auto_review(entry: "PropEntry") -> "PropEntry":
-    """Авто-разметка по коллекции/имени — не заставляем Дена кликать 90 раз."""
+    """Авто-разметка — Building и атмосфера; деревья с climb по умолчанию."""
+    from .interactions import default_shell_flags, default_shell_interactions
+
     if entry.reviewed:
         return entry
     col = (entry.collection or "").lower().strip()
     name = (entry.mesh_name or entry.display_name or "").replace("_", " ")
+
+    if AUTO_ATMOSPHERE_NAME_RE.match(name.strip()):
+        entry.role = "atmosphere"
+        entry.category = "decor"
+        entry.reviewed = True
+        entry.interactions = []
+        return entry
 
     if col in AUTO_SHELL_COLLECTIONS:
         entry.role = "shell"
@@ -136,14 +137,19 @@ def apply_auto_review(entry: "PropEntry") -> "PropEntry":
         entry.weight_kg = None
         return entry
 
-    if col in AUTO_DECOR_COLLECTIONS:
-        entry.role = "decor"
-        entry.category = "decor"
+    if col in AUTO_LANDSCAPE_COLLECTIONS or AUTO_TREE_NAME_RE.search(name):
+        entry.role = "shell"
+        entry.category = "building"
+        entry.interactions = default_shell_interactions(entry.mesh_name, entry.collection)
+        flags = default_shell_flags(entry.mesh_name, entry.collection)
+        entry.can_climb = flags.get("can_climb", False)
         entry.reviewed = True
-        entry.interactions = []
+        entry.can_lift = False
+        entry.can_push = False
+        entry.weight_kg = None
         return entry
 
-    if AUTO_DECOR_NAME_RE.search(name):
+    if col in AUTO_DECOR_COLLECTIONS:
         entry.role = "decor"
         entry.category = "decor"
         entry.reviewed = True
@@ -168,6 +174,9 @@ class PropEntry:
     weight_kg: Optional[float] = None
     can_lift: bool = False
     can_push: bool = False
+    can_climb: bool = False
+    can_stack: bool = False
+    nsfw_usable: bool = False
     interactions: List[str] = field(default_factory=list)
     mesh_names: List[str] = field(default_factory=list)
     mesh_name: str = ""
@@ -190,7 +199,10 @@ class PropEntry:
             weight_kg=d.get("weight_kg"),
             can_lift=bool(d.get("can_lift", False)),
             can_push=bool(d.get("can_push", False)),
-            interactions=list(d.get("interactions") or []),
+            can_climb=bool(d.get("can_climb", False)),
+            can_stack=bool(d.get("can_stack", False)),
+            nsfw_usable=bool(d.get("nsfw_usable", False)),
+            interactions=normalize_interactions(list(d.get("interactions") or [])),
             mesh_names=list(d.get("mesh_names") or []),
             mesh_name=d.get("mesh_name", ""),
             collection=d.get("collection", ""),
@@ -218,19 +230,28 @@ class PropEntry:
 
     def to_affordance_dict(self) -> Dict[str, Any]:
         """Экспорт для integrations/affordances и Unity."""
+        interactions = normalize_interactions(self.interactions)
         sockets: List[Dict[str, Any]] = []
-        if "sit" in self.interactions or "sit_reversed" in self.interactions:
+        if "sit" in interactions:
             sockets.append({"name": "seat", "tags": ["sit_surface"]})
-        if "lean_on" in self.interactions:
+        if "lean_on" in interactions:
             sockets.append({"name": "backrest", "tags": ["lean_surface"]})
-        if "stand_on" in self.interactions:
+        if "stand_on" in interactions:
             sockets.append({"name": "top", "tags": ["stand_surface"]})
-        if "grab" in self.interactions:
+        if "grab" in interactions or "throw" in interactions or "pocket" in interactions:
             sockets.append({"name": "grip_center", "tags": ["grip_point"]})
+        if self.can_climb:
+            sockets.append({"name": "climb", "tags": ["climb_surface"]})
         tags = [self.category, "prop"]
         if self.role:
             tags.append(self.role)
-        return {
+        if self.can_climb:
+            tags.append("climbable")
+        if self.nsfw_usable:
+            tags.append("nsfw_usable")
+        if self.can_stack:
+            tags.append("stackable")
+        payload: Dict[str, Any] = {
             "name": self.guess_display_name(),
             "source_file": self.source_path,
             "mesh_name": self.mesh_name,
@@ -238,11 +259,17 @@ class PropEntry:
             "role": self.role,
             "tags": tags,
             "sockets": sockets,
-            "interactions": list(self.interactions),
+            "interactions": interactions,
             "weight_kg": self.weight_kg,
             "can_lift": self.can_lift,
-            "can_push": self.can_push,
+            "can_push": "move" in interactions,
+            "can_climb": self.can_climb,
+            "can_stack": self.can_stack,
+            "nsfw_usable": self.nsfw_usable,
         }
+        if self.can_climb:
+            payload["requires_character"] = ["can_climb"]
+        return payload
 
 
 def suggest_can_lift(weight_kg: Optional[float], max_lift_kg: float) -> bool:

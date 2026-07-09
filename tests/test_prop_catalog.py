@@ -191,7 +191,7 @@ def test_apply_auto_review_building_collection():
     assert out.role == "shell"
 
 
-def test_apply_auto_review_great_brome_is_shell():
+def test_apply_auto_review_great_brome_is_shell_climbable():
     from viu.prop_catalog.models import apply_auto_review
 
     blend = Path("/tmp/hut.blend")
@@ -205,6 +205,30 @@ def test_apply_auto_review_great_brome_is_shell():
     out = apply_auto_review(entry)
     assert out.reviewed
     assert out.role == "shell"
+    assert out.can_climb is True
+    assert "stand_on" in out.interactions
+
+
+def test_apply_auto_review_fog_is_atmosphere():
+    from viu.prop_catalog.models import apply_auto_review
+
+    blend = Path("/tmp/hut.blend")
+    entry = PropEntry(
+        id=prop_id_for_mesh(blend, "Fog"),
+        source_path=str(blend),
+        display_name="Fog",
+        mesh_name="Fog",
+        collection="Landscape",
+    )
+    out = apply_auto_review(entry)
+    assert out.role == "atmosphere"
+    assert out.reviewed
+
+
+def test_normalize_interactions_legacy():
+    from viu.prop_catalog.interactions import normalize_interactions
+
+    assert normalize_interactions(["push", "pull", "open", "close"]) == ["move", "open"]
 
 
 def test_apply_auto_review_props_stays_pending():
