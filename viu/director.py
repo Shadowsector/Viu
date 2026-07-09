@@ -78,6 +78,27 @@ def _overlay_exe_exists(config: Config) -> bool:
         return False
 
 
+def _latest_prepared_pack(config: Config) -> Optional[Path]:
+    """Самый свежий *_prepared.blend в Library/Processed."""
+    try:
+        processed = library_root(config) / "Processed"
+        if not processed.is_dir():
+            return None
+        prepared = [p for p in processed.rglob("*_prepared.blend") if p.is_file()]
+        if not prepared:
+            return None
+        return max(prepared, key=lambda p: p.stat().st_mtime)
+    except OSError:
+        return None
+
+
+def _prepared_pack_name(prepared: Path) -> str:
+    stem = prepared.stem
+    if stem.lower().endswith("_prepared"):
+        stem = stem[: -len("_prepared")]
+    return prepared.parent.name if prepared.parent.name.lower() != "processed" else stem
+
+
 def plan_next_step(config: Config) -> StepPlan:
     """Приоритет: Inbox → разложить blend → разметка → дом/оверлей → подсказка."""
     if _inbox_needs_prepare(config):
@@ -117,7 +138,33 @@ def plan_next_step(config: Config) -> StepPlan:
             human_after="Разметил Props — «Готово — закрыть» в окне каталога.",
         )
 
-    # Asset Old Stables разметен — следующий большой шаг по roadmap.
+    # Каталог закрыт — если есть свежий prepared-asset, не уводим в «Walk» по roadmap.
+    prepared = _latest_prepared_pack(config)
+    if prepared is not None:
+        pack = _prepared_pack_name(prepared)
+        if not _overlay_exe_exists(config):
+            return StepPlan(
+                message=(
+                    f"Asset «{pack}» готов в Processed, разметка завершена.\n"
+                    "Следующий шаг: собрать оверлей — Шаня у панели задач.\n"
+                    "Unity должен быть **закрыт** (5–15 минут сборки)."
+                ),
+                tool="unity_overlay",
+                human_after=(
+                    "Экспорт сарая/домика в Unity как prefab — позже. "
+                    "Сейчас — оверлей и проверка A/D."
+                ),
+            )
+        return StepPlan(
+            message=(
+                f"Asset «{pack}» разметен и лежит в Processed.\n"
+                "Оверлей собран — запусти AnabarraOverlay.exe, проверь A/D.\n"
+                "Импорт сцены в Unity (prefab) — в следующей версии Вью."
+            ),
+            idle=True,
+            human_after="Новый asset → Inbox → «Следующий шаг».",
+        )
+
     focus = _roadmap_store(config).roadmap.current_focus()
     title = (focus.title if focus else "").lower()
 
@@ -138,7 +185,7 @@ def plan_next_step(config: Config) -> StepPlan:
                 "Настройки: overlay_tune.json рядом с exe, F5 сохраняет."
             ),
             idle=True,
-            human_after="Если домик/сарай готов в Blender — «Принять asset» из меню «Ещё».",
+            human_after="Новый asset → Inbox → «Следующий шаг».",
         )
 
     if focus:

@@ -81,3 +81,17 @@
 - **`blender_export_shanya`** — FBX без WGT из .blend.
 - Bat **`setup_shanya.bat`** — устарел; кнопки **Init** / **Deploy** в окне Viu.
 - **GUI Viu** — боковая панель: Unity (отчёт, deploy, scan/sync анимаций), Blender, обновления. Без чёрных терминалов.
+
+## Asset из Inbox (домики, props, foliage)
+
+- **`prepare_unity_asset`** — только для **нового** пакета в Inbox. Если уже есть свежий
+  `*_prepared.blend` в `Library/Processed` и Inbox пуст — **не вызывай prepare снова**.
+- После prepare: Building/Landscape/foliage/туман — **auto shell/atmosphere**; Props — разметка
+  веса и галочек во Вью. Каталог **не только для домов**: люди, монстры, NSFW-props, мебель,
+  экстерьер — те же роли (shell / interactive / decor / atmosphere).
+- **`rig_check` / `rig_apply_auto`** — **только персонажи** (Шаня, NPC). Не вызывай для
+  домиков, мебели, foliage, сараев. В .blend могут лежать чужие арматуры (волосы Ciri и т.п.) —
+  это не ошибка asset'а.
+- Когда разметка завершена — **`project_status`** или «Следующий шаг»: оверлей или импорт в Unity.
+  Не уводи пользователя в «Walk + локомоция», если он только что разметил сцену.
+- Inbox после успешного prepare **очищается** (файлы уходят в `Library/Blender/`).

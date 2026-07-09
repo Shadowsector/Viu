@@ -28,29 +28,45 @@ def _client(ctx: AgentContext) -> BlenderClient:
 
 
 def _score_armature(obj: dict) -> int:
-    """Оценка «главности» арматуры: больше костей и типичное имя — выше."""
+    """Оценка «главности» арматуры: персонаж выше волос/prop."""
     bones = obj.get("bones", [])
     n = len(bones)
     if n == 0:
         return -9999
     name = (obj.get("name") or "").lower()
     score = n
+    bone_low = " ".join(b.lower() for b in bones)
+    if any(x in bone_low for x in ("hips", "pelvis", "mixamorig:hips", "def-spine")):
+        score += 2000
     if name in ("rig_", "_armature", "rigg_blake"):
         score += 500
     if "genesis" in name and "female" in name:
         score += 500
     if "model" in name and n > 50 and ".00" not in name:
         score += 200
+    if "hair" in name or "ciri" in name:
+        score -= 8000
     if "swimwear" in name or "weapon" in name:
         score -= 800
     if "tongue" in name and n < 30:
         score -= 500
     if n < 40 and bones and all(
-        any(x in b.lower() for x in ("wpn", "weapon", "ctr_", "skn_wpn", "prop"))
+        any(x in b.lower() for x in ("wpn", "weapon", "ctr_", "skn_wpn", "prop", "hair"))
         for b in bones
     ):
         score -= 2000
     return score
+
+
+def _is_prop_armature(name: str, bones: List[str]) -> bool:
+    low = (name or "").lower()
+    if "hair" in low or (low.startswith("ciri") and len(bones) < 35):
+        return True
+    if len(bones) < 30 and not any(
+        x in " ".join(b.lower() for b in bones) for x in ("hips", "pelvis", "spine", "def-spine")
+    ):
+        return True
+    return False
 
 
 def _pick_armature(
@@ -65,7 +81,15 @@ def _pick_armature(
             if o.get("name") == armature:
                 return o.get("name"), list(o.get("bones", []))
         return None, None
-    best = max(arms, key=_score_armature)
+    character_arms = [
+        o
+        for o in arms
+        if not _is_prop_armature(o.get("name") or "", list(o.get("bones") or []))
+    ]
+    pool = character_arms or arms
+    best = max(pool, key=_score_armature)
+    if _score_armature(best) < 0 and not character_arms:
+        return None, None
     return best.get("name"), list(best.get("bones", []))
 
 
@@ -97,6 +121,19 @@ def _resolve_bones(args: Dict[str, Any], ctx: AgentContext):
 
     arm_name, bones = _pick_armature(objects or [], armature)
     if bones is None:
+        extras = [
+            o.get("name", "?")
+            for o in (objects or [])
+            if o.get("type") == "ARMATURE"
+        ]
+        if extras:
+            return (
+                None,
+                None,
+                "Персонажный скелет не найден (в файле только аксессуары: "
+                + ", ".join(extras[:4])
+                + "). Для домика, props и foliage rig_check не нужен.",
+            )
         return None, None, "В сцене не найдено арматуры (скелета)."
     return arm_name, bones, None
 
@@ -119,8 +156,8 @@ class RigStandardTool(Tool):
 class RigCheckTool(Tool):
     name = "rig_check"
     description = (
-        "Проанализировать скелет модели. Для сложных ригов (Rigify, метариг) "
-        "строит карту Unity Humanoid без переименования; для простых — план переименования"
+        "Скелет ПЕРСОНАЖА (Шаня, NPC). НЕ вызывай для домиков, мебели, foliage, props — "
+        "у них нет Humanoid-рига. Для сложных ригов — карта Unity Humanoid."
     )
     parameters = {
         "bones": "список имён костей (опционально)",

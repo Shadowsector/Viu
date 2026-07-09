@@ -244,6 +244,40 @@ def test_pick_main_armature_over_weapon_proxy():
     assert len(bones) == 200
 
 
+def test_pick_armature_skips_ciri_hair_rig():
+    hair_bones = [f"Ciri_hair_b_{i:02d}" for i in range(1, 6)] + [f"Ciri_hair_a_{i:02d}" for i in range(1, 6)]
+    objects = [
+        {"name": "CiriHairRig", "type": "ARMATURE", "bones": hair_bones},
+    ]
+    name, bones = _pick_armature(objects)
+    assert name is None
+    assert bones is None
+
+
+def test_rig_check_rejects_hair_only_scene(ctx, monkeypatch):
+    objects = [
+        {
+            "name": "CiriHairRig",
+            "type": "ARMATURE",
+            "bones": [f"Ciri_hair_b_{i:02d}" for i in range(1, 6)],
+        }
+    ]
+
+    def fake_alive(_self):
+        return True
+
+    def fake_scene(_self):
+        return {"objects": objects}
+
+    monkeypatch.setattr(BlenderClient, "is_alive", fake_alive)
+    monkeypatch.setattr(BlenderClient, "scene_info", fake_scene)
+    from viu.tools.rig_tool import _resolve_bones
+
+    _arm, _bones, err = _resolve_bones({}, ctx)
+    assert err is not None
+    assert "rig_check не нужен" in err or "аксессуар" in err.lower()
+
+
 def test_advanced_rig_check_uses_map_not_rename(ctx):
     bones = [
         "Root", "pelvis", "Torso", "abdomenLower", "chestUpper", "head",

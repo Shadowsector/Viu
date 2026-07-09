@@ -143,6 +143,32 @@ def test_director_skips_inbox_when_already_prepared(tmp_path):
         os.environ.pop("VIU_LIBRARY_ROOT", None)
 
 
+def test_director_prepared_asset_suggests_overlay(tmp_path):
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    lib = tmp_path / "Library"
+    prepared = lib / "Processed" / "Old Stables" / "Old Stables_prepared.blend"
+    prepared.parent.mkdir(parents=True)
+    prepared.write_bytes(b"prepared")
+    import os
+
+    os.environ["VIU_INBOX_DIR"] = str(inbox)
+    os.environ["VIU_LIBRARY_ROOT"] = str(lib)
+    try:
+        config = Config(
+            root=tmp_path,
+            data_dir=tmp_path / ".viu",
+            inbox_dir=str(inbox),
+            library_root=str(lib),
+        ).ensure_dirs()
+        plan = plan_next_step(config)
+        assert plan.tool == "unity_overlay"
+        assert "Old Stables" in plan.message or "оверлей" in plan.message.lower()
+    finally:
+        os.environ.pop("VIU_INBOX_DIR", None)
+        os.environ.pop("VIU_LIBRARY_ROOT", None)
+
+
 def test_format_banner_includes_human_after(tmp_path):
     config = _config(tmp_path)
     plan = plan_next_step(config)

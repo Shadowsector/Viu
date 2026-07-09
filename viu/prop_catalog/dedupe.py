@@ -68,6 +68,7 @@ def is_user_review(entry: PropEntry) -> bool:
 
 
 def pending_for_display(store: PropCatalogStore) -> List[PropEntry]:
+    sync_pending_from_reviewed_siblings(store)
     raw_pending = [e for e in store.items.values() if not e.reviewed]
     file_level = [e for e in raw_pending if not e.mesh_name]
     mesh_pending = [e for e in raw_pending if e.mesh_name]
@@ -136,3 +137,25 @@ def repair_overmerged_duplicates(store: PropCatalogStore) -> int:
     if fixed:
         store.save()
     return fixed
+
+
+def sync_pending_from_reviewed_siblings(store: PropCatalogStore) -> int:
+    """Если стол разметили в _prepared, убрать «хвост» из Old Stables_1."""
+    changed = 0
+    for entry in list(store.items.values()):
+        if entry.reviewed or not entry.mesh_name:
+            continue
+        for sib in duplicate_siblings(store, entry):
+            if sib.id == entry.id or not sib.reviewed:
+                continue
+            if not is_user_review(sib) and sib.role not in ("shell", "atmosphere", "undefined"):
+                continue
+            data = sib.to_dict()
+            data["id"] = entry.id
+            data["source_path"] = entry.source_path
+            store.upsert(PropEntry.from_dict(data), save=False)
+            changed += 1
+            break
+    if changed:
+        store.save()
+    return changed

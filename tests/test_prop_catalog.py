@@ -342,3 +342,43 @@ def test_pending_dedupes_two_blends(tmp_path):
     )
     store.save()
     assert len(pending_for_display(store)) == 1
+
+
+def test_sync_pending_from_reviewed_prepared(tmp_path):
+    from viu.prop_catalog.dedupe import pending_for_display, sync_pending_from_reviewed_siblings
+
+    store = PropCatalogStore(tmp_path / "catalog.json")
+    raw = tmp_path / "Old Stables_1.blend"
+    prep = tmp_path / "Old Stables_prepared.blend"
+    mesh = "village_painted_white_c_table_b"
+    store.upsert(
+        PropEntry(
+            id=prop_id_for_mesh(raw, mesh),
+            source_path=str(raw),
+            mesh_name=mesh,
+            display_name="table",
+            collection="Props",
+            reviewed=False,
+        ),
+        save=False,
+    )
+    store.upsert(
+        PropEntry(
+            id=prop_id_for_mesh(prep, mesh),
+            source_path=str(prep),
+            mesh_name=mesh,
+            display_name="table",
+            collection="Props",
+            reviewed=True,
+            role="interactive",
+            interactions=["sit"],
+            weight_kg=12.0,
+        ),
+        save=False,
+    )
+    store.save()
+    assert not store.get(prop_id_for_mesh(raw, mesh)).reviewed
+    n = sync_pending_from_reviewed_siblings(store)
+    assert n == 1
+    assert store.get(prop_id_for_mesh(raw, mesh)).reviewed
+    assert len(pending_for_display(store)) == 0

@@ -91,9 +91,39 @@ def test_format_prepare_report():
             "catalog_auto_reviewed": 12,
             "catalog_pending": 3,
             "blender_opened": True,
+            "inbox_archived": ["OK hut.blend → /Library/Blender/hut.blend"],
         }
     )
     assert "hut_prepared.blend" in text
     assert "Ground" in text
     assert "авто-разметка" in text.lower()
     assert "переименовывать" in text.lower()
+    assert "Inbox очищен" in text
+
+
+def test_archive_inbox_after_prepare(tmp_path):
+    import os
+
+    from viu.integrations.blender.prepare_asset import archive_inbox_after_prepare
+
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    blend = inbox / "hut.blend"
+    blend.write_bytes(b"x")
+    lib = tmp_path / "Library"
+    os.environ["VIU_INBOX_DIR"] = str(inbox)
+    os.environ["VIU_LIBRARY_ROOT"] = str(lib)
+    try:
+        cfg = Config(
+            root=tmp_path / "Viu",
+            data_dir=tmp_path / "Viu" / ".viu",
+            inbox_dir=str(inbox),
+            library_root=str(lib),
+        ).ensure_dirs()
+        lines = archive_inbox_after_prepare(cfg, source_label="Inbox")
+        assert lines
+        assert (lib / "Blender" / "hut.blend").is_file()
+        assert not any(inbox.glob("*.blend"))
+    finally:
+        os.environ.pop("VIU_INBOX_DIR", None)
+        os.environ.pop("VIU_LIBRARY_ROOT", None)

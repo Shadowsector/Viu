@@ -401,6 +401,21 @@ def open_blend_in_blender(blend_file: Path, blender_exe: str = "blender", config
         subprocess.Popen([exe, str(blend_file)], start_new_session=True)  # noqa: S603
 
 
+def archive_inbox_after_prepare(config: Config, *, source_label: str) -> List[str]:
+    """После успешного prepare из Inbox — перенести пак в Library и очистить Inbox."""
+    if source_label != "Inbox":
+        return []
+    from ...prop_catalog.organizer import cleanup_empty_dirs, execute_moves, plan_inbox_sort
+
+    inbox = inbox_dir(config)
+    lib = library_root(config)
+    plans = plan_inbox_sort(inbox, lib)
+    lines = execute_moves(plans, dry_run=False)
+    for rel in cleanup_empty_dirs(inbox):
+        lines.append(f"очистка Inbox: {rel}")
+    return lines
+
+
 def run_inbox_prepare_pipeline(
     config: Config,
     *,
@@ -440,6 +455,13 @@ def run_inbox_prepare_pipeline(
         report["catalog_seen"] = seen
         report["catalog_auto_reviewed"] = auto_n
         report["catalog_pending"] = len(catalog_store.pending())
+
+    if source_label == "Inbox":
+        try:
+            report["inbox_archived"] = archive_inbox_after_prepare(config, source_label=source_label)
+        except OSError as exc:
+            report.setdefault("errors", []).append(f"archive_inbox: {exc}")
+            report["inbox_archived"] = []
 
     if open_blender:
         try:
@@ -507,6 +529,14 @@ def format_prepare_report(report: Dict[str, Any]) -> str:
         lines.append("\nBlender открыт — только осмотр: стены, свет, нет ли явного мусора.")
         lines.append("Переименовывать 90 объектов НЕ нужно. Ctrl+S — если что-то поправил руками.")
         lines.append("Разметка ролей — «Следующий шаг» во Вью.")
+
+    archived = report.get("inbox_archived") or []
+    if archived:
+        lines.append("\nInbox очищен — исходники в Library:")
+        for line in archived[:6]:
+            lines.append(f"  • {line}")
+        if len(archived) > 6:
+            lines.append(f"  … ещё {len(archived) - 6}")
 
     errors = report.get("errors") or []
     if errors:
