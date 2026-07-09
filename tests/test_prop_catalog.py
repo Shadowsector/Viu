@@ -110,6 +110,19 @@ def test_suggest_can_lift():
     assert suggest_can_lift(40.0, 35.0) is False
 
 
+def test_inbox_plan_blend_with_textures(tmp_path):
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    lib = tmp_path / "Library"
+    (inbox / "Old Stables.blend").write_bytes(b"")
+    tex = inbox / "textures"
+    tex.mkdir()
+    (tex / "wood.png").write_bytes(b"")
+    plans = plan_inbox_sort(inbox, lib)
+    assert any("Blender/Old Stables/Old Stables.blend" in str(p.dest).replace("\\", "/") for p in plans)
+    assert any(p.dest.name == "textures" and "Old Stables" in str(p.dest) for p in plans)
+
+
 def test_inbox_plan_files_and_folders(tmp_path):
     inbox = tmp_path / "Inbox"
     inbox.mkdir()

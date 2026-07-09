@@ -12,6 +12,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ...anabarra_layout import inbox_dir, library_root
 from ...config import Config
+from .exe import resolve_blender_exe
+from ...prop_catalog.pack_layout import repair_split_pack
 
 _MARK_BEGIN = "<<<VIU_PREPARE_JSON_BEGIN>>>"
 _MARK_END = "<<<VIU_PREPARE_JSON_END>>>"
@@ -25,6 +27,47 @@ BACKGROUND_NAME_RE = re.compile(
 )
 
 TEXTURE_DIR_NAMES = ("Textures", "textures", "TEXTURES", "tex", "maps", "Maps")
+
+
+def find_blend_for_prepare(
+    config: Config,
+    *,
+    blend_file: Optional[str] = None,
+) -> tuple[Path, str]:
+    """Inbox → иначе последний .blend в Library/Blender. Возвращает (path, source_label)."""
+    if blend_file:
+        p = Path(blend_file).expanduser().resolve()
+        if not p.is_file():
+            raise FileNotFoundError(f"Файл не найден: {p}")
+        return p, "указанный файл"
+
+    inbox = inbox_dir(config)
+    try:
+        return find_inbox_blend(inbox), "Inbox"
+    except FileNotFoundError:
+        pass
+
+    lib = library_root(config)
+    candidates: List[Path] = []
+    for folder in (lib / "Blender", lib):
+        if not folder.is_dir():
+            continue
+        for p in folder.rglob("*.blend"):
+            if "_prepared" in p.stem.lower():
+                continue
+            if "Processed" in p.parts:
+                continue
+            candidates.append(p)
+
+    if not candidates:
+        raise FileNotFoundError(
+            f"Нет .blend для подготовки.\n"
+            f"  Inbox: {inbox} — пуст\n"
+            f"  Library: {lib / 'Blender'} — тоже пуст\n"
+            "Положи blend+textures в U:\\Viu\\Inbox и нажми «Принять asset»."
+        )
+    latest = max(candidates, key=lambda p: p.stat().st_mtime)
+    return latest, f"Library ({latest.name})"
 
 
 def find_inbox_blend(inbox: Path) -> Path:
@@ -72,10 +115,16 @@ def prepared_output_path(blend: Path, lib: Path) -> Path:
     return out_dir / f"{blend.stem}_prepared.blend"
 
 
-def _texture_search_dirs(blend: Path) -> List[Path]:
+def _texture_search_dirs(blend: Path, library_root: Optional[Path] = None) -> List[Path]:
     dirs: List[Path] = []
     seen: set[str] = set()
-    for base in (blend.parent, blend.parent.parent):
+    bases = [blend.parent, blend.parent.parent]
+    if library_root:
+        ref = library_root / "References" / "images"
+        if ref.is_dir():
+            bases.append(ref)
+        bases.append(library_root)
+    for base in bases:
         if not base.is_dir():
             continue
         for name in TEXTURE_DIR_NAMES:
@@ -295,6 +344,7 @@ def prepare_blend_for_unity(
     output_blend: Path,
     *,
     blender_exe: str = "blender",
+    config: Optional[Config] = None,
     hide_background: bool = True,
     pack_textures: bool = True,
     simplify_world: bool = True,
@@ -306,6 +356,8 @@ def prepare_blend_for_unity(
     output_blend = output_blend.expanduser().resolve()
     if not blend_file.is_file():
         raise FileNotFoundError(f"Файл не найден: {blend_file}")
+
+    exe = resolve_blender_exe(config, override=blender_exe)
 
     options = {
         "hide_background": hide_background,
@@ -320,7 +372,7 @@ def prepare_blend_for_unity(
 
     try:
         cmd = build_prepare_command(
-            blender_exe, str(blend_file), script_path, str(output_blend), options=options
+            str(exe), str(blend_file), script_path, str(output_blend), options=options
         )
         proc = runner(cmd, capture_output=True, text=True, timeout=timeout)
         if proc.returncode != 0:
@@ -328,7 +380,9 @@ def prepare_blend_for_unity(
                 f"Blender prepare code {proc.returncode}\nstderr:\n{proc.stderr}\nstdout:\n{proc.stdout}"
             )
         report = parse_prepare_output(proc.stdout)
-        report["texture_dirs"] = [str(p) for p in _texture_search_dirs(blend_file)]
+        lib = library_root(config) if config else None
+        report["texture_dirs"] = [str(p) for p in _texture_search_dirs(blend_file, lib)]
+        report["blender_exe"] = str(exe)
         return report
     finally:
         try:
@@ -337,13 +391,14 @@ def prepare_blend_for_unity(
             pass
 
 
-def open_blend_in_blender(blend_file: Path, blender_exe: str = "blender") -> None:
+def open_blend_in_blender(blend_file: Path, blender_exe: str = "blender", config: Optional[Config] = None) -> None:
     """Открыть .blend в GUI Blender (для ручной доводки)."""
     blend_file = blend_file.expanduser().resolve()
+    exe = str(resolve_blender_exe(config, override=blender_exe))
     if sys.platform == "win32":
-        subprocess.Popen([blender_exe, str(blend_file)], close_fds=True)  # noqa: S603
+        subprocess.Popen([exe, str(blend_file)], close_fds=True)  # noqa: S603
     else:
-        subprocess.Popen([blender_exe, str(blend_file)], start_new_session=True)  # noqa: S603
+        subprocess.Popen([exe, str(blend_file)], start_new_session=True)  # noqa: S603
 
 
 def run_inbox_prepare_pipeline(
@@ -353,7 +408,7 @@ def run_inbox_prepare_pipeline(
     open_blender: bool = True,
     catalog_store: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    """Полный цикл: Inbox → prepare → Processed → опционально открыть Blender."""
+    """Полный цикл: найти blend → repair textures → prepare → Processed → Blender."""
     from ...prop_catalog.scanner import scan_folder
 
     inbox = inbox_dir(config)
@@ -361,16 +416,20 @@ def run_inbox_prepare_pipeline(
     lib.mkdir(parents=True, exist_ok=True)
     (lib / "Processed").mkdir(parents=True, exist_ok=True)
 
-    source = Path(blend_file).expanduser() if blend_file else find_inbox_blend(inbox)
+    source, source_label = find_blend_for_prepare(config, blend_file=blend_file or None)
+    repairs = repair_split_pack(source, lib)
     output = prepared_output_path(source, lib)
 
     report = prepare_blend_for_unity(
         source,
         output,
         blender_exe=config.blender_exe,
+        config=config,
     )
     report["inbox"] = str(inbox)
     report["library"] = str(lib)
+    report["source_label"] = source_label
+    report["repairs"] = repairs
 
     if catalog_store is not None:
         n, seen = scan_folder(output.parent, catalog_store, blender_exe=config.blender_exe)
@@ -379,7 +438,7 @@ def run_inbox_prepare_pipeline(
 
     if open_blender:
         try:
-            open_blend_in_blender(output, config.blender_exe)
+            open_blend_in_blender(output, config.blender_exe, config=config)
             report["blender_opened"] = True
         except OSError as exc:
             report["blender_opened"] = False
@@ -391,10 +450,16 @@ def run_inbox_prepare_pipeline(
 def format_prepare_report(report: Dict[str, Any]) -> str:
     lines = [
         "Подготовка asset для Unity — готово.",
-        f"Источник: {report.get('source', '?')}",
+        f"Источник ({report.get('source_label', '?')}): {report.get('source', '?')}",
         f"Сохранено: {report.get('output', '?')}",
-        "",
     ]
+    if report.get("blender_exe"):
+        lines.append(f"Blender: {report['blender_exe']}")
+    repairs = report.get("repairs") or []
+    if repairs:
+        lines.append("")
+        lines.extend(repairs)
+    lines.append("")
     relinked = report.get("relinked_images") or []
     lines.append(f"Текстуры перепривязано: {len(relinked)}")
     if relinked[:5]:

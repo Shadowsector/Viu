@@ -143,21 +143,12 @@ GUI_ACTIONS: List[GuiAction] = [
     ),
     GuiAction(
         "prepare_unity_asset",
-        "Подготовить asset для Unity",
+        "Принять asset",
         "Blender",
         tool="prepare_unity_asset",
         tool_args={"open_blender": "1"},
-        hint="Inbox: blend+Textures → relink, pack, скрыть землю, открыть Blender. "
-        "Потом доведи меши и «Разметить предметы».",
-    ),
-    GuiAction(
-        "prop_sort_downloads",
-        "Разобрать Inbox",
-        "Blender",
-        tool="prop_organize_downloads",
-        tool_args={"dry_run": "0"},
-        hint="U:\\Viu\\Inbox → U:\\Anabarra\\Library. Клади сюда ОДИН пак за раз. "
-        "Desktop Mascot не трогаем. См. docs/ANABARRA_FOLDERS.md.",
+        hint="Inbox или Library: blend+textures → relink, pack, фон, Processed, Blender. "
+        "Одна кнопка вместо «Разобрать»+«Подготовить».",
     ),
     # --- Blender ---
     GuiAction(

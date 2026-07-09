@@ -73,7 +73,22 @@ U:\Anabarra\
 
 ---
 
-## Подготовка asset для Unity (новая кнопка)
+## Одна кнопка: «Принять asset»
+
+1. Положи в **`U:\Viu\Inbox`**: `Old Stables.blend` + папка **`textures`** (рядом!)
+2. Задай **`VIU_BLENDER_EXE`**, если Blender не в PATH (см. ниже)
+3. **«Принять asset»** — не «Разобрать Inbox» отдельно
+
+Если уже нажал «Разобрать» и blend в Library — **«Принять asset»** найдёт его там сам.
+Если `textures` уехали в `References\images\` — Вью **вернёт их рядом** с blend.
+
+```
+VIU_BLENDER_EXE=C:\Program Files\Blender Foundation\Blender 5.1\blender.exe
+```
+
+Концепция целиком: [`VIU_CONCEPT.md`](./VIU_CONCEPT.md).
+
+---
 
 **Workflow для сарайчика с Textures:**
 

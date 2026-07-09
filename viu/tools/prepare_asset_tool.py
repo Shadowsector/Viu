@@ -15,9 +15,8 @@ from .base import AgentContext, Tool, ToolResult
 class PrepareUnityAssetTool(Tool):
     name = "prepare_unity_asset"
     description = (
-        "Подготовить .blend из U:\\Viu\\Inbox для Unity: перепривязать Textures, "
-        "pack в файл, скрыть землю/фон, упростить world, убрать SUN, сохранить в "
-        "Library\\Processed, открыть Blender для доводки."
+        "Принять asset для Unity: найти .blend (Inbox или Library), восстановить textures, "
+        "relink+pack, скрыть фон, сохранить в Processed, открыть Blender."
     )
     parameters = {
         "blend_file": "путь к .blend (опционально; иначе ищет в Inbox)",

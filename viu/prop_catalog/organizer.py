@@ -29,6 +29,8 @@ DEFAULT_RULES: Dict[str, str] = {
 ARCHIVE_SUFFIXES = {".zip", ".7z", ".rar"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
+from .pack_layout import TEXTURE_FOLDER_NAMES, is_texture_folder
+
 _FOLDER_RULE_PRIORITY: tuple[tuple[Set[str], str], ...] = (
     ({".blend"}, "Blender"),
     ({".fbx"}, "Props/fbx"),
@@ -66,6 +68,8 @@ def _rel_for_file(ext: str, rules: Dict[str, str]) -> str:
 
 
 def _rel_for_folder(folder: Path, rules: Dict[str, str]) -> str:
+    if is_texture_folder(folder):
+        return "unsorted/_texture_orphans"
     suffixes = _suffixes_in_tree(folder)
     for exts, rel in _FOLDER_RULE_PRIORITY:
         if suffixes & exts:
@@ -101,8 +105,26 @@ def plan_inbox_sort(
     if not inbox.is_dir():
         return plans
 
-    for path in sorted(inbox.iterdir(), key=lambda p: p.name.lower()):
-        if _skip_inbox_entry(path):
+    entries = sorted(
+        (p for p in inbox.iterdir() if not _skip_inbox_entry(p)),
+        key=lambda p: p.name.lower(),
+    )
+    blends = [p for p in entries if p.is_file() and p.suffix.lower() == ".blend"]
+    tex_dirs = [p for p in entries if p.is_dir() and is_texture_folder(p)]
+    handled: set[Path] = set()
+
+    # Один .blend + textures/ на одном уровне → одна папка Blender/<имя>/
+    if len(blends) == 1 and tex_dirs:
+        blend = blends[0]
+        pack = library_root / "Blender" / blend.stem
+        plans.append(MovePlan(blend, pack / blend.name, "file"))
+        handled.add(blend)
+        for td in tex_dirs:
+            plans.append(MovePlan(td, pack / td.name, "folder"))
+            handled.add(td)
+
+    for path in entries:
+        if path in handled:
             continue
         if path.is_dir():
             rel = _rel_for_folder(path, rules)
