@@ -266,6 +266,56 @@ class Agent:
         if fallback and not fallback.startswith("{"):
             result.final = fallback[:500]
         else:
-            result.final = "Привет! Я здесь. Напиши «следующий шаг», когда будешь готов работать."
+            result.final = (
+                "Привет! Я здесь. Напиши «следующий шаг», когда захочешь, чтобы я что-то сделала."
+            )
         result.completed = True
+        return result
+
+    def run_status(self, task: str, on_step=None) -> RunResult:
+        """Ответ о плане проекта — только текст, без Unity."""
+        from .director import format_banner, plan_next_step
+        from .project_state import project_status
+        from .prompts.status_mode import STATUS_SYSTEM
+
+        facts = project_status(self.config)
+        try:
+            plan = format_banner(plan_next_step(self.config))
+        except OSError:
+            plan = ""
+
+        user_content = (
+            f"Вопрос Дена: {task.strip()}\n\n"
+            f"=== Roadmap и состояние (не выполняй, только расскажи) ===\n{facts}\n\n"
+            f"=== Подсказка режиссёра (если спросит «что нажать» — переформулируй, не запускай) ===\n"
+            f"{plan}"
+        )
+        messages: List[Dict[str, str]] = [
+            {"role": "system", "content": STATUS_SYSTEM},
+            {"role": "user", "content": user_content},
+        ]
+        result = RunResult(final="", completed=False, chat_only=True)
+        self._log(f"STATUS: {task}")
+
+        raw = self.llm.complete(messages)
+        parsed = extract_json(raw)
+        if parsed and "final" in parsed:
+            result.final = str(parsed["final"]).strip()
+        else:
+            # Fallback без LLM: хотя бы кратко из фактов.
+            focus_line = ""
+            for line in facts.splitlines():
+                if "in_progress" in line or "→" in line or "Фокус" in line:
+                    focus_line = line.strip()
+                    break
+            result.final = (
+                "Сейчас смотрю на roadmap.\n"
+                + (focus_line + "\n" if focus_line else "")
+                + "Чтобы я начала делать — напиши «следующий шаг»."
+            )
+        result.completed = True
+        step = Step(kind="final", thought="", observation=result.final)
+        result.steps.append(step)
+        if on_step:
+            on_step(step)
         return result

@@ -363,6 +363,8 @@ class ViuGUI:
         mode = route_user_message(text, waiting_for_user=self._telegram_waiting_reply)
         if mode == "chat":
             self._run_agent_chat(text)
+        elif mode == "status":
+            self._run_agent_status(text)
         else:
             self._run_agent_task(text)
 
@@ -702,6 +704,8 @@ class ViuGUI:
         self._telegram_waiting_reply = False
         if mode == "chat":
             self._run_agent_chat(text, via_telegram=True)
+        elif mode == "status":
+            self._run_agent_status(text, via_telegram=True)
         else:
             self._run_agent_task(
                 f"[Telegram — команда] {text}",
@@ -755,7 +759,7 @@ class ViuGUI:
         self._last_via_telegram = via_telegram
         threading.Thread(
             target=self._agent_worker,
-            args=(task, False),
+            args=(task, "work"),
             daemon=True,
         ).start()
 
@@ -766,11 +770,22 @@ class ViuGUI:
         self._last_via_telegram = via_telegram
         threading.Thread(
             target=self._agent_worker,
-            args=(task, True),
+            args=(task, "chat"),
             daemon=True,
         ).start()
 
-    def _agent_worker(self, task: str, chat_only: bool) -> None:
+    def _run_agent_status(self, task: str, *, via_telegram: bool = False) -> None:
+        if not via_telegram:
+            self._append("ты", task)
+        self._set_busy(True)
+        self._last_via_telegram = via_telegram
+        threading.Thread(
+            target=self._agent_worker,
+            args=(task, "status"),
+            daemon=True,
+        ).start()
+
+    def _agent_worker(self, task: str, mode: str) -> None:
         def on_step(step):
             if step.kind == "action":
                 self._queue.put(("step", f"[{step.tool}] {step.thought}"))
@@ -782,8 +797,10 @@ class ViuGUI:
                 self._queue.put(("step", step.observation))
 
         try:
-            if chat_only:
+            if mode == "chat":
                 result = self.agent.run_chat(task, on_step=on_step)
+            elif mode == "status":
+                result = self.agent.run_status(task, on_step=on_step)
             else:
                 result = self.agent.run(task, on_step=on_step)
             self._queue.put(
