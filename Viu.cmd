@@ -20,6 +20,8 @@ rem Blender (если «Принять asset» не находит сам — р
 rem set VIU_BLENDER_EXE=C:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe
 rem Telegram (токен от @BotFather — см. docs/TELEGRAM.md):
 rem set VIU_TELEGRAM_TOKEN=123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+rem Пробуждение Viu по таймеру (минуты; 0 = выкл):
+rem set VIU_HEARTBEAT_MIN=30
 rem ---------------------------------
 
 echo.

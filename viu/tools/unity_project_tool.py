@@ -608,6 +608,20 @@ class UnityOverlayTuneTool(Tool):
         )
 
 
+class UnityCloseTool(Tool):
+    name = "unity_close"
+    description = (
+        "Закрыть Unity Editor (если Ден не у ПК, мешает batch, или застряли на «нажми Play»)"
+    )
+    parameters: Dict[str, str] = {}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.unity.process import kill_unity_processes
+
+        ok, msg = kill_unity_processes()
+        return ToolResult(ok, msg)
+
+
 class UnityImportStagingTool(Tool):
     name = "unity_import_staging"
     description = (

@@ -108,22 +108,48 @@ class Agent:
         except OSError:
             pass
 
-    def run(self, task: str, on_step=None) -> RunResult:
-        """Запускает цикл решения задачи. `on_step` — опциональный колбэк(Step)."""
-        system = build_system_prompt(self.config, self.registry, self.memory, self.planner)
+    def run(
+        self,
+        task: str,
+        on_step=None,
+        *,
+        mode: str = "work",
+        recent_chat: str = "",
+        max_steps: Optional[int] = None,
+    ) -> RunResult:
+        """mode: work | reflect — reflect слушает Дена, не автопилотит Unity."""
+        limit = max_steps if max_steps is not None else self.config.max_steps
+        if mode == "reflect":
+            from .prompts.reflect_mode import REFLECT_SYSTEM
+            from .situational_context import build_situational_context
+
+            system = (
+                REFLECT_SYSTEM
+                + "\n\n## Справочно (инструменты и память)\n"
+                + build_system_prompt(self.config, self.registry, self.memory, self.planner)
+            )
+            ctx = build_situational_context(self.config, recent_chat=recent_chat)
+            user = f"{ctx}\n\n--- Сообщение ---\n{task.strip()}"
+            limit = min(limit, 8)
+            chat_only = True
+        else:
+            system = build_system_prompt(self.config, self.registry, self.memory, self.planner)
+            user = task
+            chat_only = False
+
         messages: List[Dict[str, str]] = [
             {"role": "system", "content": system},
-            {"role": "user", "content": task},
+            {"role": "user", "content": user},
         ]
-        result = RunResult(final="", completed=False)
-        self._log(f"TASK: {task}")
+        result = RunResult(final="", completed=False, chat_only=chat_only)
+        self._log(f"TASK[{mode}]: {task[:200]}")
 
         # Защита от зацикливания: считаем повторы одинаковых вызовов (tool+args).
         repeat_counts: Dict[str, int] = {}
         REPEAT_NUDGE_AT = 2  # после 2-го одинакового вызова — предупреждение
         REPEAT_STOP_AT = 3   # на 3-м — принудительно останавливаемся
 
-        for _ in range(self.config.max_steps):
+        for _ in range(limit):
             raw = self.llm.complete(messages)
             parsed = extract_json(raw)
 
@@ -272,50 +298,5 @@ class Agent:
         result.completed = True
         return result
 
-    def run_status(self, task: str, on_step=None) -> RunResult:
-        """Ответ о плане проекта — только текст, без Unity."""
-        from .director import format_banner, plan_next_step
-        from .project_state import project_status
-        from .prompts.status_mode import STATUS_SYSTEM
-
-        facts = project_status(self.config)
-        try:
-            plan = format_banner(plan_next_step(self.config))
-        except OSError:
-            plan = ""
-
-        user_content = (
-            f"Вопрос Дена: {task.strip()}\n\n"
-            f"=== Roadmap и состояние (не выполняй, только расскажи) ===\n{facts}\n\n"
-            f"=== Подсказка режиссёра (если спросит «что нажать» — переформулируй, не запускай) ===\n"
-            f"{plan}"
-        )
-        messages: List[Dict[str, str]] = [
-            {"role": "system", "content": STATUS_SYSTEM},
-            {"role": "user", "content": user_content},
-        ]
-        result = RunResult(final="", completed=False, chat_only=True)
-        self._log(f"STATUS: {task}")
-
-        raw = self.llm.complete(messages)
-        parsed = extract_json(raw)
-        if parsed and "final" in parsed:
-            result.final = str(parsed["final"]).strip()
-        else:
-            # Fallback без LLM: хотя бы кратко из фактов.
-            focus_line = ""
-            for line in facts.splitlines():
-                if "in_progress" in line or "→" in line or "Фокус" in line:
-                    focus_line = line.strip()
-                    break
-            result.final = (
-                "Сейчас смотрю на roadmap.\n"
-                + (focus_line + "\n" if focus_line else "")
-                + "Чтобы я начала делать — напиши «следующий шаг»."
-            )
-        result.completed = True
-        step = Step(kind="final", thought="", observation=result.final)
-        result.steps.append(step)
-        if on_step:
-            on_step(step)
-        return result
+    def run_reflect(self, task: str, on_step=None, *, recent_chat: str = "") -> RunResult:
+        return self.run(task, on_step, mode="reflect", recent_chat=recent_chat)

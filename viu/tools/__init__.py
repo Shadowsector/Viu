@@ -27,6 +27,7 @@ from .rig_tool import RigApplyAutoTool, RigApplyTool, RigCheckTool, RigMapTool, 
 from .self_improve import AddToolTool, ImprovePromptTool, SelfInspectTool
 from .shell import ShellTool
 from .unity_project_tool import (
+    UnityCloseTool,
     UnityDeploySetupTool,
     UnityFixManifestTool,
     UnityInitProjectTool,
@@ -44,6 +45,7 @@ from .unity_project_tool import (
     UnityWriteTool,
 )
 from .unity_tool import UnityLogTool, UnityReportTool, UnityScanTool, UnityWorkflowTool
+from .vision_tool import VisionAppendTool, VisionReadTool
 from .web import WebFetchTool, WebSearchTool
 
 __all__ = [
@@ -77,6 +79,8 @@ def build_default_registry() -> ToolRegistry:
         PropOrganizeDownloadsTool(),
         PrepareUnityAssetTool(),
         RunNextStepTool(),
+        VisionReadTool(),
+        VisionAppendTool(),
         RoadmapShowTool(),
         RoadmapUpdateTool(),
         ProjectStatusTool(),
@@ -109,6 +113,7 @@ def build_default_registry() -> ToolRegistry:
         UnityScanAnimationsTool(),
         UnitySyncAnimationsTool(),
         UnityImportStagingTool(),
+        UnityCloseTool(),
         UnityOpenTool(),
         UnityOverlayTool(),
         UnityOverlayTuneTool(),

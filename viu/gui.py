@@ -14,6 +14,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from pathlib import Path
 from typing import Optional
 
@@ -52,6 +53,9 @@ class ViuGUI:
         self._telegram = None
         self._telegram_waiting_reply = False
         self._last_via_telegram = False
+        self._heartbeat_job: str | None = None
+        self._heartbeat_notify = False
+        self._chat_history: deque[str] = deque(maxlen=16)
 
         stamp = time.strftime("%Y%m%d_%H%M%S")
         self.log_path = self.agent.config.data_dir / "logs" / f"chat_{stamp}.txt"
@@ -79,6 +83,13 @@ class ViuGUI:
         self._refresh_status()
         self._schedule_auto_update()
         self._start_telegram()
+        self._schedule_heartbeat()
+        try:
+            from .vision import ensure_vision
+
+            ensure_vision(self.agent.config)
+        except OSError:
+            pass
 
     # ---------- UI ----------
 
@@ -361,12 +372,10 @@ class ViuGUI:
         from .integrations.telegram.router import route_user_message
 
         mode = route_user_message(text, waiting_for_user=self._telegram_waiting_reply)
-        if mode == "chat":
-            self._run_agent_chat(text)
-        elif mode == "status":
-            self._run_agent_status(text)
-        else:
+        if mode == "work":
             self._run_agent_task(text)
+        else:
+            self._run_agent_reflect(text)
 
     def _on_action(self, action: GuiAction) -> None:
         if self._busy:
@@ -702,15 +711,10 @@ class ViuGUI:
             return
         mode = route_telegram_message(text, waiting_for_user=self._telegram_waiting_reply)
         self._telegram_waiting_reply = False
-        if mode == "chat":
-            self._run_agent_chat(text, via_telegram=True)
-        elif mode == "status":
-            self._run_agent_status(text, via_telegram=True)
+        if mode == "work":
+            self._run_agent_task(f"[Telegram — команда] {text}", via_telegram=True)
         else:
-            self._run_agent_task(
-                f"[Telegram — команда] {text}",
-                via_telegram=True,
-            )
+            self._run_agent_reflect(text, via_telegram=True)
 
     def _telegram_test(self) -> None:
         self._append("ты", "[Тест Telegram]")
@@ -763,29 +767,19 @@ class ViuGUI:
             daemon=True,
         ).start()
 
-    def _run_agent_chat(self, task: str, *, via_telegram: bool = False) -> None:
+    def _run_agent_reflect(self, task: str, *, via_telegram: bool = False) -> None:
         if not via_telegram:
             self._append("ты", task)
         self._set_busy(True)
         self._last_via_telegram = via_telegram
+        recent = "\n".join(self._chat_history)
         threading.Thread(
             target=self._agent_worker,
-            args=(task, "chat"),
+            args=(task, "reflect", recent),
             daemon=True,
         ).start()
 
-    def _run_agent_status(self, task: str, *, via_telegram: bool = False) -> None:
-        if not via_telegram:
-            self._append("ты", task)
-        self._set_busy(True)
-        self._last_via_telegram = via_telegram
-        threading.Thread(
-            target=self._agent_worker,
-            args=(task, "status"),
-            daemon=True,
-        ).start()
-
-    def _agent_worker(self, task: str, mode: str) -> None:
+    def _agent_worker(self, task: str, mode: str, recent_chat: str = "") -> None:
         def on_step(step):
             if step.kind == "action":
                 self._queue.put(("step", f"[{step.tool}] {step.thought}"))
@@ -797,10 +791,8 @@ class ViuGUI:
                 self._queue.put(("step", step.observation))
 
         try:
-            if mode == "chat":
-                result = self.agent.run_chat(task, on_step=on_step)
-            elif mode == "status":
-                result = self.agent.run_status(task, on_step=on_step)
+            if mode == "reflect":
+                result = self.agent.run_reflect(task, on_step=on_step, recent_chat=recent_chat)
             else:
                 result = self.agent.run(task, on_step=on_step)
             self._queue.put(
@@ -838,7 +830,9 @@ class ViuGUI:
                         self._telegram_waiting_reply = True
                         self._telegram_notify_question(text)
                     elif chat_only and self._last_via_telegram:
-                        self._telegram_notify_chat(text)
+                        msg = ("💭 " + text) if self._heartbeat_notify else text
+                        self._heartbeat_notify = False
+                        self._telegram_notify_chat(msg)
                     elif chat_only:
                         pass
                     else:
@@ -860,6 +854,36 @@ class ViuGUI:
         except queue.Empty:
             pass
         self.root.after(100, self._poll_queue)
+
+    def _schedule_heartbeat(self) -> None:
+        from .runtime_settings import get_heartbeat_interval_min
+
+        minutes = get_heartbeat_interval_min(self.agent.config)
+        if self._heartbeat_job is not None:
+            try:
+                self.root.after_cancel(self._heartbeat_job)
+            except tk.TclError:
+                pass
+            self._heartbeat_job = None
+        if minutes <= 0:
+            return
+
+        def tick() -> None:
+            if not self._busy:
+                self._run_heartbeat()
+            self._heartbeat_job = self.root.after(minutes * 60_000, tick)
+
+        self._heartbeat_job = self.root.after(minutes * 60_000, tick)
+
+    def _run_heartbeat(self) -> None:
+        from .prompts.reflect_mode import HEARTBEAT_TASK
+        from .vision import ensure_vision
+
+        ensure_vision(self.agent.config)
+        self._append("система", "⏰ Вью проснулась по таймеру — смотрю, что можно сделать.", tag="sys")
+        self._last_via_telegram = True
+        self._heartbeat_notify = True
+        self._run_agent_reflect(HEARTBEAT_TASK)
 
     # ---------- фоновые сервисы ----------
 
@@ -1019,6 +1043,8 @@ class ViuGUI:
         line = f"{who}: {text}\n"
         self.output.insert("end", line, tag)
         self.output.see("end")
+        if who in ("ты", "Вью") and not text.startswith("["):
+            self._chat_history.append(f"{who}: {text[:400]}")
         try:
             with self.log_path.open("a", encoding="utf-8") as f:
                 f.write(f"{time.strftime('%H:%M:%S')} {line}")
