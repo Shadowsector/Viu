@@ -46,6 +46,13 @@ GUI_ACTIONS: List[GuiAction] = [
         tool="__collect_logs__",
         hint="Если ошибка — жми сюда. Лог улетит на GitHub (если есть токен) или откроется файл.",
     ),
+    GuiAction(
+        "telegram_test",
+        "Telegram: тест связи",
+        "Главное",
+        tool="__telegram_test__",
+        hint="Нужен VIU_TELEGRAM_TOKEN в .env. Первый раз — /start боту в Telegram.",
+    ),
     # --- Ещё Unity ---
     GuiAction(
         "unity_apply",

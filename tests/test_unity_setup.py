@@ -158,4 +158,5 @@ def test_ask_user_stops_agent():
     ]))
     result = agent.run("test")
     assert result.completed
+    assert result.waiting_for_user
     assert "Какой путь" in result.final

@@ -40,6 +40,9 @@ def _show_error(text: str) -> None:
 def main() -> int:
     _ensure_path()
     try:
+        from viu.env_file import load_env_file
+
+        load_env_file(ROOT)
         from viu.gui import main as gui_main
 
         return gui_main()

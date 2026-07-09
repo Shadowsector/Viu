@@ -77,6 +77,7 @@ class RunResult:
     final: str
     completed: bool
     steps: List[Step] = field(default_factory=list)
+    waiting_for_user: bool = False
 
 
 class Agent:
@@ -172,6 +173,7 @@ class Agent:
                 result.steps.append(step)
                 result.final = question
                 result.completed = True
+                result.waiting_for_user = True
                 if on_step:
                     on_step(step)
                 self._log(f"ASK_USER: {question}")

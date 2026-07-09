@@ -49,6 +49,8 @@ class ViuGUI:
         self._busy = False
         self._action_buttons: list[ttk.Button] = []
         self._auto_update_job: str | None = None
+        self._telegram = None
+        self._telegram_waiting_reply = False
 
         stamp = time.strftime("%Y%m%d_%H%M%S")
         self.log_path = self.agent.config.data_dir / "logs" / f"chat_{stamp}.txt"
@@ -75,6 +77,7 @@ class ViuGUI:
         self.root.after(600, self._show_next_step_banner)
         self._refresh_status()
         self._schedule_auto_update()
+        self._start_telegram()
 
     # ---------- UI ----------
 
@@ -383,6 +386,9 @@ class ViuGUI:
         if action.tool == "__rescan_catalog__":
             self._open_prop_catalog()
             return
+        if action.tool == "__telegram_test__":
+            self._telegram_test()
+            return
         if action.is_chain:
             self._run_tool_chain(action)
             return
@@ -622,6 +628,84 @@ class ViuGUI:
 
         self._run_bg(work, done)
 
+    # ---------- Telegram ----------
+
+    def _start_telegram(self) -> None:
+        from .integrations.telegram import try_start_notifier
+
+        def on_reply(text: str) -> None:
+            self._queue.put(("telegram_reply", text))
+
+        self._telegram = try_start_notifier(
+            self.agent.config,
+            on_reply=on_reply,
+            get_status=self._telegram_status_line,
+        )
+        if self._telegram is not None:
+            self._append(
+                "система",
+                "Telegram: бот включён. Напиши ему /start, если ещё не привязал чат.",
+                tag="sys",
+            )
+
+    def _telegram_status_line(self) -> str:
+        cfg = self.agent.config
+        unity = cfg.unity_project or "(Unity не задан)"
+        chat = "привязан" if self._telegram and self._telegram.enabled else "нет"
+        from .integrations.telegram import settings as tg_settings
+
+        cid = tg_settings.chat_id(cfg)
+        return (
+            f"{version_label()}\n"
+            f"Ollama: {'ok' if ollama_available() else 'нет'}\n"
+            f"Unity: {unity}\n"
+            f"Занята: {'да' if self._busy else 'нет'}\n"
+            f"Telegram chat: {cid or 'не привязан'} ({chat})\n"
+            f"Ждём ответ: {'да' if self._telegram_waiting_reply else 'нет'}"
+        )
+
+    def _telegram_notify_question(self, text: str) -> None:
+        if self._telegram is not None:
+            self._telegram.notify_question(text)
+
+    def _telegram_notify_error(self, text: str) -> None:
+        if self._telegram is not None:
+            self._telegram.notify_error(text)
+
+    def _telegram_notify_done(self, text: str) -> None:
+        if self._telegram is not None and not self._telegram_waiting_reply:
+            self._telegram.notify_done(text)
+
+    def _handle_telegram_reply(self, text: str) -> None:
+        self._append("ты", f"[Telegram] {text}")
+        if self._busy:
+            self._append(
+                "система",
+                "Вью сейчас занята — ответ из Telegram подождёт.",
+                tag="sys",
+            )
+            return
+        self._telegram_waiting_reply = False
+        self._run_agent_task(text)
+
+    def _telegram_test(self) -> None:
+        self._append("ты", "[Тест Telegram]")
+        if self._telegram is None:
+            from .integrations.telegram.notifier import TelegramNotifier
+
+            probe = TelegramNotifier(
+                self.agent.config,
+                on_reply=lambda _t: None,
+                get_status=lambda: "test",
+            )
+            ok, msg = probe.test_connection()
+            tag = "tool" if ok else "err"
+            self._append("Вью", msg, tag=tag)
+            return
+        ok, msg = self._telegram.test_connection()
+        tag = "tool" if ok else "err"
+        self._append("Вью", msg, tag=tag)
+
     def _run_tool(self, name: str, args: dict, label: str = "") -> None:
         title = label or name
         self._append("ты", f"[{title}]")
@@ -662,25 +746,42 @@ class ViuGUI:
 
         try:
             result = self.agent.run(task, on_step=on_step)
-            self._queue.put(("final", result.final))
+            self._queue.put(("final", result.final, result.waiting_for_user))
         except Exception as exc:  # noqa: BLE001
             self._queue.put(("error", f"{exc}\nПодсказка: запущена ли Ollama?"))
 
     def _poll_queue(self) -> None:
         try:
             while True:
-                kind, text = self._queue.get_nowait()
+                item = self._queue.get_nowait()
+                if isinstance(item, tuple) and len(item) == 2:
+                    kind, text = item
+                    waiting = False
+                elif isinstance(item, tuple) and len(item) == 3:
+                    kind, text, waiting = item
+                else:
+                    continue
                 if kind == "step":
                     self._append("шаг", text, tag="step")
                 elif kind == "tool":
                     self._append("Вью", text, tag="tool")
                     self._set_busy(False)
+                    if text.startswith("[") and "ОШИБКА" in text:
+                        self._telegram_notify_error(text)
                 elif kind == "final":
                     self._append("Вью", text, tag="viu")
                     self._set_busy(False)
+                    if waiting:
+                        self._telegram_waiting_reply = True
+                        self._telegram_notify_question(text)
+                    else:
+                        self._telegram_notify_done(text)
                 elif kind == "error":
                     self._append("ошибка", text, tag="err")
                     self._set_busy(False)
+                    self._telegram_notify_error(text)
+                elif kind == "telegram_reply":
+                    self._handle_telegram_reply(text)
                 elif kind == "sys":
                     self._append("система", text, tag="sys")
                     if "Обновлено" in text or "Перезапуск" in text:
