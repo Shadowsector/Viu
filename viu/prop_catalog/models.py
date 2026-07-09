@@ -81,6 +81,33 @@ def suggest_category_for_role(role: str) -> str:
     return "unknown"
 
 
+def suggest_from_collection(collection: str) -> tuple[str, str]:
+    """Подсказка роли/категории по коллекции Blender (Building, Props…)."""
+    key = collection.lower().strip()
+    if key in ("building", "buildings"):
+        return "shell", "building"
+    if key in ("props", "prop", "furniture"):
+        return "interactive", "furniture"
+    if key in ("landscape", "environment", "terrain"):
+        return "shell", "building"  # фон — часто shell/пропустить
+    if key in ("stuff", "decor", "decoration"):
+        return "decor", "decor"
+    if key in ("lights", "light"):
+        return "", "unknown"
+    return "", "unknown"
+
+
+def suggest_role_and_category(mesh_name: str, collection: str = "") -> tuple[str, str]:
+    role = suggest_role(mesh_name)
+    category = suggest_category_for_role(role)
+    if role:
+        return role, category
+    cr, cc = suggest_from_collection(collection)
+    if cr:
+        return cr, cc
+    return role, category
+
+
 @dataclass
 class PropEntry:
     """Один предмет в каталоге."""
@@ -95,6 +122,7 @@ class PropEntry:
     interactions: List[str] = field(default_factory=list)
     mesh_names: List[str] = field(default_factory=list)
     mesh_name: str = ""
+    collection: str = ""
     role: str = ""
     reviewed: bool = False
     notes: str = ""
@@ -116,6 +144,7 @@ class PropEntry:
             interactions=list(d.get("interactions") or []),
             mesh_names=list(d.get("mesh_names") or []),
             mesh_name=d.get("mesh_name", ""),
+            collection=d.get("collection", ""),
             role=d.get("role", ""),
             reviewed=bool(d.get("reviewed", False)),
             notes=d.get("notes", ""),
@@ -130,11 +159,13 @@ class PropEntry:
         return Path(self.source_path).stem.replace("_", " ").strip()
 
     def list_label(self) -> str:
-        """Подпись в очереди GUI: файл › меш."""
+        """Подпись в очереди: файл › коллекция › меш."""
         file_name = Path(self.source_path).name
         if self.mesh_name:
+            if self.collection:
+                return f"{self.collection} › {self.mesh_name}"
             return f"{file_name} › {self.mesh_name}"
-        return file_name
+        return f"{file_name}  (весь файл — нужен Blender)"
 
     def to_affordance_dict(self) -> Dict[str, Any]:
         """Экспорт для integrations/affordances и Unity."""
@@ -154,6 +185,7 @@ class PropEntry:
             "name": self.guess_display_name(),
             "source_file": self.source_path,
             "mesh_name": self.mesh_name,
+            "collection": self.collection,
             "role": self.role,
             "tags": tags,
             "sockets": sockets,

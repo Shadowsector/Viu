@@ -43,7 +43,7 @@ def resolve_blender_exe(config: Optional[Config] = None, override: str = "") -> 
 
     raise FileNotFoundError(
         "Blender.exe не найден.\n"
-        "Задай переменную окружения:\n"
-        "  VIU_BLENDER_EXE=C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe\n"
-        "Или добавь Blender в PATH."
+        "Открой Viu.cmd блокнотом и добавь строку (см. docs/ANABARRA_FOLDERS.md):\n"
+        '  set VIU_BLENDER_EXE=C:\\Program Files (x86)\\Steam\\steamapps\\common\\Blender\\blender.exe\n'
+        "Steam-Blender обычно находится сам после обновления Вью."
     )

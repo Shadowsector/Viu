@@ -3,23 +3,24 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 from .models import (
     ASSET_SUFFIXES,
     PropEntry,
     prop_id_for_mesh,
     prop_id_for_path,
-    suggest_category_for_role,
-    suggest_role,
+    suggest_role_and_category,
 )
 from .store import PropCatalogStore
 
 _SIDECAR_NOTE_NAMES = ("notes.txt", "описание.txt", "readme.txt", "README.txt")
 
+# Коллекции, которые не попадают в очередь разметки (свет — не prop).
+SKIP_COLLECTIONS = frozenset({"lights", "light"})
+
 
 def _sidecar_notes(path: Path) -> str:
-    """Текст из notes.txt рядом с файлом или в папке-паке."""
     for base in (path.parent, path.parent.parent):
         for name in _SIDECAR_NOTE_NAMES:
             sidecar = base / name
@@ -31,24 +32,80 @@ def _sidecar_notes(path: Path) -> str:
     return ""
 
 
-def mesh_objects_in_blend(path: Path, blender_exe: str = "") -> List[str]:
-    """Имена MESH-объектов в .blend (через фоновый Blender)."""
+def _resolve_exe(blender_exe: str, config: Any = None) -> str:
+    from ..integrations.blender.exe import resolve_blender_exe
+
+    return str(resolve_blender_exe(config, override=blender_exe or ""))
+
+
+def mesh_entries_in_blend(
+    path: Path,
+    blender_exe: str = "",
+    config: Any = None,
+) -> List[Dict[str, Any]]:
+    """MESH-объекты с коллекциями Blender (как в Outliner)."""
     if path.suffix.lower() != ".blend":
         return []
     try:
         from ..integrations.blender.headless import dump_blend_info
 
-        data = dump_blend_info(str(path), blender_exe=blender_exe or "blender")
-        objs = data.get("objects") or []
-        return sorted(
-            {o.get("name", "") for o in objs if o.get("type") == "MESH" and o.get("name")}
+        exe = _resolve_exe(blender_exe, config)
+        data = dump_blend_info(str(path), blender_exe=exe)
+    except (OSError, RuntimeError, ValueError, ImportError) as exc:
+        raise RuntimeError(
+            f"Не удалось прочитать .blend через Blender ({path.name}): {exc}"
+        ) from exc
+
+    entries: List[Dict[str, Any]] = []
+    for obj in data.get("objects") or []:
+        if obj.get("type") != "MESH":
+            continue
+        name = (obj.get("name") or "").strip()
+        if not name:
+            continue
+        cols = obj.get("collections") or []
+        collection = cols[0] if cols else ""
+        if collection.lower() in SKIP_COLLECTIONS:
+            continue
+        entries.append(
+            {
+                "name": name,
+                "collection": collection,
+                "vertices": obj.get("vertices", 0),
+            }
         )
-    except (OSError, RuntimeError, ValueError, ImportError):
+    entries.sort(key=lambda e: (e.get("collection", "").lower(), e.get("name", "").lower()))
+    return entries
+
+
+def mesh_objects_in_blend(path: Path, blender_exe: str = "") -> List[str]:
+    """Обратная совместимость — только имена."""
+    try:
+        return [e["name"] for e in mesh_entries_in_blend(path, blender_exe)]
+    except RuntimeError:
         return []
 
 
+def rescan_file_level_blends(store: PropCatalogStore, *, blender_exe: str = "", config: Any = None) -> Tuple[int, int]:
+    """Пересканировать .blend, которые попали в каталог «целиком»."""
+    stale_paths = sorted(
+        {
+            e.source_path
+            for e in store.items.values()
+            if e.source_path.lower().endswith(".blend")
+            and not e.mesh_name
+            and not e.reviewed
+        }
+    )
+    new_total = seen_total = 0
+    for raw in stale_paths:
+        n, s = scan_blend_file(Path(raw), store, blender_exe=blender_exe, config=config)
+        new_total += n
+        seen_total += s
+    return new_total, seen_total
+
+
 def _remove_stale_file_entry(path: Path, store: PropCatalogStore) -> None:
-    """Убирает старую карточку «целый файл», если появились меши."""
     file_pid = prop_id_for_path(path)
     old = store.get(file_pid)
     if old and not old.reviewed and not old.mesh_name:
@@ -56,19 +113,27 @@ def _remove_stale_file_entry(path: Path, store: PropCatalogStore) -> None:
         store.save()
 
 
-def _entry_for_mesh(path: Path, mesh_name: str, all_meshes: List[str]) -> PropEntry:
-    role = suggest_role(mesh_name)
-    category = suggest_category_for_role(role)
+def _entry_for_mesh(
+    path: Path,
+    mesh_name: str,
+    all_meshes: List[str],
+    *,
+    collection: str = "",
+) -> PropEntry:
+    role, category = suggest_role_and_category(mesh_name, collection)
     notes = _sidecar_notes(path)
+    if collection and collection.lower() in ("landscape", "environment"):
+        notes = (notes + f"\nКоллекция {collection} — обычно фон, можно «Shell без разметки».").strip()
     return PropEntry(
         id=prop_id_for_mesh(path, mesh_name),
         source_path=str(path),
         display_name=mesh_name.replace("_", " "),
         category=category if category != "unknown" else "unknown",
         mesh_name=mesh_name,
+        collection=collection,
         role=role,
         mesh_names=list(all_meshes),
-        notes=notes,
+        notes=notes.strip(),
         reviewed=False,
     )
 
@@ -89,23 +154,44 @@ def scan_blend_file(
     store: PropCatalogStore,
     *,
     blender_exe: str = "",
-    mesh_reader: Callable[[Path, str], List[str]] | None = None,
+    config: Any = None,
+    mesh_reader: Callable[..., List[Dict[str, Any]]] | None = None,
 ) -> Tuple[int, int]:
-    """Скан одного .blend: по карточке на каждый MESH."""
+    """Скан .blend: карточка на каждый MESH (с коллекцией из Outliner)."""
     path = path.expanduser().resolve()
-    reader = mesh_reader or mesh_objects_in_blend
-    meshes = reader(path, blender_exe)
+
+    if mesh_reader:
+        raw = mesh_reader(path, blender_exe)
+        if raw and isinstance(raw[0], str):
+            mesh_list = [{"name": n, "collection": ""} for n in raw]
+        else:
+            mesh_list = raw
+    else:
+        try:
+            mesh_list = mesh_entries_in_blend(path, blender_exe, config=config)
+        except RuntimeError:
+            mesh_list = []
+
     new_count = 0
     seen = 0
+    all_names = [m["name"] for m in mesh_list]
 
-    if meshes:
+    if mesh_list:
         _remove_stale_file_entry(path, store)
-        for mesh_name in meshes:
+        for item in mesh_list:
+            mesh_name = item["name"]
             pid = prop_id_for_mesh(path, mesh_name)
             if store.get(pid):
                 seen += 1
                 continue
-            store.upsert(_entry_for_mesh(path, mesh_name, meshes))
+            store.upsert(
+                _entry_for_mesh(
+                    path,
+                    mesh_name,
+                    all_names,
+                    collection=item.get("collection", ""),
+                )
+            )
             new_count += 1
         return new_count, seen
 
@@ -122,9 +208,9 @@ def scan_folder(
     *,
     recursive: bool = True,
     blender_exe: str = "",
-    mesh_reader: Callable[[Path, str], List[str]] | None = None,
+    config: Any = None,
+    mesh_reader: Callable[..., Any] | None = None,
 ) -> Tuple[int, int]:
-    """Возвращает (новых, уже в каталоге)."""
     folder = folder.expanduser().resolve()
     if not folder.is_dir():
         raise FileNotFoundError(f"Папка не найдена: {folder}")
@@ -139,7 +225,11 @@ def scan_folder(
             continue
         if path.suffix.lower() == ".blend":
             n, s = scan_blend_file(
-                path, store, blender_exe=blender_exe, mesh_reader=mesh_reader
+                path,
+                store,
+                blender_exe=blender_exe,
+                config=config,
+                mesh_reader=mesh_reader,
             )
             new_count += n
             seen += s

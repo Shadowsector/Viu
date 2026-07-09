@@ -490,10 +490,23 @@ class ViuGUI:
         self._append("система", "Открываю каталог предметов…", tag="sys")
 
         def open_win() -> None:
+            from .prop_catalog.scanner import rescan_file_level_blends
+
+            try:
+                n, _ = rescan_file_level_blends(
+                    store, blender_exe=cfg.blender_exe, config=cfg
+                )
+                if n:
+                    self._append("система", f"Каталог: разложено {n} объектов из .blend", tag="sys")
+            except RuntimeError as exc:
+                self._append("система", f"Каталог: {exc}", tag="sys")
+
             open_prop_catalog_review(
                 self.root,
                 store,
                 max_lift_kg=cfg.shanya_max_lift_kg,
+                blender_exe=cfg.blender_exe,
+                config=cfg,
             )
 
         self.root.after(0, open_win)

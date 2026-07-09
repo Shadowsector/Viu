@@ -6,7 +6,7 @@ import json
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from .models import (
     INTERACTION_CHOICES,
@@ -30,12 +30,16 @@ class PropCatalogReviewWindow:
         *,
         max_lift_kg: float = 35.0,
         on_saved: Optional[Callable[[PropEntry], None]] = None,
+        blender_exe: str = "",
+        config: Optional[Any] = None,
     ) -> None:
         self.store = store
         self.max_lift_kg = max_lift_kg
         self.on_saved = on_saved
         self._current: Optional[PropEntry] = None
         self._interaction_vars: dict[str, tk.BooleanVar] = {}
+        self._blender_exe = blender_exe
+        self._config = config
 
         self.win = tk.Toplevel(master)
         self.win.title("Вью — каталог предметов")
@@ -53,6 +57,9 @@ class PropCatalogReviewWindow:
         self.listbox.pack(fill="y", expand=True, pady=4)
         self.listbox.bind("<<ListboxSelect>>", self._on_select)
         ttk.Button(left, text="Обновить список", command=self._reload_list).pack(fill="x", pady=2)
+        ttk.Button(left, text="Разложить по объектам Blender", command=self._expand_blends).pack(
+            fill="x", pady=2
+        )
         ttk.Button(left, text="Сканировать папку…", command=self._scan_folder).pack(fill="x", pady=2)
 
         # Правая колонка — карточка
@@ -76,7 +83,13 @@ class PropCatalogReviewWindow:
         mesh_entry = ttk.Entry(form, textvariable=self.mesh_var, width=40, state="readonly")
         mesh_entry.grid(row=1, column=1, sticky="ew", pady=2)
 
-        ttk.Label(form, text="Роль:").grid(row=2, column=0, sticky="w", padx=2, pady=2)
+        ttk.Label(form, text="Коллекция:").grid(row=2, column=0, sticky="w", padx=2, pady=2)
+        self.collection_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.collection_var, width=40, state="readonly").grid(
+            row=2, column=1, sticky="ew", pady=2
+        )
+
+        ttk.Label(form, text="Роль:").grid(row=3, column=0, sticky="w", padx=2, pady=2)
         self.role_var = tk.StringVar(value="")
         role_combo = ttk.Combobox(
             form,
@@ -84,33 +97,33 @@ class PropCatalogReviewWindow:
             values=[r for r in PROP_ROLES if r],
             width=18,
         )
-        role_combo.grid(row=2, column=1, sticky="w", pady=2)
+        role_combo.grid(row=3, column=1, sticky="w", pady=2)
         ttk.Label(
             form,
-            text="shell = стены/пол; interactive = стул, дверь; decor = без действий",
+            text="Building=стены, Props=мебель, Landscape=фон",
             font=("Segoe UI", 8),
-        ).grid(row=3, column=1, sticky="w", pady=(0, 4))
+        ).grid(row=4, column=1, sticky="w", pady=(0, 4))
 
-        ttk.Label(form, text="Категория:").grid(row=4, column=0, sticky="w", padx=2, pady=2)
+        ttk.Label(form, text="Категория:").grid(row=5, column=0, sticky="w", padx=2, pady=2)
         self.category_var = tk.StringVar(value="unknown")
         ttk.Combobox(
             form, textvariable=self.category_var, values=list(PROP_CATEGORIES), width=18
-        ).grid(row=4, column=1, sticky="w", pady=2)
+        ).grid(row=5, column=1, sticky="w", pady=2)
 
-        ttk.Label(form, text="Вес (кг):").grid(row=5, column=0, sticky="w", padx=2, pady=2)
+        ttk.Label(form, text="Вес (кг):").grid(row=6, column=0, sticky="w", padx=2, pady=2)
         self.weight_var = tk.StringVar()
         wrow = ttk.Frame(form)
-        wrow.grid(row=5, column=1, sticky="w")
+        wrow.grid(row=6, column=1, sticky="w")
         ttk.Entry(wrow, textvariable=self.weight_var, width=10).pack(side="left")
         ttk.Label(wrow, text=f"  (Шаня ~до {max_lift_kg:.0f} кг — поднять)").pack(side="left")
 
         self.can_lift_var = tk.BooleanVar()
         self.can_push_var = tk.BooleanVar()
         ttk.Checkbutton(form, text="Можно поднять", variable=self.can_lift_var).grid(
-            row=6, column=1, sticky="w"
+            row=7, column=1, sticky="w"
         )
         ttk.Checkbutton(form, text="Можно толкать / сдвинуть", variable=self.can_push_var).grid(
-            row=7, column=1, sticky="w"
+            row=8, column=1, sticky="w"
         )
         form.columnconfigure(1, weight=1)
 
@@ -159,7 +172,8 @@ class PropCatalogReviewWindow:
         self._current = entry
         path = Path(entry.source_path)
         self.file_label.config(text=entry.list_label() + f"\n{path}")
-        self.mesh_var.set(entry.mesh_name or "— (весь файл)")
+        self.mesh_var.set(entry.mesh_name or "— (весь файл — нажми «Разложить по объектам»)")
+        self.collection_var.set(entry.collection or "—")
         role = entry.role or suggest_role(entry.mesh_name)
         self.role_var.set(role)
         self.name_var.set(entry.guess_display_name())
@@ -182,8 +196,8 @@ class PropCatalogReviewWindow:
         if entry.mesh_name:
             preview_lines.append(f"Размечаем меш: {entry.mesh_name}")
         if entry.mesh_names:
-            preview_lines.append("Все меши в .blend:")
-            for n in entry.mesh_names[:40]:
+            preview_lines.append("Объекты в .blend (как в Outliner):")
+            for n in entry.mesh_names[:50]:
                 mark = " ←" if n == entry.mesh_name else ""
                 preview_lines.append(f"  • {n}{mark}")
         thumb = path.with_suffix(".png")
@@ -293,6 +307,23 @@ class PropCatalogReviewWindow:
         except OSError as exc:
             messagebox.showerror("Каталог", str(exc), parent=self.win)
 
+    def _expand_blends(self) -> None:
+        from .scanner import rescan_file_level_blends
+
+        try:
+            n, seen = rescan_file_level_blends(
+                self.store, blender_exe=self._blender_exe, config=self._config
+            )
+        except RuntimeError as exc:
+            messagebox.showerror("Blender", str(exc), parent=self.win)
+            return
+        messagebox.showinfo(
+            "Скан",
+            f"Разложено по объектам Blender.\nНовых карточек: {n}, уже были: {seen}",
+            parent=self.win,
+        )
+        self._reload_list()
+
     def _scan_folder(self) -> None:
         from .scanner import scan_folder
 
@@ -300,7 +331,12 @@ class PropCatalogReviewWindow:
         if not folder:
             return
         try:
-            n, seen = scan_folder(Path(folder), self.store)
+            n, seen = scan_folder(
+                Path(folder),
+                self.store,
+                blender_exe=self._blender_exe,
+                config=self._config,
+            )
         except OSError as exc:
             messagebox.showerror("Скан", str(exc), parent=self.win)
             return
@@ -317,5 +353,13 @@ def open_prop_catalog_review(
     store: PropCatalogStore,
     *,
     max_lift_kg: float = 35.0,
+    blender_exe: str = "",
+    config: Any = None,
 ) -> PropCatalogReviewWindow:
-    return PropCatalogReviewWindow(master, store, max_lift_kg=max_lift_kg)
+    return PropCatalogReviewWindow(
+        master,
+        store,
+        max_lift_kg=max_lift_kg,
+        blender_exe=blender_exe,
+        config=config,
+    )

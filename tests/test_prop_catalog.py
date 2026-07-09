@@ -46,6 +46,25 @@ def test_scan_folder_adds_entries(tmp_path):
     assert "chair" in e.source_path
 
 
+def test_scan_blend_with_collections(tmp_path):
+    blend = tmp_path / "hut.blend"
+    blend.write_bytes(b"fake")
+    store = PropCatalogStore(tmp_path / "catalog.json")
+
+    def fake_reader(path: Path, _exe: str):
+        return [
+            {"name": "simple_chair", "collection": "Props"},
+            {"name": "poor_stables_door", "collection": "Building"},
+        ]
+
+    n, _ = scan_blend_file(blend, store, mesh_reader=fake_reader)
+    assert n == 2
+    chair = next(e for e in store.pending() if e.mesh_name == "simple_chair")
+    assert chair.collection == "Props"
+    assert chair.role == "interactive"
+    assert "Props" in chair.list_label()
+
+
 def test_scan_blend_creates_per_mesh(tmp_path):
     blend = tmp_path / "hut.blend"
     blend.write_bytes(b"fake")

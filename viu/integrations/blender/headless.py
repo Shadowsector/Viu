@@ -22,7 +22,8 @@ DUMPER_SCRIPT = f'''
 import bpy, json
 
 def _obj_info(o):
-    info = {{"name": o.name, "type": o.type}}
+    cols = [c.name for c in o.users_collection]
+    info = {{"name": o.name, "type": o.type, "collections": cols}}
     data = o.data
     if o.type == "MESH" and data is not None:
         info["vertices"] = len(data.vertices)

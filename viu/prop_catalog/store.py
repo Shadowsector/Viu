@@ -47,7 +47,11 @@ class PropCatalogStore:
     def pending(self) -> List[PropEntry]:
         return sorted(
             [e for e in self.items.values() if not e.reviewed],
-            key=lambda e: (e.source_path.lower(), e.mesh_name.lower()),
+            key=lambda e: (
+                e.source_path.lower(),
+                e.collection.lower(),
+                e.mesh_name.lower(),
+            ),
         )
 
     def reviewed(self) -> List[PropEntry]:
