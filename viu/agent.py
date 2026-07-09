@@ -113,36 +113,20 @@ class Agent:
         task: str,
         on_step=None,
         *,
-        mode: str = "work",
-        recent_chat: str = "",
         max_steps: Optional[int] = None,
     ) -> RunResult:
-        """mode: work | reflect — reflect слушает Дена, не автопилотит Unity."""
+        """Инструменты и действия — только явная команда «делай»."""
         limit = max_steps if max_steps is not None else self.config.max_steps
-        if mode == "reflect":
-            from .prompts.reflect_mode import REFLECT_SYSTEM
-            from .situational_context import build_situational_context
-
-            system = (
-                REFLECT_SYSTEM
-                + "\n\n## Справочно (инструменты и память)\n"
-                + build_system_prompt(self.config, self.registry, self.memory, self.planner)
-            )
-            ctx = build_situational_context(self.config, recent_chat=recent_chat)
-            user = f"{ctx}\n\n--- Сообщение ---\n{task.strip()}"
-            limit = min(limit, 8)
-            chat_only = True
-        else:
-            system = build_system_prompt(self.config, self.registry, self.memory, self.planner)
-            user = task
-            chat_only = False
+        system = build_system_prompt(self.config, self.registry, self.memory, self.planner)
+        user = task
+        chat_only = False
 
         messages: List[Dict[str, str]] = [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
         result = RunResult(final="", completed=False, chat_only=chat_only)
-        self._log(f"TASK[{mode}]: {task[:200]}")
+        self._log(f"TASK[work]: {task[:200]}")
 
         # Защита от зацикливания: считаем повторы одинаковых вызовов (tool+args).
         repeat_counts: Dict[str, int] = {}
@@ -298,5 +282,91 @@ class Agent:
         result.completed = True
         return result
 
-    def run_reflect(self, task: str, on_step=None, *, recent_chat: str = "") -> RunResult:
-        return self.run(task, on_step, mode="reflect", recent_chat=recent_chat)
+    def run_reflect(
+        self,
+        task: str,
+        on_step=None,
+        *,
+        history: Optional[List[Dict[str, str]]] = None,
+        heartbeat: bool = False,
+    ) -> RunResult:
+        """Только размышление и ответ — без инструментов, с историей диалога."""
+        from .prompts.reflect_mode import (
+            BANNED_PHRASES,
+            HEARTBEAT_SYSTEM,
+            HEARTBEAT_TASK,
+            REFLECT_SYSTEM,
+        )
+        from .situational_context import build_reflect_notes
+
+        system = (HEARTBEAT_SYSTEM if heartbeat else REFLECT_SYSTEM) + (
+            "\n\n--- Заметки (фон, не шаблон для ответа) ---\n"
+            + build_reflect_notes(self.config)
+        )
+        user_text = HEARTBEAT_TASK if heartbeat else task.strip()
+
+        messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
+        if history:
+            messages.extend(history[-14:])
+        messages.append({"role": "user", "content": user_text})
+
+        result = RunResult(final="", completed=False, chat_only=True)
+        self._log(f"REFLECT: {user_text[:160]}")
+
+        for attempt in range(3):
+            raw = self.llm.complete(messages)
+            parsed = extract_json(raw)
+
+            if parsed and "final" in parsed and "action" not in parsed:
+                text = str(parsed["final"]).strip()
+                if any(b in text.lower() for b in BANNED_PHRASES):
+                    messages.append({"role": "assistant", "content": raw})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": "Слишком официально и шаблонно. Перепиши final "
+                            "проще, по-человечески, без канцелярита.",
+                        }
+                    )
+                    continue
+                result.final = text
+                result.completed = True
+                step = Step(
+                    kind="final",
+                    thought=str(parsed.get("thought", "")),
+                    observation=result.final,
+                )
+                result.steps.append(step)
+                if on_step:
+                    on_step(step)
+                return result
+
+            if parsed and "action" in parsed:
+                messages.append({"role": "assistant", "content": raw})
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "Сейчас только разговор — без action. Ответь одним final JSON.",
+                    }
+                )
+                continue
+
+            if parsed is None and raw.strip() and not raw.strip().startswith("{"):
+                result.final = raw.strip()[:800]
+                result.completed = True
+                return result
+
+            messages.append({"role": "assistant", "content": raw or "{}"})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": 'Нужен JSON: {"thought":"…","final":"…"} — без action.',
+                }
+            )
+
+        result.final = (
+            "Хм, меня на секунду переклинило на шаблон. "
+            "Спроси ещё раз — или «следующий шаг», если пора делать руками."
+        )
+        result.completed = True
+        return result

@@ -56,6 +56,7 @@ class ViuGUI:
         self._heartbeat_job: str | None = None
         self._heartbeat_notify = False
         self._chat_history: deque[str] = deque(maxlen=16)
+        self._llm_turns: deque[dict[str, str]] = deque(maxlen=14)
 
         stamp = time.strftime("%Y%m%d_%H%M%S")
         self.log_path = self.agent.config.data_dir / "logs" / f"chat_{stamp}.txt"
@@ -702,6 +703,7 @@ class ViuGUI:
         from .integrations.telegram.router import route_telegram_message
 
         self._append("ты", f"[Telegram] {text}")
+        self._record_llm_turn("user", text)
         if self._busy:
             self._append(
                 "система",
@@ -763,23 +765,44 @@ class ViuGUI:
         self._last_via_telegram = via_telegram
         threading.Thread(
             target=self._agent_worker,
-            args=(task, "work"),
+            args=(task, "work", None, False),
             daemon=True,
         ).start()
 
-    def _run_agent_reflect(self, task: str, *, via_telegram: bool = False) -> None:
-        if not via_telegram:
+    def _llm_history(self) -> list[dict[str, str]]:
+        return list(self._llm_turns)
+
+    def _record_llm_turn(self, who: str, text: str) -> None:
+        clean = text.strip()
+        if not clean or clean.startswith("["):
+            return
+        role = "user" if who in ("ты", "user") else "assistant"
+        self._llm_turns.append({"role": role, "content": clean[:600]})
+
+    def _run_agent_reflect(self, task: str, *, via_telegram: bool = False, heartbeat: bool = False) -> None:
+        if not via_telegram and not heartbeat:
             self._append("ты", task)
+            self._record_llm_turn("user", task)
         self._set_busy(True)
-        self._last_via_telegram = via_telegram
-        recent = "\n".join(self._chat_history)
+        self._last_via_telegram = via_telegram or heartbeat
+        if heartbeat:
+            history: list[dict[str, str]] = []
+        else:
+            hist = self._llm_history()
+            history = hist[:-1] if hist and hist[-1].get("role") == "user" else hist
         threading.Thread(
             target=self._agent_worker,
-            args=(task, "reflect", recent),
+            args=(task, "reflect", history, heartbeat),
             daemon=True,
         ).start()
 
-    def _agent_worker(self, task: str, mode: str, recent_chat: str = "") -> None:
+    def _agent_worker(
+        self,
+        task: str,
+        mode: str,
+        history: list | None = None,
+        heartbeat: bool = False,
+    ) -> None:
         def on_step(step):
             if step.kind == "action":
                 self._queue.put(("step", f"[{step.tool}] {step.thought}"))
@@ -792,7 +815,12 @@ class ViuGUI:
 
         try:
             if mode == "reflect":
-                result = self.agent.run_reflect(task, on_step=on_step, recent_chat=recent_chat)
+                result = self.agent.run_reflect(
+                    task,
+                    on_step=on_step,
+                    history=history or [],
+                    heartbeat=heartbeat,
+                )
             else:
                 result = self.agent.run(task, on_step=on_step)
             self._queue.put(
@@ -883,7 +911,7 @@ class ViuGUI:
         self._append("система", "⏰ Вью проснулась по таймеру — смотрю, что можно сделать.", tag="sys")
         self._last_via_telegram = True
         self._heartbeat_notify = True
-        self._run_agent_reflect(HEARTBEAT_TASK)
+        self._run_agent_reflect("", heartbeat=True)
 
     # ---------- фоновые сервисы ----------
 
@@ -1045,6 +1073,8 @@ class ViuGUI:
         self.output.see("end")
         if who in ("ты", "Вью") and not text.startswith("["):
             self._chat_history.append(f"{who}: {text[:400]}")
+        if who == "Вью":
+            self._record_llm_turn("assistant", text)
         try:
             with self.log_path.open("a", encoding="utf-8") as f:
                 f.write(f"{time.strftime('%H:%M:%S')} {line}")
