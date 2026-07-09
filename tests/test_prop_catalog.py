@@ -10,7 +10,7 @@ from viu.prop_catalog.models import (
     suggest_category_for_role,
     suggest_role,
 )
-from viu.prop_catalog.organizer import plan_downloads_sort
+from viu.prop_catalog.organizer import plan_inbox_sort
 from viu.prop_catalog.scanner import scan_blend_file, scan_folder
 from viu.prop_catalog.store import PropCatalogStore
 
@@ -110,18 +110,34 @@ def test_suggest_can_lift():
     assert suggest_can_lift(40.0, 35.0) is False
 
 
-def test_downloads_plan_files_and_folders(tmp_path):
-    dl = tmp_path / "Downloads"
-    dl.mkdir()
+def test_inbox_plan_files_and_folders(tmp_path):
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
     lib = tmp_path / "Library"
-    (dl / "tree.fbx").write_bytes(b"")
-    (dl / "photo.png").write_bytes(b"")
-    pack = dl / "HutPack"
+    (inbox / "tree.fbx").write_bytes(b"")
+    (inbox / "photo.png").write_bytes(b"")
+    pack = inbox / "HutPack"
     pack.mkdir()
     (pack / "hut.blend").write_bytes(b"")
     (pack / "Textures").mkdir()
-    plans = plan_downloads_sort(dl, lib)
+    plans = plan_inbox_sort(inbox, lib)
     assert len(plans) == 3
     assert any(p.kind == "folder" and p.src.name == "HutPack" for p in plans)
-    assert any("Props/incoming/fbx" in str(p.dest) for p in plans)
-    assert any("Blender/incoming/HutPack" in str(p.dest) for p in plans)
+    assert any("Props/fbx" in str(p.dest) for p in plans)
+    assert any("Blender/HutPack" in str(p.dest) for p in plans)
+
+
+def test_sidecar_notes_in_scan(tmp_path):
+    pack = tmp_path / "pack"
+    pack.mkdir()
+    blend = pack / "hut.blend"
+    blend.write_bytes(b"x")
+    (pack / "notes.txt").write_text("домик шани", encoding="utf-8")
+    store = PropCatalogStore(tmp_path / "catalog.json")
+
+    def fake_reader(path: Path, _exe: str):
+        return ["Shell_Floor"]
+
+    n, _ = scan_blend_file(blend, store, mesh_reader=fake_reader)
+    assert n == 1
+    assert "домик" in store.pending()[0].notes

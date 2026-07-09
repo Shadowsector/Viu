@@ -1,31 +1,34 @@
-"""Каноническая структура папок Анабарры на диске.
+"""Каноническая структура папок на диске U: — три зоны для Вью.
 
-U:\\Anabarra\\          — корень игры (данные, библиотека, Unity)
-U:\\Anabarra\\Unity\\Anabarra\\ — Unity-проект (Assets/, Builds/)
-U:\\Viu\\               — только программа Вью (код, exe), не рабочие файлы игры
+U:\\Viu\\              — программа Вью, данные (.viu), Inbox (по одному паку)
+U:\\Anabarra\\         — игра (Unity, Library, Animations)
+U:\\Desktop Mascot\\   — архив сотен файлов (Вью НЕ сканирует сама)
 """
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Iterable, List
+from typing import List
 
 from .config import Config
 
-# Подпапки внутри U:\\Anabarra\\Library\\ (создаются ensure_layout).
 LIBRARY_SUBDIRS: tuple[str, ...] = (
-    "Props/incoming/fbx",
-    "Props/incoming/obj",
-    "Props/incoming/glb",
-    "Blender/incoming",
-    "Archives/incoming",
+    "Blender",
+    "Props/fbx",
+    "Props/obj",
+    "Props/glb",
+    "Archives",
     "References/images",
-    "Incoming/unsorted",
+    "Processed",
+    "unsorted",
 )
 
 DEFAULT_ANABARRA_ROOT = Path("U:/Anabarra")
+DEFAULT_VIU_ROOT = Path("U:/Viu")
 DEFAULT_UNITY_PROJECT = DEFAULT_ANABARRA_ROOT / "Unity" / "Anabarra"
+DEFAULT_MASCOT_ARCHIVE = Path("U:/Desktop Mascot")
+INBOX_FOLDER_NAME = "Inbox"
 
 
 def _env(name: str) -> str:
@@ -33,8 +36,22 @@ def _env(name: str) -> str:
     return value if value not in (None, "") else ""
 
 
+def viu_install_root(config: Config) -> Path:
+    """Где установлена Вью (U:\\Viu)."""
+    raw = _env("VIU_ROOT") or ""
+    if raw:
+        p = Path(raw).expanduser().resolve()
+        if p.name.lower() == "viu" or (p / "viu").is_dir():
+            return p if p.name.lower() == "viu" else p
+    if config.root.name.lower() == "viu":
+        return config.root.resolve()
+    if DEFAULT_VIU_ROOT.is_dir():
+        return DEFAULT_VIU_ROOT.resolve()
+    return config.root.resolve()
+
+
 def anabarra_root(config: Config) -> Path:
-    """Корень игры — не Unity-проект и не U:\\Viu."""
+    """Корень игры — U:\\Anabarra."""
     raw = _env("VIU_ANABARRA_ROOT") or getattr(config, "anabarra_root", "") or ""
     if raw:
         return Path(raw).expanduser().resolve()
@@ -45,12 +62,11 @@ def anabarra_root(config: Config) -> Path:
         if unity.name.lower() == "anabarra" and unity.parent.name.lower() == "unity":
             return unity.parent.parent
         if (unity / "Assets").is_dir():
-            # Unity-проект лежит прямо в корне — считаем его корнем игры.
             return unity
         return unity.parent
 
-    viu_root = config.root
-    if viu_root.name.lower() == "viu" and viu_root.parent.exists():
+    viu_root = viu_install_root(config)
+    if viu_root.parent.exists():
         sibling = viu_root.parent / "Anabarra"
         if sibling.is_dir():
             return sibling.resolve()
@@ -77,60 +93,70 @@ def library_root(config: Config) -> Path:
     return anabarra_root(config) / "Library"
 
 
+def inbox_dir(config: Config) -> Path:
+    """Вход: сюда кладёшь ОДИН пак для разбора. Не C:\\Downloads."""
+    for key in ("VIU_INBOX_DIR", "VIU_DOWNLOADS_DIR"):
+        raw = _env(key)
+        if raw:
+            return Path(raw).expanduser().resolve()
+    cfg_raw = getattr(config, "inbox_dir", "") or getattr(config, "downloads_dir", "") or ""
+    if cfg_raw:
+        return Path(cfg_raw).expanduser().resolve()
+    return viu_install_root(config) / INBOX_FOLDER_NAME
+
+
+def downloads_dir(config: Config) -> Path:
+    """Обратная совместимость — то же, что inbox_dir."""
+    return inbox_dir(config)
+
+
+def mascot_archive_dir(config: Config) -> Path:
+    """Архив Desktop Mascot — только для ручного выбора, без автоскана."""
+    raw = _env("VIU_MASCOT_DIR") or getattr(config, "mascot_dir", "") or ""
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return DEFAULT_MASCOT_ARCHIVE
+
+
 def project_data_dir(config: Config) -> Path:
-    """Служебные данные Вью — рядом с игрой, не в U:\\Viu."""
     explicit = _env("VIU_DATA_DIR")
     if explicit:
         return Path(explicit).expanduser().resolve()
     if config.data_dir:
         return config.data_dir.resolve()
-    return anabarra_root(config) / ".viu"
-
-
-def downloads_dir(config: Config) -> Path:
-    raw = _env("VIU_DOWNLOADS_DIR") or getattr(config, "downloads_dir", "") or ""
-    if raw:
-        return Path(raw).expanduser().resolve()
-    return Path.home() / "Downloads"
+    return viu_install_root(config) / ".viu"
 
 
 def ensure_layout(config: Config) -> List[Path]:
-    """Создаёт стандартные каталоги; возвращает список созданных/существующих корней."""
+    """Создаёт Inbox, .viu и Library."""
     roots: List[Path] = []
-    data = config.data_dir.resolve()
-    data.mkdir(parents=True, exist_ok=True)
-    roots.append(data)
+    for path in (config.data_dir.resolve(), inbox_dir(config), library_root(config)):
+        path.mkdir(parents=True, exist_ok=True)
+        roots.append(path)
     lib = library_root(config)
-    lib.mkdir(parents=True, exist_ok=True)
-    roots.append(lib)
     for sub in LIBRARY_SUBDIRS:
         (lib / sub).mkdir(parents=True, exist_ok=True)
     return roots
 
 
 def describe_layout(config: Config) -> str:
-    """Краткая справка для project_status и чата."""
-    root = anabarra_root(config)
-    unity = unity_project_path(config)
-    viu_install = config.root if config.root.name.lower() == "viu" else None
+    viu = viu_install_root(config)
+    mascot = mascot_archive_dir(config)
     lines = [
-        "Структура на диске:",
-        f"  Корень игры (Анабарра):  {root}",
-        f"  Unity-проект:            {unity}",
-        f"  Библиотека ассетов:      {library_root(config)}",
-        f"  Данные Вью (.viu):       {config.data_dir}",
-        f"  Downloads (разбор):      {downloads_dir(config)}",
+        "Три папки на U: (Вью не лезет на C: без явной настройки):",
+        "",
+        f"  1. U:\\Viu\\          программа:     {viu}",
+        f"     Inbox (разбор):    {inbox_dir(config)}",
+        f"     Данные (.viu):     {config.data_dir}",
+        "",
+        f"  2. U:\\Anabarra\\      игра:          {anabarra_root(config)}",
+        f"     Unity:             {unity_project_path(config)}",
+        f"     Library (склад):   {library_root(config)}",
+        "",
+        f"  3. Desktop Mascot   архив:         {mascot}",
+        "     (сотни файлов — Вью НЕ сканирует сама; бери оттуда один пак → Inbox)",
+        "",
+        "Workflow: подготовил пак → U:\\Viu\\Inbox → «Разобрать Inbox» → «Разметить предметы».",
+        "Подробнее: docs/ANABARRA_FOLDERS.md",
     ]
-    if viu_install:
-        lines.append(f"  Установка Вью (только код): {viu_install}")
-    else:
-        lines.append(f"  Запуск Вью из:           {config.root}")
-    lines.extend(
-        [
-            "",
-            "U:\\Viu — программа. U:\\Anabarra — игра и файлы для разбора.",
-            "Папка U:\\Anabarra\\Anabarra (если есть) — не основной Unity-проект;",
-            "рабочий проект: U:\\Anabarra\\Unity\\Anabarra.",
-        ]
-    )
     return "\n".join(lines)

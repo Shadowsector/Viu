@@ -8,11 +8,10 @@ from typing import Any, Dict
 from ..prop_catalog import (
     PropCatalogStore,
     catalog_path,
-    downloads_dir,
     ensure_layout,
+    inbox_dir,
     library_root,
-    scan_folder,
-    sort_downloads_and_catalog,
+    sort_inbox_and_catalog,
 )
 from .base import AgentContext, Tool, ToolResult
 
@@ -74,23 +73,24 @@ class PropCatalogListTool(Tool):
 class PropOrganizeDownloadsTool(Tool):
     name = "prop_organize_downloads"
     description = (
-        "Разобрать Downloads: FBX/blend/картинки/zip → папки библиотеки "
-        "(VIU_LIBRARY_ROOT или рядом с Unity). dry_run=1 — только план."
+        "Разобрать Inbox (U:\\Viu\\Inbox): blend/fbx/папки → U:\\Anabarra\\Library. "
+        "Не лезет на C:\\Downloads и не сканирует Desktop Mascot. dry_run=1 — только план."
     )
     parameters = {
         "dry_run": "1 = не перемещать, только показать план",
-        "downloads": "путь к Downloads (опционально)",
+        "inbox": "путь к Inbox (опционально, по умолчанию U:\\Viu\\Inbox)",
+        "downloads": "устаревший алиас для inbox",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
-        dl_raw = args.get("downloads") or str(downloads_dir(ctx.config))
+        inbox_raw = args.get("inbox") or args.get("downloads") or str(inbox_dir(ctx.config))
         lib = library_root(ctx.config)
         dry = str(args.get("dry_run", "1")).lower() in ("1", "true", "yes")
         store = _store(ctx)
         try:
             ensure_layout(ctx.config)
-            lines, new_cat = sort_downloads_and_catalog(
-                Path(dl_raw),
+            lines, new_cat = sort_inbox_and_catalog(
+                Path(inbox_raw),
                 lib,
                 store,
                 dry_run=dry,
@@ -98,9 +98,12 @@ class PropOrganizeDownloadsTool(Tool):
             )
         except OSError as exc:
             return ToolResult(False, str(exc))
-        head = "План (dry-run):" if dry else "Перемещено:"
+        head = "План (dry-run):" if dry else "Перемещено из Inbox:"
         body = "\n".join(lines[:50])
         if len(lines) > 50:
             body += f"\n… ещё {len(lines) - 50} файлов"
         extra = "" if dry else f"\n\nВ каталог добавлено 3D: {new_cat}"
-        return ToolResult(True, f"{head}\nБиблиотека: {lib}\n\n{body}{extra}")
+        return ToolResult(
+            True,
+            f"{head}\nInbox: {inbox_raw}\nБиблиотека: {lib}\n\n{body}{extra}",
+        )

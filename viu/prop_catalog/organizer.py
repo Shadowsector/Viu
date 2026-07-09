@@ -1,4 +1,4 @@
-"""Сортировка Downloads и прочего «хлама» в библиотеку Анабарры."""
+"""Сортировка Inbox → библиотека Анабарры."""
 
 from __future__ import annotations
 
@@ -10,31 +10,30 @@ from typing import Dict, Iterable, List, Set, Tuple
 from .models import ASSET_SUFFIXES
 from .store import PropCatalogStore
 
-# Расширение → подпапка внутри library_root (относительный путь).
+# Расширение → подпапка внутри library_root.
 DEFAULT_RULES: Dict[str, str] = {
-    ".fbx": "Props/incoming/fbx",
-    ".blend": "Blender/incoming",
-    ".obj": "Props/incoming/obj",
-    ".glb": "Props/incoming/glb",
-    ".gltf": "Props/incoming/glb",
+    ".fbx": "Props/fbx",
+    ".blend": "Blender",
+    ".obj": "Props/obj",
+    ".glb": "Props/glb",
+    ".gltf": "Props/glb",
     ".png": "References/images",
     ".jpg": "References/images",
     ".jpeg": "References/images",
     ".webp": "References/images",
-    ".zip": "Archives/incoming",
-    ".7z": "Archives/incoming",
-    ".rar": "Archives/incoming",
+    ".zip": "Archives",
+    ".7z": "Archives",
+    ".rar": "Archives",
 }
 
 ARCHIVE_SUFFIXES = {".zip", ".7z", ".rar"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
-# Приоритет: куда класть папку-пак (blend + Textures и т.п.).
 _FOLDER_RULE_PRIORITY: tuple[tuple[Set[str], str], ...] = (
-    ({".blend"}, "Blender/incoming"),
-    ({".fbx"}, "Props/incoming/fbx"),
-    ({".obj"}, "Props/incoming/obj"),
-    ({".glb", ".gltf"}, "Props/incoming/glb"),
+    ({".blend"}, "Blender"),
+    ({".fbx"}, "Props/fbx"),
+    ({".obj"}, "Props/obj"),
+    ({".glb", ".gltf"}, "Props/glb"),
 )
 
 
@@ -42,7 +41,7 @@ _FOLDER_RULE_PRIORITY: tuple[tuple[Set[str], str], ...] = (
 class MovePlan:
     src: Path
     dest: Path
-    kind: str = "file"  # file | folder
+    kind: str = "file"
 
 
 def _suffixes_in_tree(folder: Path, *, max_depth: int = 4) -> Set[str]:
@@ -63,7 +62,7 @@ def _suffixes_in_tree(folder: Path, *, max_depth: int = 4) -> Set[str]:
 
 
 def _rel_for_file(ext: str, rules: Dict[str, str]) -> str:
-    return rules.get(ext.lower(), "Incoming/unsorted")
+    return rules.get(ext.lower(), "unsorted")
 
 
 def _rel_for_folder(folder: Path, rules: Dict[str, str]) -> str:
@@ -72,15 +71,15 @@ def _rel_for_folder(folder: Path, rules: Dict[str, str]) -> str:
         if suffixes & exts:
             return rel
     if suffixes & ARCHIVE_SUFFIXES:
-        return "Archives/incoming"
+        return "Archives"
     if suffixes & IMAGE_SUFFIXES:
         return "References/images"
     if suffixes & ASSET_SUFFIXES:
-        return "Incoming/unsorted"
-    return "Incoming/unsorted"
+        return "unsorted"
+    return "unsorted"
 
 
-def _skip_downloads_entry(path: Path) -> bool:
+def _skip_inbox_entry(path: Path) -> bool:
     name = path.name
     if name.startswith("."):
         return True
@@ -89,25 +88,21 @@ def _skip_downloads_entry(path: Path) -> bool:
     return False
 
 
-def plan_downloads_sort(
-    downloads: Path,
+def plan_inbox_sort(
+    inbox: Path,
     library_root: Path,
     rules: Dict[str, str] | None = None,
 ) -> List[MovePlan]:
-    """План переноса только верхнего уровня Downloads (файлы и папки-паки).
-
-    После execute_moves источник исчезает из Downloads — это ожидаемое поведение.
-    Архивы не распаковываются; пользователь распаковывает сам и снова жмёт «Разобрать».
-    """
-    downloads = downloads.expanduser().resolve()
+    """План переноса верхнего уровня Inbox → Library."""
+    inbox = inbox.expanduser().resolve()
     library_root = library_root.expanduser().resolve()
     rules = rules or DEFAULT_RULES
     plans: List[MovePlan] = []
-    if not downloads.is_dir():
+    if not inbox.is_dir():
         return plans
 
-    for path in sorted(downloads.iterdir(), key=lambda p: p.name.lower()):
-        if _skip_downloads_entry(path):
+    for path in sorted(inbox.iterdir(), key=lambda p: p.name.lower()):
+        if _skip_inbox_entry(path):
             continue
         if path.is_dir():
             rel = _rel_for_folder(path, rules)
@@ -120,12 +115,15 @@ def plan_downloads_sort(
             continue
         ext = path.suffix.lower()
         rel = _rel_for_file(ext, rules)
-        dest_dir = library_root / rel
-        dest = dest_dir / path.name
+        dest = library_root / rel / path.name
         if dest.resolve() == path.resolve():
             continue
         plans.append(MovePlan(src=path, dest=dest, kind="file"))
     return plans
+
+
+# Обратная совместимость имён.
+plan_downloads_sort = plan_inbox_sort
 
 
 def _unique_dest(dest: Path) -> Path:
@@ -163,7 +161,6 @@ def execute_moves(plans: List[MovePlan], *, dry_run: bool = True) -> List[str]:
 
 
 def cleanup_empty_dirs(root: Path) -> List[str]:
-    """Удаляет пустые подпапки в Downloads после переноса."""
     root = root.expanduser().resolve()
     if not root.is_dir():
         return []
@@ -187,29 +184,32 @@ def _catalog_scan_roots(library_root: Path) -> Iterable[Path]:
         if folder.is_dir() and folder not in seen:
             seen.add(folder)
             yield folder
-    unsorted = (library_root / "Incoming/unsorted").resolve()
+    unsorted = (library_root / "unsorted").resolve()
     if unsorted.is_dir() and unsorted not in seen:
         yield unsorted
 
 
-def sort_downloads_and_catalog(
-    downloads: Path,
+def sort_inbox_and_catalog(
+    inbox: Path,
     library_root: Path,
     store: PropCatalogStore,
     *,
     dry_run: bool = False,
     blender_exe: str = "",
 ) -> Tuple[List[str], int]:
-    """Переместить из Downloads в библиотеку и добавить 3D-ассеты в каталог."""
+    """Переместить из Inbox в Library и добавить 3D в каталог."""
     from .scanner import scan_folder
 
-    plans = plan_downloads_sort(downloads, library_root)
+    plans = plan_inbox_sort(inbox, library_root)
     lines = execute_moves(plans, dry_run=dry_run)
     new_in_catalog = 0
     if not dry_run:
-        for rel in cleanup_empty_dirs(downloads):
-            lines.append(f"очистка пустой папки: {rel}")
+        for rel in cleanup_empty_dirs(inbox):
+            lines.append(f"очистка Inbox: {rel}")
         for folder in _catalog_scan_roots(library_root):
             n, _ = scan_folder(folder, store, recursive=True, blender_exe=blender_exe)
             new_in_catalog += n
     return lines, new_in_catalog
+
+
+sort_downloads_and_catalog = sort_inbox_and_catalog

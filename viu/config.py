@@ -21,16 +21,17 @@ def _default_data_dir() -> Path:
     explicit = os.environ.get("VIU_DATA_DIR")
     if explicit not in (None, ""):
         return Path(explicit).expanduser().resolve()
+    cwd = Path(os.getcwd()).resolve()
+    if cwd.name.lower() == "viu":
+        return (cwd / ".viu").resolve()
+    viu_default = Path("U:/Viu")
+    if viu_default.is_dir():
+        return (viu_default / ".viu").resolve()
     unity = os.environ.get("VIU_UNITY_PROJECT", "").strip()
     if unity:
         root = Path(unity).expanduser().resolve()
         if root.name.lower() == "anabarra" and root.parent.name.lower() == "unity":
             return (root.parent.parent / ".viu").resolve()
-    cwd = Path(os.getcwd()).resolve()
-    if cwd.name.lower() == "viu":
-        sibling = cwd.parent / "Anabarra" / ".viu"
-        if sibling.parent.is_dir():
-            return sibling.resolve()
     return (cwd / ".viu").resolve()
 
 
@@ -90,7 +91,14 @@ class Config:
 
     # Библиотека ассетов и каталог предметов.
     library_root: str = field(default_factory=lambda: _env("VIU_LIBRARY_ROOT", ""))
-    downloads_dir: str = field(default_factory=lambda: _env("VIU_DOWNLOADS_DIR", ""))
+    # Inbox — один пак за раз (U:\Viu\Inbox). Не Windows Downloads на C:.
+    inbox_dir: str = field(
+        default_factory=lambda: _env("VIU_INBOX_DIR", "") or _env("VIU_DOWNLOADS_DIR", "")
+    )
+    downloads_dir: str = field(
+        default_factory=lambda: _env("VIU_DOWNLOADS_DIR", "") or _env("VIU_INBOX_DIR", "")
+    )
+    mascot_dir: str = field(default_factory=lambda: _env("VIU_MASCOT_DIR", ""))
     shanya_max_lift_kg: float = field(
         default_factory=lambda: float(_env("VIU_SHANYA_MAX_LIFT_KG", "35"))
     )

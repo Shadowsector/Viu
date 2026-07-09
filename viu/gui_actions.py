@@ -143,12 +143,12 @@ GUI_ACTIONS: List[GuiAction] = [
     ),
     GuiAction(
         "prop_sort_downloads",
-        "Разобрать Downloads",
+        "Разобрать Inbox",
         "Blender",
         tool="prop_organize_downloads",
         tool_args={"dry_run": "0"},
-        hint="Downloads → U:\\Anabarra\\Library (файлы и папки-паки). Архивы не распаковывает. "
-        "После переноса исчезает из Downloads. См. docs/ANABARRA_FOLDERS.md.",
+        hint="U:\\Viu\\Inbox → U:\\Anabarra\\Library. Клади сюда ОДИН пак за раз. "
+        "Desktop Mascot не трогаем. См. docs/ANABARRA_FOLDERS.md.",
     ),
     # --- Blender ---
     GuiAction(

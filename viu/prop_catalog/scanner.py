@@ -15,6 +15,21 @@ from .models import (
 )
 from .store import PropCatalogStore
 
+_SIDECAR_NOTE_NAMES = ("notes.txt", "описание.txt", "readme.txt", "README.txt")
+
+
+def _sidecar_notes(path: Path) -> str:
+    """Текст из notes.txt рядом с файлом или в папке-паке."""
+    for base in (path.parent, path.parent.parent):
+        for name in _SIDECAR_NOTE_NAMES:
+            sidecar = base / name
+            if sidecar.is_file():
+                try:
+                    return sidecar.read_text(encoding="utf-8", errors="replace").strip()[:4000]
+                except OSError:
+                    continue
+    return ""
+
 
 def mesh_objects_in_blend(path: Path, blender_exe: str = "") -> List[str]:
     """Имена MESH-объектов в .blend (через фоновый Blender)."""
@@ -44,6 +59,7 @@ def _remove_stale_file_entry(path: Path, store: PropCatalogStore) -> None:
 def _entry_for_mesh(path: Path, mesh_name: str, all_meshes: List[str]) -> PropEntry:
     role = suggest_role(mesh_name)
     category = suggest_category_for_role(role)
+    notes = _sidecar_notes(path)
     return PropEntry(
         id=prop_id_for_mesh(path, mesh_name),
         source_path=str(path),
@@ -52,6 +68,7 @@ def _entry_for_mesh(path: Path, mesh_name: str, all_meshes: List[str]) -> PropEn
         mesh_name=mesh_name,
         role=role,
         mesh_names=list(all_meshes),
+        notes=notes,
         reviewed=False,
     )
 
@@ -62,6 +79,7 @@ def _entry_for_file(path: Path, mesh_names: List[str]) -> PropEntry:
         source_path=str(path),
         display_name=path.stem.replace("_", " "),
         mesh_names=mesh_names,
+        notes=_sidecar_notes(path),
         reviewed=False,
     )
 
