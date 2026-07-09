@@ -142,6 +142,15 @@ GUI_ACTIONS: List[GuiAction] = [
         "Shell — кнопка «Shell — без разметки». См. docs/ANABARRA_FOLDERS.md.",
     ),
     GuiAction(
+        "prepare_unity_asset",
+        "Подготовить asset для Unity",
+        "Blender",
+        tool="prepare_unity_asset",
+        tool_args={"open_blender": "1"},
+        hint="Inbox: blend+Textures → relink, pack, скрыть землю, открыть Blender. "
+        "Потом доведи меши и «Разметить предметы».",
+    ),
+    GuiAction(
         "prop_sort_downloads",
         "Разобрать Inbox",
         "Blender",
