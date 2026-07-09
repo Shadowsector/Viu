@@ -242,15 +242,16 @@ class PropCatalogReviewWindow:
         self.weight_var.trace_add("write", lambda *_: self._auto_lift())
         self.role_var.trace_add("write", lambda *_: self._update_form_mode())
 
-        from .scanner import apply_auto_reviews_to_store, merge_duplicate_meshes
+        from .dedupe import repair_overmerged_duplicates
+        from .scanner import apply_auto_reviews_to_store
 
-        dup_n = merge_duplicate_meshes(self.store)
+        fixed = repair_overmerged_duplicates(self.store)
         auto_n = apply_auto_reviews_to_store(self.store)
         msgs: list[str] = []
-        if dup_n:
-            msgs.append(f"Объединено дубликатов: {dup_n} (один меш — два .blend).")
+        if fixed:
+            msgs.append(f"Вернули в очередь: {fixed} (ложное «объединение»).")
         if auto_n:
-            msgs.append(f"Авто-разметка: {auto_n} (Building, Plane…).")
+            msgs.append(f"Авто-разметка: {auto_n} (Plane, Building…).")
         if msgs:
             messagebox.showinfo("Каталог", "\n".join(msgs), parent=self.win)
         self._reload_list()
@@ -416,7 +417,10 @@ class PropCatalogReviewWindow:
         return e
 
     def _persist_entry(self, entry: PropEntry) -> None:
-        self.store.upsert(entry)
+        from .dedupe import propagate_entry_to_duplicates
+
+        self.store.upsert(entry, save=False)
+        propagate_entry_to_duplicates(self.store, entry)
         aff_path = self.store.path.parent / "affordances" / f"{entry.id}.json"
         aff_path.parent.mkdir(parents=True, exist_ok=True)
         aff_path.write_text(

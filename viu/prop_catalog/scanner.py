@@ -23,69 +23,21 @@ _SIDECAR_NOTE_NAMES = ("notes.txt", "описание.txt", "readme.txt", "READM
 SKIP_COLLECTIONS = frozenset({"lights", "light"})
 
 
-def _asset_pack_key(path: Path) -> str:
-    """Old Stables_1 / Old Stables_prepared → old stables."""
-    stem = path.stem.lower()
-    stem = re.sub(r"_prepared(_\d+)?$", "", stem)
-    stem = re.sub(r"_\d+$", "", stem)
-    return stem
+def repair_overmerged_duplicates(store: PropCatalogStore) -> int:
+    from .dedupe import repair_overmerged_duplicates as _repair
+
+    return _repair(store)
 
 
-def _source_priority(source_path: str) -> tuple[int, str]:
-    p = Path(source_path)
-    name = p.name.lower()
-    if "_prepared" in name or "processed" in str(p).lower():
-        return (0, source_path)
-    if "library" in str(p).lower() and "blender" in str(p).lower():
-        return (2, source_path)
-    return (1, source_path)
+def propagate_entry_to_duplicates(store: PropCatalogStore, entry: PropEntry) -> int:
+    from .dedupe import propagate_entry_to_duplicates as _propagate
+
+    return _propagate(store, entry)
 
 
 def merge_duplicate_meshes(store: PropCatalogStore) -> int:
-    """Один меш из Old Stables_1.blend и *_prepared.blend — одна разметка."""
-    groups: dict[tuple[str, str], list[PropEntry]] = defaultdict(list)
-    for entry in store.items.values():
-        if not entry.mesh_name:
-            continue
-        key = (_asset_pack_key(Path(entry.source_path)), entry.mesh_name.lower())
-        groups[key].append(entry)
-
-    merged = 0
-    for entries in groups.values():
-        if len(entries) < 2:
-            continue
-        entries.sort(key=lambda e: _source_priority(e.source_path))
-        canonical = entries[0]
-        reviewed = next((e for e in entries if e.reviewed), None)
-
-        if reviewed and reviewed.id != canonical.id:
-            data = reviewed.to_dict()
-            data["id"] = canonical.id
-            data["source_path"] = canonical.source_path
-            store.upsert(PropEntry.from_dict(data))
-            merged += 1
-
-        for dup in entries[1:]:
-            if dup.id == canonical.id:
-                continue
-            if reviewed or dup.reviewed:
-                dup.reviewed = True
-                dup.notes = (
-                    dup.notes + f"\nДубликат — разметка в {Path(canonical.source_path).name}"
-                ).strip()
-                store.upsert(dup)
-                merged += 1
-            elif canonical.reviewed:
-                dup.reviewed = True
-                dup.notes = (
-                    dup.notes + f"\nДубликат — см. {Path(canonical.source_path).name}"
-                ).strip()
-                store.upsert(dup)
-                merged += 1
-
-    if merged:
-        store.save()
-    return merged
+    """Устарело — только repair ложных merge. Не трогаем очередь самовольно."""
+    return repair_overmerged_duplicates(store)
 
 
 def _sidecar_notes(path: Path) -> str:

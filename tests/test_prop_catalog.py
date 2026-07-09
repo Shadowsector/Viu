@@ -270,16 +270,14 @@ def test_suggest_category_tableware():
     assert suggest_category_from_mesh("jug_wicker_b") == "tableware"
 
 
-def test_merge_duplicate_meshes(tmp_path):
-    from viu.prop_catalog.scanner import merge_duplicate_meshes
+def test_propagate_review_to_duplicate_blend(tmp_path):
+    from viu.prop_catalog.dedupe import propagate_entry_to_duplicates
 
     store = PropCatalogStore(tmp_path / "catalog.json")
     raw = tmp_path / "Library" / "Blender" / "Old Stables_1.blend"
     prep = tmp_path / "Library" / "Processed" / "Old Stables" / "Old Stables_prepared.blend"
     raw.parent.mkdir(parents=True)
     prep.parent.mkdir(parents=True)
-    raw.write_bytes(b"a")
-    prep.write_bytes(b"b")
     mesh = "village_painted_white_c_table_b"
     store.upsert(
         PropEntry(
@@ -288,10 +286,9 @@ def test_merge_duplicate_meshes(tmp_path):
             display_name="table",
             mesh_name=mesh,
             collection="Props",
-            reviewed=True,
-            role="interactive",
-            category="furniture",
-        )
+            reviewed=False,
+        ),
+        save=False,
     )
     store.upsert(
         PropEntry(
@@ -301,9 +298,47 @@ def test_merge_duplicate_meshes(tmp_path):
             mesh_name=mesh,
             collection="Props",
             reviewed=False,
-        )
+        ),
+        save=False,
     )
-    n = merge_duplicate_meshes(store)
-    assert n >= 1
-    assert store.get(prop_id_for_mesh(prep, mesh)).reviewed
+    store.save()
+    reviewed = PropEntry.from_dict(store.get(prop_id_for_mesh(prep, mesh)).to_dict())
+    reviewed.reviewed = True
+    reviewed.role = "interactive"
+    reviewed.interactions = ["sit"]
+    store.upsert(reviewed)
+    n = propagate_entry_to_duplicates(store, reviewed)
+    assert n == 1
     assert store.get(prop_id_for_mesh(raw, mesh)).reviewed
+    assert store.get(prop_id_for_mesh(raw, mesh)).interactions == ["sit"]
+
+
+def test_pending_dedupes_two_blends(tmp_path):
+    from viu.prop_catalog.dedupe import pending_for_display
+
+    store = PropCatalogStore(tmp_path / "catalog.json")
+    raw = tmp_path / "Old Stables_1.blend"
+    prep = tmp_path / "Old Stables_prepared.blend"
+    mesh = "chair"
+    store.upsert(
+        PropEntry(
+            id=prop_id_for_mesh(raw, mesh),
+            source_path=str(raw),
+            mesh_name=mesh,
+            display_name="c",
+            reviewed=False,
+        ),
+        save=False,
+    )
+    store.upsert(
+        PropEntry(
+            id=prop_id_for_mesh(prep, mesh),
+            source_path=str(prep),
+            mesh_name=mesh,
+            display_name="c",
+            reviewed=False,
+        ),
+        save=False,
+    )
+    store.save()
+    assert len(pending_for_display(store)) == 1

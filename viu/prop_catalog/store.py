@@ -40,19 +40,16 @@ class PropCatalogStore:
     def get(self, prop_id: str) -> Optional[PropEntry]:
         return self.items.get(prop_id)
 
-    def upsert(self, entry: PropEntry) -> None:
+    def upsert(self, entry: PropEntry, *, save: bool = True) -> None:
         self.items[entry.id] = entry
-        self.save()
+        if save:
+            self.save()
 
     def pending(self) -> List[PropEntry]:
-        return sorted(
-            [e for e in self.items.values() if not e.reviewed],
-            key=lambda e: (
-                e.source_path.lower(),
-                e.collection.lower(),
-                e.mesh_name.lower(),
-            ),
-        )
+        """Очередь без дублей одного меша в _1.blend и _prepared.blend."""
+        from .dedupe import pending_for_display
+
+        return pending_for_display(self)
 
     def reviewed(self) -> List[PropEntry]:
         return sorted(
