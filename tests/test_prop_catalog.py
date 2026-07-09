@@ -245,3 +245,65 @@ def test_apply_auto_review_props_stays_pending():
     out = apply_auto_review(entry)
     assert not out.reviewed
     assert out.role == "interactive"
+
+
+def test_apply_auto_review_plane_undefined():
+    from viu.prop_catalog.models import apply_auto_review
+
+    blend = Path("/tmp/hut.blend")
+    entry = PropEntry(
+        id=prop_id_for_mesh(blend, "Plane.002"),
+        source_path=str(blend),
+        display_name="Plane.002",
+        mesh_name="Plane.002",
+        collection="",
+    )
+    out = apply_auto_review(entry)
+    assert out.role == "undefined"
+    assert out.reviewed
+
+
+def test_suggest_category_tableware():
+    from viu.prop_catalog.models import suggest_category_from_mesh
+
+    assert suggest_category_from_mesh("plate_small_b") == "tableware"
+    assert suggest_category_from_mesh("jug_wicker_b") == "tableware"
+
+
+def test_merge_duplicate_meshes(tmp_path):
+    from viu.prop_catalog.scanner import merge_duplicate_meshes
+
+    store = PropCatalogStore(tmp_path / "catalog.json")
+    raw = tmp_path / "Library" / "Blender" / "Old Stables_1.blend"
+    prep = tmp_path / "Library" / "Processed" / "Old Stables" / "Old Stables_prepared.blend"
+    raw.parent.mkdir(parents=True)
+    prep.parent.mkdir(parents=True)
+    raw.write_bytes(b"a")
+    prep.write_bytes(b"b")
+    mesh = "village_painted_white_c_table_b"
+    store.upsert(
+        PropEntry(
+            id=prop_id_for_mesh(raw, mesh),
+            source_path=str(raw),
+            display_name="table",
+            mesh_name=mesh,
+            collection="Props",
+            reviewed=True,
+            role="interactive",
+            category="furniture",
+        )
+    )
+    store.upsert(
+        PropEntry(
+            id=prop_id_for_mesh(prep, mesh),
+            source_path=str(prep),
+            display_name="table",
+            mesh_name=mesh,
+            collection="Props",
+            reviewed=False,
+        )
+    )
+    n = merge_duplicate_meshes(store)
+    assert n >= 1
+    assert store.get(prop_id_for_mesh(prep, mesh)).reviewed
+    assert store.get(prop_id_for_mesh(raw, mesh)).reviewed

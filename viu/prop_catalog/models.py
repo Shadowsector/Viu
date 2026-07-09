@@ -18,12 +18,13 @@ PROP_CATEGORIES = (
     "shell",
     "tool",
     "food",
+    "tableware",
     "character",
     "building",
 )
 
 # Роль меша внутри составного .blend (домик, комната).
-PROP_ROLES = ("", "shell", "interactive", "decor", "atmosphere")
+PROP_ROLES = ("", "shell", "interactive", "decor", "atmosphere", "undefined")
 
 ASSET_SUFFIXES = {".fbx", ".blend", ".obj", ".glb", ".gltf"}
 
@@ -68,6 +69,18 @@ def suggest_category_for_role(role: str) -> str:
         return "decor"
     if role == "atmosphere":
         return "decor"
+    if role == "undefined":
+        return "unknown"
+    return "unknown"
+
+
+def suggest_category_from_mesh(mesh_name: str) -> str:
+    """Тарелка/кувшин — tableware (grab), яблоко — food (eat)."""
+    name = (mesh_name or "").replace("_", " ")
+    if FOOD_NAME_RE.search(name):
+        return "food"
+    if TABLEWARE_NAME_RE.search(name):
+        return "tableware"
     return "unknown"
 
 
@@ -109,6 +122,19 @@ AUTO_TREE_NAME_RE = re.compile(
     r"(pine|tree|brome|foliage|spruce|oak|shrub|bush)",
     re.IGNORECASE,
 )
+# Служебные меши Blender (Plane, Cube…) — не для игры.
+AUTO_UNDEFINED_MESH_RE = re.compile(
+    r"^(plane|cube|sphere|cylinder|mesh|empty)(\.\d+)?$",
+    re.IGNORECASE,
+)
+TABLEWARE_NAME_RE = re.compile(
+    r"(plate|cup|mug|jug|jar|bowl|goblet|tankard|pitcher|tankard|flagon)",
+    re.IGNORECASE,
+)
+FOOD_NAME_RE = re.compile(
+    r"(apple|bread|meat|cheese|fish|food|sausage|loaf|pie|meal|drink)",
+    re.IGNORECASE,
+)
 
 
 def apply_auto_review(entry: "PropEntry") -> "PropEntry":
@@ -119,6 +145,14 @@ def apply_auto_review(entry: "PropEntry") -> "PropEntry":
         return entry
     col = (entry.collection or "").lower().strip()
     name = (entry.mesh_name or entry.display_name or "").replace("_", " ")
+    mesh_raw = (entry.mesh_name or "").strip()
+
+    if mesh_raw and AUTO_UNDEFINED_MESH_RE.match(mesh_raw):
+        entry.role = "undefined"
+        entry.category = "unknown"
+        entry.reviewed = True
+        entry.notes = (entry.notes + "\nСлужебный меш Blender (Plane/Cube…) — не для игры.").strip()
+        return entry
 
     if AUTO_ATMOSPHERE_NAME_RE.match(name.strip()):
         entry.role = "atmosphere"
@@ -158,7 +192,8 @@ def apply_auto_review(entry: "PropEntry") -> "PropEntry":
 
     if col in ("props", "prop", "furniture") and not entry.role:
         entry.role = "interactive"
-        entry.category = "furniture"
+        cat = suggest_category_from_mesh(entry.mesh_name)
+        entry.category = cat if cat != "unknown" else "furniture"
 
     return entry
 
@@ -220,13 +255,19 @@ class PropEntry:
         return Path(self.source_path).stem.replace("_", " ").strip()
 
     def list_label(self) -> str:
-        """Подпись в очереди: файл › коллекция › меш."""
-        file_name = Path(self.source_path).name
+        """Подпись в очереди: коллекция › меш."""
         if self.mesh_name:
             if self.collection:
                 return f"{self.collection} › {self.mesh_name}"
-            return f"{file_name} › {self.mesh_name}"
-        return f"{file_name}  (весь файл — нужен Blender)"
+            return self.mesh_name
+        return f"{Path(self.source_path).name}  (весь файл — нужен Blender)"
+
+    def short_source(self) -> str:
+        p = Path(self.source_path)
+        name = p.name
+        if len(name) > 22:
+            return name[:10] + "…" + name[-10:]
+        return name
 
     def to_affordance_dict(self) -> Dict[str, Any]:
         """Экспорт для integrations/affordances и Unity."""
