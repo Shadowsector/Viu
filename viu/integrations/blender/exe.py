@@ -23,6 +23,10 @@ def resolve_blender_exe(config: Optional[Config] = None, override: str = "") -> 
         return Path(found).resolve()
 
     if sys.platform == "win32":
+        steam = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Steam" / "steamapps" / "common" / "Blender" / "blender.exe"
+        if steam.is_file():
+            return steam.resolve()
+
         roots = [
             Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Blender Foundation",
             Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Blender Foundation",

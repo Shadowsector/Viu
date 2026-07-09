@@ -16,6 +16,8 @@ set VIU_API_KEY=ollama
 set VIU_MODEL=qwen2.5-coder:14b
 set VIU_UNITY_PROJECT=U:\Anabarra\Unity\Anabarra
 set VIU_ANIM_STAGING=U:\Anabarra\Animations
+rem Blender (если «Принять asset» не находит сам — раскомментируй и поправь путь):
+rem set VIU_BLENDER_EXE=C:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe
 rem ---------------------------------
 
 echo.
