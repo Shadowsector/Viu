@@ -85,8 +85,9 @@ class CursorHandoffBundleTool(Tool):
         path = append_handoff(title, full, author="Viu")
         ok, push_msg = push_handoff(message=f"Viu: {title[:60]}")
         if ok:
-            return ToolResult(True, f"Handoff + push OK.\n{push_msg}\nФайл: {path}")
+            return ToolResult(True, f"Handoff + push OK.\n{push_msg}\nЛокально: {path}")
         return ToolResult(
-            True,
-            f"Handoff записан локально: {path}\nPush: {push_msg}",
+            False,
+            f"Handoff записан локально: {path}\nPush не вышел:\n{push_msg}\n"
+            "Не вызывай run_shell/git — проверь VIU_GITHUB_TOKEN и VIU_GITHUB_REPO в .env.",
         )

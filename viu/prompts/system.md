@@ -24,8 +24,9 @@
 1. **`cursor_handoff_with_logs`** — записать handoff + chat-лог и push (если есть `VIU_GITHUB_TOKEN`).
    Или **`cursor_handoff`** → **`cursor_push`** по шагам.
 2. Файл: `docs/CURSOR_HANDOFF.md` — push через **GitHub API** (локальный git **не нужен**, zip-установка OK).
-3. **Не** вызывай `run_shell` / `git init` / `git commit` для handoff — только `cursor_push`.
-4. После push — **`final`**: что записала, ветка, что Cursor может взять дальше.
+3. **Не** вызывай `run_shell` / `git` для handoff — только `cursor_push` / `cursor_handoff_with_logs`.
+4. Если push вернул ошибку — **остановись**, объясни Дену (токен, repo, gist). **Не** чини через shell.
+5. После успешного push — **`final`**: что записала, ссылка, что Cursor может взять дальше.
 
 **Не обещай** «попробуем» / «давай создадим файл» без вызова инструментов.
 

@@ -6,9 +6,11 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from typing import Any, Dict
 
+from ..shell_guard import shell_git_blocked
 from .base import AgentContext, Tool, ToolResult
 
 
@@ -23,6 +25,9 @@ class ShellTool(Tool):
         command = args.get("command", "")
         if not command:
             return ToolResult(False, "Не указана command")
+        blocked = shell_git_blocked(str(command))
+        if blocked:
+            return ToolResult(False, blocked)
         try:
             timeout = float(args.get("timeout", 60))
         except (TypeError, ValueError):

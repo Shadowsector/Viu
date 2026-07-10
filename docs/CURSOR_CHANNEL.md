@@ -6,8 +6,9 @@
 
 1. Вью вызывает **`cursor_handoff_with_logs`** (или `cursor_handoff` + `cursor_push`).
 2. Текст попадает в **`docs/CURSOR_HANDOFF.md`** локально и на GitHub.
-3. Push идёт через **GitHub API** — **локальный git не нужен** (zip-установка Viu без `.git` — норма).
-4. Cloud Agent Cursor читает handoff в репозитории.
+3. Push идёт через **GitHub API** — **локальный git не нужен**.
+4. Если репозиторий недоступен (404) — **автоматически** приватный **Gist** со ссылкой.
+5. **`run_shell` / `git`** для handoff **запрещены** — не ломай zip-установку.
 
 ## Настройка push
 
