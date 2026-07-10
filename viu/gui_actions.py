@@ -69,7 +69,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Оверлей: у панели задач",
         "Ещё — Unity",
         tool="unity_overlay",
-        hint="Unity закрыт. Сборка оверлея 5–15 мин.",
+        hint="Playtest, не импорт. Unity закрыт. 5–15 мин.",
     ),
     GuiAction(
         "overlay_depth_far",
@@ -77,6 +77,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Ещё — Unity",
         tool="unity_overlay_tune",
         tool_args={"lane": "taskbar"},
+        hint="Только после сборки оверлея — подкрутить глубину.",
     ),
     GuiAction(
         "overlay_depth_close",
@@ -84,6 +85,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Ещё — Unity",
         tool="unity_overlay_tune",
         tool_args={"lane": "attention"},
+        hint="Только после сборки оверлея.",
     ),
     GuiAction(
         "unity_open",
@@ -112,23 +114,25 @@ GUI_ACTIONS: List[GuiAction] = [
     # --- Ещё Blender ---
     GuiAction(
         "prepare_unity_asset",
-        "Принять asset (Inbox)",
+        "Принять из Inbox (повтор)",
         "Ещё — Blender",
         tool="prepare_unity_asset",
         tool_args={"open_blender": "1"},
+        hint="Только если в Inbox лежит .blend. Иначе — «▶ Следующий шаг».",
     ),
     GuiAction(
         "prop_catalog",
         "Разметить предметы",
         "Ещё — Blender",
         tool="__prop_catalog__",
+        hint="Очередь Props. Обычно открывается через «Следующий шаг».",
     ),
     GuiAction(
         "export_unity_asset",
         "Экспорт в Unity (FBX)",
         "Ещё — Blender",
         tool="export_unity_asset",
-        hint="Prepared .blend → FBX в Assets/Environment. После разметки Props.",
+        hint="Prepared → FBX. Обычно через «Следующий шаг» после разметки.",
     ),
     GuiAction(
         "blender_info",

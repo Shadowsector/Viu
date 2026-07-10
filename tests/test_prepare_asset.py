@@ -58,7 +58,11 @@ def test_find_blend_from_library_when_inbox_empty(tmp_path):
     os.environ["VIU_INBOX_DIR"] = str(inbox)
     os.environ["VIU_LIBRARY_ROOT"] = str(tmp_path / "Library")
     try:
-        found, label = find_blend_for_prepare(cfg)
+        import pytest
+
+        with pytest.raises(FileNotFoundError, match="Inbox"):
+            find_blend_for_prepare(cfg)
+        found, label = find_blend_for_prepare(cfg, allow_library_fallback=True)
         assert found == blend.resolve()
         assert "Library" in label
     finally:

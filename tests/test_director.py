@@ -54,8 +54,8 @@ def test_director_file_level_blend_needs_rescan(tmp_path):
 
     plan = plan_next_step(config)
 
-    assert plan.tool == "__rescan_catalog__"
-    assert "объект" in plan.message.lower() or "Building" in plan.message
+    assert plan.tool == "__prop_catalog__"
+    assert "объект" in plan.message.lower() or "Building" in plan.message or "разложить" in plan.message.lower()
 
 
 def test_director_mesh_level_opens_catalog(tmp_path):

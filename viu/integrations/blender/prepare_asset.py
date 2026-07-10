@@ -33,8 +33,9 @@ def find_blend_for_prepare(
     config: Config,
     *,
     blend_file: Optional[str] = None,
+    allow_library_fallback: bool = False,
 ) -> tuple[Path, str]:
-    """Inbox → иначе последний .blend в Library/Blender. Возвращает (path, source_label)."""
+    """Inbox (по умолчанию). Library — только с allow_library_fallback=True (агент)."""
     if blend_file:
         p = Path(blend_file).expanduser().resolve()
         if not p.is_file():
@@ -44,8 +45,15 @@ def find_blend_for_prepare(
     inbox = inbox_dir(config)
     try:
         return find_inbox_blend(inbox), "Inbox"
-    except FileNotFoundError:
-        pass
+    except FileNotFoundError as exc:
+        if not allow_library_fallback:
+            raise FileNotFoundError(
+                f"{exc}\n\n"
+                "«Принять asset» работает только с Inbox.\n"
+                "Положи папку или .blend в U:\\Viu\\Inbox и нажми «▶ Следующий шаг».\n"
+                "Переprepare старого файла из Library — укажи путь в чате или "
+                "allow_library_fallback=1 (агент)."
+            ) from exc
 
     lib = library_root(config)
     candidates: List[Path] = []
@@ -64,7 +72,7 @@ def find_blend_for_prepare(
             f"Нет .blend для подготовки.\n"
             f"  Inbox: {inbox} — пуст\n"
             f"  Library: {lib / 'Blender'} — тоже пуст\n"
-            "Положи blend+textures в U:\\Viu\\Inbox и нажми «Принять asset»."
+            "Положи blend+textures в U:\\Viu\\Inbox."
         )
     latest = max(candidates, key=lambda p: p.stat().st_mtime)
     return latest, f"Library ({latest.name})"
@@ -422,6 +430,7 @@ def run_inbox_prepare_pipeline(
     blend_file: Optional[str] = None,
     open_blender: bool = True,
     catalog_store: Optional[Any] = None,
+    allow_library_fallback: bool = False,
 ) -> Dict[str, Any]:
     """Полный цикл: найти blend → repair textures → prepare → Processed → Blender."""
     from ...prop_catalog.scanner import scan_folder
@@ -431,7 +440,11 @@ def run_inbox_prepare_pipeline(
     lib.mkdir(parents=True, exist_ok=True)
     (lib / "Processed").mkdir(parents=True, exist_ok=True)
 
-    source, source_label = find_blend_for_prepare(config, blend_file=blend_file or None)
+    source, source_label = find_blend_for_prepare(
+        config,
+        blend_file=blend_file or None,
+        allow_library_fallback=allow_library_fallback,
+    )
     repairs = repair_split_pack(source, lib)
     output = prepared_output_path(source, lib)
 

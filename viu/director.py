@@ -10,21 +10,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .anabarra_layout import inbox_dir, library_root, unity_project_path
-from .building_workflow import (
-    open_wall_checklist,
-    parse_building_notes,
-    read_sidecar_for_blend,
-)
+from .building_workflow import open_wall_checklist, parse_building_notes, read_sidecar_for_blend
 from .config import Config
-from .integrations.blender.prepare_asset import find_inbox_blend, prepared_output_path
-from .integrations.blender.export_pipeline import (
-    catalog_ready_for_export,
-    needs_export,
-)
-from .integrations.unity.overlay import overlay_exe_path
-from .prop_catalog.paths import catalog_path
-from .prop_catalog.store import PropCatalogStore
+from .pipeline import PipelineContext, get_pipeline_context
 from .roadmap import RoadmapStore
 
 
@@ -37,6 +25,8 @@ class StepPlan:
     tool_args: Dict[str, Any] = field(default_factory=dict)
     human_after: str = ""
     idle: bool = False
+    stage: str = ""
+    step_label: str = ""
 
     def short_line(self) -> str:
         first = self.message.strip().split("\n")[0]
@@ -47,60 +37,6 @@ def _roadmap_store(config: Config) -> RoadmapStore:
     return RoadmapStore(config.data_dir / "roadmap.json")
 
 
-def _catalog_store(config: Config) -> PropCatalogStore:
-    return PropCatalogStore(catalog_path(config))
-
-
-def _inbox_needs_prepare(config: Config) -> bool:
-    """Inbox с .blend, для которого ещё нет свежего *_prepared.blend."""
-    try:
-        blend = find_inbox_blend(inbox_dir(config))
-    except FileNotFoundError:
-        return False
-    prepared = prepared_output_path(blend, library_root(config))
-    try:
-        if prepared.is_file() and prepared.stat().st_mtime >= blend.stat().st_mtime:
-            return False
-    except OSError:
-        pass
-    return True
-
-
-def _pending_catalog(config: Config) -> tuple[list, list]:
-    store = _catalog_store(config)
-    pending = store.pending()
-    file_level = [
-        e
-        for e in pending
-        if e.source_path.lower().endswith(".blend") and not e.mesh_name
-    ]
-    mesh_level = [e for e in pending if e.mesh_name]
-    return file_level, mesh_level
-
-
-def _overlay_exe_exists(config: Config) -> bool:
-    try:
-        root = unity_project_path(config)
-        exe = overlay_exe_path(root)
-        return exe.is_file()
-    except OSError:
-        return False
-
-
-def _latest_prepared_pack(config: Config) -> Optional[Path]:
-    """Самый свежий *_prepared.blend в Library/Processed."""
-    try:
-        processed = library_root(config) / "Processed"
-        if not processed.is_dir():
-            return None
-        prepared = [p for p in processed.rglob("*_prepared.blend") if p.is_file()]
-        if not prepared:
-            return None
-        return max(prepared, key=lambda p: p.stat().st_mtime)
-    except OSError:
-        return None
-
-
 def _prepared_pack_name(prepared: Path) -> str:
     stem = prepared.stem
     if stem.lower().endswith("_prepared"):
@@ -108,140 +44,171 @@ def _prepared_pack_name(prepared: Path) -> str:
     return prepared.parent.name if prepared.parent.name.lower() != "processed" else stem
 
 
+def _with_ctx(plan: StepPlan, ctx: PipelineContext) -> StepPlan:
+    plan.stage = ctx.stage
+    plan.step_label = ctx.step_label
+    if ctx.step_label and not plan.message.startswith("["):
+        plan.message = f"[{ctx.step_label}]\n{plan.message}"
+    return plan
+
+
 def plan_next_step(config: Config) -> StepPlan:
-    """Приоритет: Inbox → разложить blend → разметка → дом/оверлей → подсказка."""
-    if _inbox_needs_prepare(config):
-        return StepPlan(
-            message=(
-                "В Inbox лежит новый файл.\n"
-                "Сейчас: приму asset — текстуры, pack, уберу лишний фон, открою Blender.\n"
-                "Тебе: глянуть в Blender — всё ли на месте. Переименовывать меши не нужно.\n"
-                "Сарай с дырой в стене: notes.txt с open_wall=front "
-                "(шаблон templates/inbox_building/notes.txt)."
+    """Asset-пайплайн (1–4), потом playtest. Одна кнопка — один шаг."""
+    ctx = get_pipeline_context(config)
+
+    if ctx.inbox_needs_prepare:
+        return _with_ctx(
+            StepPlan(
+                message=(
+                    "В Inbox новый .blend.\n"
+                    "Сейчас: текстуры, pack, фон, свет → Processed.\n"
+                    "Blender откроется для осмотра — переименовывать 90 объектов не нужно.\n"
+                    "Сарай с дырой: положи notes.txt рядом (open_wall=front)."
+                ),
+                tool="prepare_unity_asset",
+                tool_args={"open_blender": "1"},
+                human_after="Дальше — снова «Следующий шаг» → разметка Props (окно Вью, не Blender).",
             ),
-            tool="prepare_unity_asset",
-            tool_args={"open_blender": "1"},
-            human_after="После prepare — снова «Следующий шаг» → разметка Props во Вью.",
+            ctx,
         )
 
-    file_level, mesh_level = _pending_catalog(config)
-    if file_level:
-        names = ", ".join(Path(e.source_path).name for e in file_level[:3])
-        return StepPlan(
-            message=(
-                f"Есть .blend без списка объектов ({names}).\n"
-                "Сейчас: разложу по Building / Props, как в Scene Collection Blender."
+    if ctx.stage == "catalog":
+        return _with_ctx(
+            StepPlan(
+                message=(
+                    f"Prepared «{ctx.prepared_name}» — нужно разложить объекты по коллекциям.\n"
+                    "Building / Landscape → shell автоматически. Тебе — только Props."
+                ),
+                tool="__prop_catalog__",
+                human_after="Откроется «Очередь разметки».",
             ),
-            tool="__rescan_catalog__",
-            human_after="Откроется окно разметки — или снова «Следующий шаг».",
+            ctx,
         )
 
-    if mesh_level:
-        n = len(mesh_level)
-        sample = mesh_level[0].list_label()
-        return StepPlan(
-            message=(
-                f"Осталось разметить {n} предметов из Props (например: {sample}).\n"
-                "Building и Landscape Вью уже пометила shell — не трогай.\n"
-                "На каждом Prop: вес + галочки (сидеть, открыть…). Shell — кнопка «Shell — пропустить»."
+    if ctx.stage == "markup":
+        return _with_ctx(
+            StepPlan(
+                message=(
+                    f"«{ctx.prepared_name}» — осталось {ctx.pending_props} Props.\n"
+                    "На каждом: вес + галочки (сидеть, взять…). "
+                    "Building/Landscape уже shell — не трогай."
+                ),
+                tool="__prop_catalog__",
+                human_after="Закончил — «Готово — закрыть» в окне разметки.",
             ),
-            tool="__prop_catalog__",
-            human_after="Разметил Props — «Готово — закрыть» в окне каталога.",
+            ctx,
         )
 
-    prepared = _latest_prepared_pack(config)
-    if prepared is not None:
-        notes = parse_building_notes(read_sidecar_for_blend(prepared))
-        if notes.wants_open_wall:
-            return StepPlan(
-                message=open_wall_checklist(notes, blend_label=prepared.stem),
+    if ctx.stage == "wall" and ctx.prepared_path is not None:
+        notes = parse_building_notes(read_sidecar_for_blend(ctx.prepared_path))
+        return _with_ctx(
+            StepPlan(
+                message=open_wall_checklist(notes, blend_label=ctx.prepared_path.stem),
                 idle=True,
                 human_after=(
-                    "Отдели Wall_Front в Blender (не удаляй) → «Следующий шаг» → Props."
+                    "Отдели Wall_front в Blender (не удаляй!) → Ctrl+S → «Следующий шаг»."
                 ),
-            )
-
-    # Каталог закрыт — экспорт FBX, потом оверлей.
-    if prepared is not None and catalog_ready_for_export(config, prepared):
-        pack = _prepared_pack_name(prepared)
-        if needs_export(config, prepared):
-            return StepPlan(
-                message=(
-                    f"«{pack}» разметен и готов в Processed.\n"
-                    "Сейчас: экспорт FBX в Unity (Assets/Environment/…).\n"
-                    "Wall_front попадёт в FBX — для dollhouse в Unity."
-                ),
-                tool="export_unity_asset",
-                tool_args={},
-                human_after="Открой Unity — папка Assets/Environment. Потом снова «Следующий шаг».",
-            )
-        if not _overlay_exe_exists(config):
-            return StepPlan(
-                message=(
-                    f"«{pack}» уже в Unity (FBX).\n"
-                    "Следующий шаг: оверлей — Шаня у панели задач.\n"
-                    "Unity должен быть **закрыт** (5–15 минут сборки)."
-                ),
-                tool="unity_overlay",
-                human_after="После сборки — «Следующий шаг».",
-            )
-        slug = pack.replace(" ", "_")
-        return StepPlan(
-            message=(
-                f"«{pack}» разметен, FBX в Unity.\n"
-                "Оверлей собран — AnabarraOverlay.exe, проверь A/D.\n"
-                f"Сарай: Assets/Environment/{slug}/"
             ),
-            idle=True,
-            human_after="Новый asset → Inbox → «Следующий шаг».",
+            ctx,
         )
 
-    if prepared is not None:
-        pack = _prepared_pack_name(prepared)
-        if not _overlay_exe_exists(config):
-            return StepPlan(
+    if ctx.stage == "export" and ctx.prepared_path is not None:
+        pack = _prepared_pack_name(ctx.prepared_path)
+        return _with_ctx(
+            StepPlan(
                 message=(
-                    f"Asset «{pack}» готов в Processed.\n"
-                    "Доберись разметку Props — потом экспорт и оверлей."
+                    f"«{pack}» разметен.\n"
+                    "Сейчас: FBX → Library/Props/fbx и Unity/Assets/Environment/."
+                ),
+                tool="export_unity_asset",
+                human_after="Проверь папку в Unity. Dollhouse: меш Wall_front должен быть в FBX.",
+            ),
+            ctx,
+        )
+
+    # Asset в Unity — можно новый Inbox или (опционально) оверлей.
+    if ctx.stage == "asset_done":
+        slug = ctx.prepared_name.replace(" ", "_")
+        return _with_ctx(
+            StepPlan(
+                message=(
+                    f"«{ctx.prepared_name}» в Unity (Assets/Environment/{slug}/).\n"
+                    "Новый домик → положи в Inbox → «Следующий шаг».\n"
+                    "Оверлей (Шаня у панели) — только если хочешь playtest, кнопка в «Ещё — Unity»."
                 ),
                 idle=True,
-            )
+                human_after="Inbox пуст? Положи следующий .blend.",
+            ),
+            ctx,
+        )
+
+    # Playtest / roadmap — не перебиваем незавершённый asset.
+    if ctx.prepared_path is not None and not ctx.catalog_ready and ctx.stage not in (
+        "markup",
+        "catalog",
+        "wall",
+        "export",
+        "asset_done",
+    ):
+        return _with_ctx(
+            StepPlan(
+                message=(
+                    f"«{ctx.prepared_name}» в Processed — добей разметку Props, "
+                    "потом экспорт."
+                ),
+                idle=True,
+            ),
+            ctx,
+        )
 
     focus = _roadmap_store(config).roadmap.current_focus()
     title = (focus.title if focus else "").lower()
 
     if focus and any(k in title for k in ("панел", "оверлей", "дом", "taskbar")):
-        if not _overlay_exe_exists(config):
-            return StepPlan(
-                message=(
-                    "Пора собрать оверлей — Шаня у панели задач.\n"
-                    "Unity должен быть **закрыт**. Сборка 5–15 минут, потом запустится exe."
+        if not ctx.overlay_built:
+            return _with_ctx(
+                StepPlan(
+                    message=(
+                        "Playtest: собрать оверлей — Шаня у панели задач.\n"
+                        "Unity **закрыт**. 5–15 мин. (Не связано с импортом домика.)"
+                    ),
+                    tool="unity_overlay",
+                    human_after="После сборки — AnabarraOverlay.exe, A/D.",
                 ),
-                tool="unity_overlay",
-                human_after="После сборки запусти оверлей, проверь A/D. Потом — снова «Следующий шаг».",
+                get_pipeline_context(config),
             )
-        return StepPlan(
-            message=(
-                "Оверлей уже собран.\n"
-                "Запусти AnabarraOverlay.exe, проверь ходьбу A/D и W/S (глубина).\n"
-                "Настройки: overlay_tune.json рядом с exe, F5 сохраняет."
+        return _with_ctx(
+            StepPlan(
+                message=(
+                    "Оверлей собран — AnabarraOverlay.exe.\n"
+                    "A/D — ходьба, W/S — глубина, Esc — выход.\n"
+                    "Подкрутить глубину: «Ещё — Unity → Оверлей: в глубину» (только после сборки)."
+                ),
+                idle=True,
+                human_after="Новый asset → Inbox → «Следующий шаг».",
             ),
-            idle=True,
-            human_after="Новый asset → Inbox → «Следующий шаг».",
+            get_pipeline_context(config),
         )
 
     if focus:
-        return StepPlan(
-            message=(
-                f"Сейчас по плану: «{focus.title}».\n"
-                "Положи новый asset в U:\\Viu\\Inbox — или напиши в чат справа, что хочешь."
+        return _with_ctx(
+            StepPlan(
+                message=(
+                    f"План: «{focus.title}».\n"
+                    "Asset-пайплайн: Inbox → «Следующий шаг» (4 шага).\n"
+                    "Или напиши в чат справа."
+                ),
+                idle=True,
             ),
-            idle=True,
+            ctx,
         )
 
-    return StepPlan(
-        message="План на сегодня выполнен. Новый asset → Inbox → «Следующий шаг».",
-        idle=True,
+    return _with_ctx(
+        StepPlan(
+            message="Положи .blend в U:\\Viu\\Inbox → «Следующий шаг».",
+            idle=True,
+        ),
+        ctx,
     )
 
 

@@ -23,7 +23,8 @@ from tkinter import messagebox, scrolledtext, ttk
 
 from .agent import Agent
 from .config import Config
-from .gui_actions import ACTION_GROUPS, GuiAction, actions_by_group
+from .gui_actions import ACTION_GROUPS, GUI_ACTIONS, GuiAction, actions_by_group
+from .pipeline import action_visible, get_pipeline_context
 from .health import ollama_available
 from .integrations.unity.watcher import AnimationFolderWatcher
 from .runtime_settings import get_update_interval_min
@@ -53,7 +54,9 @@ class ViuGUI:
         self.agent = Agent(config=Config())
         self._queue: queue.Queue = queue.Queue()
         self._busy = False
-        self._action_buttons: list[ttk.Button] = []
+        self._action_buttons: list[tuple[str, ttk.Button]] = []
+        self._action_group_boxes: dict[str, ttk.LabelFrame] = {}
+        self._sidebar_stage_label: ttk.Label | None = None
         self._auto_update_job: str | None = None
         self._telegram = None
         self._telegram_waiting_reply = False
@@ -180,7 +183,16 @@ class ViuGUI:
         frame.pack_propagate(False)
 
         header = ttk.Label(frame, text="Действия", font=("Segoe UI", 11, "bold"))
-        header.pack(anchor="w", padx=10, pady=(10, 6))
+        header.pack(anchor="w", padx=10, pady=(10, 2))
+        self._sidebar_stage_label = ttk.Label(
+            frame,
+            text="",
+            wraplength=200,
+            justify="left",
+            font=("Segoe UI", 9),
+            foreground="#666666",
+        )
+        self._sidebar_stage_label.pack(anchor="w", padx=10, pady=(0, 6))
 
         canvas = tk.Canvas(frame, highlightthickness=0, width=210)
         scroll = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
@@ -203,6 +215,7 @@ class ViuGUI:
                 continue
             box = ttk.LabelFrame(inner, text=group, padding=6)
             box.pack(fill="x", padx=4, pady=4)
+            self._action_group_boxes[group] = box
             for action in actions:
                 btn = ttk.Button(
                     box,
@@ -210,9 +223,11 @@ class ViuGUI:
                     command=lambda a=action: self._on_action(a),
                 )
                 btn.pack(fill="x", pady=2)
-                self._action_buttons.append(btn)
+                self._action_buttons.append((action.action_id, btn))
                 if action.hint:
                     self._attach_tooltip(btn, action.hint)
+
+        self._refresh_action_visibility()
 
         chat_hint = ttk.Label(
             frame,
@@ -434,7 +449,7 @@ class ViuGUI:
         self._busy = busy
         state = "disabled" if busy else "normal"
         self.send_btn.config(state=state, text="Думаю…" if busy else "Отправить")
-        for btn in self._action_buttons:
+        for _aid, btn in self._action_buttons:
             btn.config(state=state)
         ver = version_label()
         self.status.config(
@@ -527,6 +542,27 @@ class ViuGUI:
 
         self._run_bg(work, done)
 
+    def _refresh_action_visibility(self) -> None:
+        ctx = get_pipeline_context(self.agent.config)
+        if self._sidebar_stage_label is not None:
+            self._sidebar_stage_label.config(text=ctx.step_label)
+        visible_by_group: dict[str, int] = {g: 0 for g in ACTION_GROUPS}
+        action_map = {a.action_id: a for a in GUI_ACTIONS}
+        for aid, btn in self._action_buttons:
+            action = action_map.get(aid)
+            if action is None:
+                continue
+            if action_visible(aid, ctx):
+                btn.pack(fill="x", pady=2)
+                visible_by_group[action.group] = visible_by_group.get(action.group, 0) + 1
+            else:
+                btn.pack_forget()
+        for group, box in self._action_group_boxes.items():
+            if visible_by_group.get(group, 0) > 0:
+                box.pack(fill="x", padx=4, pady=4)
+            else:
+                box.pack_forget()
+
     def _show_next_step_banner(self) -> None:
         from .director import format_banner, plan_next_step
 
@@ -537,6 +573,7 @@ class ViuGUI:
             if isinstance(result, Exception):
                 return
             self._append("система", result, tag="sys")
+            self.root.after(0, self._refresh_action_visibility)
 
         self._run_bg(work, done)
 
@@ -546,6 +583,7 @@ class ViuGUI:
         plan = plan_next_step(self.agent.config)
         self._append("система", format_banner(plan), tag="sys")
         if plan.idle or not plan.tool:
+            self._refresh_action_visibility()
             return
 
         tool, args = plan.tool, plan.tool_args
@@ -571,6 +609,7 @@ class ViuGUI:
             self._add_animation()
             return
         self._run_tool(tool, args, label="Следующий шаг")
+        self.root.after(500, self._refresh_action_visibility)
 
     def _open_prop_catalog(self) -> None:
         from .prop_catalog import PropCatalogStore, catalog_path, open_prop_catalog_review
@@ -597,6 +636,7 @@ class ViuGUI:
                     "Каталог закрыт. Разметка в .viu/prop_catalog.json",
                     tag="sys",
                 )
+                self._refresh_action_visibility()
                 self._show_next_step_banner()
 
             open_prop_catalog_review(
