@@ -98,22 +98,26 @@ def find_prepared_blend(
 
 
 def open_wall_checklist(notes: BuildingNotes, *, blend_label: str = "домик") -> str:
+    """Чеклист для Blender: отделить стенку под dollhouse, не удалять."""
     wall = notes.open_wall or "front"
     btype = notes.building_type or "building"
     wall_ru = {
-        "front": "переднюю",
+        "front": "переднюю (к камере / dollhouse)",
         "back": "заднюю",
         "left": "левую",
         "right": "правую",
     }.get(wall, wall)
     return (
-        f"Чеклист «{blend_label}» ({btype}) — открыть {wall_ru} стену:\n"
-        "1. Работай только с *_prepared.blend из Library/Processed (не сырой из Mascot).\n"
-        "2. Outliner → коллекция Building — найди меш(и) этой стены (Wall, Front…).\n"
-        "3. Удали или скрой стену; Props (стул, дверь…) не трогай.\n"
-        f"4. File → Save As → …_{wall}_open.blend рядом с prepared.\n"
-        "5. «Следующий шаг» во Вью → разметка Props (Building уже shell).\n"
-        "Шаблон notes.txt: templates/inbox_building/notes.txt"
+        f"Чеклист «{blend_label}» ({btype}) — стенка для режима «кукольный домик»:\n"
+        "1. Работай с *_prepared.blend из Library/Processed.\n"
+        f"2. Outliner → Building: выдели {wall_ru} стену как **отдельный меш** "
+        "(если слита с сараем — Edit Mode → P Separate).\n"
+        "3. **Не удаляй.** Переименуй, напр. Wall_Front — Unity потом **скроет или "
+        "сделает прозрачной**, когда Шаня внутри, и вернёт фасад, когда вышла.\n"
+        "4. Ctrl+S в тот же prepared (или копия — как удобнее).\n"
+        "5. «Следующий шаг» во Вью → разметка Props.\n"
+        "Вход сбоку не мешает: для вида внутрь всё равно нужна прозрачная/скрытая "
+        "**передняя** стенка (к камере), а не «левая»."
     )
 
 

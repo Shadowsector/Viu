@@ -149,16 +149,13 @@ def plan_next_step(config: Config) -> StepPlan:
     if prepared is not None:
         notes = parse_building_notes(read_sidecar_for_blend(prepared))
         if notes.wants_open_wall:
-            open_glob = f"*_{notes.open_wall}_open.blend"
-            has_open = any(prepared.parent.glob(open_glob))
-            if not has_open:
-                return StepPlan(
-                    message=open_wall_checklist(notes, blend_label=prepared.stem),
-                    idle=True,
-                    human_after=(
-                        "Сохрани *_open.blend → «Следующий шаг» → разметка Props (если ещё не была)."
-                    ),
-                )
+            return StepPlan(
+                message=open_wall_checklist(notes, blend_label=prepared.stem),
+                idle=True,
+                human_after=(
+                    "Отдели Wall_Front в Blender (не удаляй) → «Следующий шаг» → Props."
+                ),
+            )
 
     # Каталог закрыт — если есть свежий prepared-asset, не уводим в «Walk» по roadmap.
     if prepared is not None:
