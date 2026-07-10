@@ -108,16 +108,18 @@ def open_wall_checklist(notes: BuildingNotes, *, blend_label: str = "домик"
         "right": "правую",
     }.get(wall, wall)
     return (
-        f"Чеклист «{blend_label}» ({btype}) — стенка для режима «кукольный домик»:\n"
-        "1. Работай с *_prepared.blend из Library/Processed.\n"
-        f"2. Outliner → Building: выдели {wall_ru} стену как **отдельный меш** "
-        "(если слита с сараем — Edit Mode → P Separate).\n"
-        "3. **Не удаляй.** Переименуй, напр. Wall_Front — Unity потом **скроет или "
-        "сделает прозрачной**, когда Шаня внутри, и вернёт фасад, когда вышла.\n"
-        "4. Ctrl+S в тот же prepared (или копия — как удобнее).\n"
-        "5. «Следующий шаг» во Вью → разметка Props.\n"
-        "Вход сбоку не мешает: для вида внутрь всё равно нужна прозрачная/скрытая "
-        "**передняя** стенка (к камере), а не «левая»."
+        f"Чеклист «{blend_label}» ({btype}) — отделить переднюю стенку (bisect):\n"
+        "1. Файл: *_prepared.blend из Library/Processed.\n"
+        "2. Выдели меш сарая (Building) → Tab (Edit Mode).\n"
+        "3. View → Viewport → **X-Ray** (Alt+Z) — видно наслоенные стены.\n"
+        "4. Mesh → Bisect (или поиск «Bisect» F3):\n"
+        "   • Плоскость: **перпендикулярно** фасаду (вид сбоку → линия реза вертикально).\n"
+        "   • Clear Inner / Clear Outer — смотри превью: оставь кусок «стенки» снаружи.\n"
+        "   • Fill — можно выкл, если дырка не нужна.\n"
+        "5. P → **Separate** → By Selection → новый объект Wall_Front.\n"
+        "6. **Не удаляй** Wall_Front — Unity будет скрывать/прозрачить.\n"
+        "7. Ctrl+S. «Следующий шаг» во Вью → Props.\n"
+        "Если Bisect неудобен: добавь Plane, Knife Project (см. docs/BUILDING_WALL_CUT.md)."
     )
 
 
