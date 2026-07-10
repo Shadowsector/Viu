@@ -279,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:  # noqa: BLE001
         pass
 
-    if args.launch or (updated and auto):
+    if args.launch:
         log("Запуск GUI …")
         launch_gui()
     return 0

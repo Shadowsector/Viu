@@ -35,6 +35,7 @@ from .updater import (
     cleanup_broken_git,
     find_git_root,
     install_package,
+    package_root,
     usable_git_root,
     update_viu_full,
     version_label,
@@ -1076,23 +1077,16 @@ class ViuGUI:
         self._run_bg(work, done)
 
     def _restart(self) -> None:
-        root = usable_git_root() or package_root()
-        cwd = str(root)
-        exe = sys.executable
-        # pythonw на Windows — без консоли
-        if os.name == "nt" and exe.lower().endswith("python.exe"):
-            pyw = Path(exe).with_name("pythonw.exe")
-            if pyw.is_file():
-                exe = str(pyw)
+        release_single_instance()
         try:
-            subprocess.Popen(  # noqa: S603
-                [exe, "-m", "viu", "gui"],
-                cwd=cwd,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-            )
+            relaunch_gui()
         except OSError as exc:
             messagebox.showerror("Вью", f"Не удалось перезапустить: {exc}")
             return
+        try:
+            self.root.quit()
+        except tk.TclError:
+            pass
         self.root.destroy()
 
     # ---------- вывод ----------
@@ -1160,6 +1154,42 @@ class ViuGUI:
 # Единственный экземпляр окна: держим сокет на локальном порту.
 _INSTANCE_PORT = 47615
 _instance_sock = None
+
+
+def release_single_instance() -> None:
+    """Освободить порт единственного экземпляра перед relaunch."""
+    global _instance_sock
+    if _instance_sock is not None:
+        try:
+            _instance_sock.close()
+        except OSError:
+            pass
+        _instance_sock = None
+
+
+def build_relaunch_command(cwd: Path | None = None) -> tuple[list[str], str]:
+    """Команда перезапуска GUI (run_gui.pyw или python -m viu gui)."""
+    root = cwd or usable_git_root() or package_root()
+    workdir = str(root)
+    exe = sys.executable
+    if os.name == "nt" and exe.lower().endswith("python.exe"):
+        pyw = Path(exe).with_name("pythonw.exe")
+        if pyw.is_file():
+            exe = str(pyw)
+    run_gui = root / "run_gui.pyw"
+    if run_gui.is_file():
+        return [exe, str(run_gui)], workdir
+    return [exe, "-m", "viu", "gui"], workdir
+
+
+def relaunch_gui() -> None:
+    """Запустить новый процесс Viu (после release_single_instance)."""
+    cmd, workdir = build_relaunch_command()
+    subprocess.Popen(  # noqa: S603
+        cmd,
+        cwd=workdir,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
 
 
 def acquire_single_instance(port: int = _INSTANCE_PORT):
