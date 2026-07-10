@@ -49,6 +49,19 @@ def read_vision(config: Config, *, max_chars: int = 4000) -> str:
     return text
 
 
+def read_vision_creative(config: Config, *, max_chars: int = 2200) -> str:
+    """Мечта, сюжет, заметки — без техбэклога (для reflect)."""
+    text = read_vision(config, max_chars=6000)
+    for marker in ("## Техбэклог", "---\n## Тех"):
+        idx = text.find(marker)
+        if idx > 0:
+            text = text[:idx].strip()
+            break
+    if len(text) > max_chars:
+        return text[:max_chars] + "…"
+    return text
+
+
 def append_vision(config: Config, section: str, text: str) -> str:
     path = ensure_vision(config)
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")

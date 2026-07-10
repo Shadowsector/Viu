@@ -376,11 +376,15 @@ class Agent:
             f"Мои мысли (не пересказывай дословно):\n{inner}\n\n"
             f"Сообщение Дена:\n{user_text}"
         )
+        if history:
+            speak_user = (
+                "Продолжение диалога — не здоровайся заново, не отфутболивай.\n\n" + speak_user
+            )
         speak_messages: List[Dict[str, str]] = [
             {"role": "system", "content": REFLECT_SPEAK},
         ]
         if history:
-            speak_messages.extend(history[-10:])
+            speak_messages.extend(history[-12:])
         speak_messages.append({"role": "user", "content": speak_user})
 
         for _ in range(3):
@@ -389,7 +393,7 @@ class Agent:
 
             if parsed and "final" in parsed and "action" not in parsed:
                 text = str(parsed["final"]).strip()
-                issues = reflect_reply_issues(text)
+                issues = reflect_reply_issues(text, has_history=bool(history))
                 if issues:
                     speak_messages.append({"role": "assistant", "content": raw})
                     speak_messages.append(

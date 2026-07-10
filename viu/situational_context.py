@@ -46,7 +46,7 @@ def build_situational_context(config: Config, *, recent_chat: str = "") -> str:
 
 
 def build_reflect_notes(config: Config) -> str:
-    """Минимум фона — без vision/roadmap (они делают робота)."""
+    """Минимум фона — без roadmap (он делает робота)."""
     parts: list[str] = []
 
     try:
@@ -66,4 +66,13 @@ def build_reflect_notes(config: Config) -> str:
     except OSError:
         pass
 
-    return "\n".join(parts) if parts else ""
+    try:
+        from .vision import read_vision_creative
+
+        creative = read_vision_creative(config, max_chars=1800).strip()
+        if creative:
+            parts.append("--- vision (сюжет/мечта, не зачитывать списком) ---\n" + creative)
+    except OSError:
+        pass
+
+    return "\n\n".join(parts) if parts else ""

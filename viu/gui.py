@@ -692,6 +692,10 @@ class ViuGUI:
             self._telegram.notify_error(text)
 
     def _telegram_notify_done(self, text: str) -> None:
+        from .quiet_hours import in_quiet_hours
+
+        if in_quiet_hours(self.agent.config):
+            return
         if self._telegram is not None and not self._telegram_waiting_reply:
             self._telegram.notify_done(text)
 
@@ -922,7 +926,11 @@ class ViuGUI:
 
     def _run_heartbeat(self) -> None:
         from .prompts.reflect_mode import HEARTBEAT_TASK
+        from .quiet_hours import in_quiet_hours
         from .vision import ensure_vision
+
+        if in_quiet_hours(self.agent.config):
+            return
 
         ensure_vision(self.agent.config)
         self._append("система", "⏰ Вью проснулась по таймеру — смотрю, что можно сделать.", tag="sys")

@@ -71,7 +71,7 @@ def set_update_interval_min(config: Config, minutes: int) -> None:
 def get_heartbeat_interval_min(config: Config) -> int:
     raw = get(config, "heartbeat_interval_min", None)
     if raw is None:
-        return int(float(__import__("os").environ.get("VIU_HEARTBEAT_MIN", "30") or 0))
+        return int(float(__import__("os").environ.get("VIU_HEARTBEAT_MIN", "0") or 0))
     try:
         return max(0, int(raw))
     except (TypeError, ValueError):
@@ -80,3 +80,14 @@ def get_heartbeat_interval_min(config: Config) -> int:
 
 def set_heartbeat_interval_min(config: Config, minutes: int) -> None:
     set_value(config, "heartbeat_interval_min", max(0, int(minutes)))
+
+
+def get_quiet_hours(config: Config) -> str:
+    raw = get(config, "quiet_hours", None)
+    if raw is None:
+        return str(__import__("os").environ.get("VIU_QUIET_HOURS", "0-7") or "0-7")
+    return str(raw)
+
+
+def set_quiet_hours(config: Config, value: str) -> None:
+    set_value(config, "quiet_hours", value.strip())
