@@ -113,6 +113,13 @@ GUI_ACTIONS: List[GuiAction] = [
     ),
     # --- Ещё Blender ---
     GuiAction(
+        "route_inbox",
+        "Разобрать Inbox",
+        "Ещё — Blender",
+        tool="route_inbox",
+        hint="Blend, анимации Mixamo, картинки — всё в U:\\Viu\\Inbox одной кучей.",
+    ),
+    GuiAction(
         "prepare_unity_asset",
         "Принять из Inbox (повтор)",
         "Ещё — Blender",

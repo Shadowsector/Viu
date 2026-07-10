@@ -216,6 +216,7 @@ def get_pipeline_context(config: Config) -> PipelineContext:
 # Кнопки «Ещё», которые показываем только в нужной фазе.
 _ACTION_VISIBILITY: dict[str, frozenset[str]] = {
     "prepare_unity_asset": frozenset({"inbox", "idle", "asset_done", "playtest", "export", "markup", "catalog", "wall"}),
+    "route_inbox": frozenset({"inbox", "idle", "asset_done", "playtest", "export", "markup", "catalog", "wall"}),
     "prop_catalog": frozenset({"catalog", "markup", "wall", "export", "asset_done"}),
     "export_unity_asset": frozenset({"export", "asset_done", "wall"}),
     "unity_overlay": frozenset({"asset_done", "playtest", "idle"}),

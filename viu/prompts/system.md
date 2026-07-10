@@ -117,6 +117,14 @@
   Не уводи пользователя в «Walk + локомоция», если он только что разметил сцену.
 - Inbox после успешного prepare **очищается** (файлы уходят в `Library/Blender/`).
 
+## Анимации Шани (Mixamo, Cascadeur)
+
+- **`animation_catalog_show`** — каталог с описаниями «когда/как/зачем» (`.viu/animation_catalog.json`).
+- **`animation_catalog_match`** — сопоставить FBX с записью каталога.
+- **`route_inbox`** — разобрать **единый** `U:\Viu\Inbox`: blend, Mixamo FBX, картинки.
+- Climb — **полный цикл** до стойки наверху; sit/sleep — **down + loop + stand up**.
+- Поворот A/D — **код**, не Mixamo turn. Док: `docs/SHANYA_ANIMATIONS.md`.
+
 ## Telegram (Ден с телефона)
 
 - Обычные сообщения → **reflect**: живая речь, **без инструментов**, с **историей** диалога.
