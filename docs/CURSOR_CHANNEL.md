@@ -11,14 +11,16 @@
 
 ## Настройка push
 
-В `U:\Viu\.env`:
+После обновления Viu в **`U:\Viu`** появятся **`.env.example`** и (при первом запуске) **`.env`**.
 
-```env
-VIU_GITHUB_TOKEN=ghp_xxxxxxxx
-VIU_GITHUB_REPO=Shadowsector/Viu
-```
+1. Открой **`U:\Viu\.env`**
+2. Вставь токен **без кавычек**:
+   ```env
+   VIU_GITHUB_TOKEN=ghp_xxxxxxxx
+   ```
+3. **Перезапусти Viu** (или просто повтори handoff — токен перечитается)
 
-Токен: GitHub → Settings → Developer settings → Personal access tokens (repo scope).
+Токен: GitHub → Settings → Developer settings → Personal access tokens (scope: **repo**).
 
 ## Триггеры из Telegram
 

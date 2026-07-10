@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .config import Config
+from .env_file import env_hint_for_token, github_token
 from .updater import version_label
 
 
@@ -85,11 +86,12 @@ def upload_bundle_to_gist(
     token: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """Выгружает текст логов в приватный GitHub Gist (нужен VIU_GITHUB_TOKEN)."""
-    token = token or os.environ.get("VIU_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    token = token or github_token()
     if not token:
         return False, (
-            "Нет токена GitHub. Задай VIU_GITHUB_TOKEN, чтобы Вью сама отправляла логи. "
-            f"Пока просто прикрепи файл: {bundle}"
+            "Нет токена GitHub. "
+            + env_hint_for_token()
+            + f" Пока прикрепи файл: {bundle}"
         )
 
     # Читаем содержимое zip как отдельные текстовые файлы для gist.

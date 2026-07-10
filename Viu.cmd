@@ -45,6 +45,9 @@ if errorlevel 1 (
 echo [1/2] Проверяю обновления...
 if exist "%~dp0bootstrap_update.py" python bootstrap_update.py --auto
 
+echo [1b/2] Файл настроек .env...
+if not exist "%~dp0.env" if exist "%~dp0.env.example" copy /Y "%~dp0.env.example" "%~dp0.env" >nul
+
 echo [2/2] Готовлю пакет...
 python -m pip install -e . -q
 if errorlevel 1 (

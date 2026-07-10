@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Tuple
 
+from ...env_file import env_hint_for_token, github_token
 from ...updater import DEFAULT_BRANCH, DEFAULT_REPO, package_root
 
 HANDOFF_REL = Path("docs/CURSOR_HANDOFF.md")
@@ -86,11 +87,11 @@ def push_handoff(
     if not path.is_file():
         return False, "Нет docs/CURSOR_HANDOFF.md — сначала cursor_handoff."
 
-    token = token or os.environ.get("VIU_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    token = (token or github_token()).strip()
     if not token:
         return False, (
-            "Handoff записан локально, но нет VIU_GITHUB_TOKEN для push. "
-            f"Файл: {path}"
+            f"Handoff записан локально: {path}\n"
+            f"Push не вышел — токен пуст. {env_hint_for_token()}"
         )
 
     rel = HANDOFF_REL.as_posix()
