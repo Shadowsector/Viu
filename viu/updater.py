@@ -98,6 +98,33 @@ def find_git_root(start: Optional[Path] = None) -> Optional[Path]:
     return None
 
 
+def has_git_origin(root: Path) -> bool:
+    code, out = _run_git(["remote", "get-url", "origin"], root)
+    return code == 0 and bool(out.strip())
+
+
+def usable_git_root(start: Optional[Path] = None) -> Optional[Path]:
+    """Git-репозиторий с настроенным origin — иначе None (zip-установка)."""
+    root = find_git_root(start)
+    if root is None:
+        return None
+    if not has_git_origin(root):
+        return None
+    return root
+
+
+def cleanup_broken_git(root: Optional[Path] = None) -> bool:
+    """Удаляет .git без origin (случайный git init агента)."""
+    g = find_git_root(root)
+    if g is None or has_git_origin(g):
+        return False
+    try:
+        shutil.rmtree(g / ".git")
+        return True
+    except OSError:
+        return False
+
+
 def _stamp_path(root: Path) -> Path:
     return root / ".viu" / "installed_version.txt"
 
@@ -173,7 +200,7 @@ def _run_git(
 
 
 def current_commit(repo: Optional[Path] = None) -> str:
-    root = repo or find_git_root()
+    root = repo or usable_git_root()
     if root is None:
         sha = read_local_sha(package_root())
         if sha:
@@ -215,7 +242,8 @@ def check_for_update(
     branch: str = DEFAULT_BRANCH,
     remote: str = "origin",
 ) -> UpdateResult:
-    root = repo or find_git_root()
+    cleanup_broken_git()
+    root = repo or usable_git_root()
     if root is None:
         try:
             remote = remote_sha_github(branch=branch)
@@ -300,9 +328,12 @@ def apply_git_update(
     remote: str = "origin",
     hard_reset: bool = False,
 ) -> UpdateResult:
+    cleanup_broken_git()
     status = check_for_update(repo, branch, remote)
-    root = repo or find_git_root()
+    root = repo or usable_git_root()
     if root is None:
+        if status.has_updates:
+            return download_zip_update(branch=branch)
         return status
     if not status.ok:
         return status
@@ -418,7 +449,8 @@ def apply_update_smart(
     branch: str = DEFAULT_BRANCH,
     hard_reset: bool = False,
 ) -> UpdateResult:
-    root = find_git_root()
+    cleanup_broken_git()
+    root = usable_git_root()
     if root is not None:
         return apply_git_update(root, branch=branch, hard_reset=hard_reset)
     return download_zip_update(branch=branch)
@@ -428,7 +460,8 @@ def auto_update_on_start(
     branch: str = DEFAULT_BRANCH,
     allow_zip: bool = True,
 ) -> UpdateResult:
-    root = find_git_root()
+    cleanup_broken_git()
+    root = usable_git_root()
     if root is not None:
         result = apply_git_update(root, branch=branch)
         if result.updated:

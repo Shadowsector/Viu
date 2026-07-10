@@ -141,7 +141,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
 def cmd_update(args: argparse.Namespace) -> int:
     """Обновление Viu: git pull или zip с GitHub."""
-    from .updater import apply_update_smart, check_for_update, find_git_root, install_package
+    from .updater import apply_update_smart, check_for_update, install_package, usable_git_root
 
     config = Config()
     branch = config.update_branch
@@ -158,7 +158,7 @@ def cmd_update(args: argparse.Namespace) -> int:
     print(result.message)
     if result.behind:
         print(f"Коммитов позади: {result.behind}")
-    if not find_git_root() and result.has_updates:
+    if not usable_git_root() and result.has_updates:
         print("Применить: python -m viu update --apply")
     return 0 if result.ok else 1
 

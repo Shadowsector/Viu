@@ -32,8 +32,10 @@ from .updater import (
     auto_update_on_start,
     check_for_update,
     cleanup_obsolete,
+    cleanup_broken_git,
     find_git_root,
     install_package,
+    usable_git_root,
     update_viu_full,
     version_label,
 )
@@ -137,7 +139,7 @@ class ViuGUI:
         def compute() -> str:
             ollama = "Ollama ✓" if ollama_available(cfg.base_url) else "Ollama ✗"
             unity = Path(cfg.unity_project).name if cfg.unity_project else "Unity —"
-            git = "git" if find_git_root() else "zip"
+            git = "git" if usable_git_root() else "zip"
             return (
                 f"{ollama}  |  {unity}  |  {version_label()} ({git})  |  "
                 f"Модель: {self.agent.llm.name}"
@@ -977,7 +979,7 @@ class ViuGUI:
             lines = [result.message]
             if result.behind:
                 lines.append(f"Отстаём на {result.behind} коммит(ов).")
-            if result.has_updates and not find_git_root():
+            if result.has_updates and not usable_git_root():
                 lines.append("Нажми кнопку «Обновить Вью».")
             self._append("система", "\n".join(lines), tag="sys")
 
@@ -1068,8 +1070,8 @@ class ViuGUI:
         self._run_bg(work, done)
 
     def _restart(self) -> None:
-        root = find_git_root()
-        cwd = str(root) if root else str(Path(__file__).resolve().parent.parent)
+        root = usable_git_root() or package_root()
+        cwd = str(root)
         exe = sys.executable
         # pythonw на Windows — без консоли
         if os.name == "nt" and exe.lower().endswith("python.exe"):

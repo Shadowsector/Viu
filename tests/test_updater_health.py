@@ -5,9 +5,11 @@ from unittest.mock import patch
 
 from viu.health import ollama_available
 from viu.updater import (
+    cleanup_broken_git,
     check_for_update,
     current_commit,
     package_root,
+    usable_git_root,
     write_install_stamp,
 )
 
@@ -22,6 +24,33 @@ def test_check_for_update_no_git(tmp_path, monkeypatch):
         lambda repo=updater.DEFAULT_REPO, branch=updater.DEFAULT_BRANCH: "abc123remote",
     )
     monkeypatch.setattr(updater, "read_local_sha", lambda root=None: "")
+    result = check_for_update()
+    assert result.checked
+    assert result.has_updates
+
+
+def test_check_for_update_broken_git_falls_back_to_github(tmp_path, monkeypatch):
+    from viu import updater
+
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setattr(updater, "package_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        updater,
+        "remote_sha_github",
+        lambda repo=updater.DEFAULT_REPO, branch=updater.DEFAULT_BRANCH: "abc123remote",
+    )
+    monkeypatch.setattr(updater, "read_local_sha", lambda root=None: "")
+
+    def fake_run_git(args, cwd, timeout=120.0, retries=1):
+        if args[:2] == ["remote", "get-url"]:
+            return 2, "No such remote 'origin'"
+        return 1, "no origin"
+
+    import viu.updater as u
+
+    monkeypatch.setattr(u, "_run_git", fake_run_git)
+    assert cleanup_broken_git(tmp_path) is True
+    assert not (tmp_path / ".git").exists()
     result = check_for_update()
     assert result.checked
     assert result.has_updates
