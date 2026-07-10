@@ -51,6 +51,7 @@ from .cursor_handoff_tool import (
     CursorPushTool,
     GithubDiagnoseTool,
 )
+from .building_cascadeur_tool import BuildingWorkflowTool, CascadeurStatusTool
 from .vision_tool import VisionAppendTool, VisionReadTool
 from .web import WebFetchTool, WebSearchTool
 
@@ -91,6 +92,8 @@ def build_default_registry() -> ToolRegistry:
         CursorPushTool(),
         CursorHandoffBundleTool(),
         GithubDiagnoseTool(),
+        BuildingWorkflowTool(),
+        CascadeurStatusTool(),
         RoadmapShowTool(),
         RoadmapUpdateTool(),
         ProjectStatusTool(),

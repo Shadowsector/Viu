@@ -70,6 +70,9 @@ class Config:
     blender_host: str = field(default_factory=lambda: _env("VIU_BLENDER_HOST", "127.0.0.1"))
     blender_port: int = field(default_factory=lambda: int(_env("VIU_BLENDER_PORT", "8765")))
 
+    # Cascadeur — правка FBX-анимаций (Windows).
+    cascadeur_exe: str = field(default_factory=lambda: _env("VIU_CASCADEUR_EXE", ""))
+
     # Unity-проект Анабарра (корень с Assets/).
     unity_project: str = field(default_factory=lambda: _env("VIU_UNITY_PROJECT", ""))
 

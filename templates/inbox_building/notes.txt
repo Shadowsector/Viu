@@ -1,0 +1,5 @@
+building_type=barn
+open_wall=front
+# Скопируй notes.txt рядом с .blend в U:\Viu\Inbox\<pack>\
+# open_wall: front | back | left | right
+# После «Принять asset» — режь стену в Blender, сохрани как *_front_open.blend

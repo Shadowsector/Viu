@@ -11,6 +11,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .anabarra_layout import inbox_dir, library_root, unity_project_path
+from .building_workflow import (
+    open_wall_checklist,
+    parse_building_notes,
+    read_sidecar_for_blend,
+)
 from .config import Config
 from .integrations.blender.prepare_asset import find_inbox_blend, prepared_output_path
 from .integrations.unity.overlay import overlay_exe_path
@@ -106,7 +111,9 @@ def plan_next_step(config: Config) -> StepPlan:
             message=(
                 "В Inbox лежит новый файл.\n"
                 "Сейчас: приму asset — текстуры, pack, уберу лишний фон, открою Blender.\n"
-                "Тебе: глянуть в Blender — всё ли на месте. Переименовывать меши не нужно."
+                "Тебе: глянуть в Blender — всё ли на месте. Переименовывать меши не нужно.\n"
+                "Сарай с дырой в стене: notes.txt с open_wall=front "
+                "(шаблон templates/inbox_building/notes.txt)."
             ),
             tool="prepare_unity_asset",
             tool_args={"open_blender": "1"},
@@ -138,8 +145,22 @@ def plan_next_step(config: Config) -> StepPlan:
             human_after="Разметил Props — «Готово — закрыть» в окне каталога.",
         )
 
-    # Каталог закрыт — если есть свежий prepared-asset, не уводим в «Walk» по roadmap.
     prepared = _latest_prepared_pack(config)
+    if prepared is not None:
+        notes = parse_building_notes(read_sidecar_for_blend(prepared))
+        if notes.wants_open_wall:
+            open_glob = f"*_{notes.open_wall}_open.blend"
+            has_open = any(prepared.parent.glob(open_glob))
+            if not has_open:
+                return StepPlan(
+                    message=open_wall_checklist(notes, blend_label=prepared.stem),
+                    idle=True,
+                    human_after=(
+                        "Сохрани *_open.blend → «Следующий шаг» → разметка Props (если ещё не была)."
+                    ),
+                )
+
+    # Каталог закрыт — если есть свежий prepared-asset, не уводим в «Walk» по roadmap.
     if prepared is not None:
         pack = _prepared_pack_name(prepared)
         if not _overlay_exe_exists(config):

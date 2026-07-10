@@ -530,6 +530,23 @@ def format_prepare_report(report: Dict[str, Any]) -> str:
         lines.append("Переименовывать 90 объектов НЕ нужно. Ctrl+S — если что-то поправил руками.")
         lines.append("Разметка ролей — «Следующий шаг» во Вью.")
 
+    try:
+        from ...building_workflow import open_wall_checklist, parse_building_notes, read_sidecar_for_blend
+
+        src = Path(str(report.get("source") or ""))
+        if src.is_file():
+            notes = parse_building_notes(read_sidecar_for_blend(src))
+            if notes.wants_open_wall:
+                out_label = Path(str(report.get("output") or src)).stem
+                lines.append("\n" + open_wall_checklist(notes, blend_label=out_label))
+            elif notes.building_type:
+                lines.append(
+                    f"\nnotes.txt: building_type={notes.building_type}. "
+                    "Для отрезания стены добавь open_wall=front"
+                )
+    except Exception:  # noqa: BLE001
+        pass
+
     archived = report.get("inbox_archived") or []
     if archived:
         lines.append("\nInbox очищен — исходники в Library:")
