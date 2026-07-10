@@ -35,6 +35,15 @@ def test_release_single_instance_allows_reacquire():
     second.close()
 
 
+def test_stamp_changed_since(tmp_path):
+    from viu.updater import stamp_changed_since, write_install_stamp
+
+    write_install_stamp(tmp_path, "cursor/test", note="zip", sha="aaa111")
+    assert not stamp_changed_since("aaa111", tmp_path)
+    write_install_stamp(tmp_path, "cursor/test", note="zip", sha="bbb222")
+    assert stamp_changed_since("aaa111", tmp_path)
+
+
 def test_update_viu_full_sets_restart_flag(tmp_path, monkeypatch):
     from viu.updater import UpdateResult, update_viu_full
 

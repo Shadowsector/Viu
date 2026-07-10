@@ -148,6 +148,12 @@ def read_local_sha(root: Optional[Path] = None) -> str:
     return ""
 
 
+def stamp_changed_since(start_sha: str, root: Optional[Path] = None) -> bool:
+    """На диске другая метка версии — процессу нужен relaunch (zip/bootstrap)."""
+    current = read_local_sha(root)
+    return bool(start_sha and current and start_sha != current)
+
+
 def remote_sha_github(
     repo: str = DEFAULT_REPO,
     branch: str = DEFAULT_BRANCH,

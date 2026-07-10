@@ -40,7 +40,11 @@ def test_diagnose_ok_classic_pat(monkeypatch):
         if "/repos/Shadowsector/Viu/branches" in url:
             return 200, [{"name": "main"}, {"name": "cursor/viu-agent-core-65c2"}], {}
         if "/repos/Shadowsector/Viu" in url and "contents" not in url:
-            return 200, {"private": False, "default_branch": "main"}, {}
+            return 200, {
+                "private": False,
+                "default_branch": "main",
+                "permissions": {"push": True, "pull": True},
+            }, {}
         if "contents/docs/CURSOR_HANDOFF.md" in url:
             return 404, {}, {}
         return 0, {}, {}
@@ -52,3 +56,4 @@ def test_diagnose_ok_classic_pat(monkeypatch):
     assert "public" in report.lower()
     assert "repo/public_repo — OK" in report
     assert "gist — OK" in report
+    assert "Права push" in report

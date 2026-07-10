@@ -186,8 +186,13 @@ def diagnose_github(token: str, repo: str | None = None) -> str:
     if scopes:
         lines.append(f"Scopes: {', '.join(scopes)}")
         lines.extend(f"  → {h}" for h in _scope_hints(scopes))
+    elif token.startswith("ghp_"):
+        lines.append(
+            "Scopes: GitHub не вернул X-OAuth-Scopes (бывает у SSO). "
+            "Смотри «Права push» ниже."
+        )
     else:
-        lines.append("Scopes: (не в заголовке — fine-grained PAT или SSO)")
+        lines.append("Scopes: (fine-grained PAT — смотри «Права push» ниже)")
 
     code, data, _ = _api_request("GET", f"https://api.github.com/repos/{repo}", token)
     repo_private: bool | None = None
@@ -200,6 +205,12 @@ def diagnose_github(token: str, repo: str | None = None) -> str:
         if not repo_private:
             lines.append(
                 "  Public repo — это нормально. Handoff работает; важны права записи, не visibility."
+            )
+        perms = data.get("permissions") if isinstance(data.get("permissions"), dict) else {}
+        if perms:
+            can_push = bool(perms.get("push") or perms.get("admin"))
+            lines.append(
+                f"Права push в repo: {'OK — handoff может писать' if can_push else 'НЕТ — нужен scope repo или Contents R/W'}"
             )
     elif code == 404:
         lines.append(

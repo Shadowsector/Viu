@@ -36,6 +36,8 @@ from .updater import (
     find_git_root,
     install_package,
     package_root,
+    read_local_sha,
+    stamp_changed_since,
     usable_git_root,
     update_viu_full,
     version_label,
@@ -60,6 +62,7 @@ class ViuGUI:
         self._heartbeat_notify = False
         self._chat_history: deque[str] = deque(maxlen=16)
         self._llm_turns: deque[dict[str, str]] = deque(maxlen=14)
+        self._boot_sha = read_local_sha(package_root())
 
         stamp = time.strftime("%Y%m%d_%H%M%S")
         self.log_path = self.agent.config.data_dir / "logs" / f"chat_{stamp}.txt"
@@ -94,6 +97,13 @@ class ViuGUI:
             ensure_vision(self.agent.config)
         except OSError:
             pass
+        if stamp_changed_since(self._boot_sha):
+            self._append(
+                "система",
+                "На диске уже новая версия Viu — перезапуск через 3 с…",
+                tag="sys",
+            )
+            self.root.after(3000, self._restart)
 
     # ---------- UI ----------
 
@@ -644,8 +654,16 @@ class ViuGUI:
             ok, text, restart = result
             tag = "sys" if ok else "err"
             self._append("Вью", text, tag="tool" if ok else tag)
-            if restart:
-                self._append("система", "Перезапуск через 2 с…", tag="sys")
+            stale = stamp_changed_since(self._boot_sha)
+            if restart or stale:
+                if stale and not restart:
+                    self._append(
+                        "система",
+                        "Обновление уже на диске (bootstrap/Viu.cmd) — перезапуск через 2 с…",
+                        tag="sys",
+                    )
+                elif restart:
+                    self._append("система", "Перезапуск через 2 с…", tag="sys")
                 self.root.after(2000, self._restart)
 
         self._run_bg(work, done)
@@ -989,6 +1007,13 @@ class ViuGUI:
             if result.has_updates and not usable_git_root():
                 lines.append("Нажми кнопку «Обновить Вью».")
             self._append("система", "\n".join(lines), tag="sys")
+            if not result.has_updates and stamp_changed_since(self._boot_sha):
+                self._append(
+                    "система",
+                    "На диске новая версия — перезапуск через 2 с…",
+                    tag="sys",
+                )
+                self.root.after(2000, self._restart)
 
         self._run_bg(work, done)
 
@@ -1070,15 +1095,46 @@ class ViuGUI:
             if isinstance(result, Exception):
                 return
             self._append("система", result.message, tag="sys")
-            if result.updated:
+            if result.updated or stamp_changed_since(self._boot_sha):
                 self._append("система", "Перезапуск…", tag="sys")
                 self.root.after(1500, self._restart)
 
         self._run_bg(work, done)
 
     def _restart(self) -> None:
+        if self._telegram is not None:
+            try:
+                self._telegram.stop()
+            except Exception:  # noqa: BLE001
+                pass
+        if getattr(self, "_anim_watcher", None) is not None:
+            try:
+                self._anim_watcher.stop()
+            except Exception:  # noqa: BLE001
+                pass
         release_single_instance()
+        root = package_root()
+        log_path = root / "viu_startup.log"
         try:
+            prev = log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
+            log_path.write_text(
+                prev + f"\n{time.strftime('%Y-%m-%d %H:%M:%S')} relaunch from GUI\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+        try:
+            if os.name == "nt":
+                relaunch = root / "relaunch.cmd"
+                if relaunch.is_file():
+                    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                    detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+                    subprocess.Popen(  # noqa: S603
+                        ["cmd.exe", "/c", str(relaunch)],
+                        cwd=str(root),
+                        creationflags=flags | detached,
+                    )
+                    os._exit(0)
             relaunch_gui()
         except OSError as exc:
             messagebox.showerror("Вью", f"Не удалось перезапустить: {exc}")
@@ -1087,7 +1143,7 @@ class ViuGUI:
             self.root.quit()
         except tk.TclError:
             pass
-        self.root.destroy()
+        os._exit(0)
 
     # ---------- вывод ----------
 
