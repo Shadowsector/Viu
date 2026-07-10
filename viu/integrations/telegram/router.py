@@ -39,6 +39,19 @@ _ACTION_INTENT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Проверка токена / diagnose — сразу инструмент, не болтовня.
+_GITHUB_DIAGNOSE_RE = re.compile(
+    r"(?:"
+    r"github_diagnose|"
+    r"диагност(?:ика|ировать).{0,40}github|"
+    r"провер(?:ь|ите|ить).{0,50}(?:github|гитхаб).{0,50}(?:токен|token|доступ|scope|права)|"
+    r"провер(?:ь|ите|ить).{0,50}(?:токен|token).{0,50}(?:github|гитхаб)|"
+    r"(?:github|гитхаб).{0,50}(?:токен|token).{0,50}провер|"
+    r"статус.{0,40}(?:github|гитхаб).{0,40}(?:токен|token)"
+    r")",
+    re.IGNORECASE,
+)
+
 
 def route_telegram_message(text: str, *, waiting_for_user: bool = False) -> str:
     """``reflect`` | ``work``."""
@@ -52,6 +65,8 @@ def route_telegram_message(text: str, *, waiting_for_user: bool = False) -> str:
     if _DO_WORK_RE.search(t):
         return "work"
     if _ACTION_INTENT_RE.search(t):
+        return "work"
+    if _GITHUB_DIAGNOSE_RE.search(t):
         return "work"
     return "reflect"
 
