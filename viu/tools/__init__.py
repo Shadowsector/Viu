@@ -45,6 +45,7 @@ from .unity_project_tool import (
     UnityWriteTool,
 )
 from .unity_tool import UnityLogTool, UnityReportTool, UnityScanTool, UnityWorkflowTool
+from .cursor_handoff_tool import CursorHandoffBundleTool, CursorHandoffTool, CursorPushTool
 from .vision_tool import VisionAppendTool, VisionReadTool
 from .web import WebFetchTool, WebSearchTool
 
@@ -81,6 +82,9 @@ def build_default_registry() -> ToolRegistry:
         RunNextStepTool(),
         VisionReadTool(),
         VisionAppendTool(),
+        CursorHandoffTool(),
+        CursorPushTool(),
+        CursorHandoffBundleTool(),
         RoadmapShowTool(),
         RoadmapUpdateTool(),
         ProjectStatusTool(),
