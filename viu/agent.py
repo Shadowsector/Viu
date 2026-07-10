@@ -109,6 +109,7 @@ class RunResult:
     waiting_for_user: bool = False
     chat_only: bool = False
     inner_thought: str = ""
+    tool_errors: bool = False
 
 
 class Agent:
@@ -157,6 +158,7 @@ class Agent:
         ]
         result = RunResult(final="", completed=False, chat_only=chat_only)
         self._log(f"TASK[work]: {task[:200]}")
+        voice_retries = 0
 
         # Защита от зацикливания: считаем повторы одинаковых вызовов (tool+args).
         repeat_counts: Dict[str, int] = {}
@@ -188,9 +190,25 @@ class Agent:
             thought = str(parsed.get("thought", ""))
 
             if "final" in parsed:
-                step = Step(kind="final", thought=thought, observation=str(parsed["final"]))
+                text = str(parsed["final"]).strip()
+                from .prompts.reflect_mode import viu_voice_issues
+
+                issues = viu_voice_issues(text)
+                if issues and voice_retries < 2:
+                    voice_retries += 1
+                    messages.append({"role": "assistant", "content": raw})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": "Тон не Вью: "
+                            + ", ".join(issues)
+                            + ". Перепиши final — на «ты» Дену, женский род, без «Проверьте»/«Прошу прощения».",
+                        }
+                    )
+                    continue
+                step = Step(kind="final", thought=thought, observation=text)
                 result.steps.append(step)
-                result.final = str(parsed["final"])
+                result.final = text
                 result.completed = True
                 if on_step:
                     on_step(step)
@@ -226,6 +244,8 @@ class Agent:
 
             step = Step(kind="action", thought=thought, tool=tool_name, args=args, observation=observation)
             result.steps.append(step)
+            if not ok:
+                result.tool_errors = True
             if on_step:
                 on_step(step)
             self._log(f"ACTION {tool_name} args={args} -> ok={ok}")

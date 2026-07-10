@@ -88,6 +88,8 @@ class CursorHandoffBundleTool(Tool):
             return ToolResult(True, f"Handoff + push OK.\n{push_msg}\nЛокально: {path}")
         return ToolResult(
             False,
-            f"Handoff записан локально: {path}\nPush не вышел:\n{push_msg}\n"
-            "Не вызывай run_shell/git — проверь VIU_GITHUB_TOKEN и VIU_GITHUB_REPO в .env.",
+            f"Ден, handoff записала локально: {path}\n"
+            f"На GitHub не ушло: {push_msg}\n"
+            "Глянь U:\\Viu\\.env — VIU_GITHUB_TOKEN (scope repo) и VIU_GITHUB_REPO=Shadowsector/Viu. "
+            "Перезапусти меня после правки.",
         )

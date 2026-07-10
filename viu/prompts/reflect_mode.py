@@ -77,6 +77,13 @@ BANNED_PHRASES = (
     "вернись к общению",
     "когда будешь готов",
     "когда будете готов",
+    "проверьте",
+    "убедитесь",
+    "прошу прощения",
+    "если все верно",
+    "если всё верно",
+    "обратитесь",
+    "пожалуйста, предостав",
 )
 
 _MASCULINE_RE = re.compile(
@@ -88,8 +95,8 @@ _GREETING_START_RE = re.compile(r"^\s*(привет|здравствуй|hello|h
 _CJK_RE = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
 
 
-def reflect_reply_issues(text: str, *, has_history: bool = False) -> list[str]:
-    """Проблемы финального ответа reflect — для retry."""
+def viu_voice_issues(text: str, *, has_history: bool = False) -> list[str]:
+    """Проблемы тона Вью — reflect и work."""
     low = text.lower()
     issues: list[str] = []
     for phrase in BANNED_PHRASES:
@@ -101,7 +108,13 @@ def reflect_reply_issues(text: str, *, has_history: bool = False) -> list[str]:
         issues.append("иероглифы — только русский")
     if has_history and _GREETING_START_RE.match(text):
         issues.append("приветствие посреди диалога")
+    if re.search(r"\bвы\b", low) and "выклад" not in low:
+        issues.append("обращение на «вы» — Дену на «ты»")
     return issues
+
+
+def reflect_reply_issues(text: str, *, has_history: bool = False) -> list[str]:
+    return viu_voice_issues(text, has_history=has_history)
 
 
 def reflect_temperature(config) -> float:

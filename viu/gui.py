@@ -839,6 +839,7 @@ class ViuGUI:
                     result.waiting_for_user,
                     result.chat_only,
                     result.inner_thought,
+                    not result.tool_errors,
                 )
             )
         except Exception as exc:  # noqa: BLE001
@@ -848,6 +849,8 @@ class ViuGUI:
         try:
             while True:
                 item = self._queue.get_nowait()
+                inner_thought = ""
+                task_ok = True
                 if isinstance(item, tuple) and len(item) == 2:
                     kind, text = item
                     waiting = False
@@ -857,9 +860,10 @@ class ViuGUI:
                     chat_only = False
                 elif isinstance(item, tuple) and len(item) == 4:
                     kind, text, waiting, chat_only = item
-                    inner_thought = ""
                 elif isinstance(item, tuple) and len(item) == 5:
                     kind, text, waiting, chat_only, inner_thought = item
+                elif isinstance(item, tuple) and len(item) == 6:
+                    kind, text, waiting, chat_only, inner_thought, task_ok = item
                 else:
                     continue
                 if kind == "step":
@@ -886,8 +890,10 @@ class ViuGUI:
                         self._telegram_notify_chat(msg)
                     elif chat_only:
                         pass
-                    else:
+                    elif task_ok:
                         self._telegram_notify_done(text)
+                    else:
+                        self._telegram_notify_chat(f"⚠️ Не всё вышло.\n\n{text}")
                 elif kind == "error":
                     self._append("ошибка", text, tag="err")
                     self._set_busy(False)
