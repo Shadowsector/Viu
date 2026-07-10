@@ -25,7 +25,7 @@
    Или **`cursor_handoff`** → **`cursor_push`** по шагам.
 2. Файл: `docs/CURSOR_HANDOFF.md` — push через **GitHub API** (локальный git **не нужен**, zip-установка OK).
 3. **Не** вызывай `run_shell` / `git` для handoff — только `cursor_push` / `cursor_handoff_with_logs`.
-4. Если push вернул ошибку — **остановись**, объясни Дену (токен, repo, gist). **Не** чини через shell.
+4. Если push вернул ошибку — **остановись**, объясни Дену (токен, scopes repo+gist). **Не** повторяй handoff/push подряд. Можно **`github_diagnose`** один раз.
 5. После успешного push — **`final`**: что записала, ссылка, что Cursor может взять дальше.
 
 **Не обещай** «попробуем» / «давай создадим файл» без вызова инструментов.

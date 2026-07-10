@@ -21,7 +21,13 @@
    ```
 3. **Перезапусти Viu** (или просто повтори handoff — токен перечитается)
 
-Токен: GitHub → Settings → Developer settings → Personal access tokens (scope: **repo**).
+Токен: GitHub → Settings → Developer settings → Personal access tokens (**Classic**).
+
+Scopes для handoff:
+- **repo** — запись `docs/CURSOR_HANDOFF.md` (public repo тоже требует этот scope для PUT)
+- **gist** — запасной канал, если push в репо не вышел
+
+Проверка: инструмент **`github_diagnose`** (или попроси Вью «проверь GitHub токен»).
 
 ## Триггеры из Telegram
 

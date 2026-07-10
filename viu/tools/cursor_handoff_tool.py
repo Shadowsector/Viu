@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from ..integrations.github.handoff import append_handoff, handoff_path, push_handoff
+from ..integrations.github.api import diagnose_github
+from ..env_file import github_token
 from .base import AgentContext, Tool, ToolResult
 
 
@@ -89,7 +91,23 @@ class CursorHandoffBundleTool(Tool):
         return ToolResult(
             False,
             f"Ден, handoff записала локально: {path}\n"
-            f"На GitHub не ушло: {push_msg}\n"
-            "Глянь U:\\Viu\\.env — VIU_GITHUB_TOKEN (scope repo) и VIU_GITHUB_REPO=Shadowsector/Viu. "
-            "Перезапусти меня после правки.",
+            f"На GitHub не ушло: {push_msg}\n\n"
+            "Public repo — это нормально, дело не в private/public.\n"
+            "Classic PAT: scopes **repo** (запись) + **gist** (запасной канал).\n"
+            "Проверь U:\\Viu\\.env — VIU_GITHUB_TOKEN=ghp_... без кавычек, "
+            "VIU_GITHUB_REPO=Shadowsector/Viu. Перезапусти Viu или вызови github_diagnose.",
         )
+
+
+class GithubDiagnoseTool(Tool):
+    name = "github_diagnose"
+    description = (
+        "Проверить VIU_GITHUB_TOKEN: авторизация, scopes, доступ к репо, gist. "
+        "Без записи на GitHub. Используй, если cursor_push вернул 404."
+    )
+    parameters: dict = {}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        token = github_token()
+        report = diagnose_github(token)
+        return ToolResult(bool(token), report)
