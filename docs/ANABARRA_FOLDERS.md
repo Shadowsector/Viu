@@ -138,7 +138,7 @@ VIU_MASCOT_DIR=U:\Desktop Mascot
 | Подготовка | Ты | blend + textures + notes.txt → Inbox |
 | Приём | Вью | Inbox → Library, скан в каталог |
 | Разметка | Ты | GUI: вес, роль, действия |
-| Обработка | Вью (позже) | текстуры, экспорт FBX → `Library\Processed\` |
-| Игра | Unity | prefab в Assets |
+| **Экспорт** | **Вью** | **«Экспорт в Unity (FBX)»** или «Следующий шаг» → `Assets/Environment/` |
+| Игра | Unity | prefab, dollhouse wall script |
 
 Проверить пути: в чате «project_status».

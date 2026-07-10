@@ -143,7 +143,7 @@ def test_director_skips_inbox_when_already_prepared(tmp_path):
         os.environ.pop("VIU_LIBRARY_ROOT", None)
 
 
-def test_director_prepared_asset_suggests_overlay(tmp_path):
+def test_director_prepared_asset_suggests_export(tmp_path):
     inbox = tmp_path / "Inbox"
     inbox.mkdir()
     lib = tmp_path / "Library"
@@ -162,8 +162,8 @@ def test_director_prepared_asset_suggests_overlay(tmp_path):
             library_root=str(lib),
         ).ensure_dirs()
         plan = plan_next_step(config)
-        assert plan.tool == "unity_overlay"
-        assert "Old Stables" in plan.message or "оверлей" in plan.message.lower()
+        assert plan.tool == "export_unity_asset"
+        assert "Old Stables" in plan.message or "экспорт" in plan.message.lower()
     finally:
         os.environ.pop("VIU_INBOX_DIR", None)
         os.environ.pop("VIU_LIBRARY_ROOT", None)

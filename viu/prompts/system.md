@@ -97,6 +97,7 @@
 - **`unity_init_project`** — fix manifest + deploy скрипты + память (новый проект).
 - **`unity_verify`** — проверка setup/Play по логам после Play или unity_run_setup.
 - **`blender_export_shanya`** — FBX без WGT из .blend.
+- **`export_unity_asset`** — prepared домик/сарай → FBX в `Assets/Environment/` (+ Library/Props/fbx).
 - Bat **`setup_shanya.bat`** — устарел; кнопки **Init** / **Deploy** в окне Viu.
 - **GUI Viu** — боковая панель: Unity (отчёт, deploy, scan/sync анимаций), Blender, обновления. Без чёрных терминалов.
 

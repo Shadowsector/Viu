@@ -18,6 +18,10 @@ from .building_workflow import (
 )
 from .config import Config
 from .integrations.blender.prepare_asset import find_inbox_blend, prepared_output_path
+from .integrations.blender.export_pipeline import (
+    catalog_ready_for_export,
+    needs_export,
+)
 from .integrations.unity.overlay import overlay_exe_path
 from .prop_catalog.paths import catalog_path
 from .prop_catalog.store import PropCatalogStore
@@ -157,31 +161,51 @@ def plan_next_step(config: Config) -> StepPlan:
                 ),
             )
 
-    # Каталог закрыт — если есть свежий prepared-asset, не уводим в «Walk» по roadmap.
+    # Каталог закрыт — экспорт FBX, потом оверлей.
+    if prepared is not None and catalog_ready_for_export(config, prepared):
+        pack = _prepared_pack_name(prepared)
+        if needs_export(config, prepared):
+            return StepPlan(
+                message=(
+                    f"«{pack}» разметен и готов в Processed.\n"
+                    "Сейчас: экспорт FBX в Unity (Assets/Environment/…).\n"
+                    "Wall_front попадёт в FBX — для dollhouse в Unity."
+                ),
+                tool="export_unity_asset",
+                tool_args={},
+                human_after="Открой Unity — папка Assets/Environment. Потом снова «Следующий шаг».",
+            )
+        if not _overlay_exe_exists(config):
+            return StepPlan(
+                message=(
+                    f"«{pack}» уже в Unity (FBX).\n"
+                    "Следующий шаг: оверлей — Шаня у панели задач.\n"
+                    "Unity должен быть **закрыт** (5–15 минут сборки)."
+                ),
+                tool="unity_overlay",
+                human_after="После сборки — «Следующий шаг».",
+            )
+        slug = pack.replace(" ", "_")
+        return StepPlan(
+            message=(
+                f"«{pack}» разметен, FBX в Unity.\n"
+                "Оверлей собран — AnabarraOverlay.exe, проверь A/D.\n"
+                f"Сарай: Assets/Environment/{slug}/"
+            ),
+            idle=True,
+            human_after="Новый asset → Inbox → «Следующий шаг».",
+        )
+
     if prepared is not None:
         pack = _prepared_pack_name(prepared)
         if not _overlay_exe_exists(config):
             return StepPlan(
                 message=(
-                    f"Asset «{pack}» готов в Processed, разметка завершена.\n"
-                    "Следующий шаг: собрать оверлей — Шаня у панели задач.\n"
-                    "Unity должен быть **закрыт** (5–15 минут сборки)."
+                    f"Asset «{pack}» готов в Processed.\n"
+                    "Доберись разметку Props — потом экспорт и оверлей."
                 ),
-                tool="unity_overlay",
-                human_after=(
-                    "Экспорт сарая/домика в Unity как prefab — позже. "
-                    "Сейчас — оверлей и проверка A/D."
-                ),
+                idle=True,
             )
-        return StepPlan(
-            message=(
-                f"Asset «{pack}» разметен и лежит в Processed.\n"
-                "Оверлей собран — запусти AnabarraOverlay.exe, проверь A/D.\n"
-                "Импорт сцены в Unity (prefab) — в следующей версии Вью."
-            ),
-            idle=True,
-            human_after="Новый asset → Inbox → «Следующий шаг».",
-        )
 
     focus = _roadmap_store(config).roadmap.current_focus()
     title = (focus.title if focus else "").lower()

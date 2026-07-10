@@ -52,6 +52,7 @@ from .cursor_handoff_tool import (
     GithubDiagnoseTool,
 )
 from .building_cascadeur_tool import BuildingWorkflowTool, CascadeurStatusTool
+from .export_asset_tool import ExportUnityAssetTool
 from .vision_tool import VisionAppendTool, VisionReadTool
 from .web import WebFetchTool, WebSearchTool
 
@@ -94,6 +95,7 @@ def build_default_registry() -> ToolRegistry:
         GithubDiagnoseTool(),
         BuildingWorkflowTool(),
         CascadeurStatusTool(),
+        ExportUnityAssetTool(),
         RoadmapShowTool(),
         RoadmapUpdateTool(),
         ProjectStatusTool(),

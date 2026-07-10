@@ -124,6 +124,13 @@ GUI_ACTIONS: List[GuiAction] = [
         tool="__prop_catalog__",
     ),
     GuiAction(
+        "export_unity_asset",
+        "Экспорт в Unity (FBX)",
+        "Ещё — Blender",
+        tool="export_unity_asset",
+        hint="Prepared .blend → FBX в Assets/Environment. После разметки Props.",
+    ),
+    GuiAction(
         "blender_info",
         "Что в Blender?",
         "Ещё — Blender",
