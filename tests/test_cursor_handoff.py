@@ -4,7 +4,7 @@ import json
 
 from viu.agent import Agent
 from viu.config import Config
-from viu.integrations.github.handoff import append_handoff, handoff_path
+from viu.integrations.github.handoff import append_handoff, handoff_path, push_handoff
 from viu.integrations.telegram.router import route_telegram_message
 from viu.llm.base import LLMProvider
 
@@ -62,6 +62,26 @@ class HandoffLLM(LLMProvider):
                 ensure_ascii=False,
             )
         return json.dumps({"thought": "done", "final": "Готово."}, ensure_ascii=False)
+
+
+def test_push_handoff_uses_api_without_git(tmp_path, monkeypatch):
+    append_handoff("API", "тест без git", repo_root=tmp_path)
+    monkeypatch.setenv("VIU_GITHUB_TOKEN", "ghp_test")
+    calls = {}
+
+    def fake_api(path, content, *, message, token, repo=None, branch=None):
+        calls["path"] = path
+        calls["len"] = len(content)
+        return True, "ok api"
+
+    monkeypatch.setattr(
+        "viu.integrations.github.handoff.push_file_via_api",
+        fake_api,
+    )
+    ok, msg = push_handoff(repo_root=tmp_path, token="ghp_test")
+    assert ok
+    assert calls["path"] == "docs/CURSOR_HANDOFF.md"
+    assert "API" in append_handoff.__doc__ or ok
 
 
 def test_work_mode_calls_handoff_tool(tmp_path, monkeypatch):

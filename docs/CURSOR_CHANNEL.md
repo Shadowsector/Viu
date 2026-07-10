@@ -5,9 +5,9 @@
 ## Как работает
 
 1. Вью вызывает **`cursor_handoff_with_logs`** (или `cursor_handoff` + `cursor_push`).
-2. Текст попадает в **`docs/CURSOR_HANDOFF.md`** в репозитории Viu.
-3. При наличии **`VIU_GITHUB_TOKEN`** — commit + push на текущую ветку.
-4. Cloud Agent Cursor в GitHub читает handoff и может продолжить код/дизайн.
+2. Текст попадает в **`docs/CURSOR_HANDOFF.md`** локально и на GitHub.
+3. Push идёт через **GitHub API** — **локальный git не нужен** (zip-установка Viu без `.git` — норма).
+4. Cloud Agent Cursor читает handoff в репозитории.
 
 ## Настройка push
 

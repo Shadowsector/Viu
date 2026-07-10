@@ -11,6 +11,7 @@ from typing import Tuple
 
 from ...env_file import env_hint_for_token, github_token
 from ...updater import DEFAULT_BRANCH, DEFAULT_REPO, package_root
+from .api import push_file_via_api
 
 HANDOFF_REL = Path("docs/CURSOR_HANDOFF.md")
 
@@ -23,9 +24,18 @@ Cloud Agent читает этот файл в репозитории и може
 """
 
 
+def install_root() -> Path:
+    """Корень установки Viu (U:\\Viu) — parent каталога пакета viu/."""
+    return package_root()
+
+
 def handoff_path(repo_root: Path | None = None) -> Path:
-    root = repo_root or package_root()
+    root = repo_root or install_root()
     return (root / HANDOFF_REL).resolve()
+
+
+def is_git_repo(root: Path) -> bool:
+    return (root / ".git").is_dir()
 
 
 def append_handoff(
@@ -68,10 +78,36 @@ def _run_git(args: list[str], cwd: Path, *, timeout: float = 90.0) -> Tuple[int,
 
 
 def _current_branch(repo_root: Path) -> str:
-    code, out = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], repo_root)
-    if code == 0 and out.strip():
-        return out.strip()
+    if is_git_repo(repo_root):
+        code, out = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], repo_root)
+        if code == 0 and out.strip():
+            return out.strip()
     return os.environ.get("VIU_UPDATE_BRANCH", DEFAULT_BRANCH)
+
+
+def _push_handoff_git(
+    root: Path,
+    path: Path,
+    *,
+    message: str,
+    token: str,
+    branch: str,
+    repo: str,
+) -> Tuple[bool, str]:
+    rel = HANDOFF_REL.as_posix()
+    code, out = _run_git(["add", rel], root)
+    if code != 0:
+        return False, f"git add: {out or 'ошибка'}"
+
+    code, out = _run_git(["commit", "-m", message], root)
+    if code != 0 and "nothing to commit" not in out.lower():
+        return False, f"git commit: {out or 'ошибка'}"
+
+    push_url = f"https://x-access-token:{token}@github.com/{repo}.git"
+    code, out = _run_git(["push", push_url, f"HEAD:{branch}"], root, timeout=120.0)
+    if code != 0:
+        return False, f"git push: {out or 'ошибка'}"
+    return True, f"Handoff на GitHub ({branch}): {rel}"
 
 
 def push_handoff(
@@ -81,8 +117,8 @@ def push_handoff(
     branch: str | None = None,
     token: str | None = None,
 ) -> Tuple[bool, str]:
-    """git add + commit + push docs/CURSOR_HANDOFF.md."""
-    root = repo_root or package_root()
+    """Отправить docs/CURSOR_HANDOFF.md на GitHub (API — без локального git)."""
+    root = repo_root or install_root()
     path = handoff_path(root)
     if not path.is_file():
         return False, "Нет docs/CURSOR_HANDOFF.md — сначала cursor_handoff."
@@ -94,19 +130,33 @@ def push_handoff(
             f"Push не вышел — токен пуст. {env_hint_for_token()}"
         )
 
-    rel = HANDOFF_REL.as_posix()
-    code, out = _run_git(["add", rel], root)
-    if code != 0:
-        return False, f"git add: {out or 'ошибка'}"
-
-    code, out = _run_git(["commit", "-m", message], root)
-    if code != 0 and "nothing to commit" not in out.lower():
-        return False, f"git commit: {out or 'ошибка'}"
-
     br = branch or _current_branch(root)
     repo = os.environ.get("VIU_GITHUB_REPO", DEFAULT_REPO)
-    push_url = f"https://x-access-token:{token}@github.com/{repo}.git"
-    code, out = _run_git(["push", push_url, f"HEAD:{br}"], root, timeout=120.0)
-    if code != 0:
-        return False, f"git push: {out or 'ошибка'}"
-    return True, f"Handoff на GitHub ({br}): docs/CURSOR_HANDOFF.md"
+    content = path.read_text(encoding="utf-8")
+
+    # Zip-установка (типично у Дена) — без .git; GitHub Contents API.
+    if not is_git_repo(root):
+        return push_file_via_api(
+            HANDOFF_REL.as_posix(),
+            content,
+            message=message,
+            token=token,
+            repo=repo,
+            branch=br,
+        )
+
+    ok, msg = _push_handoff_git(root, path, message=message, token=token, branch=br, repo=repo)
+    if ok:
+        return ok, msg
+    # Fallback если git сломан
+    api_ok, api_msg = push_file_via_api(
+        HANDOFF_REL.as_posix(),
+        content,
+        message=message,
+        token=token,
+        repo=repo,
+        branch=br,
+    )
+    if api_ok:
+        return True, f"{api_msg}\n(git локально не сработал: {msg})"
+    return False, f"{msg}\nAPI: {api_msg}"

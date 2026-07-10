@@ -34,8 +34,8 @@ class CursorHandoffTool(Tool):
 class CursorPushTool(Tool):
     name = "cursor_push"
     description = (
-        "Закоммитить и push docs/CURSOR_HANDOFF.md на GitHub (нужен VIU_GITHUB_TOKEN). "
-        "После cursor_handoff."
+        "Закоммитить и push docs/CURSOR_HANDOFF.md на GitHub через API "
+        "(VIU_GITHUB_TOKEN; локальный git не нужен)."
     )
     parameters = {
         "message": "сообщение коммита (опционально)",
