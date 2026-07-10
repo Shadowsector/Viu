@@ -12,58 +12,87 @@ from typing import Any, Callable, Dict, List
 _MARK_BEGIN = "<<<VIU_EXPORT_JSON_BEGIN>>>"
 _MARK_END = "<<<VIU_EXPORT_JSON_END>>>"
 
-# Статичные меши: видимые MESH, без armature-анимации.
+# Статичные меши. Всегда печатает JSON-маркер (ok или error).
 EXPORT_BUILDING_SCRIPT = f'''
 import bpy
 import json
 import sys
+import traceback
 
-argv = sys.argv
-if "--" not in argv:
-    raise SystemExit("Нужен путь выхода после --")
-out_path = argv[argv.index("--") + 1]
+MARK_BEGIN = "{_MARK_BEGIN}"
+MARK_END = "{_MARK_END}"
 
-SKIP_PREFIX = ("WGT",)
-SKIP_TYPES = {{"CAMERA", "LIGHT", "SPEAKER"}}
 
-exported = []
-skipped = []
+def emit(payload):
+    print(MARK_BEGIN + json.dumps(payload, ensure_ascii=False) + MARK_END, flush=True)
 
-for obj in list(bpy.data.objects):
-    if obj.type in SKIP_TYPES:
-        skipped.append(obj.name)
-        continue
-    if obj.type != "MESH":
-        continue
-    if obj.hide_viewport or obj.hide_get():
-        skipped.append(obj.name)
-        continue
-    if any(obj.name.startswith(p) for p in SKIP_PREFIX):
-        skipped.append(obj.name)
-        continue
-    obj.select_set(True)
-    exported.append(obj.name)
 
-if not exported:
-    raise SystemExit("Нет видимых MESH для экспорта")
+try:
+    argv = sys.argv
+    if "--" not in argv:
+        raise RuntimeError("Нужен путь FBX после --")
+    out_path = argv[argv.index("--") + 1]
 
-bpy.context.view_layer.objects.active = bpy.data.objects[exported[0]]
+    SKIP_PREFIX = ("WGT",)
+    SKIP_TYPES = {{"CAMERA", "LIGHT", "SPEAKER", "EMPTY", "ARMATURE"}}
 
-bpy.ops.export_scene.fbx(
-    filepath=out_path,
-    use_selection=True,
-    object_types={{"MESH"}},
-    use_mesh_modifiers=True,
-    mesh_smooth_type="FACE",
-    apply_scale_options="FBX_SCALE_ALL",
-    bake_anim=False,
-    add_leaf_bones=False,
-    path_mode="COPY",
-    embed_textures=True,
-)
+    # Коллекции могли быть скрыты в prepare — для экспорта включаем.
+    for col in bpy.data.collections:
+        col.hide_viewport = False
 
-report = {{"output": out_path, "meshes": exported, "skipped": skipped}}
-print("{_MARK_BEGIN}" + json.dumps(report, ensure_ascii=False) + "{_MARK_END}")
+    exported = []
+    skipped = []
+
+    bpy.ops.object.select_all(action="DESELECT")
+
+    for obj in bpy.data.objects:
+        if obj.type in SKIP_TYPES:
+            skipped.append(obj.name)
+            continue
+        if obj.type != "MESH":
+            continue
+        try:
+            vis = obj.visible_get()
+        except Exception:
+            vis = not (obj.hide_viewport or obj.hide_get())
+        if not vis:
+            skipped.append(obj.name)
+            continue
+        if any(obj.name.startswith(p) for p in SKIP_PREFIX):
+            skipped.append(obj.name)
+            continue
+        obj.select_set(True)
+        exported.append(obj.name)
+
+    if not exported:
+        raise RuntimeError(
+            "Нет видимых MESH для экспорта. "
+            f"Пропущено: {{skipped[:12]}}…"
+        )
+
+    bpy.context.view_layer.objects.active = bpy.data.objects[exported[0]]
+
+    # Минимальный набор — совместим с Blender 3.x–5.x (без embed_textures).
+    bpy.ops.export_scene.fbx(
+        filepath=out_path,
+        use_selection=True,
+        object_types={{"MESH"}},
+        use_mesh_modifiers=True,
+        mesh_smooth_type="FACE",
+        apply_scale_options="FBX_SCALE_ALL",
+        bake_anim=False,
+        add_leaf_bones=False,
+    )
+
+    emit({{"ok": True, "output": out_path, "meshes": exported, "skipped": skipped}})
+
+except Exception as exc:
+    emit({{
+        "ok": False,
+        "error": str(exc),
+        "traceback": traceback.format_exc()[-1500:],
+    }})
+    raise SystemExit(2)
 '''
 
 
@@ -73,12 +102,16 @@ def build_export_command(
     script_path: str,
     output_fbx: str,
 ) -> List[str]:
+    """--factory-startup: без DAZ/Viu Bridge из user prefs (Den на Windows)."""
     return [
         blender_exe,
         "--background",
+        "--factory-startup",
         blend_file,
         "--python",
         script_path,
+        "--python-exit-code",
+        "2",
         "--",
         output_fbx,
     ]
@@ -88,8 +121,18 @@ def parse_export_json(stdout: str) -> Dict[str, Any]:
     start = stdout.find(_MARK_BEGIN)
     end = stdout.find(_MARK_END)
     if start == -1 or end == -1:
-        raise RuntimeError(f"Маркер экспорта не найден.\n{stdout[-2000:]}")
-    return json.loads(stdout[start + len(_MARK_BEGIN) : end])
+        raise RuntimeError(f"Маркер экспорта не найден.\n{stdout[-2500:]}")
+    data = json.loads(stdout[start + len(_MARK_BEGIN) : end])
+    if not data.get("ok", True):
+        err = data.get("error", "unknown")
+        tb = data.get("traceback", "")
+        raise RuntimeError(f"Blender export: {err}\n{tb}")
+    return data
+
+
+def _tail(text: str, limit: int = 2500) -> str:
+    text = (text or "").strip()
+    return text[-limit:] if len(text) > limit else text
 
 
 def export_building_fbx(
@@ -114,13 +157,19 @@ def export_building_fbx(
     try:
         cmd = build_export_command(blender_exe, str(blend), script_path, str(out))
         proc = runner(cmd, capture_output=True, text=True, timeout=timeout)
+        combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        if _MARK_BEGIN not in combined:
+            raise RuntimeError(
+                f"Маркер экспорта не найден (code {proc.returncode}).\n"
+                f"{_tail(combined)}"
+            )
+        report = parse_export_json(combined)
         if proc.returncode != 0:
             raise RuntimeError(
-                f"Blender export code {proc.returncode}\nstderr:\n{proc.stderr}\nstdout:\n{proc.stdout}"
+                f"Blender export code {proc.returncode}\n{_tail(combined)}"
             )
-        report = parse_export_json(proc.stdout)
         if not out.is_file():
-            raise RuntimeError(f"FBX не создан: {out}")
+            raise RuntimeError(f"FBX не создан: {out}\n{_tail(combined)}")
         report["output"] = str(out)
         return report
     finally:
