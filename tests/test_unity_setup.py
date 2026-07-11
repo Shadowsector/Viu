@@ -33,6 +33,7 @@ def test_deploy_shanya_setup(tmp_path):
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaFollowCamera.cs").is_file()
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaDesktopOverlay.cs").is_file()
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaOverlayDepth.cs").is_file()
+    assert (tmp_path / "Assets/Scripts/Viu/DollhouseWall.cs").is_file()
     assert (tmp_path / "Assets/Characters/Shanya/Animations/viu_clips.json").is_file()
     assert "ShanyaSetup" in msg or "ShanyaAnimationSync" in msg
     ok, _ = editor_scripts_healthy(tmp_path)
@@ -95,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 13" in text
+    assert "@viu-deploy-rev 15" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -111,8 +112,13 @@ def test_overlay_templates(tmp_path):
     assert "fullScreenOverlay" in (root / "ShanyaDesktopOverlay.cs").read_text(encoding="utf-8")
     setup = (root / "ShanyaOverlaySetup.cs").read_text(encoding="utf-8")
     assert "OverlayDesktop.unity" in setup
+    assert "EnsureHomeBuilding" in setup
+    assert "EnvironmentRoot" in setup
     assert "BuildWindowsBatch" in setup
     assert "AnabarraOverlay.exe" in setup
+    dollhouse = (root / "DollhouseWall.cs").read_text(encoding="utf-8")
+    assert "Wall_front" in dollhouse
+    assert "SetAtHome" in dollhouse
 
     from viu.integrations.unity.overlay_tune import load_tune, write_tune_lane
 

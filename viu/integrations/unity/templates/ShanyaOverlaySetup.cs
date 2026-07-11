@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -16,14 +17,16 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 14
+        // @viu-deploy-rev 15
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
+        const string EnvironmentRoot = "Assets/Environment";
         const float TargetHeightMeters = 1.77f;
         const float GroundSinkMeters = 0.03f;
         const float FeetLiftMeters = 0.006f;
         const float CameraOrthoHalfHeight = 5.5f;
+        const float HomeShanyaZBias = 0.18f;
 
         [MenuItem("Viu/Overlay/Prepare Overlay Scene")]
         public static void RunMenu() => Run(ScenePath);
@@ -151,13 +154,17 @@ namespace Viu.Editor
             try { ShanyaOutfit.Apply(ShanyaOutfit.Mode.Dressed); }
             catch (Exception e) { Debug.LogWarning("[Viu] Outfit: " + e.Message); }
             EnsureLocomotion(instance);
+            var home = EnsureHomeBuilding();
             EnsureOverlayEnvironment(instance);
             SnapFeetToGround(instance);
             LiftFeet(instance, FeetLiftMeters);
+            if (home != null)
+                PositionShanyaInHome(instance, home);
             EnsureOverlayManager();
             AssetDatabase.SaveAssets();
             SaveActiveScene(saveScenePath);
-            Debug.Log("[Viu] Overlay scene готова: " + saveScenePath);
+            var homeNote = home != null ? " + дом" : "";
+            Debug.Log("[Viu] Overlay scene готова" + homeNote + ": " + saveScenePath);
         }
 
         static void EnsureOverlayManager()
@@ -358,6 +365,175 @@ namespace Viu.Editor
                 if (t.name.StartsWith("WGT") || t.name.StartsWith("WGT."))
                     t.gameObject.SetActive(false);
             }
+        }
+
+        /// <summary>Ставит сарай из Assets/Environment/ в сцену оверлея.</summary>
+        static GameObject EnsureHomeBuilding()
+        {
+            if (!TryFindHomeFbx(out var fbxPath, out var metaAssetPath))
+            {
+                Debug.LogWarning(
+                    "[Viu] Дом не найден. Экспорт сарая → Assets/Environment/<slug>/, потом Prepare Overlay снова.");
+                return null;
+            }
+
+            EnsureBuildingImport(fbxPath);
+
+            var rootName = "Viu_Home_" + Path.GetFileNameWithoutExtension(fbxPath);
+            var existing = GameObject.Find(rootName);
+            GameObject home;
+            if (existing != null)
+            {
+                home = existing;
+            }
+            else
+            {
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(fbxPath);
+                if (prefab == null)
+                {
+                    Debug.LogWarning("[Viu] Не загрузился FBX дома: " + fbxPath);
+                    return null;
+                }
+                home = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+                home.name = rootName;
+                home.transform.position = Vector3.zero;
+                home.transform.rotation = Quaternion.identity;
+            }
+
+            SnapBuildingToGround(home);
+
+            var dollhouse = home.GetComponent<Viu.Runtime.DollhouseWall>();
+            if (dollhouse == null)
+                dollhouse = home.AddComponent<Viu.Runtime.DollhouseWall>();
+            dollhouse.wallMeshName = LoadDollhouseWallFromMeta(metaAssetPath);
+            dollhouse.atHome = true;
+            dollhouse.Apply();
+
+            Debug.Log("[Viu] Дом в overlay: " + fbxPath + ", стенка «" + dollhouse.wallMeshName + "» скрыта.");
+            return home;
+        }
+
+        static bool TryFindHomeFbx(out string fbxPath, out string metaAssetPath)
+        {
+            fbxPath = null;
+            metaAssetPath = null;
+            if (!AssetDatabase.IsValidFolder(EnvironmentRoot))
+                return false;
+
+            var candidates = new List<(int score, string fbx, string meta)>();
+            foreach (var guid in AssetDatabase.FindAssets("t:Model", new[] { EnvironmentRoot }))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var dir = Path.GetDirectoryName(path)?.Replace('\\', '/') ?? "";
+                var slug = Path.GetFileName(dir);
+                var meta = dir + "/" + slug + ".viu.json";
+
+                var score = 0;
+                if (slug.IndexOf("Stables", StringComparison.OrdinalIgnoreCase) >= 0) score += 10;
+                if (slug.IndexOf("Old", StringComparison.OrdinalIgnoreCase) >= 0) score += 5;
+                if (File.Exists(Path.GetFullPath(Path.Combine(Application.dataPath, "..", meta))))
+                    score += 3;
+
+                candidates.Add((score, path, meta));
+            }
+
+            if (candidates.Count == 0)
+                return false;
+
+            candidates.Sort((a, b) => b.score.CompareTo(a.score));
+            fbxPath = candidates[0].fbx;
+            metaAssetPath = candidates[0].meta;
+            return true;
+        }
+
+        static void EnsureBuildingImport(string assetPath)
+        {
+            var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+            if (importer == null) return;
+
+            var changed = false;
+            if (importer.importAnimation)
+            {
+                importer.importAnimation = false;
+                changed = true;
+            }
+            if (importer.animationType != ModelImporterAnimationType.None)
+            {
+                importer.animationType = ModelImporterAnimationType.None;
+                changed = true;
+            }
+            if (changed)
+                importer.SaveAndReimport();
+        }
+
+        [Serializable]
+        class ViuBuildingMeta
+        {
+            public string dollhouse_wall;
+        }
+
+        static string LoadDollhouseWallFromMeta(string metaAssetPath)
+        {
+            if (string.IsNullOrEmpty(metaAssetPath))
+                return "Wall_front";
+
+            var full = Path.GetFullPath(Path.Combine(Application.dataPath, "..", metaAssetPath));
+            if (!File.Exists(full))
+                return "Wall_front";
+
+            try
+            {
+                var json = File.ReadAllText(full);
+                var meta = JsonUtility.FromJson<ViuBuildingMeta>(json);
+                if (!string.IsNullOrWhiteSpace(meta?.dollhouse_wall))
+                    return meta.dollhouse_wall.Trim();
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[Viu] viu.json дома: " + e.Message);
+            }
+
+            return "Wall_front";
+        }
+
+        static void SnapBuildingToGround(GameObject root)
+        {
+            var bounds = ComputeWorldBounds(root);
+            if (bounds.size.sqrMagnitude < 0.0001f)
+                return;
+
+            var pos = root.transform.position;
+            pos.y -= bounds.min.y;
+            root.transform.position = pos;
+        }
+
+        static void PositionShanyaInHome(GameObject shanya, GameObject home)
+        {
+            var bounds = ComputeWorldBounds(home);
+            if (bounds.size.sqrMagnitude < 0.0001f)
+                return;
+
+            var pos = shanya.transform.position;
+            pos.x = bounds.center.x;
+            pos.z = bounds.center.z + bounds.extents.z * HomeShanyaZBias;
+            shanya.transform.position = pos;
+            SnapFeetToGround(shanya);
+            LiftFeet(shanya, FeetLiftMeters);
+        }
+
+        static Bounds ComputeWorldBounds(GameObject root)
+        {
+            var renderers = root.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0)
+                return new Bounds(root.transform.position, Vector3.zero);
+
+            var bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+                bounds.Encapsulate(renderers[i].bounds);
+            return bounds;
         }
     }
 }
