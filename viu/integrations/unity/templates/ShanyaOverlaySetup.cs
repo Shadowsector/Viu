@@ -17,18 +17,19 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 21
+        // @viu-deploy-rev 22
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
         const string EnvironmentRoot = "Assets/Environment";
         const float TargetHeightMeters = 1.77f;
-        const float HomeTargetHeightMeters = 4.8f;
+        const float HomeTargetHeightMeters = 3.6f;
         const float GroundSinkMeters = 0.03f;
         const float FeetLiftMeters = 0.006f;
-        const float CameraOrthoHalfHeight = 5.5f;
-        const float HomeShanyaZBias = 0.18f;
+        /// <summary>Меньше = Шаня крупнее на экране. 5.5 делало её точкой.</summary>
+        const float CameraOrthoHalfHeight = 2.15f;
+        const float HomeShanyaZBias = 0.12f;
 
         [MenuItem("Viu/Overlay/Prepare Overlay Scene")]
         public static void RunMenu() => Run(ScenePath);
@@ -165,6 +166,7 @@ namespace Viu.Editor
 
             var instance = PlaceCharacterInScene(modelPath, controller, avatar);
             DisableWgtMeshes(instance);
+            FixOverlayMaterials(instance); // персонаж тоже — иначе куски magenta
             try { ShanyaOutfit.Apply(ShanyaOutfit.Mode.Dressed); }
             catch (Exception e) { Debug.LogWarning("[Viu] Outfit: " + e.Message); }
             EnsureLocomotion(instance);
@@ -208,26 +210,24 @@ namespace Viu.Editor
         {
             RenderSettings.skybox = null;
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.92f, 0.92f, 0.92f);
-            EnsureInvisibleFloor();
+            RenderSettings.ambientLight = new Color(0.85f, 0.82f, 0.78f);
+            DestroyInvisibleFloor();
             EnsureLighting();
             ScaleToHeight(shanya, TargetHeightMeters);
             EnsureOverlayCamera(shanya.transform);
         }
 
-        static void EnsureInvisibleFloor()
+        /// <summary>
+        /// Раньше Plane с выключенным Renderer всё равно иногда светился серым квадратом.
+        /// </summary>
+        static void DestroyInvisibleFloor()
         {
             var floor = GameObject.Find("Viu_Floor");
-            if (floor == null)
-            {
-                floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
-                floor.name = "Viu_Floor";
-                floor.transform.position = Vector3.zero;
-                floor.transform.localScale = new Vector3(4f, 1f, 1f);
-            }
-            foreach (var r in floor.GetComponentsInChildren<Renderer>())
-                r.enabled = false;
+            if (floor != null)
+                UnityEngine.Object.DestroyImmediate(floor);
         }
+
+        static void EnsureInvisibleFloor() => DestroyInvisibleFloor();
 
         static void EnsureOverlayCamera(Transform target)
         {
@@ -351,10 +351,15 @@ namespace Viu.Editor
         static void EnsureLighting()
         {
             var light = UnityEngine.Object.FindFirstObjectByType<Light>();
-            if (light == null) return;
+            if (light == null)
+            {
+                var go = new GameObject("Viu_KeyLight");
+                light = go.AddComponent<Light>();
+            }
             light.type = LightType.Directional;
-            light.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
-            light.intensity = 1.1f;
+            light.transform.rotation = Quaternion.Euler(42f, -35f, 0f);
+            light.intensity = 1.25f;
+            light.color = new Color(1f, 0.96f, 0.9f);
         }
 
         static void ScaleToHeight(GameObject root, float targetHeight)
@@ -519,45 +524,97 @@ namespace Viu.Editor
         }
 
         /// <summary>
-        /// Missing/Built-in Standard → magenta в Player; chroma-key съедал весь сарай.
-        /// Перешиваем на URP Lit, если доступен.
+        /// Standard/Error → magenta void в Player. Материалы сохраняем как ассеты,
+        /// иначе new Material() не переживает build. Fallback: URP Unlit дерево.
         /// </summary>
         static void FixOverlayMaterials(GameObject root)
         {
-            var urp = Shader.Find("Universal Render Pipeline/Lit")
+            var lit = Shader.Find("Universal Render Pipeline/Lit")
                 ?? Shader.Find("Universal Render Pipeline/Simple Lit");
-            if (urp == null)
+            var unlit = Shader.Find("Universal Render Pipeline/Unlit")
+                ?? Shader.Find("Unlit/Color")
+                ?? Shader.Find("Sprites/Default");
+            if (lit == null && unlit == null)
             {
-                Debug.LogWarning("[Viu] URP Lit не найден — дом может исчезнуть из-за chroma-key.");
+                Debug.LogError("[Viu] Нет URP/Unlit шейдеров — дом будет magenta.");
                 return;
             }
+
+            const string matFolder = "Assets/Environment/ViuOverlayMats";
+            EnsureAssetFolder(matFolder);
 
             int fixedN = 0;
             foreach (var r in root.GetComponentsInChildren<Renderer>(true))
             {
                 if (r == null) continue;
                 var mats = r.sharedMaterials;
-                if (mats == null || mats.Length == 0) continue;
+                if (mats == null || mats.Length == 0)
+                {
+                    // Пустой слот → хотя бы unlit дерево, не Error magenta
+                    if (unlit != null)
+                    {
+                        var fallback = LoadOrCreateSolidMat(matFolder, "viu_wood", unlit, new Color(0.45f, 0.32f, 0.22f));
+                        r.sharedMaterial = fallback;
+                        fixedN++;
+                    }
+                    continue;
+                }
+
                 var changed = false;
                 for (int i = 0; i < mats.Length; i++)
                 {
                     var m = mats[i];
-                    if (m == null) continue;
-                    var sn = m.shader != null ? m.shader.name : "";
-                    if (sn.IndexOf("Universal Render Pipeline", StringComparison.OrdinalIgnoreCase) >= 0
-                        && sn.IndexOf("Error", StringComparison.OrdinalIgnoreCase) < 0)
-                        continue;
-                    // Standard / Error / HDRP / пустой → URP Lit
-                    var copy = new Material(urp);
-                    if (m.HasProperty("_MainTex") && copy.HasProperty("_BaseMap"))
-                        copy.SetTexture("_BaseMap", m.GetTexture("_MainTex"));
-                    else if (m.HasProperty("_BaseMap") && copy.HasProperty("_BaseMap"))
-                        copy.SetTexture("_BaseMap", m.GetTexture("_BaseMap"));
-                    if (m.HasProperty("_Color") && copy.HasProperty("_BaseColor"))
-                        copy.SetColor("_BaseColor", m.GetColor("_Color"));
-                    else if (m.HasProperty("_BaseColor") && copy.HasProperty("_BaseColor"))
-                        copy.SetColor("_BaseColor", m.GetColor("_BaseColor"));
-                    copy.name = m.name + "_URP";
+                    var sn = m != null && m.shader != null ? m.shader.name : "";
+                    bool bad = m == null
+                        || string.IsNullOrEmpty(sn)
+                        || sn.IndexOf("Error", StringComparison.OrdinalIgnoreCase) >= 0
+                        || sn.IndexOf("Hidden/InternalErrorShader", StringComparison.OrdinalIgnoreCase) >= 0
+                        || sn.IndexOf("Standard", StringComparison.OrdinalIgnoreCase) >= 0
+                        || sn.IndexOf("Legacy", StringComparison.OrdinalIgnoreCase) >= 0
+                        || (sn.IndexOf("Universal Render Pipeline", StringComparison.OrdinalIgnoreCase) < 0
+                            && sn.IndexOf("Unlit", StringComparison.OrdinalIgnoreCase) < 0
+                            && sn.IndexOf("Sprites", StringComparison.OrdinalIgnoreCase) < 0);
+
+                    if (!bad) continue;
+
+                    var shader = lit ?? unlit;
+                    var safeName = "viu_" + (m != null ? m.name : "slot" + i);
+                    safeName = string.Join("_", safeName.Split(System.IO.Path.GetInvalidFileNameChars()));
+                    if (safeName.Length > 40) safeName = safeName.Substring(0, 40);
+                    var path = matFolder + "/" + safeName + ".mat";
+
+                    Material copy = AssetDatabase.LoadAssetAtPath<Material>(path);
+                    if (copy == null)
+                    {
+                        copy = new Material(shader);
+                        // Текстуры/цвет с исходника, иначе коричневый unlit
+                        bool gotTex = false;
+                        if (m != null)
+                        {
+                            if (m.HasProperty("_MainTex") && copy.HasProperty("_BaseMap"))
+                            {
+                                var t = m.GetTexture("_MainTex");
+                                if (t != null) { copy.SetTexture("_BaseMap", t); gotTex = true; }
+                            }
+                            if (m.HasProperty("_BaseMap") && copy.HasProperty("_BaseMap"))
+                            {
+                                var t = m.GetTexture("_BaseMap");
+                                if (t != null) { copy.SetTexture("_BaseMap", t); gotTex = true; }
+                            }
+                            if (m.HasProperty("_Color") && copy.HasProperty("_BaseColor"))
+                                copy.SetColor("_BaseColor", m.GetColor("_Color"));
+                            else if (m.HasProperty("_BaseColor") && copy.HasProperty("_BaseColor"))
+                                copy.SetColor("_BaseColor", m.GetColor("_BaseColor"));
+                            else if (copy.HasProperty("_BaseColor") && !gotTex)
+                                copy.SetColor("_BaseColor", new Color(0.45f, 0.32f, 0.22f));
+                            if (copy.HasProperty("_Color") && !gotTex)
+                                copy.SetColor("_Color", new Color(0.45f, 0.32f, 0.22f));
+                        }
+                        else if (copy.HasProperty("_BaseColor"))
+                            copy.SetColor("_BaseColor", new Color(0.45f, 0.32f, 0.22f));
+
+                        AssetDatabase.CreateAsset(copy, path);
+                    }
                     mats[i] = copy;
                     changed = true;
                     fixedN++;
@@ -565,19 +622,45 @@ namespace Viu.Editor
                 if (changed)
                     r.sharedMaterials = mats;
             }
-            if (fixedN > 0)
-                Debug.Log("[Viu] Дом: перешил материалов на URP: " + fixedN);
+            AssetDatabase.SaveAssets();
+            Debug.Log("[Viu] Дом: материалов починено/сохранено: " + fixedN);
+        }
+
+        static Material LoadOrCreateSolidMat(string folder, string name, Shader shader, Color color)
+        {
+            var path = folder + "/" + name + ".mat";
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (mat != null) return mat;
+            mat = new Material(shader);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", color);
+            AssetDatabase.CreateAsset(mat, path);
+            return mat;
+        }
+
+        static void EnsureAssetFolder(string assetPath)
+        {
+            if (AssetDatabase.IsValidFolder(assetPath)) return;
+            var parts = assetPath.Split('/');
+            var cur = parts[0];
+            for (int i = 1; i < parts.Length; i++)
+            {
+                var next = cur + "/" + parts[i];
+                if (!AssetDatabase.IsValidFolder(next))
+                    AssetDatabase.CreateFolder(cur, parts[i]);
+                cur = next;
+            }
         }
 
         static void ScaleHomeToHeight(GameObject root, float targetHeight)
         {
+            // Сброс кривого scale от прошлых прогонов
+            root.transform.localScale = Vector3.one;
             var bounds = ComputeWorldBounds(root);
             if (bounds.size.y < 0.05f) return;
             float factor = targetHeight / bounds.size.y;
             if (factor < 0.001f || factor > 500f) return;
-            // Уже примерно нужный размер — не трогаем
-            if (factor > 0.7f && factor < 1.4f) return;
-            root.transform.localScale *= factor;
+            root.transform.localScale = Vector3.one * factor;
         }
 
         static bool TryFindHomeFbx(out string fbxPath, out string metaAssetPath)

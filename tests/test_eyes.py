@@ -26,4 +26,5 @@ def test_registry_has_eyes():
 def test_looks_bad():
     assert _looks_bad("Вердикт: BROKEN_IDLE тело искажено")
     assert _looks_bad("нет дома на фоне")
-    assert not _looks_bad("Вердикт: OK всё видно")
+    assert _looks_bad("2. Дом/сарай не виден на фоне.\n4. Вердикт: OK")
+    assert not _looks_bad("Персонаж и сарай видны. Вердикт: OK")

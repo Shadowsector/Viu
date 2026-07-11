@@ -139,6 +139,11 @@ class VisionObserveTool(Tool):
 
 def _looks_bad(vision_text: str) -> bool:
     low = vision_text.lower()
+    # Сначала явные провалы (даже если модель написала «Вердикт: OK»)
+    if ("дом" in low or "сарай" in low) and (
+        "не вид" in low or "нет дома" in low or "отсутств" in low or "no_home" in low
+    ):
+        return True
     for token in (
         "broken_idle",
         "no_home",
@@ -150,11 +155,10 @@ def _looks_bad(vision_text: str) -> bool:
         "сломан",
         "нет дома",
         "не виден",
+        "magenta",
         "t-pose",
         "t pose",
     ):
         if token in low:
             return True
-    if "вердикт" in low and "ok" in low and "broken" not in low:
-        return False
     return False

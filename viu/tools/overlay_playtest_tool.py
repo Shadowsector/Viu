@@ -178,12 +178,32 @@ class OverlayPlaytestTool(Tool):
                 if not g_ok and eye.get("capture_ok"):
                     lines.append("(скрин локально — Cursor заберёт через support/handoff)")
             eye_low = (eye.get("vision") or "").lower()
-            if any(
+            eyes_bad = any(
                 t in eye_low
-                for t in ("broken", "no_home", "no_character", "no_overlay", "искажен", "корёж")
+                for t in (
+                    "broken",
+                    "no_home",
+                    "no_character",
+                    "no_overlay",
+                    "искажен",
+                    "корёж",
+                    "кореж",
+                    "не виден",
+                    "нет дома",
+                    "сарай не",
+                    "дом/сарай не",
+                    "magenta",
+                    "розов",
+                )
+            )
+            # llava часто пишет «Вердикт: OK» при «дом не виден» — не верь OK
+            if ("дом" in eye_low or "сарай" in eye_low) and (
+                "не вид" in eye_low or "нет " in eye_low or "отсутств" in eye_low
             ):
+                eyes_bad = True
+            if eyes_bad:
                 if verdict.startswith("OK:"):
-                    verdict = "WARN: boot OK, но eyes видят проблему — см. --- eyes ---"
+                    verdict = "WARN: eyes — дом/персонаж криво (см. --- eyes ---). Дена не спрашивать."
                     lines.append("--- вердикт (после eyes) ---")
                     lines.append(verdict)
         except Exception as exc:  # noqa: BLE001

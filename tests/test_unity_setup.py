@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 21" in text
+    assert "@viu-deploy-rev 22" in text
 
 
 def test_overlay_templates(tmp_path):
