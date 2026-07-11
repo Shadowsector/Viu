@@ -319,3 +319,84 @@ Cloud Agent читает этот файл в репозитории и може
 ## 2026-07-11 01:08 — Старт с Cursor (Viu)
 
 Размышления Вью про Шаню и игру.
+
+
+---
+
+## 2026-07-11 11:24 — direct `overlay_playtest` → done (Viu)
+
+Unity close: Unity.exe не запущен.
+Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs
+ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs
+Уже есть: U:\Anabarra\Unity\Anabarra\Assets\Characters\Shanya\Animations\viu_clips.json
+Сборка OK: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\AnabarraOverlay.exe
+--- build ---
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs
+[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe
+[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\..\Builds/AnabarraOverlay\LaunchOverlay.bat
+Запуск: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\LaunchOverlay.bat
+--- overlay_boot.log ---
+ue err=0
+11:24:15 SetLayeredWindowAttributes=True err=0
+11:24:15 SetLayeredWindowAttributes=True err=0
+11:24:16 SetLayeredWindowAttributes=True err=0
+11:24:16 SetLayeredWindowAttributes=True err=0
+11:24:16 SetLayeredWindowAttributes=True err=0
+11:24:16 SetLayeredWindowAttributes=True err=0
+11:24:16 SetLayeredWindowAttributes=True err=0
+11:24:16 SetLayeredWindowAttributes=True err=0
+11:24:17 SetLayeredWindowAttributes=True err=0
+11:24:17 SetLayeredWindowAttributes=True err=0
+11:24:17 SetLayeredWindowAttributes=True err=0
+11:24:17 SetLayeredWindowAttributes=True err=0
+11:24:17 SetLayeredWindowAttributes=True err=0
+11:24:17 SetLayeredWindowAttributes=True err=0
+11:24:17 SetLayeredWindowAttributes=True err=0
+11:24:18 SetLayeredWindowAttributes=True err=0
+11:24:18 SetLayeredWindowAttributes=True err=0
+11:24:18 SetLayeredWindowAttributes=True err=0
+11:24:18 SetLayeredWindowAttributes=True err=0
+11:24:18 SetLayeredWindowAttributes=True err=0
+11:24:18 SetLayeredWindowAttributes=True err=0
+11:24:19 SetLayeredWindowAttributes=True err=0
+11:24:19 SetLayeredWindowAttributes=True err=0
+11:24:19 SetLayeredWindowAttributes=True err=0
+11:24:19 SetLayeredWindowAttributes=True err=0
+11:24:19 SetLayeredWindowAttributes=True err=0
+11:24:19 SetLayeredWindowAttributes=True err=0
+11:24:20 SetLayeredWindowAttributes=True err=0
+11:24:20 SetLayeredWindowAttributes=True err=0
+11:24:20 SetLayeredWindowAttributes=True err=0
+11:24:20 SetLayeredWindowAttributes=True err=0
+11:24:20 SetLayeredWindowAttributes=True err=0
+11:24:20 SetLayeredWindowAttributes=True err=0
+11:24:20 SetLayeredWindowAttributes=True err=0
+11:24:21 SetLayeredWindowAttributes=True err=0
+11:24:21 SetLayeredWindowAttributes=True err=0
+11:24:21 SetLayeredWindowAttributes=True err=0
+11:24:21 SetLayeredWindowAttributes=True err=0
+11:24:21 SetLayeredWindowAttributes=True err=0
+11:24:21 SetLayeredWindowAttributes=True err=0
+11:24:22 SetLayeredWindowAttributes=True err=0
+11:24:22 SetLayeredWindowAttributes=True err=0
+11:24:22 SetLayeredWindowAttributes=True err=0
+11:24:22 SetLayeredWindowAttributes=True err=0
+11:24:22 SetLayeredWindowAttributes=True err=0
+11:24:22 SetLayeredWindowAttributes=True err=0
+11:24:23 SetLayeredWindowAttributes=True err=0
+11:24:23 SetLayeredWindowAttributes=True err=0
+11:24:23 SetLayeredWindowAttributes=True err=0
+11:24:23 SetLayeredWindowAttributes=True err=0
+11:24:23 SetLayeredWindowAttributes=True err=0
+11:24:23 SetLayeredWindowAttributes=True err=0
+11:24:24 SetLayeredWindowAttributes=True err=0
+
+--- вердикт ---
+WARN: прозрачность ок, но Шаня не в сцене.
+Support bundle: U:\Viu\.viu\support\viu_logs_20260711_112424.zip
+Логи отправлены: https://gist.github.com/Shadowsector/45983b9fc1d6e6810a0c224e7cc6a481
