@@ -558,3 +558,48 @@ OK: HWND + ColorKey. Смотри рабочий стол — Шаня/дом д
 Unity Editor снова открыт для Дена.
 Support bundle: U:\Viu\.viu\support\viu_logs_20260711_123605.zip
 Логи отправлены: https://gist.github.com/Shadowsector/b75fee34fd02a9652ef2cf6a0db842f4
+
+
+---
+
+## 2026-07-11 12:57 — direct `overlay_playtest` → done (Viu)
+
+Unity close: Unity.exe не запущен.
+Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs
+ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs
+Уже есть: U:\Anabarra\Unity\Anabarra\Assets\Characters\Shanya\Animations\viu_clips.json
+Сборка OK: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\AnabarraOverlay.exe
+--- build ---
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs
+[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe
+[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\..\Builds/AnabarraOverlay\LaunchOverlay.bat
+Запуск: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\LaunchOverlay.bat
+--- overlay_boot.log ---
+﻿12:56:27 Awake: renderers=5063/5064 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048
+12:56:28 Start args=AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow
+12:56:28 HWND ok
+12:56:28 Geometry 2560x1440 at 0,0
+12:56:28 SetLayeredWindowAttributes=True err=0
+12:56:28 ColorKey pass 1, Esc=выход
+12:56:28 AfterWindow: renderers=5063/5064 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048
+
+--- вердикт ---
+OK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.
+--- eyes ---
+Скрин 2560x1440 → U:\Viu\.viu\shots\overlay_eye_20260711_125642.png
+shot: U:\Viu\.viu\shots\overlay_eye_20260711_125642.png
+[llava:latest]
+1. Персонаж виден нормально на фоне зелёной кrajiny.
+2. Дом/сарай не виден на fone zелены кrajiny.
+3. Это оверley на рабочем столе Unity Editor, а не на экране игры.
+4. Verдикт: OK
+eye gist: Handoff в приватном Gist:
+https://gist.github.com/Shadowsector/ced0a9542d2f9b98cdcb5b979fbce3f7
+Unity Editor снова открыт.
+Support bundle: U:\Viu\.viu\support\viu_logs_20260711_125655.zip
+Логи отправлены: https://gist.github.com/Shadowsector/540ea9998dfdf3d10e3d6eee2da1cbbc
