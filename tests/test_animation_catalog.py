@@ -7,7 +7,7 @@ from viu.animation_catalog import (
     animation_catalog_path,
     match_fbx_to_wish,
 )
-from viu.animation_catalog.models import DEFAULT_WISHES, DEFAULT_SCOPE
+from viu.animation_catalog.models import DEFAULT_SCOPE, DEFAULT_WISHES, applies_to_shanya, normalize_scope
 from viu.config import Config
 from viu.drop_router import accept_single_animation, is_character_animation_fbx, route_inbox
 
@@ -93,6 +93,15 @@ def test_route_inbox_skips_animation(tmp_path, monkeypatch):
         os.environ.pop("VIU_UNITY_PROJECT", None)
 
 
-def test_is_animation_not_barn():
+def test_scope_female_includes_shanya():
+    assert normalize_scope("humanoid_female") == "female_humanoid"
+    assert applies_to_shanya("female_humanoid")
+    assert applies_to_shanya("shanya_only")
+    assert not applies_to_shanya("humanoid_npc_female")
+    assert not applies_to_shanya("humanoid_any")
+
+
+def test_default_scope_is_female_humanoid():
+    assert DEFAULT_SCOPE == "female_humanoid"
     assert is_character_animation_fbx(Path("Fast Run.fbx"))
     assert not is_character_animation_fbx(Path("Old_Stables.fbx"))

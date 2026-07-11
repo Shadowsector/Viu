@@ -9,7 +9,7 @@ from tkinter import messagebox, ttk
 from typing import Any, Callable, Optional
 
 from .categories import ANIMATION_CATEGORIES, category_label
-from .models import ANIMATION_SCOPES, DEFAULT_SCOPE, AnimationImportReview
+from .models import ANIMATION_SCOPES, DEFAULT_SCOPE, normalize_scope, scope_save_warning, AnimationImportReview
 from .store import AnimationCatalogStore
 
 
@@ -42,7 +42,11 @@ class AnimationReviewWindow:
 
         ttk.Label(
             body,
-            text="Проверь scope и описание — Viu не подставит клип Шане, если scope ≠ «Только Шаня».",
+            text=(
+                "Scope «Девушки-biped (Шаня + NPC)» — для Mixamo у всех девушек, "
+                "включая Шаню. «Только Шаня» — уникальное. "
+                "«NPC без Шани» — осознанно не на главную."
+            ),
             wraplength=760,
             font=("Segoe UI", 9),
         ).pack(anchor="w", pady=(0, 8))
@@ -186,8 +190,9 @@ class AnimationReviewWindow:
         scope_cb = self._field_rows["scope"]
         if isinstance(scope_cb, ttk.Combobox):
             keys = list(ANIMATION_SCOPES.keys())
+            norm = normalize_scope(r.scope)
             try:
-                scope_cb.current(keys.index(r.scope or DEFAULT_SCOPE))
+                scope_cb.current(keys.index(norm))
             except ValueError:
                 scope_cb.current(0)
             self._on_scope_change()
@@ -208,7 +213,7 @@ class AnimationReviewWindow:
             r.category = self._combo_key(cat_cb)
         scope_cb = self._field_rows["scope"]
         if isinstance(scope_cb, ttk.Combobox):
-            r.scope = self._combo_key(scope_cb)
+            r.scope = normalize_scope(self._combo_key(scope_cb))
         r.animator_state = self._get_entry("animator_state") or r.animator_state
         r.when_used = self._get_text("when_used")
         r.looks_like = self._get_text("looks_like")
@@ -241,13 +246,10 @@ class AnimationReviewWindow:
         review = self._collect_review()
         if review is None:
             return False
-        if review.scope != DEFAULT_SCOPE:
-            if not messagebox.askyesno(
-                "Scope не Шаня",
-                f"Scope = {review.scope}.\n"
-                "Клип не попадёт в Shanya Animator автоматически.\n"
-                "Сохранить?",
-            ):
+        review.scope = normalize_scope(review.scope)
+        warn = scope_save_warning(review.scope)
+        if warn:
+            if not messagebox.askyesno("Scope", f"{warn}\n\nСохранить всё равно?"):
                 return False
         wish = self.store.confirm_pending(review)
         self._write_viu_clips_override(review, wish.clip_file)

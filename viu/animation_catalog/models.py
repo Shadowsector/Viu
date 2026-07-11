@@ -14,27 +14,67 @@ STATUS_IMPORTED = "imported"
 STATUS_LINKED = "linked"  # в Animator
 STATUS_PENDING_REVIEW = "pending_review"
 
-# Кому можно назначать клип (Viu не подмешает в Shanya controller чужое).
+# Кому назначается клип. applies_to_shanya() — попадёт в Shanya_Idle_Stand.controller.
 ANIMATION_SCOPES: Dict[str, Tuple[str, str]] = {
-    "shanya_humanoid": (
-        "Только Шаня (humanoid)",
-        "Риг Shanya_Erisa / тот же Humanoid map. Не NPC, не четвероногие, не мужские модели.",
+    "female_humanoid": (
+        "Девушки-biped (Шаня + NPC)",
+        "Female Humanoid (Mixamo). Идёт в Animator Шани и в общий пул для всех девушек игры.",
     ),
-    "humanoid_female": (
-        "Женщины-biped",
-        "Другие female humanoid NPC — отдельная модель, тот же тип скелета.",
+    "shanya_only": (
+        "Только Шаня (уникальное)",
+        "Только главная героиня — не предлагать NPC автоматически (особая походка, NSFW…).",
+    ),
+    "humanoid_npc_female": (
+        "NPC: девушки (без Шани)",
+        "Female biped, но осознанно не кладём на Shanya_Erisa — отдельный prefab позже.",
     ),
     "humanoid_any": (
-        "Любой biped humanoid",
-        "М/ж humanoid — не для Шани по умолчанию, отдельный prefab.",
+        "Любой biped (м/ж)",
+        "Универсальный humanoid — мужские NPC, общие клипы. Пока не в Animator Шани.",
     ),
     "creature_quadruped": (
         "Четвероногие",
-        "Не для Шани. Другой каталог/Animator — Viu сюда не подставляет в Shanya_Idle_Stand.",
+        "Не humanoid — другой скелет/Animator. На Шаню не ставится.",
     ),
 }
 
-DEFAULT_SCOPE = "shanya_humanoid"
+# Алиасы из старых версий каталога
+SCOPE_ALIASES: Dict[str, str] = {
+    "shanya_humanoid": "female_humanoid",
+    "humanoid_female": "female_humanoid",
+}
+
+DEFAULT_SCOPE = "female_humanoid"
+
+
+def normalize_scope(scope: str) -> str:
+    s = (scope or "").strip() or DEFAULT_SCOPE
+    return SCOPE_ALIASES.get(s, s)
+
+
+def applies_to_shanya(scope: str) -> bool:
+    """Клип попадёт в Shanya_Idle_Stand при sync."""
+    return normalize_scope(scope) in ("female_humanoid", "shanya_only")
+
+
+def scope_save_warning(scope: str) -> str:
+    """Текст предупреждения при сохранении, или пусто."""
+    s = normalize_scope(scope)
+    if applies_to_shanya(s):
+        return ""
+    if s == "humanoid_npc_female":
+        return (
+            "Scope «NPC: девушки (без Шани)» — клип **не** попадёт в Animator Шани.\n"
+            "Если нужно «все девушки включая Шаню» — выбери «Девушки-biped (Шаня + NPC)»."
+        )
+    if s == "humanoid_any":
+        return (
+            "Scope «Любой biped» — пока **не** кладём в Animator Шани "
+            "(задумано для м/ж NPC). Для бега назад у девушек — «Девушки-biped (Шаня + NPC)»."
+        )
+    if s == "creature_quadruped":
+        return "Четвероногие — не для Шани и не для humanoid Animator."
+    return ""
 
 
 def import_review_id(original_name: str) -> str:
@@ -90,7 +130,7 @@ class AnimationWish:
             status=str(d.get("status") or STATUS_WISHED),
             clip_file=str(d.get("clip_file") or ""),
             notes=str(d.get("notes") or ""),
-            scope=str(d.get("scope") or DEFAULT_SCOPE),
+            scope=normalize_scope(str(d.get("scope") or DEFAULT_SCOPE)),
             reviewed=bool(d.get("reviewed", False)),
         )
 
@@ -98,6 +138,7 @@ class AnimationWish:
         lines = [
             f"### {self.title_ru} (`{self.slug}`)",
             f"**Категория:** {self.category}",
+            f"**Scope:** {normalize_scope(self.scope)}",
             f"**Когда:** {self.when_used}",
             f"**Как выглядит:** {self.looks_like}",
             f"**Зачем:** {self.purpose}",
@@ -148,7 +189,7 @@ class AnimationImportReview:
             when_used=str(d.get("when_used") or ""),
             looks_like=str(d.get("looks_like") or ""),
             purpose=str(d.get("purpose") or ""),
-            scope=str(d.get("scope") or DEFAULT_SCOPE),
+            scope=normalize_scope(str(d.get("scope") or DEFAULT_SCOPE)),
             animator_state=str(d.get("animator_state") or ""),
             notes=str(d.get("notes") or ""),
             reviewed=bool(d.get("reviewed", False)),
