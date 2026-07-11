@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "updated_at": "2026-07-11T05:30:00Z",
+  "note": "Cursor пишет задачи сюда. Viu забирает pending, выполняет, ставит done/blocked и пушит обратно. Дена зовём только на decision.",
+  "tasks": [
+    {
+      "id": "overlay-playtest-20260711",
+      "status": "pending",
+      "priority": 1,
+      "title": "Собрать оверлей и прислать вердикт Cursor",
+      "created_by": "Cursor",
+      "instructions": "Ден больше не кнопконажиматель. Сделай сама:\n1. Вызови overlay_playtest (он закроет Unity, соберёт, запустит LaunchOverlay.bat с bitblt, прочитает overlay_boot.log).\n2. По вердикту: OK / WARN / FAIL — коротко.\n3. cursor_inbox_complete id=overlay-playtest-20260711 status=done (или blocked) + result.\n4. cursor_handoff_with_logs — отчёт для Cursor (boot-лог, gist если есть).\nНе проси Дена нажимать «Оверлей» или присылать логи. Если нужен decision (например нет модели Шани) — status=needs_decision и один вопрос в Telegram."
+    }
+  ]
+}

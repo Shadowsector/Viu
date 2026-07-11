@@ -51,6 +51,8 @@ from .cursor_handoff_tool import (
     CursorPushTool,
     GithubDiagnoseTool,
 )
+from .cursor_inbox_tool import CursorInboxCompleteTool, CursorInboxPullTool
+from .overlay_playtest_tool import OverlayPlaytestTool
 from .building_cascadeur_tool import BuildingWorkflowTool, CascadeurStatusTool
 from .export_asset_tool import ExportUnityAssetTool
 from .animation_catalog_tool import (
@@ -98,7 +100,10 @@ def build_default_registry() -> ToolRegistry:
         CursorHandoffTool(),
         CursorPushTool(),
         CursorHandoffBundleTool(),
+        CursorInboxPullTool(),
+        CursorInboxCompleteTool(),
         GithubDiagnoseTool(),
+        OverlayPlaytestTool(),
         BuildingWorkflowTool(),
         CascadeurStatusTool(),
         ExportUnityAssetTool(),

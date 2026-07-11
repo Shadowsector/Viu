@@ -194,8 +194,10 @@ GUI_ACTIONS: List[GuiAction] = [
         "Автопилот (чат, долго)",
         "Ещё — план",
         prompt=(
-            "Двигай проект Анабарра. Начни с project_status, определи следующий шаг "
-            "к текущей цели и действуй. На развилке — ask_user."
+            "Двигай Анабарру без кнопок Дена. Сначала cursor_inbox_pull — "
+            "если есть pending от Cursor, выполни и cursor_inbox_complete. "
+            "Иначе project_status → следующий безопасный шаг. "
+            "Оверлей: overlay_playtest. ask_user только на decision."
         ),
     ),
     GuiAction(

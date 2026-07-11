@@ -94,6 +94,7 @@ class ViuGUI:
         self._schedule_auto_update()
         self._start_telegram()
         self._schedule_heartbeat()
+        self._schedule_cursor_inbox()
         try:
             from .vision import ensure_vision
 
@@ -1061,6 +1062,45 @@ class ViuGUI:
         self._last_via_telegram = True
         self._heartbeat_notify = True
         self._run_agent_reflect("", heartbeat=True)
+
+    def _schedule_cursor_inbox(self) -> None:
+        """Раз в несколько минут — забрать задачи Cursor с GitHub и выполнить без Дена."""
+        self.root.after(45_000, self._poll_cursor_inbox_once)
+
+        def tick() -> None:
+            self._poll_cursor_inbox_once()
+            self.root.after(180_000, tick)
+
+        self.root.after(180_000, tick)
+
+    def _poll_cursor_inbox_once(self) -> None:
+        if self._busy:
+            return
+
+        def work():
+            from .integrations.github.inbox import fetch_inbox, format_task_prompt, pending_tasks
+
+            ok, data = fetch_inbox()
+            if not ok or not isinstance(data, dict):
+                return None
+            pending = pending_tasks(data)
+            if not pending:
+                return None
+            return format_task_prompt(pending[0])
+
+        def done(result) -> None:
+            if isinstance(result, Exception) or not result:
+                return
+            if self._busy:
+                return
+            self._append(
+                "система",
+                "📥 Задача от Cursor — выполняю сама (без кнопок).",
+                tag="sys",
+            )
+            self._run_agent_task(result, via_telegram=True)
+
+        self._run_bg(work, done)
 
     # ---------- фоновые сервисы ----------
 

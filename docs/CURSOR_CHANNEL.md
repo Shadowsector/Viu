@@ -1,41 +1,41 @@
-# Канал Viu → Cursor (GitHub)
+# Канал Cursor ↔ Viu
 
-Когда Ден просит Вью «выложить мысли для Cursor» — это **work**, не болтовня.
+Ден — визионер и технический писатель. **Не** кнопконажиматель.
+
+| Направление | Файл | Кто пишет |
+|-------------|------|-----------|
+| Viu → Cursor | `docs/CURSOR_HANDOFF.md` | Viu (`cursor_handoff_with_logs`) |
+| Cursor → Viu | `docs/VIU_INBOX.json` | Cursor (commit/push) |
 
 ## Как работает
 
-1. Вью вызывает **`cursor_handoff_with_logs`** (или `cursor_handoff` + `cursor_push`).
-2. Текст попадает в **`docs/CURSOR_HANDOFF.md`** локально и на GitHub.
-3. Push идёт через **GitHub API** — **локальный git не нужен**.
-4. Если репозиторий недоступен (404) — **автоматически** приватный **Gist** со ссылкой.
-5. **`run_shell` / `git`** для handoff **запрещены** — не ломай zip-установку.
+1. **Cursor** кладёт задачу в `VIU_INBOX.json` (`status: pending`) и пушит ветку.
+2. **Viu** (GUI) раз в ~3 мин сама тянет inbox с GitHub. Или агент вызывает `cursor_inbox_pull`.
+3. Viu выполняет инструментами (`overlay_playtest`, Unity, Blender…).
+4. Viu ставит `done` / `blocked` / `needs_decision` через `cursor_inbox_complete` и пишет handoff.
+5. **Дена** зовут только при `needs_decision` или живом выборе (сюжет, вкус, деньги).
 
-## Настройка push
+## Инструменты Viu
 
-После обновления Viu в **`U:\Viu`** появятся **`.env.example`** и (при первом запуске) **`.env`**.
+| Tool | Зачем |
+|------|--------|
+| `cursor_inbox_pull` | Скачать pending |
+| `cursor_inbox_complete` | Закрыть задачу + push |
+| `overlay_playtest` | Сборка + запуск + boot-лог + gist |
+| `cursor_handoff_with_logs` | Отчёт Cursor |
 
-1. Открой **`U:\Viu\.env`**
-2. Вставь токен **без кавычек**:
-   ```env
-   VIU_GITHUB_TOKEN=ghp_xxxxxxxx
-   ```
-3. **Перезапусти Viu** (или просто повтори handoff — токен перечитается)
+## Настройка
 
-Токен: GitHub → Settings → Developer settings → Personal access tokens (**Classic**).
+В `U:\Viu\.env`:
 
-Scopes для handoff:
-- **repo** — запись `docs/CURSOR_HANDOFF.md` (public repo тоже требует этот scope для PUT)
-- **gist** — запасной канал, если push в репо не вышел
+```env
+VIU_GITHUB_TOKEN=ghp_...
+VIU_GITHUB_REPO=Shadowsector/Viu
+VIU_HANDOFF_BRANCH=cursor/viu-agent-core-65c2
+```
 
-Проверка: инструмент **`github_diagnose`** (или попроси Вью «проверь GitHub токен»).
+После **Обновить Вью** inbox-поллер стартует сам. Дену достаточно держать Viu открытой.
 
-## Триггеры из Telegram
+## Старый односторонний handoff
 
-Срабатывает **work** (инструменты), не reflect:
-
-- «Попробуешь?» / «начни» / «выложи на GitHub»
-- «канал с Cursor» / handoff
-- «проверь GitHub токен» / **`github_diagnose`**
-- «следующий шаг» / «сделай …»
-
-Вопросы про сюжет («как ты видишь панель задач?») — **reflect**, без Unity.
+`CURSOR_HANDOFF.md` остаётся — длинные размышления и логи. Inbox — для **исполняемых** задач.

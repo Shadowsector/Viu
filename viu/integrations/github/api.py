@@ -406,6 +406,33 @@ def upload_gist(
     return False, f"Gist API {code}: {detail[:400]}"
 
 
+def get_file_via_api(
+    path: str,
+    *,
+    token: str,
+    repo: str = DEFAULT_REPO,
+    branch: str = DEFAULT_BRANCH,
+) -> Tuple[bool, str, Optional[str]]:
+    """Скачать текстовый файл. Возвращает (ok, content_or_error, sha)."""
+    repo = normalize_repo(repo)
+    url = f"https://api.github.com/repos/{repo}/contents/{path}?ref={branch}"
+    code, data = _api_json("GET", url, token)
+    if code == 404:
+        return False, "404", None
+    if code != 200 or not isinstance(data, dict):
+        return False, f"GET {code}: {data}", None
+    raw = data.get("content") or ""
+    encoding = data.get("encoding") or "base64"
+    if encoding == "base64":
+        try:
+            text = base64.b64decode(raw).decode("utf-8", errors="replace")
+        except Exception as exc:  # noqa: BLE001
+            return False, f"decode: {exc}", None
+    else:
+        text = str(raw)
+    return True, text, data.get("sha")
+
+
 def push_file_via_api(
     path: str,
     content: str,
