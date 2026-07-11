@@ -14,9 +14,10 @@ from viu.updater import find_git_root, package_root, version_label
 def test_gui_actions_grouped():
     grouped = actions_by_group()
     assert "Главное" in grouped
-    assert "Ещё — Unity" in grouped
+    assert "Ещё — анимации" in grouped
+    assert "Ещё — модели" in grouped
     assert any(a.action_id == "next_step" and a.tool == "__next_step__" for a in GUI_ACTIONS)
-    assert any(a.action_id == "add_animation" for a in GUI_ACTIONS)
+    assert any(a.action_id == "accept_animation" for a in GUI_ACTIONS)
     assert any(a.action_id == "unity_apply" and a.is_chain for a in GUI_ACTIONS)
     assert any(a.action_id == "unity_overlay" and a.tool == "unity_overlay" for a in GUI_ACTIONS)
     assert any(a.tool == "__update_viu__" for a in GUI_ACTIONS)

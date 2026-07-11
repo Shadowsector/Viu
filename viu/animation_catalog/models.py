@@ -5,13 +5,40 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .categories import ANIMATION_CATEGORIES
 
 STATUS_WISHED = "wished"
 STATUS_IMPORTED = "imported"
 STATUS_LINKED = "linked"  # в Animator
+STATUS_PENDING_REVIEW = "pending_review"
+
+# Кому можно назначать клип (Viu не подмешает в Shanya controller чужое).
+ANIMATION_SCOPES: Dict[str, Tuple[str, str]] = {
+    "shanya_humanoid": (
+        "Только Шаня (humanoid)",
+        "Риг Shanya_Erisa / тот же Humanoid map. Не NPC, не четвероногие, не мужские модели.",
+    ),
+    "humanoid_female": (
+        "Женщины-biped",
+        "Другие female humanoid NPC — отдельная модель, тот же тип скелета.",
+    ),
+    "humanoid_any": (
+        "Любой biped humanoid",
+        "М/ж humanoid — не для Шани по умолчанию, отдельный prefab.",
+    ),
+    "creature_quadruped": (
+        "Четвероногие",
+        "Не для Шани. Другой каталог/Animator — Viu сюда не подставляет в Shanya_Idle_Stand.",
+    ),
+}
+
+DEFAULT_SCOPE = "shanya_humanoid"
+
+
+def import_review_id(original_name: str) -> str:
+    return hashlib.sha256(original_name.lower().encode("utf-8")).hexdigest()[:16]
 
 
 def wish_id(slug: str) -> str:
@@ -34,6 +61,8 @@ class AnimationWish:
     status: str = STATUS_WISHED
     clip_file: str = ""
     notes: str = ""
+    scope: str = DEFAULT_SCOPE
+    reviewed: bool = False
     id: str = ""
 
     def __post_init__(self) -> None:
@@ -61,6 +90,8 @@ class AnimationWish:
             status=str(d.get("status") or STATUS_WISHED),
             clip_file=str(d.get("clip_file") or ""),
             notes=str(d.get("notes") or ""),
+            scope=str(d.get("scope") or DEFAULT_SCOPE),
+            reviewed=bool(d.get("reviewed", False)),
         )
 
     def render_block(self) -> str:
@@ -78,6 +109,50 @@ class AnimationWish:
         elif self.status == STATUS_WISHED:
             lines.append("**Статус:** ещё не импортировано")
         return "\n".join(lines)
+
+
+@dataclass
+class AnimationImportReview:
+    """Один FBX из Inbox — ждёт описания от Дена."""
+
+    original_name: str
+    clip_file: str
+    suggested_slug: str = ""
+    suggested_title: str = ""
+    category: str = "locomotion"
+    when_used: str = ""
+    looks_like: str = ""
+    purpose: str = ""
+    scope: str = DEFAULT_SCOPE
+    animator_state: str = ""
+    notes: str = ""
+    reviewed: bool = False
+    id: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = import_review_id(self.original_name)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(d: Dict[str, Any]) -> "AnimationImportReview":
+        return AnimationImportReview(
+            id=str(d.get("id") or import_review_id(str(d.get("original_name", "")))),
+            original_name=str(d.get("original_name", "")),
+            clip_file=str(d.get("clip_file", "")),
+            suggested_slug=str(d.get("suggested_slug") or ""),
+            suggested_title=str(d.get("suggested_title") or ""),
+            category=str(d.get("category") or "locomotion"),
+            when_used=str(d.get("when_used") or ""),
+            looks_like=str(d.get("looks_like") or ""),
+            purpose=str(d.get("purpose") or ""),
+            scope=str(d.get("scope") or DEFAULT_SCOPE),
+            animator_state=str(d.get("animator_state") or ""),
+            notes=str(d.get("notes") or ""),
+            reviewed=bool(d.get("reviewed", False)),
+        )
 
 
 def _default_state_name(slug: str) -> str:

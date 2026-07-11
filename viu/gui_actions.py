@@ -1,4 +1,4 @@
-"""Кнопки боковой панели GUI — прямой вызов инструментов без LLM."""
+"""Кнопки боковой панели — по задачам, не по названию софта."""
 
 from __future__ import annotations
 
@@ -28,8 +28,15 @@ class GuiAction:
         return len(self.tool_chain) > 0
 
 
-# «Главное» — одна кнопка. Остальное — «Ещё», не обязательно.
-ACTION_GROUPS: List[str] = ["Главное", "Ещё — Unity", "Ещё — Blender", "Ещё — Вью", "Ещё — план"]
+ACTION_GROUPS: List[str] = [
+    "Главное",
+    "Ещё — модели",
+    "Ещё — анимации",
+    "Ещё — Cascadeur",
+    "Ещё — игра",
+    "Ещё — Вью",
+    "Ещё — план",
+]
 
 GUI_ACTIONS: List[GuiAction] = [
     GuiAction(
@@ -37,123 +44,132 @@ GUI_ACTIONS: List[GuiAction] = [
         "▶ Следующий шаг",
         "Главное",
         tool="__next_step__",
-        hint="Вью сама решает: Inbox, разметка, оверлей… Тебе — одно действие или просто прочитать подсказку.",
+        hint="Вью сама решает: Inbox, разметка, экспорт…",
     ),
     GuiAction(
         "send_logs",
         "Что сломалось? → разработчику",
         "Главное",
         tool="__collect_logs__",
-        hint="Если ошибка — жми сюда. Лог улетит на GitHub (если есть токен) или откроется файл.",
     ),
     GuiAction(
         "telegram_test",
         "Telegram: тест связи",
         "Главное",
         tool="__telegram_test__",
-        hint="Нужен VIU_TELEGRAM_TOKEN в .env. Первый раз — /start боту в Telegram.",
     ),
-    # --- Ещё Unity ---
+    # --- Модели (Blender → Unity props) ---
+    GuiAction(
+        "route_inbox",
+        "Разобрать Inbox (модели)",
+        "Ещё — модели",
+        tool="route_inbox",
+        hint="Blend, prop FBX, картинки. Анимации — отдельная кнопка.",
+    ),
+    GuiAction(
+        "prepare_unity_asset",
+        "Prepare .blend (Inbox)",
+        "Ещё — модели",
+        tool="prepare_unity_asset",
+        tool_args={"open_blender": "1"},
+    ),
+    GuiAction(
+        "prop_catalog",
+        "Разметить предметы",
+        "Ещё — модели",
+        tool="__prop_catalog__",
+    ),
+    GuiAction(
+        "export_unity_asset",
+        "Экспорт домика → Unity",
+        "Ещё — модели",
+        tool="export_unity_asset",
+    ),
+    GuiAction(
+        "blender_info",
+        "Что в Blender?",
+        "Ещё — модели",
+        tool="blender_info",
+    ),
+    GuiAction(
+        "rig_check",
+        "Скелет персонажа",
+        "Ещё — модели",
+        tool="rig_check",
+    ),
+    # --- Анимации ---
+    GuiAction(
+        "accept_animation",
+        "Принять анимацию (Inbox)",
+        "Ещё — анимации",
+        tool="__accept_animation__",
+        hint="Один Mixamo FBX → описание + scope → Unity Animations/",
+    ),
+    GuiAction(
+        "animation_catalog",
+        "Очередь анимаций",
+        "Ещё — анимации",
+        tool="__animation_review__",
+        hint="Описать pending или править каталог.",
+    ),
     GuiAction(
         "unity_apply",
         "Обновить аниматор",
-        "Ещё — Unity",
+        "Ещё — анимации",
         tool_chain=(
             ("unity_deploy_setup", {}),
             ("unity_sync_animations", {}),
         ),
-        hint="FBX уже в проекте — пересобрать Animator.",
+        hint="После review — пересобрать Shanya_Idle_Stand.controller",
     ),
+    # --- Cascadeur ---
+    GuiAction(
+        "cascadeur_status",
+        "Cascadeur: статус",
+        "Ещё — Cascadeur",
+        tool="cascadeur_status",
+        hint="Inbox Cascadeur, пути, что дальше.",
+    ),
+    # --- Игра (Unity playtest) ---
     GuiAction(
         "unity_overlay",
         "Оверлей: у панели задач",
-        "Ещё — Unity",
+        "Ещё — игра",
         tool="unity_overlay",
-        hint="Playtest, не импорт. Unity закрыт. 5–15 мин.",
     ),
     GuiAction(
         "overlay_depth_far",
         "Оверлей: в глубину",
-        "Ещё — Unity",
+        "Ещё — игра",
         tool="unity_overlay_tune",
         tool_args={"lane": "taskbar"},
-        hint="Только после сборки оверлея — подкрутить глубину.",
     ),
     GuiAction(
         "overlay_depth_close",
         "Оверлей: на экран",
-        "Ещё — Unity",
+        "Ещё — игра",
         tool="unity_overlay_tune",
         tool_args={"lane": "attention"},
-        hint="Только после сборки оверлея.",
     ),
     GuiAction(
         "unity_open",
         "Открыть Unity",
-        "Ещё — Unity",
+        "Ещё — игра",
         tool="unity_open",
-    ),
-    GuiAction(
-        "add_animation",
-        "Импорт FBX анимации…",
-        "Ещё — Unity",
-        tool="__add_animation__",
     ),
     GuiAction(
         "unity_prepare",
         "Тест: Шаня стоит и ходит",
-        "Ещё — Unity",
+        "Ещё — игра",
         tool="unity_prepare_scene",
     ),
     GuiAction(
         "unity_diagnose",
         "Диагностика Unity",
-        "Ещё — Unity",
+        "Ещё — игра",
         tool="unity_report",
     ),
-    # --- Ещё Blender ---
-    GuiAction(
-        "route_inbox",
-        "Разобрать Inbox",
-        "Ещё — Blender",
-        tool="route_inbox",
-        hint="Blend, анимации Mixamo, картинки — всё в U:\\Viu\\Inbox одной кучей.",
-    ),
-    GuiAction(
-        "prepare_unity_asset",
-        "Принять из Inbox (повтор)",
-        "Ещё — Blender",
-        tool="prepare_unity_asset",
-        tool_args={"open_blender": "1"},
-        hint="Только если в Inbox лежит .blend. Иначе — «▶ Следующий шаг».",
-    ),
-    GuiAction(
-        "prop_catalog",
-        "Разметить предметы",
-        "Ещё — Blender",
-        tool="__prop_catalog__",
-        hint="Очередь Props. Обычно открывается через «Следующий шаг».",
-    ),
-    GuiAction(
-        "export_unity_asset",
-        "Экспорт в Unity (FBX)",
-        "Ещё — Blender",
-        tool="export_unity_asset",
-        hint="Prepared → FBX. Обычно через «Следующий шаг» после разметки.",
-    ),
-    GuiAction(
-        "blender_info",
-        "Что в Blender?",
-        "Ещё — Blender",
-        tool="blender_info",
-    ),
-    GuiAction(
-        "rig_check",
-        "Скелет в порядке?",
-        "Ещё — Blender",
-        tool="rig_check",
-    ),
-    # --- Ещё Вью ---
+    # --- Вью ---
     GuiAction(
         "update_viu",
         "Обновить Вью",
@@ -172,7 +188,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Ещё — Вью",
         tool="__clear__",
     ),
-    # --- Ещё план ---
+    # --- План ---
     GuiAction(
         "autopilot",
         "Автопилот (чат, долго)",

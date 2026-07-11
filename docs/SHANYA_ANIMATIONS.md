@@ -69,26 +69,37 @@
 
 ---
 
-## Куда кидать файлы (единый Inbox)
+## Куда кидать файлы
 
-**Один вход:** `U:\Viu\Inbox\`
+**Один Inbox:** `U:\Viu\Inbox\`
 
-| Что | Куда Viu кладёт |
-|-----|-----------------|
-| `.blend` + textures (папка) | prepare → Processed |
-| `.blend` один файл | `Library/Blender` → prepare |
-| FBX анимация (Mixamo) | `U:\Anabarra\Animations` + `Assets/Characters/Shanya/Animations/` |
-| FBX prop/домик | `Library/Props/fbx` |
-| Картинки | `Library/References/images` |
+| Что | Кнопка |
+|-----|--------|
+| Один Mixamo `.fbx` | **«Принять анимацию (Inbox)»** → окно описания |
+| `.blend` / props / картинки | **«Разобрать Inbox (модели)»** |
+| Описать pending | **«Очередь анимаций»** |
 
-**Инструменты:**
+**По одной анимации** — так ты не забудешь, что скачал.
 
-- GUI: позже «Разобрать Inbox»; сейчас **`route_inbox`** или «Следующий шаг» для blend.
-- Агент: `route_inbox`, `animation_catalog_match`, `animation_catalog_show`.
+## Scope (кому клип)
 
-**Окно Вью (чат):** опиши, что положил — «скачал Climbing и Yawn в Inbox»; Viu вызовет `route_inbox` и сопоставит с каталогом.
+| Scope | Смысл |
+|-------|--------|
+| `shanya_humanoid` | **Только Шаня** — Humanoid Erisa. Default для Mixamo в Animations/ |
+| `humanoid_female` | Другие female NPC — **не** подмешивается в Shanya Animator |
+| `humanoid_any` | Любой biped — отдельный prefab |
+| `creature_quadruped` | **Не для Шани** — Viu не ставит в Shanya controller |
 
-Drag-and-drop в окно — в планах; пока физически тот же **Inbox**.
+Fast Run → scope «Только Шаня» → state Run в `Shanya_Idle_Stand.controller`.
+
+## Кнопки (меню по задачам)
+
+- **Ещё — модели** — blend, props, экспорт домика  
+- **Ещё — анимации** — принять FBX, очередь, обновить аниматор  
+- **Ещё — Cascadeur** — статус (позже правка клипов)  
+- **Ещё — игра** — оверлей, Unity, тест-сцена  
+
+«Импорт FBX анимации» (file picker) убран — дублировал Inbox.
 
 ---
 

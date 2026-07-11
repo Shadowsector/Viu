@@ -424,6 +424,12 @@ class ViuGUI:
         if action.tool == "__add_animation__":
             self._add_animation()
             return
+        if action.tool == "__accept_animation__":
+            self._accept_animation()
+            return
+        if action.tool == "__animation_review__":
+            self._open_animation_review()
+            return
         if action.tool == "__prop_catalog__":
             self._open_prop_catalog()
             return
@@ -649,6 +655,57 @@ class ViuGUI:
             )
 
         self.root.after(0, open_win)
+
+    def _open_animation_review(self) -> None:
+        from .animation_catalog import AnimationCatalogStore, animation_catalog_path
+        from .animation_catalog.review_gui import open_animation_review
+
+        store = AnimationCatalogStore(animation_catalog_path(self.agent.config)).load()
+        if not store.pending_reviews():
+            self._append(
+                "система",
+                "Нет анимаций в очереди.\n"
+                "Положи один FBX в Inbox → «Принять анимацию».",
+                tag="sys",
+            )
+            return
+        self._append("система", "Окно описания анимации…", tag="sys")
+
+        def on_finished() -> None:
+            self._append("система", "Каталог анимаций сохранён.", tag="sys")
+            self._refresh_action_visibility()
+            self._show_next_step_banner()
+
+        self.root.after(
+            0,
+            lambda: open_animation_review(
+                self.root,
+                store,
+                on_finished=on_finished,
+            ),
+        )
+
+    def _accept_animation(self) -> None:
+        self._append("ты", "[Принять анимацию (Inbox)]")
+        self._set_busy(True)
+
+        def work():
+            from .drop_router import accept_single_animation
+
+            return accept_single_animation(self.agent.config)
+
+        def done(result) -> None:
+            self._set_busy(False)
+            if isinstance(result, Exception):
+                self._append("ошибка", str(result), tag="err")
+                return
+            prefix = "OK" if result.ok else "ОШИБКА"
+            self._append("Вью", f"[Принять анимацию] {prefix}\n{result.format()}", tag="tool")
+            self._refresh_action_visibility()
+            if result.ok and result.open_animation_review:
+                self.root.after(300, self._open_animation_review)
+
+        self._run_bg(work, done)
 
     def _collect_logs(self) -> None:
         self._append("ты", "[Отправить логи разработчику]")

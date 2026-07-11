@@ -54,6 +54,7 @@ from .cursor_handoff_tool import (
 from .building_cascadeur_tool import BuildingWorkflowTool, CascadeurStatusTool
 from .export_asset_tool import ExportUnityAssetTool
 from .animation_catalog_tool import (
+    AcceptAnimationInboxTool,
     AnimationCatalogMatchTool,
     AnimationCatalogShowTool,
     RouteInboxTool,
@@ -101,6 +102,7 @@ def build_default_registry() -> ToolRegistry:
         BuildingWorkflowTool(),
         CascadeurStatusTool(),
         ExportUnityAssetTool(),
+        AcceptAnimationInboxTool(),
         AnimationCatalogShowTool(),
         AnimationCatalogMatchTool(),
         RouteInboxTool(),

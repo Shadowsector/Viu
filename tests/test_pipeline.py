@@ -9,9 +9,13 @@ from viu.pipeline import action_visible, get_pipeline_context
 def _cfg(tmp_path: Path, *, inbox: Path | None = None) -> Config:
     inbox = inbox or (tmp_path / "Inbox")
     inbox.mkdir(parents=True, exist_ok=True)
+    import os
+
+    data = tmp_path / ".viu"
+    os.environ["VIU_DATA_DIR"] = str(data)
     return Config(
         root=tmp_path,
-        data_dir=tmp_path / ".viu",
+        data_dir=data,
         inbox_dir=str(inbox),
     ).ensure_dirs()
 

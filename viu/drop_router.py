@@ -16,6 +16,7 @@ from .animation_catalog import (
     match_fbx_to_wish,
     suggest_rename_for_wish,
 )
+from .animation_catalog.models import AnimationImportReview, DEFAULT_SCOPE
 from .config import Config
 from .integrations.unity.animation_scan import ANIMATIONS_REL
 from .integrations.unity.paths import resolve_in_unity_project
@@ -48,6 +49,7 @@ class InboxRouteReport:
     items: List[RoutedItem] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     animation_matches: List[str] = field(default_factory=list)
+    open_animation_review: bool = False
 
     def format(self) -> str:
         lines = ["Разбор Inbox — готово."]
@@ -63,11 +65,13 @@ class InboxRouteReport:
         for err in self.errors:
             lines.append(f"  ⚠ {err}")
         lines.append("")
-        lines.append(
-            "Blend → дальше «Следующий шаг» (prepare).\n"
-            "Анимации → Unity Sync или «Обновить аниматор».\n"
-            "Каталог: .viu/animation_catalog.json"
-        )
+        if self.open_animation_review:
+            lines.append("→ Откроется окно описания анимации.")
+        else:
+            lines.append(
+                "Blend → «Следующий шаг». Анимация → «Принять анимацию (Inbox)» — по одной.\n"
+                "Каталог: .viu/animation_catalog.json"
+            )
         return "\n".join(lines)
 
 
@@ -97,13 +101,134 @@ def _unique_dest(dest: Path) -> Path:
     return dest
 
 
+def _find_inbox_animation_fbx(inbox: Path) -> List[Path]:
+    found: List[Path] = []
+    for p in sorted(inbox.iterdir()):
+        if p.is_file() and p.suffix.lower() == ".fbx" and is_character_animation_fbx(p):
+            found.append(p)
+    return found
+
+
+def _import_one_animation(
+    entry: Path,
+    store: AnimationCatalogStore,
+    staging: Path,
+    unity_anim: Path,
+    *,
+    copy_to_unity: bool,
+    remove_from_inbox: bool,
+) -> tuple[RoutedItem, RoutedItem | None, AnimationImportReview, str]:
+    wish, score, reason = match_fbx_to_wish(entry, store)
+    target_name = entry.name
+    if wish and score >= 0.65:
+        target_name = suggest_rename_for_wish(wish, entry.name)
+
+    dest_staging = _unique_dest(staging / target_name)
+    _move_or_copy(entry, dest_staging, remove_from_inbox)
+
+    dest_unity: Path | None = None
+    if copy_to_unity:
+        unity_anim.mkdir(parents=True, exist_ok=True)
+        dest_unity = _unique_dest(unity_anim / target_name)
+        shutil.copy2(dest_staging, dest_unity)
+
+    review = AnimationImportReview(
+        original_name=entry.name,
+        clip_file=str(dest_unity or dest_staging),
+        suggested_slug=wish.slug if wish else _normalize_slug(entry.stem),
+        suggested_title=wish.title_ru if wish else entry.stem,
+        category=wish.category if wish else "locomotion",
+        when_used=wish.when_used if wish else "",
+        looks_like=wish.looks_like if wish else "",
+        purpose=wish.purpose if wish else "",
+        animator_state=wish.animator_state if wish else "",
+        scope=DEFAULT_SCOPE,
+    )
+    store.upsert_pending(review)
+
+    detail = f"ожидает описания — {reason}"
+    if wish:
+        detail = f"предположение: «{wish.title_ru}» ({wish.slug}) — {reason}"
+
+    return (
+        RoutedItem(entry, dest_staging, "animation", detail),
+        RoutedItem(dest_staging, dest_unity, "animation→Unity", "после review") if dest_unity else None,
+        review,
+        detail,
+    )
+
+
+def _normalize_slug(stem: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "_", stem.lower()).strip("_")
+    return s or "clip"
+
+
+def accept_single_animation(
+    config: Config,
+    *,
+    copy_to_unity: bool = True,
+    remove_from_inbox: bool = True,
+) -> InboxRouteReport:
+    """Ровно один FBX-анимация в Inbox → staging + Unity + очередь review."""
+    report = InboxRouteReport()
+    inbox = inbox_dir(config)
+    if not inbox.is_dir():
+        report.ok = False
+        report.errors.append(f"Inbox не найден: {inbox}")
+        return report
+
+    anim_files = _find_inbox_animation_fbx(inbox)
+    if not anim_files:
+        report.ok = False
+        report.errors.append(
+            "В Inbox нет FBX-анимации (Mixamo).\n"
+            "Положи один файл, напр. Fast Run.fbx"
+        )
+        return report
+    if len(anim_files) > 1:
+        report.ok = False
+        report.errors.append(
+            f"В Inbox {len(anim_files)} анимаций — клади **по одной**.\n"
+            + ", ".join(p.name for p in anim_files)
+        )
+        return report
+
+    store = AnimationCatalogStore(animation_catalog_path(config)).load()
+    staging = animation_staging_dir(config)
+    staging.mkdir(parents=True, exist_ok=True)
+    unity_anim = resolve_in_unity_project(unity_project_path(config), ANIMATIONS_REL)
+
+    try:
+        item, unity_item, review, _ = _import_one_animation(
+            anim_files[0],
+            store,
+            staging,
+            unity_anim,
+            copy_to_unity=copy_to_unity,
+            remove_from_inbox=remove_from_inbox,
+        )
+        report.items.append(item)
+        if unity_item:
+            report.items.append(unity_item)
+        report.animation_matches.append(
+            f"{review.original_name} → окно описания (slug: {review.suggested_slug})"
+        )
+        report.open_animation_review = True
+        store.save()
+    except OSError as exc:
+        report.ok = False
+        report.errors.append(str(exc))
+
+    return report
+
+
 def route_inbox(
     config: Config,
     *,
     copy_to_unity: bool = True,
     remove_from_inbox: bool = True,
 ) -> InboxRouteReport:
-    """Разобрать верхний уровень Inbox по типам файлов."""
+    """Разобрать Inbox: blend, props, картинки. Анимации — через accept_single_animation."""
     report = InboxRouteReport()
     inbox = inbox_dir(config)
     if not inbox.is_dir():
@@ -136,40 +261,19 @@ def route_inbox(
 
             if entry.is_file() and entry.suffix.lower() == ".fbx":
                 if is_character_animation_fbx(entry):
-                    wish, score, reason = match_fbx_to_wish(entry, store)
-                    target_name = entry.name
-                    detail = reason
-                    if wish and score >= 0.65:
-                        target_name = suggest_rename_for_wish(wish, entry.name)
-                        wish.clip_file = target_name
-                        wish.status = "imported"
-                        store.upsert(wish)
-                        detail = f"{wish.title_ru} ({wish.slug}) — {reason}"
-                        report.animation_matches.append(
-                            f"{entry.name} → «{wish.title_ru}» [{wish.category}]"
+                    report.items.append(
+                        RoutedItem(
+                            entry,
+                            entry,
+                            "animation (пропуск)",
+                            "используй «Принять анимацию (Inbox)» — по одной + описание",
                         )
-
-                    dest_staging = _unique_dest(staging / target_name)
-                    _move_or_copy(entry, dest_staging, remove_from_inbox)
-                    report.items.append(RoutedItem(entry, dest_staging, "animation", detail))
-
-                    if copy_to_unity:
-                        unity_anim.mkdir(parents=True, exist_ok=True)
-                        dest_unity = _unique_dest(unity_anim / target_name)
-                        shutil.copy2(dest_staging, dest_unity)
-                        report.items.append(
-                            RoutedItem(
-                                dest_staging,
-                                dest_unity,
-                                "animation→Unity",
-                                "Sync Animations",
-                            )
-                        )
-                else:
-                    dest = _unique_dest(lib / "Props" / "fbx" / entry.name)
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    _move_or_copy(entry, dest, remove_from_inbox)
-                    report.items.append(RoutedItem(entry, dest, "prop fbx"))
+                    )
+                    continue
+                dest = _unique_dest(lib / "Props" / "fbx" / entry.name)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                _move_or_copy(entry, dest, remove_from_inbox)
+                report.items.append(RoutedItem(entry, dest, "prop fbx"))
                 continue
 
             if entry.is_file() and entry.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
@@ -194,26 +298,14 @@ def route_inbox(
                     continue
                 anim_fbx = [p for p in entry.glob("*.fbx") if is_character_animation_fbx(p)]
                 if anim_fbx:
-                    for fbx in anim_fbx:
-                        wish, score, reason = match_fbx_to_wish(fbx, store)
-                        target_name = fbx.name
-                        if wish and score >= 0.65:
-                            target_name = suggest_rename_for_wish(wish, fbx.name)
-                            wish.clip_file = target_name
-                            wish.status = "imported"
-                            store.upsert(wish)
-                            report.animation_matches.append(
-                                f"{fbx.name} → «{wish.title_ru}»"
-                            )
-                        dest_staging = _unique_dest(staging / target_name)
-                        _move_or_copy(fbx, dest_staging, remove_from_inbox)
-                        report.items.append(
-                            RoutedItem(fbx, dest_staging, "animation", reason)
+                    report.items.append(
+                        RoutedItem(
+                            entry,
+                            entry,
+                            "animation folder",
+                            f"{len(anim_fbx)} FBX — вынь по одному в Inbox → «Принять анимацию»",
                         )
-                        if copy_to_unity:
-                            unity_anim.mkdir(parents=True, exist_ok=True)
-                            dest_unity = _unique_dest(unity_anim / target_name)
-                            shutil.copy2(dest_staging, dest_unity)
+                    )
                     continue
 
                 dest = _unique_dest(lib / "unsorted" / entry.name)

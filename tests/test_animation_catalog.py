@@ -7,78 +7,92 @@ from viu.animation_catalog import (
     animation_catalog_path,
     match_fbx_to_wish,
 )
-from viu.animation_catalog.models import DEFAULT_WISHES
+from viu.animation_catalog.models import DEFAULT_WISHES, DEFAULT_SCOPE
 from viu.config import Config
-from viu.drop_router import is_character_animation_fbx, route_inbox
+from viu.drop_router import accept_single_animation, is_character_animation_fbx, route_inbox
 
 
 def test_default_wishes_seeded():
     assert len(DEFAULT_WISHES) >= 20
     slugs = {w.slug for w in DEFAULT_WISHES}
     assert "climb_up" in slugs
-    assert "sit_down" in slugs
 
 
-def test_store_seed_and_summary(tmp_path):
-    path = tmp_path / ".viu" / "animation_catalog.json"
-    store = AnimationCatalogStore(path).load()
-    assert len(store.all_wishes()) >= 20
-    text = store.summary_text()
-    assert "wave 1" in text.lower() or "Не хватает" in text
-
-
-def test_match_climbing_fbx(tmp_path):
+def test_match_fast_run_to_run(tmp_path):
     store = AnimationCatalogStore(tmp_path / "cat.json").load()
-    fbx = tmp_path / "X Bot@Female Climbing.fbx"
+    fbx = tmp_path / "Fast Run.fbx"
     fbx.write_bytes(b"x")
     wish, score, _ = match_fbx_to_wish(fbx, store)
     assert wish is not None
-    assert wish.slug == "climb_up"
+    assert wish.slug == "run"
     assert score >= 0.65
 
 
-def test_match_sitting_down(tmp_path):
-    store = AnimationCatalogStore(tmp_path / "cat.json").load()
-    fbx = tmp_path / "Sitting Down.fbx"
-    fbx.write_bytes(b"x")
-    wish, score, _ = match_fbx_to_wish(fbx, store)
-    assert wish is not None
-    assert wish.slug in ("sit_down", "sit_idle")
-
-
-def test_is_animation_not_barn():
-    assert is_character_animation_fbx(Path("Idle.fbx"))
-    assert not is_character_animation_fbx(Path("Old_Stables.fbx"))
-
-
-def test_route_inbox_animation(tmp_path, monkeypatch):
+def test_accept_single_animation_opens_review(tmp_path, monkeypatch):
     inbox = tmp_path / "Inbox"
     inbox.mkdir()
+    (inbox / "Fast Run.fbx").write_bytes(b"fbx")
     staging = tmp_path / "Animations"
-    unity = tmp_path / "Unity" / "Anabarra" / "Assets"
-    unity.mkdir(parents=True)
+    unity = tmp_path / "Unity" / "Anabarra"
+    (unity / "Assets").mkdir(parents=True)
     lib = tmp_path / "Library"
-    (inbox / "Yawn.fbx").write_bytes(b"fbx")
 
     import os
 
     os.environ["VIU_INBOX_DIR"] = str(inbox)
     os.environ["VIU_LIBRARY_ROOT"] = str(lib)
     os.environ["VIU_ANIM_STAGING"] = str(staging)
-    os.environ["VIU_UNITY_PROJECT"] = str(unity.parent.parent)
+    os.environ["VIU_UNITY_PROJECT"] = str(unity)
+    os.environ["VIU_DATA_DIR"] = str(tmp_path / "Viu" / ".viu")
     try:
         cfg = Config(
             root=tmp_path / "Viu",
             data_dir=tmp_path / "Viu" / ".viu",
             inbox_dir=str(inbox),
             library_root=str(lib),
-            unity_project=str(unity.parent.parent),
+            unity_project=str(unity),
             unity_anim_staging=str(staging),
         ).ensure_dirs()
-        report = route_inbox(cfg, copy_to_unity=True)
-        assert any("yawn" in m.lower() or "Yawn" in m for m in report.animation_matches) or report.items
-        assert not (inbox / "Yawn.fbx").exists()
-        assert list(staging.glob("*.fbx"))
+        report = accept_single_animation(cfg)
+        assert report.ok
+        assert report.open_animation_review
+        assert not (inbox / "Fast Run.fbx").exists()
+        store = AnimationCatalogStore(animation_catalog_path(cfg)).load()
+        assert len(store.pending_reviews()) == 1
+        pending = store.pending_reviews()[0]
+        assert pending.suggested_slug == "run"
+        assert pending.scope == DEFAULT_SCOPE
     finally:
-        for k in ("VIU_INBOX_DIR", "VIU_LIBRARY_ROOT", "VIU_ANIM_STAGING", "VIU_UNITY_PROJECT"):
+        for k in ("VIU_INBOX_DIR", "VIU_LIBRARY_ROOT", "VIU_ANIM_STAGING", "VIU_UNITY_PROJECT", "VIU_DATA_DIR"):
             os.environ.pop(k, None)
+
+
+def test_route_inbox_skips_animation(tmp_path, monkeypatch):
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    (inbox / "Fast Run.fbx").write_bytes(b"fbx")
+    lib = tmp_path / "Library"
+    import os
+
+    os.environ["VIU_INBOX_DIR"] = str(inbox)
+    os.environ["VIU_LIBRARY_ROOT"] = str(lib)
+    os.environ["VIU_UNITY_PROJECT"] = str(tmp_path / "Unity" / "Anabarra")
+    try:
+        cfg = Config(
+            root=tmp_path / "Viu",
+            data_dir=tmp_path / "Viu" / ".viu",
+            inbox_dir=str(inbox),
+            library_root=str(lib),
+        ).ensure_dirs()
+        report = route_inbox(cfg)
+        assert (inbox / "Fast Run.fbx").exists()
+        assert any("пропуск" in it.kind or "animation" in it.kind for it in report.items)
+    finally:
+        os.environ.pop("VIU_INBOX_DIR", None)
+        os.environ.pop("VIU_LIBRARY_ROOT", None)
+        os.environ.pop("VIU_UNITY_PROJECT", None)
+
+
+def test_is_animation_not_barn():
+    assert is_character_animation_fbx(Path("Fast Run.fbx"))
+    assert not is_character_animation_fbx(Path("Old_Stables.fbx"))

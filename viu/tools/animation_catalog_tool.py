@@ -11,7 +11,7 @@ from ..animation_catalog import (
     animation_catalog_path,
     match_fbx_to_wish,
 )
-from ..drop_router import route_inbox
+from ..drop_router import accept_single_animation, route_inbox
 from .base import AgentContext, Tool, ToolResult
 
 
@@ -85,11 +85,35 @@ class AnimationCatalogMatchTool(Tool):
         )
 
 
+class AcceptAnimationInboxTool(Tool):
+    name = "accept_animation_inbox"
+    description = (
+        "Один Mixamo FBX из Inbox → Unity Animations + очередь описания (scope, когда/как)."
+    )
+    parameters = {
+        "copy_to_unity": "1 = копировать в Assets/…/Animations",
+        "keep_inbox": "1 = не удалять из Inbox",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        copy = str(args.get("copy_to_unity", "1")).lower() not in ("0", "false", "no")
+        keep = str(args.get("keep_inbox", "0")).lower() in ("1", "true", "yes")
+        report = accept_single_animation(
+            ctx.config,
+            copy_to_unity=copy,
+            remove_from_inbox=not keep,
+        )
+        body = report.format()
+        if report.open_animation_review:
+            body += "\n\n→ Открой «Очередь анимаций» или GUI откроет сам."
+        return ToolResult(report.ok, body)
+
+
 class RouteInboxTool(Tool):
     name = "route_inbox"
     description = (
-        "Разобрать U:\\Viu\\Inbox: blend → Library, анимации → staging+Unity, "
-        "prop fbx → Props, картинки → References. Клади всё в один Inbox."
+        "Разобрать Inbox: blend, prop FBX, картинки. "
+        "Анимации Mixamo — «accept_animation_inbox» (по одной)."
     )
     parameters = {
         "copy_to_unity": "1 = копировать анимации в Assets/…/Animations (по умолчанию 1)",
