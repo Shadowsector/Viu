@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-11T10:05:00Z",
+  "updated_at": "2026-07-11T10:02:25Z",
   "note": "Den screenshot = truth. llava OK при no-home = баг. rev22 materials+camera.",
   "tasks": [
     {
@@ -14,13 +14,16 @@
     },
     {
       "id": "overlay-visual-fix-20260711",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev22: материалы дома + крупная Шаня, без серого пола",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
-      "direct_args": {"reopen_unity": true},
-      "instructions": "deploy-rev 22. Материалы дома → сохранённые URP/Unlit ассеты. Ortho 2.15. Удалить Viu_Floor. Eyes: если «дом не виден» → blocked, не OK. Один прогон."
+      "direct_args": {
+        "reopen_unity": true
+      },
+      "instructions": "deploy-rev 22. Материалы дома → сохранённые URP/Unlit ассеты. Ortho 2.15. Удалить Viu_Floor. Eyes: если «дом не виден» → blocked, не OK. Один прогон.",
+      "started_at": "2026-07-11T10:02:25Z"
     }
   ]
 }
