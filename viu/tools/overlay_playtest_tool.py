@@ -217,7 +217,18 @@ class OverlayPlaytestTool(Tool):
 
         text = "\n".join(lines)
         build_ok = proc.returncode == 0
-        play_ok = build_ok and (not verdict or verdict.startswith("OK:"))
+        # Без блока глаз — не done: иначе снова «ОК» вслепую.
+        has_eyes = "--- eyes ---" in text
+        if build_ok and not has_eyes:
+            lines.append(
+                "--- вердикт ---\n"
+                "WARN: boot есть, но глаза не отработали (обнови Viu до сборки с eyes)."
+            )
+            text = "\n".join(lines)
+            return ToolResult(False, text)
+        play_ok = build_ok and (not verdict or verdict.startswith("OK:")) and has_eyes
+        if play_ok and "WARN:" in text and "--- вердикт (после eyes) ---" in text:
+            play_ok = False
         return ToolResult(play_ok, text)
 
 

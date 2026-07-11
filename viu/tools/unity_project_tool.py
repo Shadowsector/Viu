@@ -493,8 +493,9 @@ class UnityPrepareSceneTool(Tool):
 class UnityOverlayTool(Tool):
     name = "unity_overlay"
     description = (
-        "Собрать и запустить десктоп-оверлей: прозрачная полоса у панели задач, "
-        "Шаня ходит по A/D. Unity Editor должен быть **закрыт**. Долгая сборка (~5–15 мин)."
+        "Собрать и запустить десктоп-оверлей (то же, что overlay_playtest): "
+        "сборка, LaunchOverlay.bat, boot-лог, глаза/скрин, handoff. "
+        "Unity Editor закроется на время batch."
     )
     parameters = {
         "project_path": "корень проекта (опционально)",
@@ -503,98 +504,12 @@ class UnityOverlayTool(Tool):
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
-        root = _root(ctx, args)
-        if not (root / "Assets").is_dir():
-            return ToolResult(False, f"Не Unity-проект: {root}")
+        # Одна дорога с кнопкой GUI и inbox — иначе «Оверлей» без глаз.
+        from .overlay_playtest_tool import OverlayPlaytestTool
 
-        ok, msg = deploy_animation_pipeline(root)
-        if not ok:
-            return ToolResult(False, msg)
-        healthy, hint = editor_scripts_healthy(root)
-        if not healthy:
-            return ToolResult(False, hint)
-
-        prep, prep_msg = _ensure_batch_ready(root, auto_kill=True)
-        if prep is not None:
-            return prep
-
-        exe = find_unity_exe(ctx.config.unity_exe)
-        if exe is None:
-            return ToolResult(
-                False,
-                "Unity.exe не найден. Задай VIU_UNITY_EXE или установи Unity 6.3 LTS через Hub.",
-            )
-
-        cmd = batch_overlay_build_command(root, exe)
-        timeout = float(args.get("timeout") or 1800)
-        try:
-            proc = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, timeout=timeout, cwd=str(root)
-            )
-        except subprocess.TimeoutExpired:
-            return ToolResult(
-                False,
-                f"Сборка оверлея заняла больше {timeout}s. Смотри {root / 'viu_overlay_build.log'}.",
-            )
-
-        log_path = root / "viu_overlay_build.log"
-        important: list[str] = []
-        if log_path.is_file():
-            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-            important = [
-                ln for ln in lines if "[Viu]" in ln or "error CS" in ln or "Exception" in ln
-            ][-15:]
-
-        if proc.returncode != 0:
-            detail = "\n".join(important) if important else "(подробности в viu_overlay_build.log)"
-            return ToolResult(
-                False,
-                "Сборка оверлея не удалась.\n" + detail +
-                "\n\nПришли viu_overlay_build.log через «Отправить логи разработчику».",
-            )
-
-        out_exe = overlay_exe_path(root)
-        launcher = out_exe.parent / "LaunchOverlay.bat"
-        deploy_tune_template(root, overwrite=False)
-        launch = str(args.get("launch", "true")).lower() not in ("0", "false", "no")
-        launched = ""
-        if launch and out_exe.is_file():
-            try:
-                cwd = str(out_exe.parent)
-                if sys.platform == "win32" and launcher.is_file():
-                    subprocess.Popen(  # noqa: S603
-                        ["cmd", "/c", "start", "", str(launcher)],
-                        cwd=cwd,
-                    )
-                elif sys.platform == "win32":
-                    subprocess.Popen(  # noqa: S603
-                        [
-                            "cmd", "/c", "start", "", str(out_exe),
-                            "-force-d3d11-bitblt-model", "-popupwindow",
-                        ],
-                        cwd=cwd,
-                    )
-                else:
-                    subprocess.Popen([str(out_exe)], cwd=cwd)  # noqa: S603
-                launched = (
-                    "\n\nЗапускаю оверлей через LaunchOverlay.bat "
-                    "(-force-d3d11-bitblt-model — без этого экран magenta).\n"
-                    "A/D — ходьба, Esc — выход.\n"
-                    "Логи: Builds/AnabarraOverlay/overlay_boot.log "
-                    "или «Что сломалось? → разработчику»."
-                )
-            except OSError as exc:
-                launched = f"\n\nСобрано, но запустить не смог: {exc}. Запусти: {launcher or out_exe}"
-
-        body = (
-            (f"{prep_msg}\n" if prep_msg else "")
-            + f"{msg}\n\n"
-            + f"Сборка OK: {out_exe}"
-            + launched
-        )
-        if important:
-            body += "\n\n--- лог ---\n" + "\n".join(important)
-        return ToolResult(True, body)
+        merged = dict(args or {})
+        merged.setdefault("reopen_unity", True)
+        return OverlayPlaytestTool().run(merged, ctx)
 
 
 class UnityOverlayTuneTool(Tool):
