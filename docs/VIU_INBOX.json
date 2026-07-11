@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-11T09:20:02Z",
+  "updated_at": "2026-07-11T09:20:46Z",
   "note": "FAIL/WARN → escalate + blocked. Один playtest за раз.",
   "tasks": [
     {
@@ -32,7 +32,7 @@
     },
     {
       "id": "overlay-home-anim-fix-20260711",
-      "status": "in_progress",
+      "status": "done",
       "priority": 1,
       "title": "Один playtest: дом URP + анимация Idle",
       "created_by": "Cursor",
@@ -41,7 +41,9 @@
         "reopen_unity": true
       },
       "instructions": "deploy-rev 20. ОДИН прогон. Ожидай: shanya=True, home=Viu_Home_*, homeMesh>0. WARN→blocked+escalate. Не повторять.",
-      "started_at": "2026-07-11T09:20:02Z"
+      "started_at": "2026-07-11T09:20:02Z",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nУже есть: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe\n--- build ---\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs\n[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe\n[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\\..\\Builds/AnabarraOverlay\\LaunchOverlay.bat\nЗапуск: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\LaunchOverlay.bat\n--- overlay_boot.log ---\n﻿12:20:29 Awake: renderers=5063/5064 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables\n12:20:29 Start args=AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow\n12:20:29 HWND ok\n12:20:29 Geometry 2560x1440 at 0,0\n12:20:30 SetLayeredWindowAttributes=True err=0\n12:20:30 ColorKey pass 1, Esc=выход\n12:20:30 AfterWindow: renderers=5063/5064 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables\n\n--- вердикт ---\nOK: HWND + ColorKey. Смотри рабочий стол — Шаня/дом должны быть видны.\nUnity Editor снова открыт для Дена.\nSupport bundle: U:\\Viu\\.viu\\support\\viu_logs_20260711_122044.zip\nЛоги отправлены: https://gist.github.com/Shadowsector/68e9d6327ca459e17b659a4ef9a1a71d",
+      "finished_at": "2026-07-11T09:20:46Z"
     }
   ]
 }
