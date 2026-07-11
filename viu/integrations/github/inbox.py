@@ -106,9 +106,23 @@ def push_inbox(
 
 def pending_tasks(inbox: Dict[str, Any]) -> List[Dict[str, Any]]:
     tasks = inbox.get("tasks") or []
-    out = [t for t in tasks if isinstance(t, dict) and t.get("status") == "pending"]
+    out = [
+        t
+        for t in tasks
+        if isinstance(t, dict) and t.get("status") == "pending"
+    ]
     out.sort(key=lambda t: int(t.get("priority") or 100))
     return out
+
+
+def claim_task(inbox: Dict[str, Any], task_id: str) -> bool:
+    """pending → in_progress, чтобы поллер не схватил ту же задачу снова."""
+    for t in inbox.get("tasks") or []:
+        if isinstance(t, dict) and t.get("id") == task_id and t.get("status") == "pending":
+            t["status"] = "in_progress"
+            t["started_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            return True
+    return False
 
 
 def mark_task(
@@ -140,6 +154,9 @@ def format_task_prompt(task: Dict[str, Any]) -> str:
         "- Выполни сама инструментами. Не проси Дена нажимать кнопки.",
         "- ask_user / Telegram — только если в задаче явно нужен decision, "
         "или без выбора человека дальше нельзя.",
+        "- При ошибке инструмента: **web_search** по тексту ошибки, потом "
+        "**cursor_handoff_with_logs**, затем **cursor_inbox_complete** "
+        "со status=blocked. НЕ крути тот же tool по кругу.",
         "- В конце: cursor_inbox_complete с id и кратким result; "
         "при важном итоге — cursor_handoff_with_logs.",
     ]

@@ -288,28 +288,46 @@ class Agent:
             messages.append({"role": "assistant", "content": raw})
 
             if count >= REPEAT_STOP_AT:
+                # Эскалация Cursor вместо «нажми Play» Дена.
+                try:
+                    from .escalate import escalate_failure
+
+                    _, esc = escalate_failure(
+                        self.ctx,
+                        tool_name=tool_name,
+                        error_text=observation,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    esc = f"(escalate fail: {exc})"
                 final = (
-                    f"Я несколько раз повторил «{tool_name}» без изменений — похоже, "
-                    "дальше нужен твой ручной шаг (например, нажать ▶ Play в Unity или "
-                    "что-то настроить в окне). Вот что я вижу:\n\n"
-                    f"{observation}\n\n"
-                    "Скажи, что сделать дальше, или выполни ручной шаг и напиши мне."
+                    f"Застряла на «{tool_name}» (повтор {count}×). "
+                    "Не кручу дальше — отправила лог Cursor и поискала фикс.\n\n"
+                    f"{esc}"
                 )
                 step = Step(kind="final", thought=thought, observation=final)
                 result.steps.append(step)
                 result.final = final
                 result.completed = True
+                result.tool_errors = True
                 if on_step:
                     on_step(step)
-                self._log(f"STOP: repeated {tool_name} x{count}")
+                self._log(f"STOP: repeated {tool_name} x{count} → escalate")
                 return result
 
             observation_msg = f"Наблюдение:\n{observation}"
+            if not ok:
+                observation_msg += (
+                    "\n\n[Система] Инструмент упал. НЕ повторяй его сразу. "
+                    "Сделай: (1) web_search по тексту ошибки, "
+                    "(2) cursor_handoff_with_logs с логом, "
+                    "(3) если это задача inbox — cursor_inbox_complete status=blocked. "
+                    "Дена кнопками не дёргай."
+                )
             if count >= REPEAT_NUDGE_AT:
                 observation_msg += (
                     f"\n\n[Система] Ты уже вызывал «{tool_name}» с тем же результатом. "
-                    "НЕ повторяй его. Если нужен ручной шаг пользователя — вызови ask_user "
-                    "с конкретным вопросом. Иначе выбери другой инструмент или дай final."
+                    "НЕ повторяй его. Сделай web_search + cursor_handoff_with_logs "
+                    "или другой инструмент / final."
                 )
             messages.append({"role": "user", "content": observation_msg})
 

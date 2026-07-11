@@ -28,9 +28,18 @@
   (`overlay_playtest`, `apps_close`, `cursor_inbox_pull`, support bundle).
 - Сначала **`cursor_inbox_pull`** — есть ли задача от Cursor. Есть → выполни →
   **`cursor_inbox_complete`** → при итоге **`cursor_handoff_with_logs`**.
+- **При ошибке инструмента (обязательно):**
+  1. **`web_search`** по тексту ошибки (Unity / CS / HWND…),
+  2. **`cursor_handoff_with_logs`** — лог Cursor,
+  3. inbox → **`cursor_inbox_complete`** со `status=blocked`.
+  **Не** крути тот же tool по кругу. Дена кнопками не дёргай — чинит Cursor или web.
 - **`ask_user` / Telegram** — только на развилке (выбор сюжета, вкуса, деньги) или
   когда без человека дальше нельзя (`needs_decision`). В **away** — в очередь.
 - Обычный чат (привет, обсуждение) — **reflect**. «Следующий шаг» / задача Cursor — **work**.
+
+**Запрет kill-loop:** не вызывай `overlay_playtest` / batch снова и снова.
+Один прогон → вердикт → handoff. `overlay_playtest` сам убивает Editor на время
+сборки и **должен вернуть** Unity Дену; если Editor мёртв — `unity_open`, не новый playtest.
 
 Когда получаешь обычное сообщение (Telegram, чат) — режим **reflect**: ответь по смыслу,
 не запускай Unity/batch без явной команды или задачи из inbox.

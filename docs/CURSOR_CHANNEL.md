@@ -13,7 +13,9 @@
 2. **Viu** (GUI) раз в ~3 мин сама тянет inbox с GitHub. Или агент вызывает `cursor_inbox_pull`.
 3. Viu выполняет инструментами (`overlay_playtest`, Unity, Blender…).
 4. Viu ставит `done` / `blocked` / `needs_decision` через `cursor_inbox_complete` и пишет handoff.
-5. **Дена** зовут только при `needs_decision` или живом выборе (сюжет, вкус, деньги).
+5. Viu при FAIL/WARN: **web_search** + **handoff** Cursor, статус `blocked` —
+   **не** крутит ту же команду. Дена кнопками не дёргает.
+6. **Дена** зовут только при `needs_decision` или живом выборе (сюжет, вкус, деньги).
 
 ## Инструменты Viu
 
@@ -21,7 +23,9 @@
 |------|--------|
 | `cursor_inbox_pull` | Скачать pending |
 | `cursor_inbox_complete` | Закрыть задачу + push |
-| `overlay_playtest` | Сборка + запуск + boot-лог + gist |
+| `overlay_playtest` | Сборка + запуск + boot-лог + gist (**потом reopen Unity**) |
+| `unity_open` | Вернуть Editor Дену |
+| `web_search` | Искать фикс ошибки в сети |
 | `cursor_handoff_with_logs` | Отчёт Cursor |
 
 ## Настройка

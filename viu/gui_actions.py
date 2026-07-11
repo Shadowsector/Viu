@@ -267,7 +267,9 @@ GUI_ACTIONS: List[GuiAction] = [
             "Двигай Анабарру без кнопок Дена. Сначала cursor_inbox_pull — "
             "если есть pending от Cursor, выполни и cursor_inbox_complete. "
             "Иначе project_status → следующий безопасный шаг. "
-            "Оверлей: overlay_playtest. ask_user только на decision."
+            "Оверлей: один `overlay_playtest` → вердикт → handoff; при ошибке "
+            "web_search + cursor_handoff, не крути по кругу. "
+            "ask_user только на decision. Unity мёртв → unity_open."
         ),
     ),
     GuiAction(

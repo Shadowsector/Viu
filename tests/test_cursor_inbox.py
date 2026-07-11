@@ -1,6 +1,7 @@
 """Тесты Cursor → Viu inbox."""
 
 from viu.integrations.github.inbox import (
+    claim_task,
     empty_inbox,
     format_task_prompt,
     mark_task,
@@ -37,7 +38,9 @@ def test_pending_and_mark():
     assert mark_task(inbox, "t0", status="done", result="ok")
     assert pending_tasks(inbox)[0]["id"] == "t1"
     prompt = format_task_prompt(pending[0])
-    assert "Cursor → Viu" in prompt or "task" in prompt
+    assert "web_search" in prompt or "blocked" in prompt
+    assert claim_task(inbox, "t1")
+    assert pending_tasks(inbox) == []
 
 
 def test_registry_has_inbox_and_playtest():
@@ -45,3 +48,4 @@ def test_registry_has_inbox_and_playtest():
     assert reg.get("cursor_inbox_pull") is not None
     assert reg.get("cursor_inbox_complete") is not None
     assert reg.get("overlay_playtest") is not None
+    assert reg.get("web_search") is not None

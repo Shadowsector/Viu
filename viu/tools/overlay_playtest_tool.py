@@ -10,12 +10,17 @@ from typing import Any, Dict, List
 
 from ..integrations.unity.overlay import overlay_exe_path
 from ..integrations.unity.paths import unity_project_root
-from ..integrations.unity.process import kill_unity_processes
+from ..integrations.unity.process import (
+    clear_unity_lockfile,
+    kill_unity_processes,
+    unity_process_running,
+)
 from ..integrations.unity.setup import (
     batch_overlay_build_command,
     deploy_animation_pipeline,
     editor_scripts_healthy,
     find_unity_exe,
+    open_editor_command,
 )
 from ..integrations.unity.overlay_tune import deploy_tune_template
 from ..support import collect_support_bundle, upload_bundle_to_gist
@@ -94,6 +99,7 @@ class OverlayPlaytestTool(Tool):
             lines.extend(important[-8:])
 
         launch = str(args.get("launch", "true")).lower() not in ("0", "false", "no")
+        verdict = ""
         if launch and out_exe.is_file():
             boot = out_exe.parent / "overlay_boot.log"
             if boot.is_file():
@@ -140,10 +146,28 @@ class OverlayPlaytestTool(Tool):
                 lines.append("--- вердикт ---")
                 lines.append(verdict)
             else:
+                verdict = "FAIL: overlay_boot.log нет"
                 lines.append(
                     "overlay_boot.log нет — окно могло не стартовать или скрипт не доехал. "
                     "Проверь AnabarraOverlay в диспетчере задач."
                 )
+
+        # Вернуть Editor Дену — playtest не должен оставлять Unity мёртвым.
+        reopen = str(args.get("reopen_unity", "true")).lower() not in ("0", "false", "no")
+        if reopen:
+            try:
+                if not unity_process_running() and exe is not None:
+                    clear_unity_lockfile(root)
+                    cmd_open = open_editor_command(root, exe)
+                    kwargs: Dict[str, Any] = {"cwd": str(root)}
+                    if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+                        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+                    subprocess.Popen(cmd_open, **kwargs)  # noqa: S603
+                    lines.append("Unity Editor снова открыт для Дена.")
+                elif unity_process_running():
+                    lines.append("Unity Editor уже в процессах.")
+            except Exception as exc:  # noqa: BLE001
+                lines.append(f"Не смогла reopen Unity: {exc}")
 
         # Bundle + gist для Cursor
         try:
@@ -154,8 +178,10 @@ class OverlayPlaytestTool(Tool):
         except Exception as exc:  # noqa: BLE001
             lines.append(f"Bundle: {exc}")
 
-        ok_run = proc.returncode == 0
-        return ToolResult(ok_run, "\n".join(lines))
+        text = "\n".join(lines)
+        build_ok = proc.returncode == 0
+        play_ok = build_ok and (not verdict or verdict.startswith("OK:"))
+        return ToolResult(play_ok, text)
 
 
 def _verdict(boot_text: str) -> str:

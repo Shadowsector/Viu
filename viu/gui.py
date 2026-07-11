@@ -1137,6 +1137,7 @@ class ViuGUI:
 
         def work():
             from .integrations.github.inbox import (
+                claim_task,
                 fetch_inbox,
                 format_task_prompt,
                 mark_task,
@@ -1152,11 +1153,19 @@ class ViuGUI:
             if not pending:
                 return None
             task = pending[0]
+            # Claim сразу, чтобы через 3 мин не стартанула вторая копия.
+            tid = str(task.get("id") or "")
+            if tid and claim_task(data, tid):
+                save_inbox_local(data)
+                try:
+                    push_inbox(data, message=f"Viu: claim {tid}")
+                except Exception:  # noqa: BLE001
+                    pass
             # Прямой инструмент — без Ollama (таймауты LLM не блокируют пайплайн).
             direct = str(task.get("direct_tool") or "").strip()
             if direct:
                 return {"mode": "direct", "task": task, "inbox": data}
-            return {"mode": "agent", "prompt": format_task_prompt(task)}
+            return {"mode": "agent", "prompt": format_task_prompt(task), "task_id": tid, "inbox": data}
 
         def done(result) -> None:
             if isinstance(result, Exception) or not result:
@@ -1177,7 +1186,12 @@ class ViuGUI:
 
     def _run_direct_inbox_task(self, task: dict, inbox: dict) -> None:
         """Выполнить tool из inbox без LLM — отчёт в Telegram/чат + complete."""
-        from .integrations.github.inbox import mark_task, push_inbox, save_inbox_local
+        from .escalate import classify_direct_status, escalate_failure
+        from .integrations.github.inbox import (
+            mark_task,
+            push_inbox,
+            save_inbox_local,
+        )
 
         tid = str(task.get("id") or "")
         tool_name = str(task.get("direct_tool") or "").strip()
@@ -1190,31 +1204,56 @@ class ViuGUI:
         self._set_busy(True)
 
         def work():
+            # Уже claimed в poll — не claim повторно.
             tool = self.agent.registry.get(tool_name)
             if tool is None:
-                return False, f"Нет инструмента `{tool_name}`"
+                status = "blocked"
+                body = f"Нет инструмента `{tool_name}`"
+                mark_task(inbox, tid, status=status, result=body)
+                save_inbox_local(inbox)
+                push_inbox(inbox, message=f"Viu: task {tid} → {status}")
+                _, esc = escalate_failure(
+                    self.agent.ctx,
+                    tool_name=tool_name or "missing_tool",
+                    error_text=body,
+                    task_id=tid,
+                )
+                return False, body + "\n\n" + esc
+
             ctx = self.agent.ctx
             res = tool.run(tool_args or {}, ctx)
-            status = "done" if res.ok else "blocked"
-            mark_task(inbox, tid, status=status, result=res.content[:3500])
+            status = classify_direct_status(tool_name, res.ok, res.content)
+            body = res.content
+
+            if status == "blocked":
+                _, esc = escalate_failure(
+                    ctx,
+                    tool_name=tool_name,
+                    error_text=res.content,
+                    task_id=tid,
+                )
+                body = res.content + "\n\n--- escalate ---\n" + esc
+
+            mark_task(inbox, tid, status=status, result=body[:3500])
             save_inbox_local(inbox)
             push_ok, push_msg = push_inbox(inbox, message=f"Viu: task {tid} → {status}")
-            body = res.content
             if not push_ok:
                 body += f"\n\n(inbox push: {push_msg})"
-            # Handoff для Cursor — без LLM
-            try:
-                from .integrations.github.handoff import append_handoff, push_handoff
 
-                append_handoff(
-                    f"direct `{tool_name}` → {status}",
-                    body[:6000],
-                    author="Viu",
-                )
-                push_handoff(message=f"Viu: {tid} {status}")
-            except Exception as exc:  # noqa: BLE001
-                body += f"\n\nhandoff: {exc}"
-            return res.ok, body
+            if status == "done":
+                try:
+                    from .integrations.github.handoff import append_handoff, push_handoff
+
+                    append_handoff(
+                        f"direct `{tool_name}` → {status}",
+                        body[:6000],
+                        author="Viu",
+                    )
+                    push_handoff(message=f"Viu: {tid} {status}")
+                except Exception as exc:  # noqa: BLE001
+                    body += f"\n\nhandoff: {exc}"
+
+            return status == "done", body
 
         def done(result) -> None:
             self._set_busy(False)
