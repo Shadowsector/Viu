@@ -2,27 +2,23 @@ using System;
 using System.Collections;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using UnityEngine;
 
 namespace Viu.Runtime
 {
     /// <summary>
-    /// Прозрачное окно на весь экран (Windows build). Фон — magenta + DWM. Esc — выход.
+    /// Прозрачное окно на Windows (build). Требует BitBlt swapchain:
+    /// AnabarraOverlay.exe -force-d3d11-bitblt-model
     /// </summary>
     [DefaultExecutionOrder(-50)]
     public class ShanyaDesktopOverlay : MonoBehaviour
     {
         public static readonly Color ChromaKey = new Color(1f, 0f, 1f, 1f);
 
-        [Tooltip("На весь монитор — чтобы Шаня могла ходить вверх по миру (деревья, иконки).")]
         public bool fullScreenOverlay = true;
-
-        [Tooltip("Только если fullScreenOverlay=false: высота полосы в пикселях.")]
         public int stripHeightPixels = 280;
-
-        [Tooltip("Стопы на этой высоте от низа экрана (над панелью задач), в пикселях.")]
         public int feetLineFromBottomPixels = 46;
-
         public bool clickThrough = false;
         public bool alwaysOnTop = true;
         public int monitorIndex = 0;
@@ -31,8 +27,7 @@ namespace Viu.Runtime
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         IntPtr _hwnd;
-        bool _configured;
-        bool _colorKeyApplied;
+        int _colorKeyAttempts;
 #endif
 
         void Awake()
@@ -50,14 +45,15 @@ namespace Viu.Runtime
             {
                 _camera.clearFlags = CameraClearFlags.SolidColor;
                 _camera.backgroundColor = ChromaKey;
-                _camera.depth = 0;
             }
+
+            LogSceneStats("Awake");
         }
 
         void Start()
         {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
-            BootLog("Start product=" + Application.productName);
+            BootLog("Start args=" + Environment.CommandLine);
             StartCoroutine(ConfigureWindowWhenReady());
 #endif
         }
@@ -66,13 +62,21 @@ namespace Viu.Runtime
         {
             if (Input.GetKeyDown(KeyCode.Escape))
                 Application.Quit();
+
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            if (_hwnd != IntPtr.Zero && _colorKeyAttempts > 0 && _colorKeyAttempts < 120
+                && Time.frameCount % 30 == 0)
+            {
+                ApplyColorKey();
+                _colorKeyAttempts++;
+            }
+#endif
         }
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         IEnumerator ConfigureWindowWhenReady()
         {
-            // Unity часто ещё не создал HWND в первые кадры — ждём и ищем надёжнее, чем GetActiveWindow.
-            for (int i = 0; i < 180 && _hwnd == IntPtr.Zero; i++)
+            for (int i = 0; i < 240 && _hwnd == IntPtr.Zero; i++)
             {
                 _hwnd = ResolveGameWindow();
                 if (_hwnd == IntPtr.Zero)
@@ -81,20 +85,17 @@ namespace Viu.Runtime
 
             if (_hwnd == IntPtr.Zero)
             {
-                BootLog("ERROR: окно игры не найдено (HWND=0). Alt+Tab — ищи AnabarraOverlay.");
+                BootLog("ERROR: HWND не найден");
                 yield break;
             }
 
-            BootLog("HWND ok, frame=" + Time.frameCount);
+            BootLog("HWND ok");
             ApplyWindowGeometry();
-            _configured = true;
-
-            // Цветовой ключ — после первого кадра с 3D, иначе весь экран «дырявый» и кажется, что оверлея нет.
             yield return new WaitForEndOfFrame();
-            yield return new WaitForSeconds(0.35f);
             ApplyColorKey();
-            _colorKeyApplied = true;
-            BootLog("ColorKey applied, Esc=выход");
+            _colorKeyAttempts = 1;
+            BootLog("ColorKey pass 1, Esc=выход");
+            LogSceneStats("AfterWindow");
         }
 
         void ApplyWindowGeometry()
@@ -108,7 +109,8 @@ namespace Viu.Runtime
             ShowWindow(_hwnd, SW_RESTORE);
             ShowWindow(_hwnd, SW_SHOW);
 
-            SetWindowLong(_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+            long style = WS_POPUP | WS_VISIBLE;
+            SetWindowLong(_hwnd, GWL_STYLE, (uint)style);
 
             uint ex = WS_EX_LAYERED;
             if (alwaysOnTop) ex |= WS_EX_TOPMOST;
@@ -119,11 +121,8 @@ namespace Viu.Runtime
                 x, y, w, h, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
 
             ApplyFeetLineToCamera(h);
+            SetForegroundWindow(_hwnd);
 
-            try { SetForegroundWindow(_hwnd); }
-            catch { /* запуск из Viu может блокировать foreground */ }
-
-            Debug.Log($"[Viu] Overlay {w}x{h} fullscreen={fullScreenOverlay}, Esc=выход.");
             BootLog($"Geometry {w}x{h} at {x},{y}");
         }
 
@@ -131,9 +130,12 @@ namespace Viu.Runtime
         {
             if (_hwnd == IntPtr.Zero) return;
 
-            var margins = new MARGINS { cxLeftWidth = -1 };
+            // BitBlt + color key: DWM margins = 0 (не -1 — иначе весь экран magenta без flip fix).
+            var margins = new MARGINS();
             DwmExtendFrameIntoClientArea(_hwnd, ref margins);
-            SetLayeredWindowAttributes(_hwnd, ChromaColorRef, 0, LWA_COLORKEY);
+
+            bool ok = SetLayeredWindowAttributes(_hwnd, ChromaColorRef, 0, LWA_COLORKEY);
+            BootLog("SetLayeredWindowAttributes=" + ok + " err=" + Marshal.GetLastWin32Error());
         }
 
         static IntPtr ResolveGameWindow()
@@ -157,12 +159,33 @@ namespace Viu.Runtime
             return found;
         }
 
+        void LogSceneStats(string tag)
+        {
+            var renderers = FindObjectsOfType<Renderer>();
+            int enabled = 0;
+            foreach (var r in renderers)
+                if (r != null && r.enabled) enabled++;
+
+            var shanya = GameObject.Find("Shanya_Erisa") ?? GameObject.Find("Shanya");
+            GameObject home = null;
+            foreach (var go in FindObjectsOfType<GameObject>())
+            {
+                if (go != null && go.name.StartsWith("Viu_Home_", StringComparison.Ordinal))
+                {
+                    home = go;
+                    break;
+                }
+            }
+
+            BootLog($"{tag}: renderers={enabled}/{renderers.Length} shanya={(shanya != null)} home={(home != null ? home.name : "нет")}");
+        }
+
         static void BootLog(string line)
         {
             try
             {
                 var path = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "overlay_boot.log"));
-                File.AppendAllText(path, DateTime.Now.ToString("HH:mm:ss") + " " + line + "\n");
+                File.AppendAllText(path, DateTime.Now.ToString("HH:mm:ss") + " " + line + "\n", Encoding.UTF8);
             }
             catch
             {
@@ -288,7 +311,7 @@ namespace Viu.Runtime
         static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
             int X, int Y, int cx, int cy, uint uFlags);
 
-        [DllImport("user32.dll")]
+        [DllImport("user32.dll", SetLastError = true)]
         static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
 
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);

@@ -17,7 +17,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 16
+        // @viu-deploy-rev 17
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
@@ -89,10 +89,25 @@ namespace Viu.Editor
                 });
 
             if (report.summary.result == BuildResult.Succeeded)
+            {
                 Debug.Log("[Viu] Overlay build OK: " + report.summary.outputPath);
+                WriteOverlayLauncher();
+            }
             else
                 throw new InvalidOperationException(
                     "Overlay build failed: " + report.summary.result + " — см. Console.");
+        }
+
+        static void WriteOverlayLauncher()
+        {
+            var dir = Path.Combine(Application.dataPath, "..", BuildFolder);
+            var bat = Path.Combine(dir, "LaunchOverlay.bat");
+            var body =
+                "@echo off\r\n" +
+                "cd /d \"%~dp0\"\r\n" +
+                "start \"\" \"AnabarraOverlay.exe\" -force-d3d11-bitblt-model -popupwindow\r\n";
+            File.WriteAllText(bat, body, System.Text.Encoding.ASCII);
+            Debug.Log("[Viu] Launcher: " + bat);
         }
 
         static void ConfigurePlayerForOverlay()

@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 16" in text
+    assert "@viu-deploy-rev 17" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -116,6 +116,7 @@ def test_overlay_templates(tmp_path):
     assert "EnvironmentRoot" in setup
     assert "BuildWindowsBatch" in setup
     assert "AnabarraOverlay.exe" in setup
+    assert "LaunchOverlay.bat" in setup or "WriteOverlayLauncher" in setup
     dollhouse = (root / "DollhouseWall.cs").read_text(encoding="utf-8")
     assert "Wall_front" in dollhouse
     assert "SetAtHome" in dollhouse

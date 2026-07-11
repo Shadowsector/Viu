@@ -554,28 +554,37 @@ class UnityOverlayTool(Tool):
             )
 
         out_exe = overlay_exe_path(root)
+        launcher = out_exe.parent / "LaunchOverlay.bat"
         deploy_tune_template(root, overwrite=False)
         launch = str(args.get("launch", "true")).lower() not in ("0", "false", "no")
         launched = ""
         if launch and out_exe.is_file():
             try:
-                exe = str(out_exe)
                 cwd = str(out_exe.parent)
-                # cmd start — окно получает foreground (из Python часто «есть в таскбаре, но не видно»).
-                if sys.platform == "win32":
+                if sys.platform == "win32" and launcher.is_file():
                     subprocess.Popen(  # noqa: S603
-                        ["cmd", "/c", "start", "", exe],
+                        ["cmd", "/c", "start", "", str(launcher)],
+                        cwd=cwd,
+                    )
+                elif sys.platform == "win32":
+                    subprocess.Popen(  # noqa: S603
+                        [
+                            "cmd", "/c", "start", "", str(out_exe),
+                            "-force-d3d11-bitblt-model", "-popupwindow",
+                        ],
                         cwd=cwd,
                     )
                 else:
-                    subprocess.Popen([exe], cwd=cwd)  # noqa: S603
+                    subprocess.Popen([str(out_exe)], cwd=cwd)  # noqa: S603
                 launched = (
-                    "\n\nЗапускаю оверлей (на весь экран). A/D — ходьба, Esc — выход. "
-                    "Глубина: **W** подойти, **S** отойти, **F5** — сохранить настройки.\n"
-                    "Если пусто: Alt+Tab → AnabarraOverlay; лог рядом с exe: overlay_boot.log"
+                    "\n\nЗапускаю оверлей через LaunchOverlay.bat "
+                    "(-force-d3d11-bitblt-model — без этого экран magenta).\n"
+                    "A/D — ходьба, Esc — выход.\n"
+                    "Логи: Builds/AnabarraOverlay/overlay_boot.log "
+                    "или «Что сломалось? → разработчику»."
                 )
             except OSError as exc:
-                launched = f"\n\nСобрано, но запустить не смог: {exc}. Запусти вручную: {out_exe}"
+                launched = f"\n\nСобрано, но запустить не смог: {exc}. Запусти: {launcher or out_exe}"
 
         body = (
             (f"{prep_msg}\n" if prep_msg else "")

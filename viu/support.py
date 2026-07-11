@@ -22,8 +22,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from .anabarra_layout import unity_project_path
 from .config import Config
 from .env_file import env_hint_for_token, github_token
+from .integrations.unity.overlay import OVERLAY_BUILD_DIR
 from .updater import version_label
 
 
@@ -39,6 +41,73 @@ def _system_info(config: Config) -> str:
         config.summary(),
     ]
     return "\n".join(lines)
+
+
+def _tail_text(path: Path, max_lines: int = 120) -> str:
+    if not path.is_file():
+        return f"(нет файла: {path})\n"
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        return f"(не прочитать {path}: {exc})\n"
+    if len(lines) <= max_lines:
+        body = "\n".join(lines)
+    else:
+        body = "\n".join(lines[-max_lines:])
+    return f"=== {path.name} (last {max_lines} lines) ===\n{body}\n\n"
+
+
+def _player_log_candidates(config: Config) -> List[Path]:
+    """Player.log Unity build — LocalLow/<Company>/<Product>."""
+    roots: List[Path] = []
+    if os.name == "nt":
+        local_low = Path(os.environ.get("LOCALAPPDATA", "")) / ".." / "LocalLow"
+        try:
+            local_low = local_low.resolve()
+        except OSError:
+            local_low = Path.home() / "AppData" / "LocalLow"
+        if local_low.is_dir():
+            for company in local_low.iterdir():
+                if not company.is_dir():
+                    continue
+                for product in company.iterdir():
+                    if product.is_dir() and "anabarra" in product.name.lower():
+                        p = product / "Player.log"
+                        if p.is_file():
+                            roots.append(p)
+    try:
+        proj = unity_project_path(config)
+        roots.append(proj / OVERLAY_BUILD_DIR / "Player.log")
+    except Exception:
+        pass
+    return roots
+
+
+def _overlay_diagnostics_text(config: Config) -> str:
+    parts: List[str] = ["=== Overlay diagnostics ===\n"]
+    try:
+        proj = unity_project_path(config)
+    except Exception as exc:
+        return parts[0] + f"Unity project: {exc}\n"
+
+    overlay_dir = proj / OVERLAY_BUILD_DIR
+    parts.append(f"Overlay dir: {overlay_dir}\n")
+    for name in (
+        "overlay_boot.log",
+        "LaunchOverlay.bat",
+        "AnabarraOverlay.exe",
+    ):
+        p = overlay_dir / name
+        parts.append(f"  {name}: {'OK' if p.is_file() else 'нет'}\n")
+
+    for log_name in ("viu_overlay_build.log", "viu_overlay_scene.log", "viu_setup.log"):
+        parts.append(_tail_text(proj / log_name, max_lines=80))
+
+    for pl in _player_log_candidates(config):
+        parts.append(_tail_text(pl, max_lines=80))
+
+    parts.append(_tail_text(overlay_dir / "overlay_boot.log", max_lines=80))
+    return "".join(parts)
 
 
 def _iter_log_files(config: Config, max_chats: int = 5) -> List[Path]:
@@ -72,6 +141,7 @@ def collect_support_bundle(config: Config) -> Path:
 
     with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("system_info.txt", _system_info(config))
+        zf.writestr("overlay_diagnostics.txt", _overlay_diagnostics_text(config))
         for f in _iter_log_files(config):
             try:
                 zf.write(f, arcname=f.name)

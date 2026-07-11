@@ -36,7 +36,7 @@ _OVERLAY_DEPTH_REL = f"{_RUNTIME_DIR}/ShanyaOverlayDepth.cs"
 _DOLLHOUSE_REL = f"{_RUNTIME_DIR}/DollhouseWall.cs"
 _MANIFEST_REL = f"{ANIMATIONS_REL}/{MANIFEST_NAME}"
 
-VIU_DEPLOY_REV = "16"
+VIU_DEPLOY_REV = "17"
 VIU_DEPLOY_MARKER = f"@viu-deploy-rev {VIU_DEPLOY_REV}"
 _BROKEN_EDITOR_MARKERS = (
     "activeInputHandler",
@@ -69,6 +69,23 @@ def editor_scripts_healthy(project_root: Path) -> Tuple[bool, str]:
             "Скрипты Viu в проекте устарели (нет метки версии deploy). "
             "Нажми **«Обновить Вью»** и повтори операцию."
         )
+    return True, ""
+
+
+def ensure_flip_model_off(project_root: Path) -> Tuple[bool, str]:
+    """Прозрачный оверлей ломается с DXGI flip model — нужен BitBlt."""
+    settings = project_root / "ProjectSettings" / "ProjectSettings.asset"
+    if not settings.is_file():
+        return True, ""
+    text = settings.read_text(encoding="utf-8", errors="replace")
+    new_text, n = re.subn(
+        r"(?m)^(\s*)useFlipModelSwapchain:\s*1\s*$",
+        r"\1useFlipModelSwapchain: 0",
+        text,
+    )
+    if n:
+        settings.write_text(new_text, encoding="utf-8")
+        return True, "Player Settings: flip model swapchain OFF (нужно для прозрачного оверлея)."
     return True, ""
 
 
@@ -158,6 +175,10 @@ def deploy_animation_pipeline(project_root: Path) -> Tuple[bool, str]:
     if in_msg:
         parts.append(in_msg)
     ok = ok and in_ok
+    flip_ok, flip_msg = ensure_flip_model_off(project_root)
+    if flip_msg:
+        parts.append(flip_msg)
+    ok = ok and flip_ok
     return ok, "\n".join(parts)
 
 
