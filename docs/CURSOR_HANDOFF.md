@@ -481,3 +481,10 @@ ue err=0
 WARN: прозрачность ок, но Шаня не в сцене.
 Support bundle: U:\Viu\.viu\support\viu_logs_20260711_114136.zip
 Логи отправлены: https://gist.github.com/Shadowsector/338ea223532337168ab5bc2a3921ebbd
+
+
+---
+
+## 2026-07-11 12:02 — direct `unity_open` → done (Viu)
+
+Открываю Unity (Unity.exe) с проектом Anabarra. Запуск занимает 30–90 секунд. Когда откроется: Открой сцену Assets/Scenes/GameTest.unity (двойной клик в панели Project) — в ней уже стоит Шаня. Затем нажми ▶ Play и проверь Idle↔Walk на A/D.
