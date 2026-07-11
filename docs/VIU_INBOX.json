@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-11T08:45:00Z",
+  "updated_at": "2026-07-11T08:41:38Z",
   "note": "Cursor пишет задачи сюда. Viu забирает pending. direct_tool = без Ollama.",
   "tasks": [
     {
@@ -17,13 +17,15 @@
     },
     {
       "id": "overlay-playtest-shanya-fix-20260711",
-      "status": "pending",
+      "status": "done",
       "priority": 1,
       "title": "Пересобрать оверлей после фикса Shanya_Erisa",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
       "direct_args": {},
-      "instructions": "deploy-rev 19: FindModelPath больше не берёт Shanya_Fall/Run вместо тела. Нужен вердикт OK с shanya=True name=Shanya_Erisa и home=Viu_Home_*. Дена не дёргать."
+      "instructions": "deploy-rev 19: FindModelPath больше не берёт Shanya_Fall/Run вместо тела. Нужен вердикт OK с shanya=True name=Shanya_Erisa и home=Viu_Home_*. Дена не дёргать.",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nУже есть: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe\n--- build ---\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs\n[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe\n[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\\..\\Builds/AnabarraOverlay\\LaunchOverlay.bat\nЗапуск: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\LaunchOverlay.bat\n--- overlay_boot.log ---\nue err=0\n11:41:27 SetLayeredWindowAttributes=True err=0\n11:41:27 SetLayeredWindowAttributes=True err=0\n11:41:27 SetLayeredWindowAttributes=True err=0\n11:41:27 SetLayeredWindowAttributes=True err=0\n11:41:27 SetLayeredWindowAttributes=True err=0\n11:41:28 SetLayeredWindowAttributes=True err=0\n11:41:28 SetLayeredWindowAttributes=True err=0\n11:41:28 SetLayeredWindowAttributes=True err=0\n11:41:28 SetLayeredWindowAttributes=True err=0\n11:41:28 SetLayeredWindowAttributes=True err=0\n11:41:28 SetLayeredWindowAttributes=True err=0\n11:41:29 SetLayeredWindowAttributes=True err=0\n11:41:29 SetLayeredWindowAttributes=True err=0\n11:41:29 SetLayeredWindowAttributes=True err=0\n11:41:29 SetLayeredWindowAttributes=True err=0\n11:41:29 SetLayeredWindowAttributes=True err=0\n11:41:29 SetLayeredWindowAttributes=True err=0\n11:41:30 SetLayeredWindowAttributes=True err=0\n11:41:30 SetLayeredWindowAttributes=True err=0\n11:41:30 SetLayeredWindowAttributes=True err=0\n11:41:30 SetLayeredWindowAttributes=True err=0\n11:41:30 SetLayeredWindowAttributes=True err=0\n11:41:31 SetLayeredWindowAttributes=True err=0\n11:41:31 SetLayeredWindowAttributes=True err=0\n11:41:31 SetLayeredWindowAttributes=True err=0\n11:41:31 SetLayeredWindowAttributes=True err=0\n11:41:31 SetLayeredWindowAttributes=True err=0\n11:41:31 SetLayeredWindowAttributes=True err=0\n11:41:32 SetLayeredWindowAttributes=True err=0\n11:41:32 SetLayeredWindowAttributes=True err=0\n11:41:32 SetLayeredWindowAttributes=True err=0\n11:41:32 SetLayeredWindowAttributes=True err=0\n11:41:32 SetLayeredWindowAttributes=True err=0\n11:41:32 SetLayeredWindowAttributes=True err=0\n11:41:33 SetLayeredWindowAttributes=True err=0\n11:41:33 SetLayeredWindowAttributes=True err=0\n11:41:33 SetLayeredWindowAttributes=True err=0\n11:41:33 SetLayeredWindowAttributes=True err=0\n11:41:33 SetLayeredWindowAttributes=True err=0\n11:41:34 SetLayeredWindowAttributes=True err=0\n11:41:34 SetLayeredWindowAttributes=True err=0\n11:41:34 SetLayeredWindowAttributes=True err=0\n11:41:34 SetLayeredWindowAttributes=True err=0\n11:41:34 SetLayeredWindowAttributes=True err=0\n11:41:34 SetLayeredWindowAttributes=",
+      "finished_at": "2026-07-11T08:41:38Z"
     },
     {
       "id": "cascadeur-bridge-note-20260711",
