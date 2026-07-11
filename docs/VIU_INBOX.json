@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-11T09:35:00Z",
+  "updated_at": "2026-07-11T09:35:11Z",
   "note": "Глаза: playtest сам снимает экран. Дена не спрашивать. Один прогон.",
   "tasks": [
     {
@@ -14,13 +14,16 @@
     },
     {
       "id": "overlay-eyes-20260711",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "Playtest с глазами: оверлей + скрин + VL/gist",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
-      "direct_args": {"reopen_unity": true},
-      "instructions": "rev21: Idle/Walk-only controller; URP home; после запуска — eyes (скрин AnabarraOverlay → gist/VL). ОДИН прогон. Не проси Дена смотреть. WARN → blocked+escalate."
+      "direct_args": {
+        "reopen_unity": true
+      },
+      "instructions": "rev21: Idle/Walk-only controller; URP home; после запуска — eyes (скрин AnabarraOverlay → gist/VL). ОДИН прогон. Не проси Дена смотреть. WARN → blocked+escalate.",
+      "started_at": "2026-07-11T09:35:11Z"
     }
   ]
 }
