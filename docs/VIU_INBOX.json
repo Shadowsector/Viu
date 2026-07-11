@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-11T10:00:00Z",
+  "updated_at": "2026-07-11T09:56:03Z",
   "note": "Кнопка Оверлей = overlay_playtest + глаза. Без --- eyes --- → blocked.",
   "tasks": [
     {
@@ -14,13 +14,16 @@
     },
     {
       "id": "overlay-eyes-retest-20260711",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "Retest оверлея УЖЕ с глазами (после update > b0e7ccb)",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
-      "direct_args": {"reopen_unity": true},
-      "instructions": "Сначала убедись что в коде есть --- eyes --- (иначе blocked). Один прогон. Скрин AnabarraOverlay → gist. Не проси Дена. Если криво на скрине — blocked+escalate."
+      "direct_args": {
+        "reopen_unity": true
+      },
+      "instructions": "Сначала убедись что в коде есть --- eyes --- (иначе blocked). Один прогон. Скрин AnabarraOverlay → gist. Не проси Дена. Если криво на скрине — blocked+escalate.",
+      "started_at": "2026-07-11T09:56:03Z"
     }
   ]
 }
