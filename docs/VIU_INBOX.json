@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-11T09:20:00Z",
+  "updated_at": "2026-07-11T09:20:02Z",
   "note": "FAIL/WARN → escalate + blocked. Один playtest за раз.",
   "tasks": [
     {
@@ -32,13 +32,16 @@
     },
     {
       "id": "overlay-home-anim-fix-20260711",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "Один playtest: дом URP + анимация Idle",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
-      "direct_args": {"reopen_unity": true},
-      "instructions": "deploy-rev 20. ОДИН прогон. Ожидай: shanya=True, home=Viu_Home_*, homeMesh>0. WARN→blocked+escalate. Не повторять."
+      "direct_args": {
+        "reopen_unity": true
+      },
+      "instructions": "deploy-rev 20. ОДИН прогон. Ожидай: shanya=True, home=Viu_Home_*, homeMesh>0. WARN→blocked+escalate. Не повторять.",
+      "started_at": "2026-07-11T09:20:02Z"
     }
   ]
 }
