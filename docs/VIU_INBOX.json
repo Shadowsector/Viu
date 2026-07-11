@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-11T09:05:00Z",
+  "updated_at": "2026-07-11T09:02:52Z",
   "note": "Cursor пишет задачи сюда. Viu забирает pending. При FAIL/WARN → escalate (web_search + handoff), blocked — не крутить по кругу.",
   "tasks": [
     {
@@ -32,13 +32,15 @@
     },
     {
       "id": "restore-unity-20260711",
-      "status": "pending",
+      "status": "done",
       "priority": 1,
       "title": "Вернуть Unity Дену (без batch kill-loop)",
       "created_by": "Cursor",
       "direct_tool": "unity_open",
       "direct_args": {},
-      "instructions": "Только открыть Editor. Не overlay_playtest, не kill Unity, не batch. Если не открылся — escalate (web_search + handoff Cursor), статус blocked."
+      "instructions": "Только открыть Editor. Не overlay_playtest, не kill Unity, не batch. Если не открылся — escalate (web_search + handoff Cursor), статус blocked.",
+      "result": "Открываю Unity (Unity.exe) с проектом Anabarra. Запуск занимает 30–90 секунд. Когда откроется: Открой сцену Assets/Scenes/GameTest.unity (двойной клик в панели Project) — в ней уже стоит Шаня. Затем нажми ▶ Play и проверь Idle↔Walk на A/D.",
+      "finished_at": "2026-07-11T09:02:52Z"
     }
   ]
 }
