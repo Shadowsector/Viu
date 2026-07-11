@@ -58,6 +58,8 @@ class Config:
     # Ограничения цикла рассуждений.
     max_steps: int = field(default_factory=lambda: int(_env("VIU_MAX_STEPS", "12")))
     temperature: float = field(default_factory=lambda: float(_env("VIU_TEMPERATURE", "0.2")))
+    # Один запрос к Ollama/LLM (сек). 14b на холодном старте легко >2 мин.
+    llm_timeout: float = field(default_factory=lambda: float(_env("VIU_LLM_TIMEOUT", "600")))
 
     # Разрешать ли реальное выполнение shell-команд (по умолчанию — да, но в песочнице).
     allow_shell: bool = field(default_factory=lambda: _env("VIU_ALLOW_SHELL", "1") == "1")
@@ -129,6 +131,7 @@ class Config:
             f"data_dir={self.data_dir}\n"
             f"provider={self.provider}\n"
             f"model={self.model}\n"
+            f"llm_timeout={self.llm_timeout}\n"
             f"max_steps={self.max_steps}\n"
             f"allow_shell={self.allow_shell} allow_network={self.allow_network}\n"
             f"blender_exe={self.blender_exe} blender={self.blender_host}:{self.blender_port}\n"

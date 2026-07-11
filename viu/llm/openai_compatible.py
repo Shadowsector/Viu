@@ -24,7 +24,7 @@ class OpenAICompatibleLLM(LLMProvider):
         base_url: str = "https://api.openai.com/v1",
         model: str = "gpt-4o-mini",
         temperature: float = 0.2,
-        timeout: float = 120.0,
+        timeout: float = 600.0,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -57,11 +57,26 @@ class OpenAICompatibleLLM(LLMProvider):
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
+        except TimeoutError as exc:
+            raise RuntimeError(
+                f"LLM не успела за {int(self.timeout)}с (модель={self.model}). "
+                f"Ollama, скорее всего, жива, но думает долго. "
+                f"Увеличь VIU_LLM_TIMEOUT в .env или возьми модель полегче."
+            ) from exc
         except urllib.error.HTTPError as exc:  # pragma: no cover - сетевой путь
             detail = exc.read().decode("utf-8", "replace")
             raise RuntimeError(f"Ошибка LLM API {exc.code}: {detail}") from exc
         except urllib.error.URLError as exc:  # pragma: no cover - сетевой путь
-            raise RuntimeError(f"Сетевая ошибка при обращении к LLM: {exc.reason}") from exc
+            reason = str(exc.reason)
+            if "timed out" in reason.lower() or "timeout" in reason.lower():
+                raise RuntimeError(
+                    f"LLM не успела за {int(self.timeout)}с (модель={self.model}). "
+                    f"Увеличь VIU_LLM_TIMEOUT в .env (сейчас {int(self.timeout)})."
+                ) from exc
+            raise RuntimeError(
+                f"Сетевая ошибка LLM ({self.base_url}): {reason}. "
+                f"Проверь, что Ollama запущена."
+            ) from exc
 
         try:
             return body["choices"][0]["message"]["content"] or ""

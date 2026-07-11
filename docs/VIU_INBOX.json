@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-07-11T05:30:00Z",
-  "note": "Cursor пишет задачи сюда. Viu забирает pending, выполняет, ставит done/blocked и пушит обратно. Дена зовём только на decision.",
+  "updated_at": "2026-07-11T06:05:00Z",
+  "note": "Cursor пишет задачи сюда. Viu забирает pending. direct_tool = без Ollama.",
   "tasks": [
     {
       "id": "overlay-playtest-20260711",
@@ -9,7 +9,17 @@
       "priority": 1,
       "title": "Собрать оверлей и прислать вердикт Cursor",
       "created_by": "Cursor",
-      "instructions": "Ден больше не кнопконажиматель. Сделай сама:\n1. Вызови overlay_playtest (он закроет Unity, соберёт, запустит LaunchOverlay.bat с bitblt, прочитает overlay_boot.log).\n2. По вердикту: OK / WARN / FAIL — коротко.\n3. cursor_inbox_complete id=overlay-playtest-20260711 status=done (или blocked) + result.\n4. cursor_handoff_with_logs — отчёт для Cursor (boot-лог, gist если есть).\nНе проси Дена нажимать «Оверлей» или присылать логи. Если нужен decision (например нет модели Шани) — status=needs_decision и один вопрос в Telegram."
+      "direct_tool": "overlay_playtest",
+      "direct_args": {},
+      "instructions": "Прямой вызов overlay_playtest без LLM (Ollama таймауты не мешают). После — статус в inbox + handoff."
+    },
+    {
+      "id": "cascadeur-bridge-note-20260711",
+      "status": "pending",
+      "priority": 5,
+      "title": "Заметка: Cascadeur после оверлея",
+      "created_by": "Cursor",
+      "instructions": "Ден просил связку с Cascadeur и скрины для Cursor. Пока: cascadeur_status → cursor_handoff_with_logs с путями exe/Inbox. Полноценное моделирование в Cascadeur — следующий этап после живого оверлея. Не проси Дена кликать."
     }
   ]
 }

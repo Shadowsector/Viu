@@ -960,7 +960,14 @@ class ViuGUI:
                 )
             )
         except Exception as exc:  # noqa: BLE001
-            self._queue.put(("error", f"{exc}\nПодсказка: запущена ли Ollama?"))
+            msg = str(exc)
+            if "VIU_LLM_TIMEOUT" in msg or "не успела" in msg.lower():
+                hint = ""
+            elif "timed out" in msg.lower():
+                hint = "\nЭто таймаут ответа модели, не «Ollama выключена». Увеличь VIU_LLM_TIMEOUT."
+            else:
+                hint = "\nПодсказка: запущена ли Ollama? Верна ли VIU_BASE_URL / VIU_MODEL?"
+            self._queue.put(("error", msg + hint))
 
     def _poll_queue(self) -> None:
         try:
@@ -1078,7 +1085,14 @@ class ViuGUI:
             return
 
         def work():
-            from .integrations.github.inbox import fetch_inbox, format_task_prompt, pending_tasks
+            from .integrations.github.inbox import (
+                fetch_inbox,
+                format_task_prompt,
+                mark_task,
+                pending_tasks,
+                push_inbox,
+                save_inbox_local,
+            )
 
             ok, data = fetch_inbox()
             if not ok or not isinstance(data, dict):
@@ -1086,19 +1100,84 @@ class ViuGUI:
             pending = pending_tasks(data)
             if not pending:
                 return None
-            return format_task_prompt(pending[0])
+            task = pending[0]
+            # Прямой инструмент — без Ollama (таймауты LLM не блокируют пайплайн).
+            direct = str(task.get("direct_tool") or "").strip()
+            if direct:
+                return {"mode": "direct", "task": task, "inbox": data}
+            return {"mode": "agent", "prompt": format_task_prompt(task)}
 
         def done(result) -> None:
             if isinstance(result, Exception) or not result:
                 return
             if self._busy:
                 return
+            if result.get("mode") == "direct":
+                self._run_direct_inbox_task(result["task"], result["inbox"])
+                return
             self._append(
                 "система",
                 "📥 Задача от Cursor — выполняю сама (без кнопок).",
                 tag="sys",
             )
-            self._run_agent_task(result, via_telegram=True)
+            self._run_agent_task(result["prompt"], via_telegram=True)
+
+        self._run_bg(work, done)
+
+    def _run_direct_inbox_task(self, task: dict, inbox: dict) -> None:
+        """Выполнить tool из inbox без LLM — отчёт в Telegram/чат + complete."""
+        from .integrations.github.inbox import mark_task, push_inbox, save_inbox_local
+        from .tools.base import AgentContext
+
+        tid = str(task.get("id") or "")
+        tool_name = str(task.get("direct_tool") or "").strip()
+        tool_args = task.get("direct_args") if isinstance(task.get("direct_args"), dict) else {}
+        self._append(
+            "система",
+            f"📥 Cursor → `{tool_name}` (без Ollama, id={tid})",
+            tag="sys",
+        )
+        self._set_busy(True)
+
+        def work():
+            tool = self.agent.registry.get(tool_name)
+            if tool is None:
+                return False, f"Нет инструмента `{tool_name}`"
+            ctx = AgentContext(config=self.agent.config, memory=self.agent.memory)
+            res = tool.run(tool_args or {}, ctx)
+            status = "done" if res.ok else "blocked"
+            mark_task(inbox, tid, status=status, result=res.content[:3500])
+            save_inbox_local(inbox)
+            push_ok, push_msg = push_inbox(inbox, message=f"Viu: task {tid} → {status}")
+            body = res.content
+            if not push_ok:
+                body += f"\n\n(inbox push: {push_msg})"
+            # Handoff для Cursor — без LLM
+            try:
+                from .integrations.github.handoff import append_handoff, push_handoff
+
+                append_handoff(
+                    f"direct `{tool_name}` → {status}",
+                    body[:6000],
+                    author="Viu",
+                )
+                push_handoff(message=f"Viu: {tid} {status}")
+            except Exception as exc:  # noqa: BLE001
+                body += f"\n\nhandoff: {exc}"
+            return res.ok, body
+
+        def done(result) -> None:
+            self._set_busy(False)
+            if isinstance(result, Exception):
+                self._append("ошибка", str(result), tag="err")
+                self._telegram_notify_error(str(result))
+                return
+            ok, text = result
+            self._append("Вью", text, tag="tool" if ok else "err")
+            if ok:
+                self._telegram_notify_done(text[:1500])
+            else:
+                self._telegram_notify_error(text[:1500])
 
         self._run_bg(work, done)
 

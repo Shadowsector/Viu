@@ -18,5 +18,6 @@ def build_provider(config):
             base_url=config.base_url,
             model=config.model,
             temperature=config.temperature,
+            timeout=float(getattr(config, "llm_timeout", 600) or 600),
         )
     raise ValueError(f"Неизвестный провайдер LLM: {config.provider!r}")
