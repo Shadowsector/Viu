@@ -23,10 +23,13 @@
 |------|--------|
 | `cursor_inbox_pull` | Скачать pending |
 | `cursor_inbox_complete` | Закрыть задачу + push |
-| `overlay_playtest` | Сборка + запуск + boot-лог + gist (**потом reopen Unity**) |
-| `unity_open` | Вернуть Editor Дену |
+| `overlay_playtest` | Сборка + запуск + boot-лог + **eyes** + gist |
+| `screen_capture` / `vision_observe` | Глаза: скрин окна → VL/gist, без Дена |
+| `unity_open` | Вернуть Editor |
 | `web_search` | Искать фикс ошибки в сети |
 | `cursor_handoff_with_logs` | Отчёт Cursor |
+
+См. также `docs/EYES.md` — почему не облачный Unity, а глаза на ПК Дена.
 
 ## Настройка
 

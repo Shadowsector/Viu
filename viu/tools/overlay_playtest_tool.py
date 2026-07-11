@@ -148,9 +148,46 @@ class OverlayPlaytestTool(Tool):
             else:
                 verdict = "FAIL: overlay_boot.log нет"
                 lines.append(
-                    "overlay_boot.log нет — окно могло не стартовать или скрипт не доехал. "
-                    "Проверь AnabarraOverlay в диспетчере задач."
+                    "overlay_boot.log нет — окно могло не стартовать или скрипт не доехал."
                 )
+
+        # Глаза: скрин оверлея → VL / gist Cursor — без «Ден, посмотри»
+        try:
+            from ..integrations.vision_eye import observe_window, upload_shot_note
+
+            eye = observe_window(
+                ctx.config,
+                title_substr="AnabarraOverlay",
+                prefix="overlay_eye",
+            )
+            if not eye.get("capture_ok"):
+                eye = observe_window(
+                    ctx.config,
+                    title_substr="Unity",
+                    prefix="overlay_eye_unity",
+                )
+            lines.append("--- eyes ---")
+            lines.append(eye.get("capture_msg") or "")
+            if eye.get("path"):
+                lines.append("shot: " + eye["path"])
+            if eye.get("vision"):
+                lines.append(eye["vision"])
+            if eye.get("path"):
+                g_ok, g_msg = upload_shot_note(Path(eye["path"]), eye.get("vision") or "")
+                lines.append("eye gist: " + g_msg)
+                if not g_ok and eye.get("capture_ok"):
+                    lines.append("(скрин локально — Cursor заберёт через support/handoff)")
+            eye_low = (eye.get("vision") or "").lower()
+            if any(
+                t in eye_low
+                for t in ("broken", "no_home", "no_character", "no_overlay", "искажен", "корёж")
+            ):
+                if verdict.startswith("OK:"):
+                    verdict = "WARN: boot OK, но eyes видят проблему — см. --- eyes ---"
+                    lines.append("--- вердикт (после eyes) ---")
+                    lines.append(verdict)
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"eyes: {exc}")
 
         # Вернуть Editor Дену — playtest не должен оставлять Unity мёртвым.
         reopen = str(args.get("reopen_unity", "true")).lower() not in ("0", "false", "no")
@@ -163,7 +200,7 @@ class OverlayPlaytestTool(Tool):
                     if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
                         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
                     subprocess.Popen(cmd_open, **kwargs)  # noqa: S603
-                    lines.append("Unity Editor снова открыт для Дена.")
+                    lines.append("Unity Editor снова открыт.")
                 elif unity_process_running():
                     lines.append("Unity Editor уже в процессах.")
             except Exception as exc:  # noqa: BLE001
@@ -205,7 +242,7 @@ def _verdict(boot_text: str) -> str:
             )
         if "renderers=0/" in low:
             return "WARN: прозрачность ок, но нет видимых мешей."
-        return "OK: HWND + ColorKey. Смотри рабочий стол — Шаня/дом должны быть видны."
+        return "OK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден."
     if "hwnd ok" in low:
         return "PARTIAL: HWND есть, ColorKey в логе не подтверждён."
     return "UNKNOWN: смотри boot-лог выше."

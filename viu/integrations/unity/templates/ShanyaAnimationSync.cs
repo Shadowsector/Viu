@@ -17,6 +17,8 @@ namespace Viu.Editor
     {
         public const string AnimationsFolder = "Assets/Characters/Shanya/Animations";
         public const string ControllerPath = AnimationsFolder + "/Shanya_Idle_Stand.controller";
+        /// <summary>Только Idle/Walk/Run — для оверлея, без SitIdle в default.</summary>
+        public const string OverlayControllerPath = AnimationsFolder + "/Shanya_Overlay_Locomotion.controller";
         public const string ManifestName = "viu_clips.json";
         public const string SpeedParam = "Speed";
 
@@ -57,6 +59,43 @@ namespace Viu.Editor
                 Debug.Log(
                     "[Viu] Sync Animations: " + entries.Count + " клип(ов) → " + ControllerPath
                     + (bodyAvatar != null ? " (avatar copy from body)" : " (per-clip avatar)"));
+        }
+
+        /// <summary>
+        /// Контроллер оверлея: только Idle + Walk (+ Run). Sit/Sleep не попадают в default Idle.
+        /// </summary>
+        public static RuntimeAnimatorController BuildOverlayLocomotionController(bool log = false)
+        {
+            SyncAll(log: false);
+            var overrides = LoadOverrides();
+            var all = DiscoverClips(overrides);
+            var loco = all
+                .Where(e =>
+                    e.StateName.Equals("Idle", StringComparison.OrdinalIgnoreCase)
+                    || e.StateName.Equals("Walk", StringComparison.OrdinalIgnoreCase)
+                    || e.StateName.Equals("Run", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (loco.Count == 0)
+            {
+                Debug.LogWarning("[Viu] Overlay locomotion: нет Idle/Walk — беру полный controller.");
+                return AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(ControllerPath);
+            }
+
+            EnsureFolder(Path.GetDirectoryName(OverlayControllerPath).Replace('\\', '/'));
+            AnimatorController controller;
+            if (File.Exists(OverlayControllerPath))
+                controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(OverlayControllerPath);
+            else
+                controller = AnimatorController.CreateAnimatorControllerAtPath(OverlayControllerPath);
+
+            ApplyStates(controller, loco);
+            AssetDatabase.SaveAssets();
+            if (log)
+            {
+                var names = string.Join(", ", loco.Select(e => e.StateName + "<" + Path.GetFileName(e.AssetPath) + ">"));
+                Debug.Log("[Viu] Overlay locomotion: " + names + " → " + OverlayControllerPath);
+            }
+            return controller;
         }
 
         static string FindBodyModelPath()
@@ -152,22 +191,27 @@ namespace Viu.Editor
         {
             var low = stemLower.ToLowerInvariant();
             int score = 50;
-            // Базовое имя состояния без суффиксов
-            if (low == "shanya_" + state.ToLowerInvariant() || low == state.ToLowerInvariant())
+            // Точное Shanya_Idle / Shanya_Walk
+            if (low == "shanya_" + state.ToLowerInvariant())
+                score += 60;
+            else if (low == state.ToLowerInvariant())
                 score += 40;
-            if (low.EndsWith("_" + state.ToLowerInvariant()))
+            else if (low.EndsWith("_" + state.ToLowerInvariant()))
                 score += 20;
             // Варианты _2 _3 _4 — запасные
             if (System.Text.RegularExpressions.Regex.IsMatch(low, @"_\d+$"))
                 score -= 15;
-            // SitIdle / SleepIdle не для Idle
+            // SitIdle / SleepIdle никогда не для Idle
             if (state.Equals("Idle", StringComparison.OrdinalIgnoreCase))
             {
-                if (low.Contains("sit")) score -= 80;
-                if (low.Contains("sleep")) score -= 80;
+                if (low.Contains("sit")) score -= 200;
+                if (low.Contains("sleep")) score -= 200;
+                // Mixamo Idle часто стабильнее кривого экспорта
+                if (low.Contains("x bot") && low.Contains("idle") && !low.Contains("sit"))
+                    score += 10;
             }
-            if (low.Contains("x bot") || low.Contains("@"))
-                score -= 25;
+            if (low.Contains("@") && !state.Equals("Idle", StringComparison.OrdinalIgnoreCase))
+                score -= 10;
             return score;
         }
 

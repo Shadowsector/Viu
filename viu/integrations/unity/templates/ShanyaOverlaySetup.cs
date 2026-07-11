@@ -17,7 +17,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 20
+        // @viu-deploy-rev 21
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -149,10 +149,7 @@ namespace Viu.Editor
             }
 
             EnsureHumanoidImport(modelPath);
-            ShanyaAnimationSync.SyncAll(log: false);
-
-            var controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
-                ShanyaAnimationSync.ControllerPath);
+            var controller = ShanyaAnimationSync.BuildOverlayLocomotionController(log: true);
             if (controller == null)
             {
                 Debug.LogError("[Viu] Animator не создан. Положи Idle/Walk в Animations/.");

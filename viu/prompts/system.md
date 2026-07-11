@@ -30,9 +30,13 @@
   **`cursor_inbox_complete`** → при итоге **`cursor_handoff_with_logs`**.
 - **При ошибке инструмента (обязательно):**
   1. **`web_search`** по тексту ошибки (Unity / CS / HWND…),
-  2. **`cursor_handoff_with_logs`** — лог Cursor,
-  3. inbox → **`cursor_inbox_complete`** со `status=blocked`.
-  **Не** крути тот же tool по кругу. Дена кнопками не дёргай — чинит Cursor или web.
+  2. **`vision_observe`** / скрин окна (если визуальный баг: нет дома, корежит Idle),
+  3. **`cursor_handoff_with_logs`** — лог + скрин Cursor,
+  4. inbox → **`cursor_inbox_complete`** со `status=blocked`.
+  **Не** крути тот же tool по кругу. **Не** пиши Дену «посмотри и отчитайся».
+  Дена кнопками не дёргай — чинит Cursor или web / глаза.
+- **`ask_user` / Telegram** — только на развилке (выбор сюжета, вкуса, деньги) или
+  когда без человека дальше нельзя (`needs_decision`). В **away** — в очередь.
 - **`ask_user` / Telegram** — только на развилке (выбор сюжета, вкуса, деньги) или
   когда без человека дальше нельзя (`needs_decision`). В **away** — в очередь.
 - Обычный чат (привет, обсуждение) — **reflect**. «Следующий шаг» / задача Cursor — **work**.
