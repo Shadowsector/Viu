@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-11T09:56:03Z",
+  "updated_at": "2026-07-11T09:56:58Z",
   "note": "Кнопка Оверлей = overlay_playtest + глаза. Без --- eyes --- → blocked.",
   "tasks": [
     {
@@ -14,7 +14,7 @@
     },
     {
       "id": "overlay-eyes-retest-20260711",
-      "status": "in_progress",
+      "status": "done",
       "priority": 1,
       "title": "Retest оверлея УЖЕ с глазами (после update > b0e7ccb)",
       "created_by": "Cursor",
@@ -23,7 +23,9 @@
         "reopen_unity": true
       },
       "instructions": "Сначала убедись что в коде есть --- eyes --- (иначе blocked). Один прогон. Скрин AnabarraOverlay → gist. Не проси Дена. Если криво на скрине — blocked+escalate.",
-      "started_at": "2026-07-11T09:56:03Z"
+      "started_at": "2026-07-11T09:56:03Z",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nУже есть: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe\n--- build ---\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs\n[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe\n[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\\..\\Builds/AnabarraOverlay\\LaunchOverlay.bat\nЗапуск: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\LaunchOverlay.bat\n--- overlay_boot.log ---\n﻿12:56:27 Awake: renderers=5063/5064 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048\n12:56:28 Start args=AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow\n12:56:28 HWND ok\n12:56:28 Geometry 2560x1440 at 0,0\n12:56:28 SetLayeredWindowAttributes=True err=0\n12:56:28 ColorKey pass 1, Esc=выход\n12:56:28 AfterWindow: renderers=5063/5064 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048\n\n--- вердикт ---\nOK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.\n--- eyes ---\nСкрин 2560x1440 → U:\\Viu\\.viu\\shots\\overlay_eye_20260711_125642.png\nshot: U:\\Viu\\.viu\\shots\\overlay_eye_20260711_125642.png\n[llava:latest]\n1. Персонаж виден нормально на фоне зелёной кrajiny.\n2. Дом/сарай не виден на fone zелены кrajiny.\n3. Это оверley на рабочем столе Unity Editor, а не на экране игры.\n4. Verдикт: OK\neye gist: Handoff в приватном Gist:\nhttps://gist.github.com/Shadowsector/ced0a9542d2f9b98cdcb5b979fbce3f7\nUnity Editor снова открыт.\nSupport bundle: U:\\Viu\\.viu\\support\\viu_logs_20260711_125655.zip\nЛоги отправлены: https://gist.github.com/Shadowsector/540ea9998dfdf3d10e3d6eee2da1cbbc",
+      "finished_at": "2026-07-11T09:56:58Z"
     }
   ]
 }
