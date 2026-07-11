@@ -45,14 +45,49 @@ namespace Viu.Editor
                 return;
             }
 
+            var bodyPath = FindBodyModelPath();
+            var bodyAvatar = LoadBodyAvatar(bodyPath);
             foreach (var e in entries)
-                EnsureHumanoidImport(e.AssetPath);
+                EnsureHumanoidImport(e.AssetPath, bodyAvatar);
 
             var controller = BuildOrLoadController();
             ApplyStates(controller, entries);
             AssetDatabase.SaveAssets();
             if (log)
-                Debug.Log("[Viu] Sync Animations: " + entries.Count + " клип(ов) → " + ControllerPath);
+                Debug.Log(
+                    "[Viu] Sync Animations: " + entries.Count + " клип(ов) → " + ControllerPath
+                    + (bodyAvatar != null ? " (avatar copy from body)" : " (per-clip avatar)"));
+        }
+
+        static string FindBodyModelPath()
+        {
+            string best = null;
+            int bestScore = int.MinValue;
+            foreach (var guid in AssetDatabase.FindAssets("t:Model"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase)) continue;
+                var name = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
+                if (!name.Contains("shanya") && !name.Contains("erisa")) continue;
+                int score = 0;
+                if (name == "shanya_erisa" || name == "erisa" || name == "shanya") score += 100;
+                if (path.IndexOf("/Characters/", StringComparison.OrdinalIgnoreCase) >= 0) score += 40;
+                if (path.IndexOf("/Animations/", StringComparison.OrdinalIgnoreCase) >= 0) score -= 80;
+                if (name.Contains("idle") || name.Contains("walk") || name.Contains("run")
+                    || name.Contains("fall") || name.Contains("sit") || name.Contains("sleep")
+                    || name.Contains("yawn") || name.Contains("@"))
+                    score -= 60;
+                if (score > bestScore) { bestScore = score; best = path; }
+            }
+            return bestScore >= 40 ? best : null;
+        }
+
+        static Avatar LoadBodyAvatar(string bodyPath)
+        {
+            if (string.IsNullOrEmpty(bodyPath)) return null;
+            return AssetDatabase.LoadAllAssetsAtPath(bodyPath)
+                .OfType<Avatar>()
+                .FirstOrDefault();
         }
 
         static Dictionary<string, string> LoadOverrides()
@@ -78,8 +113,10 @@ namespace Viu.Editor
 
         static List<ClipEntry> DiscoverClips(Dictionary<string, string> overrides)
         {
-            var list = new List<ClipEntry>();
-            var seenStates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // state → лучший клип (не SitIdle вместо Idle, не _4 вместо базового)
+            var best = new Dictionary<string, ClipEntry>(StringComparer.OrdinalIgnoreCase);
+            var bestScore = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var guid in AssetDatabase.FindAssets("t:Model", new[] { AnimationsFolder }))
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
@@ -92,20 +129,46 @@ namespace Viu.Editor
                         " — переименуй (Walk, Idle) или viu_clips.json");
                     continue;
                 }
-                if (!seenStates.Add(state))
-                {
-                    Debug.LogWarning("[Viu] Дубликат состояния " + state + " для " + fileName);
-                    continue;
-                }
                 var clip = LoadFirstAnimationClip(path);
                 if (clip == null)
                 {
                     Debug.LogWarning("[Viu] Нет AnimationClip в " + fileName);
                     continue;
                 }
-                list.Add(new ClipEntry { AssetPath = path, StateName = state, Clip = clip });
+
+                int score = ScoreClipFile(Path.GetFileNameWithoutExtension(fileName), state);
+                if (bestScore.TryGetValue(state, out var prev) && score <= prev)
+                    continue;
+
+                best[state] = new ClipEntry { AssetPath = path, StateName = state, Clip = clip };
+                bestScore[state] = score;
             }
-            return list.OrderBy(e => StateOrder(e.StateName)).ToList();
+
+            return best.Values.OrderBy(e => StateOrder(e.StateName)).ToList();
+        }
+
+        /// <summary>Выше = лучше. SitIdle не должен выигрывать у Idle.</summary>
+        static int ScoreClipFile(string stemLower, string state)
+        {
+            var low = stemLower.ToLowerInvariant();
+            int score = 50;
+            // Базовое имя состояния без суффиксов
+            if (low == "shanya_" + state.ToLowerInvariant() || low == state.ToLowerInvariant())
+                score += 40;
+            if (low.EndsWith("_" + state.ToLowerInvariant()))
+                score += 20;
+            // Варианты _2 _3 _4 — запасные
+            if (System.Text.RegularExpressions.Regex.IsMatch(low, @"_\d+$"))
+                score -= 15;
+            // SitIdle / SleepIdle не для Idle
+            if (state.Equals("Idle", StringComparison.OrdinalIgnoreCase))
+            {
+                if (low.Contains("sit")) score -= 80;
+                if (low.Contains("sleep")) score -= 80;
+            }
+            if (low.Contains("x bot") || low.Contains("@"))
+                score -= 25;
+            return score;
         }
 
         static int StateOrder(string state)
@@ -123,17 +186,20 @@ namespace Viu.Editor
         {
             if (overrides.TryGetValue(fileName, out var s)) return s;
             var low = Path.GetFileNameWithoutExtension(fileName).ToLowerInvariant();
+            // sit/sleep ДО idle — иначе SitIdle → Idle и анимация «сломана»
+            if (low.Contains("sit")) return "Sit";
+            if (low.Contains("sleep")) return "Sleep";
             if (low.Contains("idle")) return "Idle";
             if (low.Contains("walk")) return "Walk";
             if (low.Contains("run")) return "Run";
-            if (low.Contains("sit")) return "Sit";
-            if (low.Contains("sleep")) return "Sleep";
             if (low.Contains("stretch")) return "Stretch";
             if (low.Contains("jump")) return "Jump";
+            if (low.Contains("yawn")) return "Yawn";
+            if (low.Contains("fall")) return "Fall";
             return null;
         }
 
-        static void EnsureHumanoidImport(string assetPath)
+        static void EnsureHumanoidImport(string assetPath, Avatar bodyAvatar)
         {
             var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
             if (importer == null) return;
@@ -141,9 +207,25 @@ namespace Viu.Editor
             if (importer.animationType != ModelImporterAnimationType.Human)
             {
                 importer.animationType = ModelImporterAnimationType.Human;
+                changed = true;
+            }
+
+            if (bodyAvatar != null)
+            {
+                if (importer.avatarSetup != ModelImporterAvatarSetup.CopyFromOther
+                    || importer.sourceAvatar != bodyAvatar)
+                {
+                    importer.avatarSetup = ModelImporterAvatarSetup.CopyFromOther;
+                    importer.sourceAvatar = bodyAvatar;
+                    changed = true;
+                }
+            }
+            else if (importer.avatarSetup != ModelImporterAvatarSetup.CreateFromThisModel)
+            {
                 importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
                 changed = true;
             }
+
             if (!importer.importAnimation)
             {
                 importer.importAnimation = true;

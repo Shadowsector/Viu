@@ -17,13 +17,14 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 19
+        // @viu-deploy-rev 20
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
         const string EnvironmentRoot = "Assets/Environment";
         const float TargetHeightMeters = 1.77f;
+        const float HomeTargetHeightMeters = 4.8f;
         const float GroundSinkMeters = 0.03f;
         const float FeetLiftMeters = 0.006f;
         const float CameraOrthoHalfHeight = 5.5f;
@@ -403,12 +404,40 @@ namespace Viu.Editor
             instance.name = CharacterRootName;
             instance.transform.position = Vector3.zero;
 
-            var animator = instance.GetComponent<Animator>() ?? instance.AddComponent<Animator>();
+            var animator = EnsureSingleRootAnimator(instance);
             animator.runtimeAnimatorController = controller;
             animator.avatar = avatar;
+            animator.applyRootMotion = false;
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             if (!instance.activeInHierarchy)
                 instance.SetActive(true);
             return instance;
+        }
+
+        /// <summary>
+        /// Locomotion на корне требует Animator там же. Лишние Animator на арматуре
+        /// дают «поломанную» анимацию (два контроллера на одной модели).
+        /// </summary>
+        static Animator EnsureSingleRootAnimator(GameObject root)
+        {
+            var all = root.GetComponentsInChildren<Animator>(true);
+            Avatar keepAvatar = null;
+            RuntimeAnimatorController keepCtrl = null;
+            foreach (var a in all)
+            {
+                if (a == null) continue;
+                if (a.avatar != null) keepAvatar = a.avatar;
+                if (a.runtimeAnimatorController != null) keepCtrl = a.runtimeAnimatorController;
+                if (a.gameObject != root)
+                    UnityEngine.Object.DestroyImmediate(a);
+            }
+
+            var primary = root.GetComponent<Animator>() ?? root.AddComponent<Animator>();
+            if (primary.avatar == null && keepAvatar != null)
+                primary.avatar = keepAvatar;
+            if (primary.runtimeAnimatorController == null && keepCtrl != null)
+                primary.runtimeAnimatorController = keepCtrl;
+            return primary;
         }
 
         /// <summary>
@@ -474,6 +503,9 @@ namespace Viu.Editor
             }
 
             SnapBuildingToGround(home);
+            ScaleHomeToHeight(home, HomeTargetHeightMeters);
+            SnapBuildingToGround(home);
+            FixOverlayMaterials(home);
 
             var dollhouse = home.GetComponent<Viu.Runtime.DollhouseWall>();
             if (dollhouse == null)
@@ -482,8 +514,73 @@ namespace Viu.Editor
             dollhouse.atHome = true;
             dollhouse.Apply();
 
-            Debug.Log("[Viu] Дом в overlay: " + fbxPath + ", стенка «" + dollhouse.wallMeshName + "» скрыта.");
+            var meshN = home.GetComponentsInChildren<Renderer>(true).Length;
+            Debug.Log(
+                "[Viu] Дом в overlay: " + fbxPath
+                + ", стенка «" + dollhouse.wallMeshName + "» скрыта, renderers=" + meshN);
             return home;
+        }
+
+        /// <summary>
+        /// Missing/Built-in Standard → magenta в Player; chroma-key съедал весь сарай.
+        /// Перешиваем на URP Lit, если доступен.
+        /// </summary>
+        static void FixOverlayMaterials(GameObject root)
+        {
+            var urp = Shader.Find("Universal Render Pipeline/Lit")
+                ?? Shader.Find("Universal Render Pipeline/Simple Lit");
+            if (urp == null)
+            {
+                Debug.LogWarning("[Viu] URP Lit не найден — дом может исчезнуть из-за chroma-key.");
+                return;
+            }
+
+            int fixedN = 0;
+            foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r == null) continue;
+                var mats = r.sharedMaterials;
+                if (mats == null || mats.Length == 0) continue;
+                var changed = false;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    var m = mats[i];
+                    if (m == null) continue;
+                    var sn = m.shader != null ? m.shader.name : "";
+                    if (sn.IndexOf("Universal Render Pipeline", StringComparison.OrdinalIgnoreCase) >= 0
+                        && sn.IndexOf("Error", StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
+                    // Standard / Error / HDRP / пустой → URP Lit
+                    var copy = new Material(urp);
+                    if (m.HasProperty("_MainTex") && copy.HasProperty("_BaseMap"))
+                        copy.SetTexture("_BaseMap", m.GetTexture("_MainTex"));
+                    else if (m.HasProperty("_BaseMap") && copy.HasProperty("_BaseMap"))
+                        copy.SetTexture("_BaseMap", m.GetTexture("_BaseMap"));
+                    if (m.HasProperty("_Color") && copy.HasProperty("_BaseColor"))
+                        copy.SetColor("_BaseColor", m.GetColor("_Color"));
+                    else if (m.HasProperty("_BaseColor") && copy.HasProperty("_BaseColor"))
+                        copy.SetColor("_BaseColor", m.GetColor("_BaseColor"));
+                    copy.name = m.name + "_URP";
+                    mats[i] = copy;
+                    changed = true;
+                    fixedN++;
+                }
+                if (changed)
+                    r.sharedMaterials = mats;
+            }
+            if (fixedN > 0)
+                Debug.Log("[Viu] Дом: перешил материалов на URP: " + fixedN);
+        }
+
+        static void ScaleHomeToHeight(GameObject root, float targetHeight)
+        {
+            var bounds = ComputeWorldBounds(root);
+            if (bounds.size.y < 0.05f) return;
+            float factor = targetHeight / bounds.size.y;
+            if (factor < 0.001f || factor > 500f) return;
+            // Уже примерно нужный размер — не трогаем
+            if (factor > 0.7f && factor < 1.4f) return;
+            root.transform.localScale *= factor;
         }
 
         static bool TryFindHomeFbx(out string fbxPath, out string metaAssetPath)

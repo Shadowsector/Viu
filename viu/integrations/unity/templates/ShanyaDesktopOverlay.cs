@@ -14,7 +14,12 @@ namespace Viu.Runtime
     [DefaultExecutionOrder(-50)]
     public class ShanyaDesktopOverlay : MonoBehaviour
     {
-        public static readonly Color ChromaKey = new Color(1f, 0f, 1f, 1f);
+        /// <summary>
+        /// НЕ чистый magenta (1,0,1) — это цвет missing-shader в Unity.
+        /// Дом с URP/Standard mismatch становился magenta и chroma-key его съедал.
+        /// Ключ: #FF0080 (розово-красный), COLORREF 0x008000FF (BGR).
+        /// </summary>
+        public static readonly Color ChromaKey = new Color(1f, 0f, 0.5f, 1f);
 
         public bool fullScreenOverlay = true;
         public int stripHeightPixels = 280;
@@ -94,9 +99,20 @@ namespace Viu.Runtime
             }
 
             var shanyaName = shanya != null ? shanya.name : "нет";
+            int homeEnabled = 0;
+            int homeTotal = 0;
+            if (home != null)
+            {
+                foreach (var r in home.GetComponentsInChildren<Renderer>(true))
+                {
+                    homeTotal++;
+                    if (r != null && r.enabled) homeEnabled++;
+                }
+            }
             BootLog(
                 $"{tag}: renderers={enabled}/{renderers.Length} shanya={(shanya != null)} "
-                + $"name={shanyaName} home={(home != null ? home.name : "нет")}");
+                + $"name={shanyaName} home={(home != null ? home.name : "нет")} "
+                + $"homeMesh={homeEnabled}/{homeTotal}");
         }
 
         static GameObject FindShanyaRoot()
@@ -261,7 +277,7 @@ namespace Viu.Runtime
                 info.rcMonitor.bottom - info.rcMonitor.top);
         }
 
-        const uint ChromaColorRef = 0x00FF00FF;
+        const uint ChromaColorRef = 0x008000FF; // #FF0080 BGR — не Unity missing-magenta
 
         const int GWL_STYLE = -16;
         const int GWL_EXSTYLE = -20;

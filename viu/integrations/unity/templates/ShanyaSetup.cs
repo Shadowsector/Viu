@@ -16,7 +16,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaSetup
     {
-        // @viu-deploy-rev 19
+        // @viu-deploy-rev 20
         const string ControllerPath = ShanyaAnimationSync.ControllerPath;
         const string ModelNameHint = "Shanya_Erisa";
         /// <summary>Целевой рост персонажа в метрах (можно подкрутить).</summary>
@@ -294,9 +294,17 @@ namespace Viu.Editor
             }
             instance.name = ModelNameHint;
 
+            // Один Animator на корне (Locomotion), без дублей на арматуре.
+            foreach (var a in instance.GetComponentsInChildren<Animator>(true))
+            {
+                if (a != null && a.gameObject != instance)
+                    UnityEngine.Object.DestroyImmediate(a);
+            }
             var animator = instance.GetComponent<Animator>() ?? instance.AddComponent<Animator>();
             animator.runtimeAnimatorController = controller;
             animator.avatar = avatar;
+            animator.applyRootMotion = false;
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 
             if (!instance.activeInHierarchy)
                 instance.SetActive(true);

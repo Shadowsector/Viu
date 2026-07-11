@@ -14,13 +14,13 @@ from .project_scan import scan_fbx_meta
 ANIMATIONS_REL = "Assets/Characters/Shanya/Animations"
 MANIFEST_NAME = "viu_clips.json"
 
-# Имя файла (lower) → состояние Animator
+# Имя файла (lower) → состояние Animator (sit/sleep до idle!)
 _NAME_RULES: Tuple[Tuple[re.Pattern, str], ...] = (
+    (re.compile(r"sit", re.I), "Sit"),
+    (re.compile(r"sleep", re.I), "Sleep"),
     (re.compile(r"idle", re.I), "Idle"),
     (re.compile(r"walk", re.I), "Walk"),
     (re.compile(r"run", re.I), "Run"),
-    (re.compile(r"sit", re.I), "Sit"),
-    (re.compile(r"sleep", re.I), "Sleep"),
     (re.compile(r"stretch", re.I), "Stretch"),
     (re.compile(r"jump", re.I), "Jump"),
 )

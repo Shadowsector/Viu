@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-07-11T09:02:52Z",
-  "note": "Cursor пишет задачи сюда. Viu забирает pending. При FAIL/WARN → escalate (web_search + handoff), blocked — не крутить по кругу.",
+  "updated_at": "2026-07-11T09:20:00Z",
+  "note": "FAIL/WARN → escalate + blocked. Один playtest за раз.",
   "tasks": [
     {
       "id": "overlay-playtest-20260711",
@@ -18,16 +18,7 @@
       "priority": 1,
       "title": "Пересобрать оверлей после фикса Shanya_Erisa",
       "created_by": "Cursor",
-      "result": "Отменено Cursor: повторный playtest снова убил Unity. Дену мешает kill-loop. Сначала unity_open + escalate protocol в коде.",
-      "finished_at": "2026-07-11T09:05:00Z"
-    },
-    {
-      "id": "cascadeur-bridge-note-20260711",
-      "status": "cancelled",
-      "priority": 5,
-      "title": "Заметка: Cascadeur после оверлея",
-      "created_by": "Cursor",
-      "result": "Отменено: LLM-задача без direct_tool крутилась вхолостую.",
+      "result": "Отменено: kill-loop.",
       "finished_at": "2026-07-11T09:05:00Z"
     },
     {
@@ -36,11 +27,18 @@
       "priority": 1,
       "title": "Вернуть Unity Дену (без batch kill-loop)",
       "created_by": "Cursor",
-      "direct_tool": "unity_open",
-      "direct_args": {},
-      "instructions": "Только открыть Editor. Не overlay_playtest, не kill Unity, не batch. Если не открылся — escalate (web_search + handoff Cursor), статус blocked.",
-      "result": "Открываю Unity (Unity.exe) с проектом Anabarra. Запуск занимает 30–90 секунд. Когда откроется: Открой сцену Assets/Scenes/GameTest.unity (двойной клик в панели Project) — в ней уже стоит Шаня. Затем нажми ▶ Play и проверь Idle↔Walk на A/D.",
+      "result": "Unity open OK.",
       "finished_at": "2026-07-11T09:02:52Z"
+    },
+    {
+      "id": "overlay-home-anim-fix-20260711",
+      "status": "pending",
+      "priority": 1,
+      "title": "Один playtest: дом URP + анимация Idle",
+      "created_by": "Cursor",
+      "direct_tool": "overlay_playtest",
+      "direct_args": {"reopen_unity": true},
+      "instructions": "deploy-rev 20. ОДИН прогон. Ожидай: shanya=True, home=Viu_Home_*, homeMesh>0. WARN→blocked+escalate. Не повторять."
     }
   ]
 }

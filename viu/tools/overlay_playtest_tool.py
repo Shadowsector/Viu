@@ -198,6 +198,11 @@ def _verdict(boot_text: str) -> str:
             )
         if "home=нет" in low:
             return "WARN: прозрачность ок, дом не найден в сцене (Environment FBX?)."
+        if "homemesh=0/" in low:
+            return (
+                "WARN: дом в сцене, но меши выключены/съедены chroma "
+                "(раньше magenta==missing shader). Нужен URP Lit + новый color key."
+            )
         if "renderers=0/" in low:
             return "WARN: прозрачность ок, но нет видимых мешей."
         return "OK: HWND + ColorKey. Смотри рабочий стол — Шаня/дом должны быть видны."
