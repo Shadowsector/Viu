@@ -1194,7 +1194,7 @@ class ViuGUI:
             tool = self.agent.registry.get(tool_name)
             if tool is None:
                 return False, f"Нет инструмента `{tool_name}`"
-            ctx = AgentContext(config=self.agent.config, memory=self.agent.memory)
+            ctx = self.agent.ctx
             res = tool.run(tool_args or {}, ctx)
             status = "done" if res.ok else "blocked"
             mark_task(inbox, tid, status=status, result=res.content[:3500])
