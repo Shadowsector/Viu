@@ -603,3 +603,57 @@ https://gist.github.com/Shadowsector/ced0a9542d2f9b98cdcb5b979fbce3f7
 Unity Editor снова открыт.
 Support bundle: U:\Viu\.viu\support\viu_logs_20260711_125655.zip
 Логи отправлены: https://gist.github.com/Shadowsector/540ea9998dfdf3d10e3d6eee2da1cbbc
+
+
+---
+
+## 2026-07-11 13:03 — ESCALATE `overlay_playtest` / overlay-visual-fix-20260711 (Viu)
+
+ЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.
+Inbox task: `overlay-visual-fix-20260711`
+
+Ошибка / лог:
+Unity close: Unity.exe не запущен.
+Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs
+ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs
+Уже есть: U:\Anabarra\Unity\Anabarra\Assets\Characters\Shanya\Animations\viu_clips.json
+Сборка OK: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\AnabarraOverlay.exe
+--- build ---
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs
+[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe
+[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\..\Builds/AnabarraOverlay\LaunchOverlay.bat
+Запуск: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\LaunchOverlay.bat
+--- overlay_boot.log ---
+﻿13:02:52 Awake: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048
+13:02:53 Start args=AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow
+13:02:53 HWND ok
+13:02:53 Geometry 2560x1440 at 0,0
+13:02:53 SetLayeredWindowAttributes=True err=0
+13:02:53 ColorKey pass 1, Esc=выход
+13:02:53 AfterWindow: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048
+
+--- вердикт ---
+OK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.
+--- eyes ---
+Скрин 2560x1440 → U:\Viu\.viu\shots\overlay_eye_20260711_130307.png
+shot: U:\Viu\.viu\shots\overlay_eye_20260711_130307.png
+[llava:latest]
+1) На скринке виден персонаж "Шаня" в к-деше. Он изображений стоит нормально и не estranжен.
+2) На фоне не виден дома или сарая.
+3) Это оверley на рабочем столе игры Unity Editor и виден элемент de overlay с рейсингом текста "Привет" в к-деше.
+4) OK (коректно выполнена задачу).
+eye gist: Handoff в приватном Gist:
+https://gist.github.com/Shadowsector/b1cf554c0a1db2264c86097294ebf9f3
+--- вердикт (после eyes) ---
+WARN: eyes — дом/персонаж криво (см. --- eyes ---). Дена не спрашивать.
+Unity Editor снова открыт.
+Support bundle: U:\Viu\.viu\support\viu_logs_20260711_130320.zip
+Логи отправлены: https://gist.github.com/Shadowsector/748169e2ec5fb0a4784009406301c6bd
+
+web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
+Ничего не найдено по запросу.
