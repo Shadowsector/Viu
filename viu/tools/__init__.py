@@ -61,6 +61,17 @@ from .animation_catalog_tool import (
     AnimationCatalogShowTool,
     RouteInboxTool,
 )
+from .presence_tool import (
+    AppsCloseTool,
+    AppsRestartTool,
+    AppsStatusTool,
+    DecisionQueueAddTool,
+    DecisionQueueAnswerTool,
+    DecisionQueueDismissTool,
+    DecisionQueueShowTool,
+    PresenceSetTool,
+    PresenceStatusTool,
+)
 from .vision_tool import VisionAppendTool, VisionReadTool
 from .web import WebFetchTool, WebSearchTool
 
@@ -79,6 +90,15 @@ def build_default_registry() -> ToolRegistry:
     registry = ToolRegistry()
     for tool in (
         AskUserTool(),
+        PresenceSetTool(),
+        PresenceStatusTool(),
+        DecisionQueueShowTool(),
+        DecisionQueueAddTool(),
+        DecisionQueueAnswerTool(),
+        DecisionQueueDismissTool(),
+        AppsStatusTool(),
+        AppsCloseTool(),
+        AppsRestartTool(),
         ReadFileTool(),
         WriteFileTool(),
         ListDirTool(),

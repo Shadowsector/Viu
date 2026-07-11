@@ -148,15 +148,59 @@ class ViuGUI:
             side="left", anchor="w"
         )
 
+    def _toggle_presence(self) -> None:
+        from .decision_queue import flush_prompt_for_home
+        from .presence import is_away, presence_label, toggle_presence
+
+        mode = toggle_presence(self.agent.config)
+        label = presence_label(self.agent.config)
+        self._append("ты", "[Режим присутствия]")
+        self._append("Вью", label, tag="sys")
+        self._refresh_presence_button()
+        self._refresh_status()
+        if mode == "home":
+            flush = flush_prompt_for_home(self.agent.config)
+            if flush:
+                self._append("Вью", flush, tag="tool")
+                self._telegram_notify_chat(flush[:1500])
+        else:
+            self._append(
+                "система",
+                "Автономный режим: inbox/оверлей сама; вопросы копятся в «Очередь вопросов».",
+                tag="sys",
+            )
+
+    def _show_decision_queue(self) -> None:
+        from .decision_queue import render_open
+
+        self._append("ты", "[Очередь вопросов]")
+        self._append("Вью", render_open(self.agent.config), tag="tool")
+
+    def _refresh_presence_button(self) -> None:
+        from .presence import is_away
+
+        away = is_away(self.agent.config)
+        text = "Режим: меня нет (автономно)" if away else "Режим: я дома (с вопросами)"
+        for aid, btn in self._action_buttons:
+            if aid == "presence_toggle":
+                btn.config(text=text)
+                break
+
     def _refresh_status(self) -> None:
         cfg = self.agent.config
 
         def compute() -> str:
+            from .decision_queue import count_open
+            from .presence import is_away
+
             ollama = "Ollama ✓" if ollama_available(cfg.base_url) else "Ollama ✗"
             unity = Path(cfg.unity_project).name if cfg.unity_project else "Unity —"
             git = "git" if usable_git_root() else "zip"
+            mode = "автономно" if is_away(cfg) else "дома"
+            qn = count_open(cfg)
+            q = f" | вопросов: {qn}" if qn else ""
             return (
-                f"{ollama}  |  {unity}  |  {version_label()} ({git})  |  "
+                f"{ollama}  |  {mode}{q}  |  {unity}  |  {version_label()} ({git})  |  "
                 f"Модель: {self.agent.llm.name}"
             )
 
@@ -229,6 +273,7 @@ class ViuGUI:
                     self._attach_tooltip(btn, action.hint)
 
         self._refresh_action_visibility()
+        self._refresh_presence_button()
 
         chat_hint = ttk.Label(
             frame,
@@ -442,6 +487,12 @@ class ViuGUI:
             return
         if action.tool == "__telegram_test__":
             self._telegram_test()
+            return
+        if action.tool == "__presence_toggle__":
+            self._toggle_presence()
+            return
+        if action.tool == "__decision_queue__":
+            self._show_decision_queue()
             return
         if action.is_chain:
             self._run_tool_chain(action)

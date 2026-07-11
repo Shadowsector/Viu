@@ -228,6 +228,33 @@ class Agent:
             elif tool_name == "ask_user":
                 tr = tool.run(args, self.ctx)
                 question = tr.content
+                if question.startswith("QUEUED_FOR_DEN:"):
+                    # Ден away — вопрос в очереди, цикл не стопорим.
+                    observation = question
+                    ok = True
+                    step = Step(
+                        kind="action",
+                        thought=thought,
+                        tool=tool_name,
+                        args=args,
+                        observation=observation,
+                    )
+                    result.steps.append(step)
+                    if on_step:
+                        on_step(step)
+                    self._log(f"ASK_QUEUED: {question}")
+                    messages.append({"role": "assistant", "content": raw})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                f"Результат ask_user:\n{observation}\n"
+                                "Ден не у ПК. Продолжай работу без него, если можно. "
+                                "Не повторяй тот же вопрос."
+                            ),
+                        }
+                    )
+                    continue
                 step = Step(kind="final", thought=thought, observation=question)
                 result.steps.append(step)
                 result.final = question
