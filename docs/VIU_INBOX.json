@@ -1,17 +1,19 @@
 {
   "version": 1,
-  "updated_at": "2026-07-11T06:05:00Z",
+  "updated_at": "2026-07-11T08:24:25Z",
   "note": "Cursor пишет задачи сюда. Viu забирает pending. direct_tool = без Ollama.",
   "tasks": [
     {
       "id": "overlay-playtest-20260711",
-      "status": "pending",
+      "status": "done",
       "priority": 1,
       "title": "Собрать оверлей и прислать вердикт Cursor",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
       "direct_args": {},
-      "instructions": "Прямой вызов overlay_playtest без LLM (Ollama таймауты не мешают). После — статус в inbox + handoff."
+      "instructions": "Прямой вызов overlay_playtest без LLM (Ollama таймауты не мешают). После — статус в inbox + handoff.",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nУже есть: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe\n--- build ---\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs\n[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe\n[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\\..\\Builds/AnabarraOverlay\\LaunchOverlay.bat\nЗапуск: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\LaunchOverlay.bat\n--- overlay_boot.log ---\nue err=0\n11:24:15 SetLayeredWindowAttributes=True err=0\n11:24:15 SetLayeredWindowAttributes=True err=0\n11:24:16 SetLayeredWindowAttributes=True err=0\n11:24:16 SetLayeredWindowAttributes=True err=0\n11:24:16 SetLayeredWindowAttributes=True err=0\n11:24:16 SetLayeredWindowAttributes=True err=0\n11:24:16 SetLayeredWindowAttributes=True err=0\n11:24:16 SetLayeredWindowAttributes=True err=0\n11:24:17 SetLayeredWindowAttributes=True err=0\n11:24:17 SetLayeredWindowAttributes=True err=0\n11:24:17 SetLayeredWindowAttributes=True err=0\n11:24:17 SetLayeredWindowAttributes=True err=0\n11:24:17 SetLayeredWindowAttributes=True err=0\n11:24:17 SetLayeredWindowAttributes=True err=0\n11:24:17 SetLayeredWindowAttributes=True err=0\n11:24:18 SetLayeredWindowAttributes=True err=0\n11:24:18 SetLayeredWindowAttributes=True err=0\n11:24:18 SetLayeredWindowAttributes=True err=0\n11:24:18 SetLayeredWindowAttributes=True err=0\n11:24:18 SetLayeredWindowAttributes=True err=0\n11:24:18 SetLayeredWindowAttributes=True err=0\n11:24:19 SetLayeredWindowAttributes=True err=0\n11:24:19 SetLayeredWindowAttributes=True err=0\n11:24:19 SetLayeredWindowAttributes=True err=0\n11:24:19 SetLayeredWindowAttributes=True err=0\n11:24:19 SetLayeredWindowAttributes=True err=0\n11:24:19 SetLayeredWindowAttributes=True err=0\n11:24:20 SetLayeredWindowAttributes=True err=0\n11:24:20 SetLayeredWindowAttributes=True err=0\n11:24:20 SetLayeredWindowAttributes=True err=0\n11:24:20 SetLayeredWindowAttributes=True err=0\n11:24:20 SetLayeredWindowAttributes=True err=0\n11:24:20 SetLayeredWindowAttributes=True err=0\n11:24:20 SetLayeredWindowAttributes=True err=0\n11:24:21 SetLayeredWindowAttributes=True err=0\n11:24:21 SetLayeredWindowAttributes=True err=0\n11:24:21 SetLayeredWindowAttributes=True err=0\n11:24:21 SetLayeredWindowAttributes=True err=0\n11:24:21 SetLayeredWindowAttributes=True err=0\n11:24:21 SetLayeredWindowAttributes=True err=0\n11:24:22 SetLayeredWindowAttributes=True err=0\n11:24:22 SetLayeredWindowAttributes=True err=0\n11:24:22 SetLayeredWindowAttributes=True err=0\n11:24:22 SetLayeredWindowAttributes=True err=0\n11:24:22 SetLayeredWindowAttributes=",
+      "finished_at": "2026-07-11T08:24:25Z"
     },
     {
       "id": "cascadeur-bridge-note-20260711",
