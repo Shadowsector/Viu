@@ -127,7 +127,15 @@ class OverlayPlaytestTool(Tool):
             if boot.is_file():
                 boot_text = boot.read_text(encoding="utf-8", errors="replace")
                 lines.append("--- overlay_boot.log ---")
-                lines.append(boot_text[-2500:])
+                # Awake/AfterWindow в начале; ColorKey раньше заливал хвост
+                head = boot_text[:1200]
+                tail = boot_text[-1200:]
+                if len(boot_text) > 2400 and head != tail:
+                    lines.append(head.rstrip())
+                    lines.append("…")
+                    lines.append(tail.lstrip())
+                else:
+                    lines.append(boot_text[-2500:])
                 verdict = _verdict(boot_text)
                 lines.append("--- вердикт ---")
                 lines.append(verdict)
@@ -157,8 +165,11 @@ def _verdict(boot_text: str) -> str:
     if "setlayeredwindowattributes=false" in low:
         return "FAIL: ColorKey не применился — снова magenta / flip-model?"
     if "setlayeredwindowattributes=true" in low or "colorkey pass" in low:
-        if "shanya=false" in low or "shanya=(false)" in low:
-            return "WARN: прозрачность ок, но Шаня не в сцене."
+        if "shanya=false" in low or "shanya=(false)" in low or "name=нет" in low:
+            return (
+                "WARN: прозрачность ок, но Шаня не в сцене "
+                "(пересобери: FindModelPath должен брать Shanya_Erisa, не Fall/Run)."
+            )
         if "home=нет" in low:
             return "WARN: прозрачность ок, дом не найден в сцене (Environment FBX?)."
         if "renderers=0/" in low:

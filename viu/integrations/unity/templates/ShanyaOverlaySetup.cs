@@ -17,8 +17,9 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 18
+        // @viu-deploy-rev 19
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
+        const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
         const string EnvironmentRoot = "Assets/Environment";
@@ -178,8 +179,12 @@ namespace Viu.Editor
             EnsureOverlayManager();
             AssetDatabase.SaveAssets();
             SaveActiveScene(saveScenePath);
+            var meshCount = instance.GetComponentsInChildren<Renderer>(true).Length;
             var homeNote = home != null ? " + дом" : "";
-            Debug.Log("[Viu] Overlay scene готова" + homeNote + ": " + saveScenePath);
+            Debug.Log(
+                "[Viu] Overlay scene готова" + homeNote + ": " + saveScenePath
+                + " | character=" + instance.name + " from=" + modelPath
+                + " renderers=" + meshCount);
         }
 
         static void EnsureOverlayManager()
@@ -272,17 +277,52 @@ namespace Viu.Editor
             EditorSceneManager.SaveScene(scene, path);
         }
 
+        /// <summary>
+        /// Тело персонажа, не клип анимации. Раньше первый попавшийся
+        /// Shanya_Fall / Shanya_Run попадал в сцену вместо Shanya_Erisa.
+        /// </summary>
         static string FindModelPath()
         {
+            string best = null;
+            int bestScore = int.MinValue;
             foreach (var guid in AssetDatabase.FindAssets("t:Model"))
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase))
+                    continue;
                 var name = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
-                if ((name.Contains("shanya") || name.Contains("erisa"))
-                    && !name.Contains("idle") && !name.Contains("walk"))
-                    return path;
+                if (!name.Contains("shanya") && !name.Contains("erisa"))
+                    continue;
+
+                int score = 0;
+                if (name == "shanya_erisa" || name == "erisa" || name == "shanya")
+                    score += 100;
+                if (path.IndexOf("/Characters/", StringComparison.OrdinalIgnoreCase) >= 0)
+                    score += 40;
+                if (path.IndexOf("/Animations/", StringComparison.OrdinalIgnoreCase) >= 0)
+                    score -= 80;
+                if (IsAnimationClipName(name))
+                    score -= 60;
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = path;
+                }
             }
-            return null;
+            return bestScore >= 40 ? best : null;
+        }
+
+        static bool IsAnimationClipName(string nameLower)
+        {
+            return nameLower.Contains("idle")
+                || nameLower.Contains("walk")
+                || nameLower.Contains("run")
+                || nameLower.Contains("fall")
+                || nameLower.Contains("sit")
+                || nameLower.Contains("sleep")
+                || nameLower.Contains("yawn")
+                || nameLower.Contains("@");
         }
 
         static Avatar LoadModelAvatar(string modelPath)
@@ -354,23 +394,41 @@ namespace Viu.Editor
 
         static GameObject PlaceCharacterInScene(string modelPath, RuntimeAnimatorController controller, Avatar avatar)
         {
+            CleanupMisplacedShanyaRoots();
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
-            var existing = GameObject.Find(prefab != null ? prefab.name : "Shanya_Erisa");
-            GameObject instance;
-            if (existing != null)
-                instance = existing;
-            else
-            {
-                instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
-                instance.name = prefab.name;
-                instance.transform.position = Vector3.zero;
-            }
+            if (prefab == null)
+                throw new InvalidOperationException("[Viu] Не загрузился FBX персонажа: " + modelPath);
+
+            var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            instance.name = CharacterRootName;
+            instance.transform.position = Vector3.zero;
+
             var animator = instance.GetComponent<Animator>() ?? instance.AddComponent<Animator>();
             animator.runtimeAnimatorController = controller;
             animator.avatar = avatar;
             if (!instance.activeInHierarchy)
                 instance.SetActive(true);
             return instance;
+        }
+
+        /// <summary>
+        /// Убирает старые корни (Shanya_Fall и т.п.), оставшиеся от ошибочного FindModelPath.
+        /// </summary>
+        static void CleanupMisplacedShanyaRoots()
+        {
+            var doomed = new List<GameObject>();
+            foreach (var go in UnityEngine.Object.FindObjectsByType<GameObject>(
+                         FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (go == null || go.transform.parent != null) continue;
+                var n = go.name.ToLowerInvariant();
+                if (n.StartsWith("viu_home_", StringComparison.Ordinal)) continue;
+                if (n == "shanya_erisa" || n == "shanya"
+                    || n.Contains("shanya") || n.Contains("erisa"))
+                    doomed.Add(go);
+            }
+            foreach (var go in doomed)
+                UnityEngine.Object.DestroyImmediate(go);
         }
 
         static void DisableWgtMeshes(GameObject root)

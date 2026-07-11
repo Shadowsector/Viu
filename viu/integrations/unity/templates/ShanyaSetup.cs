@@ -16,7 +16,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaSetup
     {
-        // @viu-deploy-rev 18
+        // @viu-deploy-rev 19
         const string ControllerPath = ShanyaAnimationSync.ControllerPath;
         const string ModelNameHint = "Shanya_Erisa";
         /// <summary>Целевой рост персонажа в метрах (можно подкрутить).</summary>
@@ -116,17 +116,39 @@ namespace Viu.Editor
             Debug.Log("[Viu] Сцена сохранена: " + path);
         }
 
+        /// <summary>Тело персонажа, не клип анимации (Shanya_Fall / Run / …).</summary>
         static string FindModelPath()
         {
+            string best = null;
+            int bestScore = int.MinValue;
             foreach (var guid in AssetDatabase.FindAssets("t:Model"))
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase))
+                    continue;
                 var name = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
-                if (name.Contains("shanya") || name.Contains("erisa"))
-                    if (!name.Contains("idle") && !name.Contains("walk"))
-                        return path;
+                if (!name.Contains("shanya") && !name.Contains("erisa"))
+                    continue;
+
+                int score = 0;
+                if (name == "shanya_erisa" || name == "erisa" || name == "shanya")
+                    score += 100;
+                if (path.IndexOf("/Characters/", StringComparison.OrdinalIgnoreCase) >= 0)
+                    score += 40;
+                if (path.IndexOf("/Animations/", StringComparison.OrdinalIgnoreCase) >= 0)
+                    score -= 80;
+                if (name.Contains("idle") || name.Contains("walk") || name.Contains("run")
+                    || name.Contains("fall") || name.Contains("sit") || name.Contains("sleep")
+                    || name.Contains("yawn") || name.Contains("@"))
+                    score -= 60;
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = path;
+                }
             }
-            return null;
+            return bestScore >= 40 ? best : null;
         }
 
         static string FindIdleInAnimationsFolder()
@@ -258,7 +280,8 @@ namespace Viu.Editor
         static GameObject PlaceCharacterInScene(string modelPath, RuntimeAnimatorController controller, Avatar avatar)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
-            var existing = GameObject.Find(prefab != null ? prefab.name : ModelNameHint);
+            var existing = GameObject.Find(ModelNameHint)
+                ?? GameObject.Find(prefab != null ? prefab.name : ModelNameHint);
             GameObject instance;
             if (existing != null)
             {
@@ -267,9 +290,9 @@ namespace Viu.Editor
             else
             {
                 instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
-                instance.name = prefab.name;
                 instance.transform.position = Vector3.zero;
             }
+            instance.name = ModelNameHint;
 
             var animator = instance.GetComponent<Animator>() ?? instance.AddComponent<Animator>();
             animator.runtimeAnimatorController = controller;

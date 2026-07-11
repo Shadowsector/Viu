@@ -1178,7 +1178,6 @@ class ViuGUI:
     def _run_direct_inbox_task(self, task: dict, inbox: dict) -> None:
         """Выполнить tool из inbox без LLM — отчёт в Telegram/чат + complete."""
         from .integrations.github.inbox import mark_task, push_inbox, save_inbox_local
-        from .tools.base import AgentContext
 
         tid = str(task.get("id") or "")
         tool_name = str(task.get("direct_tool") or "").strip()

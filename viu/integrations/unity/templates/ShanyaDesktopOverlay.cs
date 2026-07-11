@@ -28,6 +28,7 @@ namespace Viu.Runtime
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         IntPtr _hwnd;
         int _colorKeyAttempts;
+        bool _colorKeyOk;
 #endif
 
         void Awake()
@@ -64,8 +65,9 @@ namespace Viu.Runtime
                 Application.Quit();
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
-            if (_hwnd != IntPtr.Zero && _colorKeyAttempts > 0 && _colorKeyAttempts < 120
-                && Time.frameCount % 30 == 0)
+            // После успешного ColorKey не спамим overlay_boot.log каждые 30 кадров.
+            if (_hwnd != IntPtr.Zero && !_colorKeyOk && _colorKeyAttempts > 0
+                && _colorKeyAttempts < 40 && Time.frameCount % 30 == 0)
             {
                 ApplyColorKey();
                 _colorKeyAttempts++;
@@ -80,7 +82,7 @@ namespace Viu.Runtime
             foreach (var r in renderers)
                 if (r != null && r.enabled) enabled++;
 
-            var shanya = GameObject.Find("Shanya_Erisa") ?? GameObject.Find("Shanya");
+            var shanya = FindShanyaRoot();
             GameObject home = null;
             foreach (var go in FindObjectsByType<GameObject>(FindObjectsSortMode.None))
             {
@@ -91,7 +93,32 @@ namespace Viu.Runtime
                 }
             }
 
-            BootLog($"{tag}: renderers={enabled}/{renderers.Length} shanya={(shanya != null)} home={(home != null ? home.name : "нет")}");
+            var shanyaName = shanya != null ? shanya.name : "нет";
+            BootLog(
+                $"{tag}: renderers={enabled}/{renderers.Length} shanya={(shanya != null)} "
+                + $"name={shanyaName} home={(home != null ? home.name : "нет")}");
+        }
+
+        static GameObject FindShanyaRoot()
+        {
+            var byName = GameObject.Find("Shanya_Erisa") ?? GameObject.Find("Shanya");
+            if (byName != null) return byName;
+
+            foreach (var loc in FindObjectsByType<ShanyaLocomotion>(FindObjectsSortMode.None))
+            {
+                if (loc != null && loc.gameObject != null)
+                    return loc.gameObject;
+            }
+
+            foreach (var anim in FindObjectsByType<Animator>(FindObjectsSortMode.None))
+            {
+                if (anim == null || anim.gameObject == null) continue;
+                var n = anim.gameObject.name.ToLowerInvariant();
+                if (n.StartsWith("viu_home_", StringComparison.Ordinal)) continue;
+                if (n.Contains("shanya") || n.Contains("erisa"))
+                    return anim.gameObject;
+            }
+            return null;
         }
 
         static void BootLog(string line)
@@ -169,6 +196,7 @@ namespace Viu.Runtime
             DwmExtendFrameIntoClientArea(_hwnd, ref margins);
 
             bool ok = SetLayeredWindowAttributes(_hwnd, ChromaColorRef, 0, LWA_COLORKEY);
+            _colorKeyOk = ok;
             BootLog("SetLayeredWindowAttributes=" + ok + " err=" + Marshal.GetLastWin32Error());
         }
 
