@@ -488,3 +488,38 @@ Support bundle: U:\Viu\.viu\support\viu_logs_20260711_114136.zip
 ## 2026-07-11 12:02 — direct `unity_open` → done (Viu)
 
 Открываю Unity (Unity.exe) с проектом Anabarra. Запуск занимает 30–90 секунд. Когда откроется: Открой сцену Assets/Scenes/GameTest.unity (двойной клик в панели Project) — в ней уже стоит Шаня. Затем нажми ▶ Play и проверь Idle↔Walk на A/D.
+
+
+---
+
+## 2026-07-11 12:20 — direct `overlay_playtest` → done (Viu)
+
+Unity close: Unity.exe не запущен.
+Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs
+ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs
+Уже есть: U:\Anabarra\Unity\Anabarra\Assets\Characters\Shanya\Animations\viu_clips.json
+Сборка OK: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\AnabarraOverlay.exe
+--- build ---
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs
+[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe
+[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\..\Builds/AnabarraOverlay\LaunchOverlay.bat
+Запуск: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\LaunchOverlay.bat
+--- overlay_boot.log ---
+﻿12:20:29 Awake: renderers=5063/5064 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables
+12:20:29 Start args=AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow
+12:20:29 HWND ok
+12:20:29 Geometry 2560x1440 at 0,0
+12:20:30 SetLayeredWindowAttributes=True err=0
+12:20:30 ColorKey pass 1, Esc=выход
+12:20:30 AfterWindow: renderers=5063/5064 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables
+
+--- вердикт ---
+OK: HWND + ColorKey. Смотри рабочий стол — Шаня/дом должны быть видны.
+Unity Editor снова открыт для Дена.
+Support bundle: U:\Viu\.viu\support\viu_logs_20260711_122044.zip
+Логи отправлены: https://gist.github.com/Shadowsector/68e9d6327ca459e17b659a4ef9a1a71d
