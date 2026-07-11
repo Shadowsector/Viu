@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.IO;
 using System.Runtime.InteropServices;
 using UnityEngine;
 
@@ -30,14 +32,18 @@ namespace Viu.Runtime
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         IntPtr _hwnd;
         bool _configured;
-        int _waitFrames;
-        int _windowHeight;
+        bool _colorKeyApplied;
 #endif
 
         void Awake()
         {
             Application.runInBackground = true;
             QualitySettings.vSyncCount = 0;
+
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            Screen.fullScreenMode = FullScreenMode.Windowed;
+            Screen.fullScreen = false;
+#endif
 
             _camera = Camera.main;
             if (_camera != null)
@@ -48,37 +54,59 @@ namespace Viu.Runtime
             }
         }
 
+        void Start()
+        {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            BootLog("Start product=" + Application.productName);
+            StartCoroutine(ConfigureWindowWhenReady());
+#endif
+        }
+
         void Update()
         {
             if (Input.GetKeyDown(KeyCode.Escape))
                 Application.Quit();
-
-#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
-            if (!_configured && ++_waitFrames >= 3)
-            {
-                try { ConfigureWindow(); }
-                catch (Exception e) { Debug.LogWarning("[Viu] Overlay window: " + e.Message); }
-            }
-#endif
         }
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
-        void ConfigureWindow()
+        IEnumerator ConfigureWindowWhenReady()
         {
-            if (_hwnd == IntPtr.Zero)
-                _hwnd = GetActiveWindow();
-            if (_hwnd == IntPtr.Zero)
-                return;
+            // Unity часто ещё не создал HWND в первые кадры — ждём и ищем надёжнее, чем GetActiveWindow.
+            for (int i = 0; i < 180 && _hwnd == IntPtr.Zero; i++)
+            {
+                _hwnd = ResolveGameWindow();
+                if (_hwnd == IntPtr.Zero)
+                    yield return null;
+            }
 
+            if (_hwnd == IntPtr.Zero)
+            {
+                BootLog("ERROR: окно игры не найдено (HWND=0). Alt+Tab — ищи AnabarraOverlay.");
+                yield break;
+            }
+
+            BootLog("HWND ok, frame=" + Time.frameCount);
+            ApplyWindowGeometry();
+            _configured = true;
+
+            // Цветовой ключ — после первого кадра с 3D, иначе весь экран «дырявый» и кажется, что оверлея нет.
+            yield return new WaitForEndOfFrame();
+            yield return new WaitForSeconds(0.35f);
+            ApplyColorKey();
+            _colorKeyApplied = true;
+            BootLog("ColorKey applied, Esc=выход");
+        }
+
+        void ApplyWindowGeometry()
+        {
             var mon = ResolveMonitorRect(monitorIndex);
             int w = mon.width;
             int h = fullScreenOverlay ? mon.height : Mathf.Clamp(stripHeightPixels, 120, mon.height);
             int x = mon.x;
             int y = fullScreenOverlay ? mon.y : mon.y + mon.height - h;
-            _windowHeight = h;
 
-            var margins = new MARGINS { cxLeftWidth = -1 };
-            DwmExtendFrameIntoClientArea(_hwnd, ref margins);
+            ShowWindow(_hwnd, SW_RESTORE);
+            ShowWindow(_hwnd, SW_SHOW);
 
             SetWindowLong(_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
 
@@ -87,16 +115,59 @@ namespace Viu.Runtime
             if (clickThrough) ex |= WS_EX_TRANSPARENT;
             SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
 
-            SetLayeredWindowAttributes(_hwnd, ChromaColorRef, 0, LWA_COLORKEY);
-
             SetWindowPos(_hwnd, alwaysOnTop ? HWND_TOPMOST : HWND_NOTOPMOST,
                 x, y, w, h, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
 
             ApplyFeetLineToCamera(h);
-            SetForegroundWindow(_hwnd);
 
-            _configured = true;
+            try { SetForegroundWindow(_hwnd); }
+            catch { /* запуск из Viu может блокировать foreground */ }
+
             Debug.Log($"[Viu] Overlay {w}x{h} fullscreen={fullScreenOverlay}, Esc=выход.");
+            BootLog($"Geometry {w}x{h} at {x},{y}");
+        }
+
+        void ApplyColorKey()
+        {
+            if (_hwnd == IntPtr.Zero) return;
+
+            var margins = new MARGINS { cxLeftWidth = -1 };
+            DwmExtendFrameIntoClientArea(_hwnd, ref margins);
+            SetLayeredWindowAttributes(_hwnd, ChromaColorRef, 0, LWA_COLORKEY);
+        }
+
+        static IntPtr ResolveGameWindow()
+        {
+            var hwnd = FindWindow("UnityWndClass", null);
+            if (hwnd != IntPtr.Zero) return hwnd;
+
+            hwnd = FindWindow(null, Application.productName);
+            if (hwnd != IntPtr.Zero) return hwnd;
+
+            uint pid = GetCurrentProcessId();
+            IntPtr found = IntPtr.Zero;
+            EnumWindows((h, _) =>
+            {
+                if (!IsWindowVisible(h)) return true;
+                GetWindowThreadProcessId(h, out uint wpid);
+                if (wpid != pid) return true;
+                found = h;
+                return false;
+            }, IntPtr.Zero);
+            return found;
+        }
+
+        static void BootLog(string line)
+        {
+            try
+            {
+                var path = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "overlay_boot.log"));
+                File.AppendAllText(path, DateTime.Now.ToString("HH:mm:ss") + " " + line + "\n");
+            }
+            catch
+            {
+                // ignore
+            }
         }
 
         void ApplyFeetLineToCamera(int windowHeight)
@@ -107,9 +178,7 @@ namespace Viu.Runtime
             if (follow != null)
                 follow.feetScreenFraction = frac;
         }
-#endif
 
-#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         static RectInt ResolveMonitorRect(int index)
         {
             IntPtr target = IntPtr.Zero;
@@ -145,6 +214,8 @@ namespace Viu.Runtime
 
         const int GWL_STYLE = -16;
         const int GWL_EXSTYLE = -20;
+        const int SW_SHOW = 5;
+        const int SW_RESTORE = 9;
         const uint WS_POPUP = 0x80000000;
         const uint WS_VISIBLE = 0x10000000;
         const uint WS_EX_LAYERED = 0x00080000;
@@ -160,6 +231,7 @@ namespace Viu.Runtime
         static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
 
         delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+        delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
         [StructLayout(LayoutKind.Sequential)]
         struct RECT { public int left, top, right, bottom; }
@@ -182,9 +254,27 @@ namespace Viu.Runtime
             public int cxLeftWidth, cxRightWidth, cyTopHeight, cyBottomHeight;
         }
 
-        [DllImport("user32.dll")] static extern IntPtr GetActiveWindow();
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+        [DllImport("user32.dll")]
+        static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        static extern int ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        static extern uint GetCurrentProcessId();
+
+        [DllImport("user32.dll")]
+        static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
         [DllImport("user32.dll", EntryPoint = "SetWindowLong")]
         static extern int SetWindowLong32(IntPtr hWnd, int nIndex, uint dwNewLong);
+
         [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")]
         static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, uint dwNewLong);
 
@@ -197,17 +287,23 @@ namespace Viu.Runtime
         [DllImport("user32.dll", SetLastError = true)]
         static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
             int X, int Y, int cx, int cy, uint uFlags);
+
         [DllImport("user32.dll")]
         static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
         [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT lpPoint);
+
         [DllImport("user32.dll")]
         static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
         [DllImport("user32.dll")]
         static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
         [DllImport("user32.dll")]
         static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip,
             MonitorEnumProc lpfnEnum, IntPtr dwData);
+
         [DllImport("Dwmapi.dll")]
         static extern uint DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS margins);
 #endif

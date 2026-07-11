@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import shutil
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
@@ -558,13 +559,20 @@ class UnityOverlayTool(Tool):
         launched = ""
         if launch and out_exe.is_file():
             try:
-                kwargs: Dict[str, Any] = {"cwd": str(out_exe.parent)}
-                if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
-                    kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-                subprocess.Popen([str(out_exe)], **kwargs)  # noqa: S603
+                exe = str(out_exe)
+                cwd = str(out_exe.parent)
+                # cmd start — окно получает foreground (из Python часто «есть в таскбаре, но не видно»).
+                if sys.platform == "win32":
+                    subprocess.Popen(  # noqa: S603
+                        ["cmd", "/c", "start", "", exe],
+                        cwd=cwd,
+                    )
+                else:
+                    subprocess.Popen([exe], cwd=cwd)  # noqa: S603
                 launched = (
                     "\n\nЗапускаю оверлей (на весь экран). A/D — ходьба, Esc — выход. "
-                    "Глубина: **W** подойти, **S** отойти, **F5** — сохранить настройки."
+                    "Глубина: **W** подойти, **S** отойти, **F5** — сохранить настройки.\n"
+                    "Если пусто: Alt+Tab → AnabarraOverlay; лог рядом с exe: overlay_boot.log"
                 )
             except OSError as exc:
                 launched = f"\n\nСобрано, но запустить не смог: {exc}. Запусти вручную: {out_exe}"
