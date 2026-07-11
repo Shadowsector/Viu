@@ -73,6 +73,40 @@ namespace Viu.Runtime
 #endif
         }
 
+        void LogSceneStats(string tag)
+        {
+            var renderers = FindObjectsByType<Renderer>(FindObjectsSortMode.None);
+            int enabled = 0;
+            foreach (var r in renderers)
+                if (r != null && r.enabled) enabled++;
+
+            var shanya = GameObject.Find("Shanya_Erisa") ?? GameObject.Find("Shanya");
+            GameObject home = null;
+            foreach (var go in FindObjectsByType<GameObject>(FindObjectsSortMode.None))
+            {
+                if (go != null && go.name.StartsWith("Viu_Home_", StringComparison.Ordinal))
+                {
+                    home = go;
+                    break;
+                }
+            }
+
+            BootLog($"{tag}: renderers={enabled}/{renderers.Length} shanya={(shanya != null)} home={(home != null ? home.name : "нет")}");
+        }
+
+        static void BootLog(string line)
+        {
+            try
+            {
+                var path = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "overlay_boot.log"));
+                File.AppendAllText(path, DateTime.Now.ToString("HH:mm:ss") + " " + line + "\n", Encoding.UTF8);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         IEnumerator ConfigureWindowWhenReady()
         {
@@ -157,40 +191,6 @@ namespace Viu.Runtime
                 return false;
             }, IntPtr.Zero);
             return found;
-        }
-
-        void LogSceneStats(string tag)
-        {
-            var renderers = FindObjectsOfType<Renderer>();
-            int enabled = 0;
-            foreach (var r in renderers)
-                if (r != null && r.enabled) enabled++;
-
-            var shanya = GameObject.Find("Shanya_Erisa") ?? GameObject.Find("Shanya");
-            GameObject home = null;
-            foreach (var go in FindObjectsOfType<GameObject>())
-            {
-                if (go != null && go.name.StartsWith("Viu_Home_", StringComparison.Ordinal))
-                {
-                    home = go;
-                    break;
-                }
-            }
-
-            BootLog($"{tag}: renderers={enabled}/{renderers.Length} shanya={(shanya != null)} home={(home != null ? home.name : "нет")}");
-        }
-
-        static void BootLog(string line)
-        {
-            try
-            {
-                var path = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "overlay_boot.log"));
-                File.AppendAllText(path, DateTime.Now.ToString("HH:mm:ss") + " " + line + "\n", Encoding.UTF8);
-            }
-            catch
-            {
-                // ignore
-            }
         }
 
         void ApplyFeetLineToCamera(int windowHeight)
