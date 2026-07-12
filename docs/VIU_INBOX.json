@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T10:25:00Z",
+  "updated_at": "2026-07-12T10:19:07Z",
   "note": "ColorKey API=True but Den still sees solid magenta — escalate UpdateLayeredWindow rev37.",
   "tasks": [
     {
@@ -14,7 +14,7 @@
     },
     {
       "id": "overlay-magenta-20260712b",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "Magenta: UpdateLayeredWindow per-pixel alpha (rev37)",
       "created_by": "Cursor",
@@ -24,7 +24,8 @@
         "timeout": 2400
       },
       "instructions": "ColorKey left solid magenta despite SetLayeredWindowAttributes=True (see 12a). Rev37 primary: camera RT + AsyncGPUReadback + UpdateLayeredWindow(ULW_ALPHA); chroma #FF0080 → alpha 0. Do NOT call SetLayeredWindowAttributes when UpdateLayered is active. Expect boot: runtime-rev=37, Transparency=UpdateLayeredWindow (per-pixel alpha) OK. ColorKey fallback only. Keep Idle/Run pins. Do not rename AnabarraOverlay.exe to .broken.",
-      "acceptance": "Desktop visible through window (not solid #FF0080); Shanya+home opaque; Idle at rest; A/D walks; boot shows UpdateLayeredWindow OK."
+      "acceptance": "Desktop visible through window (not solid #FF0080); Shanya+home opaque; Idle at rest; A/D walks; boot shows UpdateLayeredWindow OK.",
+      "started_at": "2026-07-12T10:19:07Z"
     }
   ]
 }
