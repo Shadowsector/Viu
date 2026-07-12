@@ -89,15 +89,11 @@ Transparency=UpdateLayeredWindow (per-pixel alpha) OK
 
 ---
 
-## Открыто (следующие задачи, не baseline)
+## Открыто (следующие задачи)
 
-Ден 2026-07-12 после победы над магентой:
+Rev38 (2026-07-12): feet lower (0.07), home yaw 180°, W/S Z walk in Locomotion, stable camera feet offset (no run bobbing).
 
-- Шаня **выше**, чем нужно (feet line / `feetScreenFraction` / camera ortho).
-- Дом **задом** (yaw / `DollhouseWall` / `HomeShanyaFrontGap`).
-- **W/S глубина** — не ходит «в экран / от экрана» как ожидается (`ShanyaOverlayDepth`, `overlay_tune.json`).
-
-Эти пункты **не откатывают** прозрачность и анимации — правятся отдельно.
+Если после rebuild всё ещё не так — F5 сохраняет `overlay_tune.json`, правь `characterDepthZ` / `feetLiftMeters`.
 
 ---
 

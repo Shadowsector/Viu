@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 37" in text
+    assert "@viu-deploy-rev 38" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -107,12 +107,13 @@ def test_overlay_templates(tmp_path):
     assert "ConfigureWindowWhenReady" in overlay
     cam = (root / "ShanyaOverlayCamera.cs").read_text(encoding="utf-8")
     assert "feetFractionCloseBoost" in cam
-    assert "ResolveFeetY" in cam
-    assert "feetScreenFraction = 0.12f" in cam or "0.12f" in cam
+    assert "ResolveFeetY" in cam or "SampleFeetY" in cam
+    assert "feetScreenFraction = 0.07f" in cam or "0.07f" in cam
     assert "LockToHome" in cam
     assert "lockFollowX" in cam
     depth = (root / "ShanyaOverlayDepth.cs").read_text(encoding="utf-8")
-    assert "KeyCode.W" in depth
+    loco = (root / "ShanyaLocomotion.cs").read_text(encoding="utf-8")
+    assert "KeyCode.W" in depth or "KeyCode.W" in loco
     assert "characterDepthZ" in depth
     assert "дом стоит" in depth or "characterDepthZ" in depth
     assert "characterDepthZ" in depth
@@ -137,7 +138,6 @@ def test_overlay_templates(tmp_path):
     assert "IsBuildingShell" in dollhouse
     assert "barn_interior" in dollhouse
     assert "Z-slab" in dollhouse or "slab" in dollhouse
-    loco = (root / "ShanyaLocomotion.cs").read_text(encoding="utf-8")
     assert "GetComponentInChildren<Animator>" in loco
     assert "CrossFade" in loco or "CrossFadeInFixedTime" in loco
     assert "PlayState" in loco
@@ -157,24 +157,28 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 37" in setup
+    assert "@viu-deploy-rev 38" in setup
     assert "X Bot@Idle.fbx" in sync
     assert "DetectRunAsWalkSpeed" in loco
     assert "WalkThreshold = 0.25f" in loco
+    assert "depthWalkSpeed" in loco
+    assert "ReadDepth" in loco
     assert 'return Input.GetAxisRaw("Horizontal")' not in loco
-    assert "НЕ использовать" in loco
     assert "Create From This Model (не Copy Erisa)" in sync
     assert "Никогда Copy From Other к Erisa" in sync
     assert "HomeShanyaFrontGap" in setup
+    assert "HomeYawDegrees = 180f" in setup
     assert "ForceFlipModelOffInProjectSettingsAsset" in setup
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay
     assert "RuntimeRev" in overlay
-    assert 'RuntimeRev = "37"' in overlay
+    assert 'RuntimeRev = "38"' in overlay
     assert "UpdateLayeredWindow" in overlay
     assert "useUpdateLayeredWindow" in overlay
     assert "ChromaKey32" in overlay
     assert "allowHDR = false" in overlay
+    assert "CalibrateFeetOffset" in cam
+    assert "_feetOffsetFromRoot" in cam or "feetOffsetFromRoot" in cam.lower()
     assert "-force-d3d11" in setup
 
     clips = (root / "viu_clips.json").read_text(encoding="utf-8")

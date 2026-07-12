@@ -4,14 +4,14 @@ namespace Viu.Runtime
 {
     /// <summary>
     /// Камера оверлея: стопы на линии экрана.
-    /// Важно: target — корень персонажа (бёдра), НЕ стопы. Считаем feetY по костям/bounds.
-    /// Дома (lockFollowX) — X не следует за Шаней.
+    /// target — корень (бёдра). Высоту камеры держим от root + фиксированный offset,
+    /// а не от костей стоп каждый кадр — иначе Run/Idle bobbing дёргает кадр вверх-вниз.
     /// </summary>
     public class ShanyaOverlayCamera : MonoBehaviour
     {
         public Transform target;
-        /// <summary>Доля высоты окна от низа для стоп (0.12 ≈ не обрезать ноги).</summary>
-        public float feetScreenFraction = 0.12f;
+        /// <summary>Доля высоты окна от низа для стоп (0.07 ≈ у линии таскбара).</summary>
+        public float feetScreenFraction = 0.07f;
         public float feetFractionCloseBoost = 0.011f;
         [HideInInspector] public float depthBlend;
         public float distanceZ = 12f;
@@ -21,10 +21,17 @@ namespace Viu.Runtime
         public float lockedWorldX;
 
         Camera _camera;
+        float _feetOffsetFromRoot;
+        bool _feetCalibrated;
 
         void Awake()
         {
             _camera = GetComponent<Camera>();
+        }
+
+        void Start()
+        {
+            CalibrateFeetOffset();
         }
 
         public void LockToHome(float worldX)
@@ -40,13 +47,27 @@ namespace Viu.Runtime
             followSmoothX = 16f;
         }
 
+        public void CalibrateFeetOffset()
+        {
+            if (target == null)
+            {
+                _feetCalibrated = false;
+                return;
+            }
+
+            _feetOffsetFromRoot = SampleFeetY(target) - target.position.y;
+            _feetCalibrated = true;
+        }
+
         void LateUpdate()
         {
             if (target == null) return;
+            if (!_feetCalibrated)
+                CalibrateFeetOffset();
             if (_camera == null) _camera = GetComponent<Camera>();
             float ortho = _camera != null ? _camera.orthographicSize : 1f;
 
-            float feetY = ResolveFeetY(target);
+            float feetY = target.position.y + _feetOffsetFromRoot;
             float frac = feetScreenFraction + depthBlend * feetFractionCloseBoost;
             float camY = feetY + ortho * (1f - 2f * frac);
 
@@ -59,7 +80,7 @@ namespace Viu.Runtime
             transform.rotation = Quaternion.identity;
         }
 
-        static float ResolveFeetY(Transform root)
+        static float SampleFeetY(Transform root)
         {
             var anim = root.GetComponentInChildren<Animator>();
             if (anim != null && anim.isHuman)

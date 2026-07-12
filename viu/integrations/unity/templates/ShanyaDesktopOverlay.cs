@@ -27,11 +27,11 @@ namespace Viu.Runtime
         static readonly Color32 ChromaKey32 = new Color32(255, 0, 128, 255);
 
         /// <summary>Метка в overlay_boot.log — если нет runtime-rev=37, в exe старые скрипты.</summary>
-        public const string RuntimeRev = "37";
+        public const string RuntimeRev = "38";
 
         public bool fullScreenOverlay = true;
         public int stripHeightPixels = 280;
-        public int feetLineFromBottomPixels = 46;
+        public int feetLineFromBottomPixels = 72;
         public bool clickThrough = false;
         public bool alwaysOnTop = true;
         public int monitorIndex = 0;
@@ -601,9 +601,7 @@ namespace Viu.Runtime
         void ApplyFeetLineToCamera(int windowHeight)
         {
             if (windowHeight <= 0) return;
-            float frac = Mathf.Clamp(feetLineFromBottomPixels / (float)windowHeight, 0.02f, 0.25f);
-            // Не даём полноэкранному окну уронить стопы ниже ~10% (обрезало Шаню).
-            frac = Mathf.Max(frac, 0.10f);
+            float frac = Mathf.Clamp(feetLineFromBottomPixels / (float)windowHeight, 0.05f, 0.25f);
             var follow = Camera.main != null ? Camera.main.GetComponent<ShanyaOverlayCamera>() : null;
             if (follow != null)
                 follow.feetScreenFraction = frac;

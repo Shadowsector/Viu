@@ -4,26 +4,27 @@ using UnityEngine;
 namespace Viu.Runtime
 {
     /// <summary>
-    /// Ходьба вдоль X (A/D / стрелки ←→). Idle/Walk через CrossFade на явные стейты —
-    /// не полагаемся только на переходы Animator (часто ломались → слайд).
+    /// Overlay locomotion: A/D — X, W/S — Z (к камере / вглубь). Idle/Walk через CrossFade.
     /// Baseline pins: docs/OVERLAY_BASELINE.md (X Bot@Idle, Shanya_Run-as-Walk).
     /// </summary>
     public class ShanyaLocomotion : MonoBehaviour
     {
         public float walkSpeed = 1.5f;
+        public float depthWalkSpeed = 1.35f;
         public string speedParameter = "Speed";
         public float modelYawOffset;
 
         const float SideFaceRightYaw = 90f;
-        /// <summary>Выше — меньше ложных Walk от дребезга/стика.</summary>
         const float WalkThreshold = 0.25f;
 
         Animator _animator;
         int _speedHash;
         bool _walking;
         bool _loggedOnce;
-        /// <summary>Если в Walk подложен Run-клип — замедляем playback.</summary>
         float _walkAnimSpeed = 1f;
+        float _baseZ;
+        bool _baseCaptured;
+        ShanyaOverlayDepth _depth;
 
         void Awake()
         {
@@ -36,6 +37,11 @@ namespace Viu.Runtime
         void Start()
         {
             transform.rotation = Quaternion.Euler(0f, SideFaceRightYaw + modelYawOffset, 0f);
+            _depth = FindFirstObjectByType<ShanyaOverlayDepth>();
+            CaptureBaseZ();
+            if (_depth != null)
+                _depth.BindCharacter(transform);
+
             if (_animator == null) return;
 
             _animator.applyRootMotion = false;
@@ -64,17 +70,28 @@ namespace Viu.Runtime
                     + "ctrl=" + (_animator.runtimeAnimatorController != null)
                     + " avatar=" + (_animator.avatar != null));
             }
+
+            var camFollow = Camera.main != null ? Camera.main.GetComponent<ShanyaOverlayCamera>() : null;
+            camFollow?.CalibrateFeetOffset();
+        }
+
+        void CaptureBaseZ()
+        {
+            if (_baseCaptured) return;
+            _baseZ = transform.position.z;
+            _baseCaptured = true;
         }
 
         void Update()
         {
             float h = ReadHorizontal();
-            float speed = Mathf.Abs(h);
+            float v = ReadDepth();
+            float planar = Mathf.Sqrt(h * h + v * v);
 
             if (_animator != null)
             {
-                _animator.SetFloat(_speedHash, speed);
-                bool wantWalk = speed > WalkThreshold;
+                _animator.SetFloat(_speedHash, planar);
+                bool wantWalk = planar > WalkThreshold;
                 if (wantWalk != _walking)
                 {
                     _walking = wantWalk;
@@ -88,16 +105,34 @@ namespace Viu.Runtime
                             + " now=" + (info.IsName("Walk") ? "Walk" : "other"));
                     }
                 }
-                // Run-клип в слоте Walk: на месте Idle на полной скорости, в движении — медленнее
                 _animator.speed = _walking ? _walkAnimSpeed : 1f;
             }
 
-            if (speed > WalkThreshold)
+            if (planar <= WalkThreshold)
+                return;
+
+            var pos = transform.position;
+            if (Mathf.Abs(h) > WalkThreshold)
             {
                 float yaw = (h > 0f ? SideFaceRightYaw : -SideFaceRightYaw) + modelYawOffset;
                 transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-                transform.position += Vector3.right * (h * walkSpeed * Time.deltaTime);
+                pos.x += h * walkSpeed * Time.deltaTime;
             }
+
+            if (Mathf.Abs(v) > WalkThreshold)
+            {
+                float minZ = _depth != null ? _depth.minDepthZ : -2.5f;
+                float maxZ = _depth != null ? _depth.maxDepthZ : 3.5f;
+                CaptureBaseZ();
+                pos.z = Mathf.Clamp(
+                    pos.z + v * depthWalkSpeed * Time.deltaTime,
+                    _baseZ + minZ,
+                    _baseZ + maxZ);
+                if (_depth != null)
+                    _depth.SyncDepthFromCharacter(_baseZ, pos.z);
+            }
+
+            transform.position = pos;
         }
 
         float DetectRunAsWalkSpeed()
@@ -136,12 +171,19 @@ namespace Viu.Runtime
             return ReadHorizontalNewInput();
         }
 
+        static float ReadDepth()
+        {
+            float v = 0f;
+            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) v -= 1f;
+            if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) v += 1f;
+            if (Mathf.Abs(v) > 0.01f) return v;
+            return ReadDepthNewInput();
+        }
+
         static float TryLegacyHorizontal()
         {
             try
             {
-                // Только A/D и ←→. GetAxisRaw("Horizontal") НЕ использовать —
-                // дрейф геймпада → Speed>0 → вечный Run в слоте Walk.
                 float h = 0f;
                 if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) h -= 1f;
                 if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) h += 1f;
@@ -169,6 +211,29 @@ namespace Viu.Runtime
                 if (IsPressed(keyboard, "aKey") || IsPressed(keyboard, "leftArrowKey")) h -= 1f;
                 if (IsPressed(keyboard, "dKey") || IsPressed(keyboard, "rightArrowKey")) h += 1f;
                 return h;
+            }
+            catch
+            {
+                return 0f;
+            }
+        }
+
+        static float ReadDepthNewInput()
+        {
+            try
+            {
+                var keyboardType = System.Type.GetType(
+                    "UnityEngine.InputSystem.Keyboard, Unity.InputSystem");
+                if (keyboardType == null) return 0f;
+                var currentProp = keyboardType.GetProperty(
+                    "current", BindingFlags.Public | BindingFlags.Static);
+                var keyboard = currentProp?.GetValue(null);
+                if (keyboard == null) return 0f;
+
+                float v = 0f;
+                if (IsPressed(keyboard, "wKey") || IsPressed(keyboard, "upArrowKey")) v -= 1f;
+                if (IsPressed(keyboard, "sKey") || IsPressed(keyboard, "downArrowKey")) v += 1f;
+                return v;
             }
             catch
             {

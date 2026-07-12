@@ -18,7 +18,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 37
+        // @viu-deploy-rev 38
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -28,9 +28,9 @@ namespace Viu.Editor
         const float HomeTargetHeightMeters = 5.2f;
         /// <summary>Не топить стопы в пол — раньше 0.03 давало «провал».</summary>
         const float GroundSinkMeters = 0f;
-        const float FeetLiftMeters = 0.02f;
-        /// <summary>0 = как в FBX. 180 переворачивал «не той стороной» у Old_Stables.</summary>
-        const float HomeYawDegrees = 0f;
+        const float FeetLiftMeters = 0f;
+        /// <summary>180 — фасад Old_Stables к камере (0 = «задом» у Дена 2026-07-12).</summary>
+        const float HomeYawDegrees = 180f;
         /// <summary>Шаня ПЕРЕД домом (к камере), не внутри. Камера смотрит +Z с меньшего Z.</summary>
         const float HomeShanyaFrontGap = 0.45f;
         /// <summary>Меньше = Шаня крупнее на экране. 5.5 делало её точкой.</summary>
@@ -305,7 +305,7 @@ namespace Viu.Editor
                 follow = cam.gameObject.AddComponent<Viu.Runtime.ShanyaOverlayCamera>();
             }
             follow.target = target;
-            follow.feetScreenFraction = 0.12f;
+            follow.feetScreenFraction = 0.07f;
             follow.distanceZ = 14f;
             follow.lockFollowX = true;
             follow.lockedWorldX = target.position.x;

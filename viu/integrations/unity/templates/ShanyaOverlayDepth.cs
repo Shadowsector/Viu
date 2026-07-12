@@ -5,9 +5,8 @@ using UnityEngine;
 namespace Viu.Runtime
 {
     /// <summary>
-    /// W/S — Шаня ходит вглубь/к камере по Z. Дом и ortho камеры не трогаем
-    /// (раньше depthBlend зумил и дом, и Шаню — это не то).
-    /// F5 — сохранить Z в overlay_tune.json.
+    /// Tune/lane для overlay: ortho камеры, базовый Z, F5 → overlay_tune.json.
+    /// W/S движение — в ShanyaLocomotion (Z axis + Walk).
     /// </summary>
     public class ShanyaOverlayDepth : MonoBehaviour
     {
@@ -21,18 +20,16 @@ namespace Viu.Runtime
         /// <summary>Смещение Шани по Z от базовой позиции (отрицательное = ближе к камере).</summary>
         public float characterDepthZ;
 
-        public float depthMoveSpeed = 1.35f;
         public float minDepthZ = -2.5f;
         public float maxDepthZ = 3.5f;
 
-        /// <summary>Камера: фиксированный «taskbar» кадр, без зума от W/S.</summary>
         public LaneSettings taskbar = new LaneSettings
         {
             distanceZ = 14f,
             orthoHalfHeight = 2.15f,
         };
 
-        public float feetLiftMeters = 0.02f;
+        public float feetLiftMeters = 0f;
 
         ShanyaOverlayCamera _follow;
         Camera _camera;
@@ -45,36 +42,39 @@ namespace Viu.Runtime
         {
             _follow = Camera.main != null ? Camera.main.GetComponent<ShanyaOverlayCamera>() : null;
             _camera = Camera.main;
-            _character = _follow != null ? _follow.target : null;
+            if (_character == null && _follow != null)
+                _character = _follow.target;
             LoadTuneFile();
             CaptureBase();
             ApplyCameraLane();
             ApplyCharacterDepth();
-            Debug.Log("[Viu] Глубина: W/S — Шаня ближе/дальше по Z (дом стоит). F5 — сохранить.");
+            Debug.Log("[Viu] Глубина: W/S — Шаня по Z (Locomotion). F5 — сохранить overlay_tune.json.");
         }
 
         void Update()
         {
-            float dir = 0f;
-            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) dir -= 1f; // к камере / «подойти»
-            if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) dir += 1f; // вглубь
-            if (Mathf.Abs(dir) > 0.01f)
-            {
-                characterDepthZ = Mathf.Clamp(
-                    characterDepthZ + dir * depthMoveSpeed * Time.deltaTime,
-                    minDepthZ,
-                    maxDepthZ);
-                ApplyCharacterDepth();
-            }
+            if (_character == null && _follow != null)
+                _character = _follow.target;
 
             if (Input.GetKeyDown(KeyCode.F5))
                 SaveTuneFile();
         }
 
-        /// <summary>Старый API playtest/tune — больше не зумит, только сдвигает Z.</summary>
+        public void BindCharacter(Transform character)
+        {
+            _character = character;
+            CaptureBase();
+            ApplyCharacterDepth();
+        }
+
+        public void SyncDepthFromCharacter(float baseZ, float currentZ)
+        {
+            _baseCharZ = baseZ;
+            characterDepthZ = currentZ - baseZ;
+        }
+
         public void SetDepthBlend(float blend)
         {
-            // 0 = далеко (taskbar), 1 = близко → отрицательный Z
             characterDepthZ = Mathf.Lerp(maxDepthZ * 0.35f, minDepthZ, Mathf.Clamp01(blend));
             ApplyCharacterDepth();
         }
@@ -104,13 +104,13 @@ namespace Viu.Runtime
             CaptureBase();
             var p = _character.position;
             p.z = _baseCharZ + characterDepthZ;
-            p.y = _baseFeetY + feetLiftMeters;
+            if (feetLiftMeters > 0f)
+                p.y = _baseFeetY + feetLiftMeters;
             _character.position = p;
         }
 
         string TunePath()
         {
-            // Рядом с exe в билде; в Editor — корень проекта
             var dir = Application.isEditor
                 ? Path.GetFullPath(Path.Combine(Application.dataPath, ".."))
                 : Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
@@ -135,12 +135,11 @@ namespace Viu.Runtime
                 if (data == null) return;
                 if (data.taskbar.distanceZ > 0.1f)
                     taskbar = data.taskbar;
-                // Старый depthBlend → характер Z; новый characterDepthZ — напрямую
                 if (Mathf.Abs(data.characterDepthZ) > 0.001f)
                     characterDepthZ = data.characterDepthZ;
                 else if (data.depthBlend > 0.001f)
                     characterDepthZ = Mathf.Lerp(1.2f, minDepthZ, data.depthBlend);
-                if (data.feetLiftMeters > 0f)
+                if (data.feetLiftMeters >= 0f)
                     feetLiftMeters = data.feetLiftMeters;
             }
             catch (Exception e)
@@ -153,6 +152,9 @@ namespace Viu.Runtime
         {
             try
             {
+                if (_character != null && _baseCaptured)
+                    characterDepthZ = _character.position.z - _baseCharZ;
+
                 var data = new TuneFile
                 {
                     feetLiftMeters = feetLiftMeters,
