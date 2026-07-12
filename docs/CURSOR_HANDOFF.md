@@ -756,12 +756,66 @@ Unity Editor снова открыт.
 Support bundle: U:\Viu\.viu\support\viu_logs_20260712_095902.zip
 Логи отправлены: https://gist.github.com/Shadowsector/2bbfbfe1010bc7f6ff3d71bc0e9184be
 
-## 2026-07-12 — Den: всё то же; помогу чем
 
-**Факт из gist 2bbfbfe (Viu 939233a = ДО rev24):**
-- Player.log: Dollhouse не нашла Wall_front
-- Player.log: Locomotion Speed>0 state≠Walk
-- playtest ложно done (eyes: окно не найдено)
+---
 
-**rev25:** Z-slab hide фасада; DeleteAsset+rebuild Overlay controller; CrossFade Walk; playtest FAIL если eyes miss / state≠Walk.
+## 2026-07-12 10:21 — ESCALATE `overlay_playtest` / overlay-visual-fix-20260712c (Viu)
 
+ЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.
+Inbox task: `overlay-visual-fix-20260712c`
+
+Ошибка / лог:
+Unity close: Unity.exe не запущен.
+Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs
+ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs
+Уже есть: U:\Anabarra\Unity\Anabarra\Assets\Characters\Shanya\Animations\viu_clips.json
+Сборка OK: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\AnabarraOverlay.exe
+--- build ---
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs
+[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe
+[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\..\Builds/AnabarraOverlay\LaunchOverlay.bat
+Запуск: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\LaunchOverlay.bat
+--- overlay_boot.log ---
+﻿10:20:41 Awake: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048
+10:20:42 Start args=AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow
+10:20:42 HWND ok
+10:20:42 Geometry 2560x1440 at 0,0
+10:20:42 SetLayeredWindowAttributes=True err=0
+10:20:42 ColorKey pass 1, Esc=выход
+10:20:42 AfterWindow: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048
+
+--- вердикт ---
+OK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.
+--- eyes ---
+Скрин 2560x1440 → U:\Viu\.viu\shots\overlay_eye_20260712_102056.png
+shot: U:\Viu\.viu\shots\overlay_eye_20260712_102056.png
+[llava:latest]
+1. Виден ли персонаж? Стоит норmaльно или тело/кости искажены? Один персонаж стоит на нормальном позиции.
+2. Виден ли дом/сарай на фоне? Дом/сарай на fоне не виден.
+3. Это оверley на рабочеm столе или окно Unity Editor? Оверлей эта на рабочем столе или окне Unity editor.
+4. Вердикт одной строкой: OK
+eye gist: Handoff в приватном Gist:
+https://gist.github.com/Shadowsector/12c7e7a39e4efcfa96217185ebe5f6f8
+--- вердикт (после eyes) ---
+WARN: eyes — дом/персонаж криво (см. --- eyes ---). Дена не спрашивать.
+Unity Editor снова открыт.
+--- Editor.log (summary) ---
+Unity Editor.log: C:\Users\Den\AppData\Local\Unity\Editor\Editor.log
+
+Прочие ошибки (3):
+  • [Licensing::Module] Error: Access token is unavailable; failed to update
+  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)
+  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)
+--- Editor.log Animator/Viu hits ---
+[Viu] Dollhouse: не нашла стенку «Wall_front». Проверь .viu.json / имена в FBX. Белая «коробка» = фасад не скрыт.
+[Viu] Глубина: S — отойти, W — подойти, F5 — сохранить overlay_tune.json
+[Viu] Locomotion: Speed>0 но state≠Walk. Проверь overlay controller Idle↔Walk и Avatar.
+Support bundle: U:\Viu\.viu\support\viu_logs_20260712_10210
+
+web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
+Ничего не найдено по запросу.
