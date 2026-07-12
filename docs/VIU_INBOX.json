@@ -1,18 +1,21 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T07:55:00Z",
+  "updated_at": "2026-07-12T07:49:06Z",
   "note": "rev27: Walk CrossFade Shanya_*; W/S=Z; no Unity reopen; silent launcher.",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712d",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev27: Walk CrossFade + W/S depth Z + no Unity reopen",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
-      "direct_args": { "reopen_unity": false },
+      "direct_args": {
+        "reopen_unity": false
+      },
       "instructions": "deploy-rev 27. Idle=Shanya_Idle Walk=Shanya_Walk. CrossFade. W/S = Z only. No reopen Unity. LaunchOverlay.vbs. ColorKey re-apply.",
-      "acceptance": "Walk plays; W/S moves Shanya Z; no Unity/terminal; chroma transparent."
+      "acceptance": "Walk plays; W/S moves Shanya Z; no Unity/terminal; chroma transparent.",
+      "started_at": "2026-07-12T07:49:06Z"
     }
   ]
 }
