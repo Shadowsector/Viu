@@ -973,3 +973,41 @@ FAIL: глаза не видели оверлей (окно не найдено 
 
 web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
 Ничего не найдено по запросу.
+
+
+---
+
+## 2026-07-12 11:24 — ESCALATE `overlay_playtest` / overlay-visual-fix-20260712f (Viu)
+
+ЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.
+Inbox task: `overlay-visual-fix-20260712f`
+
+Ошибка / лог:
+Unity close: Unity.exe не запущен.
+Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs
+ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs
+Обновлён: U:\Anabarra\Unity\Anabarra\Assets\Characters\Shanya\Animations\viu_clips.json
+Сборка FAIL
+[Viu] Нет AnimationClip в Shanya_SitIdle_4.fbx
+[Viu] Нет AnimationClip в Shanya_SleepIdle.fbx
+[Viu] Нет AnimationClip в Shanya_Walk.fbx
+[Viu] Нет AnimationClip в Shanya_Yawn.fbx
+[Viu] Пропуск (непонятное имя): X Bot@Bashful.fbx — переименуй (Walk, Idle) или viu_clips.json
+[Viu] Пропуск (непонятное имя): X Bot@Crawling.fbx — переименуй (Walk, Idle) или viu_clips.json
+[Viu] Нет AnimationClip в X Bot@Female Tough Walk.fbx
+[Viu] Пропуск (непонятное имя): X Bot@Flying Kick.fbx — переименуй (Walk, Idle) или viu_clips.json
+[Viu] Пропуск (непонятное имя): X Bot@Gathering Objects.fbx — переименуй (Walk, Idle) или viu_clips.json
+[Viu] Нет AnimationClip в X Bot@Idle.fbx
+[Viu] Пропуск (непонятное имя): X Bot@Kicking Out.fbx — переименуй (Walk, Idle) или viu_clips.json
+[Viu] Пропуск (непонятное имя): X Bot@Laying.fbx — переименуй (Walk, Idle) или viu_clips.json
+[Viu] Пропуск (непонятное имя): X Bot@Reacting.fbx — переименуй (Walk, Idle) или viu_clips.json
+[Viu] Пропуск (непонятное имя): X Bot@Roll Kicking.fbx — переименуй (Walk, Idle) или viu_clips.json
+[Viu] Нет AnimationClip в X Bot@Sit To Stand.fbx
+[Viu] Нет AnimationClip в X Bot@Stand To Sit.fbx
+[Viu] overlay_preferred без клипа: Shanya_Idle.fbx
+[Viu] overlay_preferred без клипа: Shanya_Walk.fbx
+[Viu] Overlay locomotion FAIL: Idle=False Walk=False. Нужны Shanya_Idle.fbx и Shanya_Walk.fbx в Assets/Characters/Shanya/Animations. НЕ подставляю Idle_Stand (там нет Walk → слайд).
+[Viu] Overlay build: [Viu] Overlay locomotion FAIL — нет Shanya_Idle/Shanya_Walk. НЕ собираю старую сцену с Idle_Stand.
+
+web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
+Ничего не найдено по запросу.
