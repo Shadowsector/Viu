@@ -157,10 +157,12 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 31" in setup
+    assert "@viu-deploy-rev 32" in setup
+    assert "HomeYawDegrees" in setup
     assert "ForceFlipModelOffInProjectSettingsAsset" in setup
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay
+    assert "RuntimeRev" in overlay
     assert "-force-d3d11" in setup
 
     from viu.integrations.unity.overlay_tune import load_tune, write_tune_lane
