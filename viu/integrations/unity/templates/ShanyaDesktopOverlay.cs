@@ -4,12 +4,15 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Viu.Runtime
 {
     /// <summary>
-    /// Прозрачное окно на Windows (build). Требует BitBlt swapchain:
-    /// AnabarraOverlay.exe -force-d3d11-bitblt-model
+    /// Прозрачное окно на Windows (build).
+    /// Primary: UpdateLayeredWindow (ULW_ALPHA) — ColorKey на Unity 6 / Win11 часто оставляет solid magenta.
+    /// Fallback: SetLayeredWindowAttributes ColorKey + BitBlt (-force-d3d11-bitblt-model).
+    /// Chroma: #FF0080 (не Unity missing #FF00FF).
     /// </summary>
     [DefaultExecutionOrder(-50)]
     public class ShanyaDesktopOverlay : MonoBehaviour
@@ -20,8 +23,10 @@ namespace Viu.Runtime
         /// Ключ: #FF0080 (розово-красный), COLORREF 0x008000FF (BGR).
         /// </summary>
         public static readonly Color ChromaKey = new Color(1f, 0f, 0.5f, 1f);
-        /// <summary>Метка в overlay_boot.log — если нет runtime-rev=31, в exe старые скрипты.</summary>
-        public const string RuntimeRev = "36";
+        static readonly Color32 ChromaKey32 = new Color32(255, 0, 128, 255);
+
+        /// <summary>Метка в overlay_boot.log — если нет runtime-rev=37, в exe старые скрипты.</summary>
+        public const string RuntimeRev = "37";
 
         public bool fullScreenOverlay = true;
         public int stripHeightPixels = 280;
@@ -30,12 +35,33 @@ namespace Viu.Runtime
         public bool alwaysOnTop = true;
         public int monitorIndex = 0;
 
+        [Tooltip("Primary transparency: camera RT → AsyncGPUReadback → UpdateLayeredWindow.")]
+        public bool useUpdateLayeredWindow = true;
+
+        [Tooltip("Fallback if UpdateLayeredWindow init fails.")]
+        public bool useColorKeyFallback = true;
+
         Camera _camera;
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         IntPtr _hwnd;
         int _colorKeyAttempts;
         bool _colorKeyOk;
+        bool _updateLayeredOk;
+        string _transparencyMode = "none";
+
+        RenderTexture _renderTexture;
+        Color32[] _pixels;
+        byte[] _bgra;
+        bool _readbackPending;
+        int _texW;
+        int _texH;
+
+        IntPtr _hdcScreen = IntPtr.Zero;
+        IntPtr _hdcMem = IntPtr.Zero;
+        IntPtr _hBitmap = IntPtr.Zero;
+        IntPtr _pBits = IntPtr.Zero;
+        IntPtr _oldBitmap = IntPtr.Zero;
 #endif
 
         void Awake()
@@ -49,27 +75,40 @@ namespace Viu.Runtime
 #endif
 
             _camera = Camera.main;
-            if (_camera != null)
-            {
-                _camera.clearFlags = CameraClearFlags.SolidColor;
-                _camera.backgroundColor = ChromaKey;
-            }
-
+            HardenCamera();
             LogSceneStats("Awake");
         }
 
         void Start()
         {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
-            BootLog("Start runtime-rev=" + RuntimeRev + " args=" + Environment.CommandLine);
+            BootLog("Start runtime-rev=" + RuntimeRev
+                + " UpdateLayered=" + useUpdateLayeredWindow
+                + " args=" + Environment.CommandLine);
             BootLog("gfx=" + SystemInfo.graphicsDeviceType
                 + " " + SystemInfo.graphicsDeviceName);
             if (Environment.CommandLine.IndexOf("bitblt", StringComparison.OrdinalIgnoreCase) < 0)
             {
-                BootLog("ERROR: нет -force-d3d11-bitblt-model — ColorKey не сработает (magenta окно). "
+                BootLog("WARN: нет -force-d3d11-bitblt-model — нужен для ColorKey fallback. "
+                    + "UpdateLayeredWindow primary не требует BitBlt. "
                     + "Запускай через LaunchOverlay.bat / .vbs");
             }
             StartCoroutine(ConfigureWindowWhenReady());
+#endif
+        }
+
+        void OnDestroy()
+        {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            ReleaseLayeredResources();
+            if (_renderTexture != null)
+            {
+                if (_camera != null && _camera.targetTexture == _renderTexture)
+                    _camera.targetTexture = null;
+                _renderTexture.Release();
+                Destroy(_renderTexture);
+                _renderTexture = null;
+            }
 #endif
         }
 
@@ -79,8 +118,14 @@ namespace Viu.Runtime
                 Application.Quit();
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
-            // ColorKey часто «успешен» в API, но Unity/DXGI сбрасывает layered.
-            // Первые ~4 сек всегда переставляем ключ; дальше — только если ещё не ok.
+            if (_updateLayeredOk)
+            {
+                if (!_readbackPending && _renderTexture != null && _renderTexture.IsCreated())
+                    RequestFrameReadback();
+                return;
+            }
+
+            // ColorKey fallback: Unity/DXGI часто сбрасывает layered — переставляем ключ.
             if (_hwnd != IntPtr.Zero && _colorKeyAttempts > 0 && _colorKeyAttempts < 80
                 && Time.frameCount % 15 == 0)
             {
@@ -91,6 +136,20 @@ namespace Viu.Runtime
                 }
             }
 #endif
+        }
+
+        void HardenCamera()
+        {
+            if (_camera == null)
+                _camera = Camera.main;
+            if (_camera == null)
+                return;
+
+            _camera.clearFlags = CameraClearFlags.SolidColor;
+            // Exact byte chroma — float Color(1,0,0.5) can round off #FF0080.
+            _camera.backgroundColor = ChromaKey32;
+            _camera.allowHDR = false;
+            _camera.allowMSAA = false;
         }
 
         void LogSceneStats(string tag)
@@ -182,10 +241,38 @@ namespace Viu.Runtime
             BootLog("HWND ok");
             ApplyWindowGeometry();
             yield return new WaitForEndOfFrame();
-            ApplyColorKey();
-            _colorKeyAttempts = 1;
-            BootLog("ColorKey pass 1, Esc=выход");
+
+            HardenCamera();
+            ApplyTransparencyMode();
             LogSceneStats("AfterWindow");
+        }
+
+        void ApplyTransparencyMode()
+        {
+            EnsureLayeredExStyle();
+
+            if (useUpdateLayeredWindow && TryEnableUpdateLayeredWindow())
+            {
+                _updateLayeredOk = true;
+                _colorKeyOk = false;
+                _transparencyMode = "UpdateLayeredWindow";
+                BootLog("Transparency=UpdateLayeredWindow (per-pixel alpha) OK runtime-rev=" + RuntimeRev
+                    + " Esc=выход");
+                return;
+            }
+
+            if (useColorKeyFallback)
+            {
+                ApplyColorKey();
+                _colorKeyAttempts = 1;
+                _transparencyMode = "ColorKey";
+                BootLog("Transparency=ColorKey fallback (UpdateLayered failed/off) — "
+                    + "может остаться solid magenta на Unity 6/Win11");
+                BootLog("ColorKey pass 1, Esc=выход");
+                return;
+            }
+
+            BootLog("ERROR: no transparency mode applied");
         }
 
         void ApplyWindowGeometry()
@@ -202,7 +289,7 @@ namespace Viu.Runtime
             long style = WS_POPUP | WS_VISIBLE;
             SetWindowLong(_hwnd, GWL_STYLE, (uint)style);
 
-            // OR к существующим exstyle — не затирать флаги Unity (иначе ColorKey «True», а окно magenta).
+            // OR к существующим exstyle — не затирать флаги Unity.
             EnsureLayeredExStyle();
 
             SetWindowPos(_hwnd, alwaysOnTop ? HWND_TOPMOST : HWND_NOTOPMOST,
@@ -225,14 +312,54 @@ namespace Viu.Runtime
             SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
         }
 
+        bool TryEnableUpdateLayeredWindow()
+        {
+            try
+            {
+                HardenCamera();
+                EnsureRenderTargets();
+                if (_camera == null)
+                {
+                    BootLog("ERROR: UpdateLayered — нет Camera.main");
+                    return false;
+                }
+
+                _camera.targetTexture = _renderTexture;
+                _camera.Render();
+
+                if (!EnsureGdiSurfaces(_texW, _texH))
+                {
+                    BootLog("ERROR: CreateDIBSection failed");
+                    _camera.targetTexture = null;
+                    return false;
+                }
+
+                // First paint fully transparent so user never sees solid magenta.
+                if (_bgra != null)
+                    Array.Clear(_bgra, 0, _bgra.Length);
+                PushLayeredFrame();
+                BootLog("UpdateLayeredWindow init OK " + _texW + "x" + _texH);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                BootLog("ERROR: UpdateLayeredWindow init: " + ex.Message);
+                if (_camera != null)
+                    _camera.targetTexture = null;
+                return false;
+            }
+        }
+
         void ApplyColorKey()
         {
             if (_hwnd == IntPtr.Zero) return;
 
+            if (_camera != null)
+                _camera.targetTexture = null;
+
             EnsureLayeredExStyle();
 
             // С BitBlt: margins=-1 + ColorKey — классический рецепт Unity transparent window.
-            // margins=0 часто оставляет непрозрачный chroma (магента на весь экран).
             var margins = new MARGINS
             {
                 cxLeftWidth = -1,
@@ -250,6 +377,198 @@ namespace Viu.Runtime
                     + " key=#FF0080 margins=-1 attempt=" + _colorKeyAttempts
                     + " gfx=" + SystemInfo.graphicsDeviceType
                     + " (фон должен быть прозрачным, не магента)");
+            }
+        }
+
+        void EnsureRenderTargets()
+        {
+            int w = Mathf.Max(2, Screen.width);
+            int h = Mathf.Max(2, Screen.height);
+            if (_renderTexture != null && _texW == w && _texH == h && _renderTexture.IsCreated())
+                return;
+
+            if (_renderTexture != null)
+            {
+                _renderTexture.Release();
+                Destroy(_renderTexture);
+            }
+
+            _texW = w;
+            _texH = h;
+            _renderTexture = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32)
+            {
+                antiAliasing = 1,
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp,
+                useMipMap = false,
+                autoGenerateMips = false,
+                name = "ViuOverlayRT",
+            };
+            _renderTexture.Create();
+            _pixels = new Color32[w * h];
+            _bgra = new byte[w * h * 4];
+        }
+
+        bool EnsureGdiSurfaces(int w, int h)
+        {
+            ReleaseLayeredResources();
+
+            _hdcScreen = GetDC(IntPtr.Zero);
+            if (_hdcScreen == IntPtr.Zero)
+                return false;
+
+            _hdcMem = CreateCompatibleDC(_hdcScreen);
+            if (_hdcMem == IntPtr.Zero)
+                return false;
+
+            var bmi = new BITMAPINFO();
+            bmi.bmiHeader.biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>();
+            bmi.bmiHeader.biWidth = w;
+            // Positive height = bottom-up DIB, matches Unity texture layout (no Y flip).
+            bmi.bmiHeader.biHeight = h;
+            bmi.bmiHeader.biPlanes = 1;
+            bmi.bmiHeader.biBitCount = 32;
+            bmi.bmiHeader.biCompression = BI_RGB;
+
+            _hBitmap = CreateDIBSection(_hdcMem, ref bmi, DIB_RGB_COLORS, out _pBits, IntPtr.Zero, 0);
+            if (_hBitmap == IntPtr.Zero || _pBits == IntPtr.Zero)
+                return false;
+
+            _oldBitmap = SelectObject(_hdcMem, _hBitmap);
+            return true;
+        }
+
+        void ReleaseLayeredResources()
+        {
+            if (_hdcMem != IntPtr.Zero && _oldBitmap != IntPtr.Zero)
+            {
+                SelectObject(_hdcMem, _oldBitmap);
+                _oldBitmap = IntPtr.Zero;
+            }
+
+            if (_hBitmap != IntPtr.Zero)
+            {
+                DeleteObject(_hBitmap);
+                _hBitmap = IntPtr.Zero;
+                _pBits = IntPtr.Zero;
+            }
+
+            if (_hdcMem != IntPtr.Zero)
+            {
+                DeleteDC(_hdcMem);
+                _hdcMem = IntPtr.Zero;
+            }
+
+            if (_hdcScreen != IntPtr.Zero)
+            {
+                ReleaseDC(IntPtr.Zero, _hdcScreen);
+                _hdcScreen = IntPtr.Zero;
+            }
+        }
+
+        void RequestFrameReadback()
+        {
+            if (_renderTexture == null || !_renderTexture.IsCreated())
+                return;
+
+            if (Screen.width != _texW || Screen.height != _texH)
+            {
+                EnsureRenderTargets();
+                if (_camera != null)
+                    _camera.targetTexture = _renderTexture;
+                if (!EnsureGdiSurfaces(_texW, _texH))
+                {
+                    BootLog("ERROR: GDI resize failed");
+                    return;
+                }
+            }
+
+            _readbackPending = true;
+            AsyncGPUReadback.Request(_renderTexture, 0, TextureFormat.RGBA32, OnGpuReadback);
+        }
+
+        void OnGpuReadback(AsyncGPUReadbackRequest request)
+        {
+            _readbackPending = false;
+            if (request.hasError || !_updateLayeredOk)
+                return;
+
+            var data = request.GetData<Color32>();
+            if (!data.IsCreated || data.Length != _pixels.Length)
+                return;
+
+            data.CopyTo(_pixels);
+            ConvertChromaToBgra();
+            PushLayeredFrame();
+        }
+
+        void ConvertChromaToBgra()
+        {
+            byte mr = ChromaKey32.r;
+            byte mg = ChromaKey32.g;
+            byte mb = ChromaKey32.b;
+            int n = _pixels.Length;
+            for (int i = 0; i < n; i++)
+            {
+                Color32 c = _pixels[i];
+                int o = i * 4;
+                if (c.r == mr && c.g == mg && c.b == mb)
+                {
+                    _bgra[o] = 0;
+                    _bgra[o + 1] = 0;
+                    _bgra[o + 2] = 0;
+                    _bgra[o + 3] = 0;
+                }
+                else
+                {
+                    _bgra[o] = c.b;
+                    _bgra[o + 1] = c.g;
+                    _bgra[o + 2] = c.r;
+                    _bgra[o + 3] = 255;
+                }
+            }
+        }
+
+        void PushLayeredFrame()
+        {
+            if (_hwnd == IntPtr.Zero || _hdcMem == IntPtr.Zero || _hBitmap == IntPtr.Zero || _bgra == null)
+                return;
+
+            var bmi = new BITMAPINFO();
+            bmi.bmiHeader.biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>();
+            bmi.bmiHeader.biWidth = _texW;
+            bmi.bmiHeader.biHeight = _texH;
+            bmi.bmiHeader.biPlanes = 1;
+            bmi.bmiHeader.biBitCount = 32;
+            bmi.bmiHeader.biCompression = BI_RGB;
+
+            SetDIBits(_hdcMem, _hBitmap, 0, (uint)_texH, _bgra, ref bmi, DIB_RGB_COLORS);
+
+            var size = new SIZE { cx = _texW, cy = _texH };
+            var srcPt = new POINT { x = 0, y = 0 };
+            var blend = new BLENDFUNCTION
+            {
+                BlendOp = 0, // AC_SRC_OVER
+                BlendFlags = 0,
+                SourceConstantAlpha = 255,
+                AlphaFormat = 1, // AC_SRC_ALPHA
+            };
+
+            // Do NOT call SetLayeredWindowAttributes when using ULW_ALPHA — they conflict.
+            bool ok = UpdateLayeredWindow(
+                _hwnd,
+                _hdcScreen,
+                IntPtr.Zero,
+                ref size,
+                _hdcMem,
+                ref srcPt,
+                0,
+                ref blend,
+                ULW_ALPHA);
+
+            if (!ok && Time.frameCount % 60 == 0)
+            {
+                BootLog("WARN: UpdateLayeredWindow=false err=" + Marshal.GetLastWin32Error());
             }
         }
 
@@ -334,6 +653,9 @@ namespace Viu.Runtime
         const uint SWP_SHOWWINDOW = 0x0040;
         const uint SWP_FRAMECHANGED = 0x0020;
         const uint LWA_COLORKEY = 0x00000001;
+        const uint ULW_ALPHA = 0x00000002;
+        const uint BI_RGB = 0;
+        const uint DIB_RGB_COLORS = 0;
         const uint MONITOR_DEFAULTTOPRIMARY = 0x00000001;
         const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
 
@@ -350,6 +672,9 @@ namespace Viu.Runtime
         struct POINT { public int x, y; }
 
         [StructLayout(LayoutKind.Sequential)]
+        struct SIZE { public int cx, cy; }
+
+        [StructLayout(LayoutKind.Sequential)]
         struct MONITORINFO
         {
             public int cbSize;
@@ -362,6 +687,37 @@ namespace Viu.Runtime
         struct MARGINS
         {
             public int cxLeftWidth, cxRightWidth, cyTopHeight, cyBottomHeight;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        struct BLENDFUNCTION
+        {
+            public byte BlendOp;
+            public byte BlendFlags;
+            public byte SourceConstantAlpha;
+            public byte AlphaFormat;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct BITMAPINFOHEADER
+        {
+            public uint biSize;
+            public int biWidth;
+            public int biHeight;
+            public ushort biPlanes;
+            public ushort biBitCount;
+            public uint biCompression;
+            public uint biSizeImage;
+            public int biXPelsPerMeter;
+            public int biYPelsPerMeter;
+            public uint biClrUsed;
+            public uint biClrImportant;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct BITMAPINFO
+        {
+            public BITMAPINFOHEADER bmiHeader;
         }
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -416,8 +772,15 @@ namespace Viu.Runtime
         [DllImport("user32.dll", SetLastError = true)]
         static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool UpdateLayeredWindow(
+            IntPtr hwnd, IntPtr hdcDst, IntPtr pptDst, ref SIZE psize,
+            IntPtr hdcSrc, ref POINT pptSrc, uint crKey, ref BLENDFUNCTION pblend, uint dwFlags);
+
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
         [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT lpPoint);
+        [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr hWnd);
+        [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
 
         [DllImport("user32.dll")]
         static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
@@ -431,6 +794,27 @@ namespace Viu.Runtime
 
         [DllImport("Dwmapi.dll")]
         static extern uint DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS margins);
+
+        [DllImport("gdi32.dll")]
+        static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+
+        [DllImport("gdi32.dll")]
+        static extern bool DeleteDC(IntPtr hdc);
+
+        [DllImport("gdi32.dll")]
+        static extern IntPtr CreateDIBSection(
+            IntPtr hdc, ref BITMAPINFO pbmi, uint iUsage, out IntPtr ppvBits, IntPtr hSection, uint dwOffset);
+
+        [DllImport("gdi32.dll")]
+        static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
+
+        [DllImport("gdi32.dll")]
+        static extern bool DeleteObject(IntPtr hObject);
+
+        [DllImport("gdi32.dll")]
+        static extern int SetDIBits(
+            IntPtr hdc, IntPtr hbmp, uint uStartScan, uint cScanLines,
+            byte[] lpvBits, ref BITMAPINFO lpbmi, uint fuColorUse);
 #endif
     }
 }

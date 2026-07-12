@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 36" in text
+    assert "@viu-deploy-rev 37" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -157,7 +157,7 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 36" in setup
+    assert "@viu-deploy-rev 37" in setup
     assert "X Bot@Idle.fbx" in sync
     assert "DetectRunAsWalkSpeed" in loco
     assert "WalkThreshold = 0.25f" in loco
@@ -170,6 +170,11 @@ def test_overlay_templates(tmp_path):
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay
     assert "RuntimeRev" in overlay
+    assert 'RuntimeRev = "37"' in overlay
+    assert "UpdateLayeredWindow" in overlay
+    assert "useUpdateLayeredWindow" in overlay
+    assert "ChromaKey32" in overlay
+    assert "allowHDR = false" in overlay
     assert "-force-d3d11" in setup
 
     clips = (root / "viu_clips.json").read_text(encoding="utf-8")

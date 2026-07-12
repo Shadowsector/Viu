@@ -332,24 +332,37 @@ def _verdict(boot_text: str) -> str:
     low = boot_text.lower()
     if "hwnd не найден" in low or "hwnd=0" in low:
         return "FAIL: окно Unity не найдено (HWND)."
-    if "setlayeredwindowattributes=false" in low:
+
+    layered_ok = (
+        "transparency=updatelayeredwindow" in low
+        or "updatelayeredwindow init ok" in low
+        or ("updatelayeredwindow" in low and "(per-pixel alpha) ok" in low)
+    )
+    colorkey_ok = (
+        "setlayeredwindowattributes=true" in low or "colorkey pass" in low
+    )
+    if "setlayeredwindowattributes=false" in low and not layered_ok:
         return "FAIL: ColorKey не применился — снова magenta / flip-model?"
-    if "setlayeredwindowattributes=true" in low or "colorkey pass" in low:
+
+    if layered_ok or colorkey_ok:
+        mode = "UpdateLayeredWindow" if layered_ok else "ColorKey"
         if "shanya=false" in low or "shanya=(false)" in low or "name=нет" in low:
             return (
-                "WARN: прозрачность ок, но Шаня не в сцене "
+                f"WARN: прозрачность ({mode}) ок, но Шаня не в сцене "
                 "(пересобери: FindModelPath должен брать Shanya_Erisa, не Fall/Run)."
             )
         if "home=нет" in low:
-            return "WARN: прозрачность ок, дом не найден в сцене (Environment FBX?)."
+            return f"WARN: прозрачность ({mode}) ок, дом не найден в сцене (Environment FBX?)."
         if "homemesh=0/" in low:
             return (
-                "WARN: дом в сцене, но меши выключены/съедены chroma "
-                "(раньше magenta==missing shader). Нужен URP Lit + новый color key."
+                f"WARN: дом в сцене, но меши выключены/съедены chroma "
+                f"({mode}). Нужен URP Lit + #FF0080."
             )
         if "renderers=0/" in low:
-            return "WARN: прозрачность ок, но нет видимых мешей."
-        return "OK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден."
+            return f"WARN: прозрачность ({mode}) ок, но нет видимых мешей."
+        return (
+            f"OK: HWND + {mode} + сцена в boot-логе. Eyes/gist — источник правды, не Ден."
+        )
     if "hwnd ok" in low:
-        return "PARTIAL: HWND есть, ColorKey в логе не подтверждён."
+        return "PARTIAL: HWND есть, прозрачность в логе не подтверждена."
     return "UNKNOWN: смотри boot-лог выше."
