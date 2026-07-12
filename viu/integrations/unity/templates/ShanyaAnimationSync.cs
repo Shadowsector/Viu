@@ -67,45 +67,72 @@ namespace Viu.Editor
         public static RuntimeAnimatorController BuildOverlayLocomotionController(bool log = false)
         {
             SyncAll(log: false);
-            var overrides = LoadOverrides();
-            var all = DiscoverClips(overrides);
-            var loco = all
-                .Where(e =>
-                    e.StateName.Equals("Idle", StringComparison.OrdinalIgnoreCase)
-                    || e.StateName.Equals("Walk", StringComparison.OrdinalIgnoreCase)
-                    || e.StateName.Equals("Run", StringComparison.OrdinalIgnoreCase))
-                .ToList();
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            // Жёстко: Idle/Walk из Shanya_*.fbx. НИКОГДА не fallback на Idle_Stand (нет Walk).
+            var loco = new List<ClipEntry>();
+            TryAddPinnedClip(loco, "Idle", "Shanya_Idle.fbx");
+            TryAddPinnedClip(loco, "Walk", "Shanya_Walk.fbx");
+
+            if (!loco.Any(e => e.StateName.Equals("Idle", StringComparison.OrdinalIgnoreCase))
+                || !loco.Any(e => e.StateName.Equals("Walk", StringComparison.OrdinalIgnoreCase)))
+            {
+                var overrides = LoadOverrides();
+                foreach (var e in DiscoverClips(overrides))
+                {
+                    if (!e.StateName.Equals("Idle", StringComparison.OrdinalIgnoreCase)
+                        && !e.StateName.Equals("Walk", StringComparison.OrdinalIgnoreCase)
+                        && !e.StateName.Equals("Run", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (loco.Any(x => x.StateName.Equals(e.StateName, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    loco.Add(e);
+                }
+            }
 
             bool hasIdle = loco.Any(e => e.StateName.Equals("Idle", StringComparison.OrdinalIgnoreCase));
             bool hasWalk = loco.Any(e => e.StateName.Equals("Walk", StringComparison.OrdinalIgnoreCase));
             if (!hasIdle || !hasWalk)
             {
                 Debug.LogError(
-                    "[Viu] Overlay locomotion: нужны Idle И Walk в Animations/. "
-                    + "Сейчас Idle=" + hasIdle + " Walk=" + hasWalk
-                    + ". Без Walk Шаня будет скользить без анимации ног.");
-                // Всё равно соберём что есть, но это явная ошибка в логе batch
-            }
-            if (loco.Count == 0)
-            {
-                Debug.LogWarning("[Viu] Overlay locomotion: нет клипов — полный controller.");
-                return AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(ControllerPath);
+                    "[Viu] Overlay locomotion FAIL: Idle=" + hasIdle + " Walk=" + hasWalk
+                    + ". Нужны Shanya_Idle.fbx и Shanya_Walk.fbx в " + AnimationsFolder
+                    + ". НЕ подставляю Idle_Stand (там нет Walk → слайд).");
+                return null;
             }
 
             EnsureFolder(Path.GetDirectoryName(OverlayControllerPath).Replace('\\', '/'));
-            // Всегда пересобираем: старый .controller часто без Idle↔Walk → слайд.
-            if (File.Exists(OverlayControllerPath))
+            if (AssetDatabase.LoadMainAssetAtPath(OverlayControllerPath) != null)
                 AssetDatabase.DeleteAsset(OverlayControllerPath);
             var controller = AnimatorController.CreateAnimatorControllerAtPath(OverlayControllerPath);
 
             ApplyStates(controller, loco);
             AssetDatabase.SaveAssets();
-            if (log)
-            {
-                var names = string.Join(", ", loco.Select(e => e.StateName + "<" + Path.GetFileName(e.AssetPath) + ">"));
-                Debug.Log("[Viu] Overlay locomotion: " + names + " → " + OverlayControllerPath);
-            }
+            var names = string.Join(", ", loco.Select(e => e.StateName + "<" + Path.GetFileName(e.AssetPath) + ">"));
+            Debug.Log("[Viu] Overlay locomotion OK: " + names + " → " + OverlayControllerPath
+                + " (НЕ " + Path.GetFileName(ControllerPath) + ")");
             return controller;
+        }
+
+        static void TryAddPinnedClip(List<ClipEntry> loco, string state, string fileName)
+        {
+            var path = AnimationsFolder + "/" + fileName;
+            if (AssetDatabase.LoadMainAssetAtPath(path) == null)
+            {
+                Debug.LogWarning("[Viu] Пин " + state + ": нет файла " + path);
+                return;
+            }
+            EnsureHumanoidImport(path, LoadBodyAvatar(FindBodyModelPath()));
+            var clip = LoadFirstAnimationClip(path);
+            if (clip == null)
+            {
+                Debug.LogWarning("[Viu] Пин " + state + " без AnimationClip: " + path);
+                return;
+            }
+            loco.RemoveAll(e => e.StateName.Equals(state, StringComparison.OrdinalIgnoreCase));
+            loco.Add(new ClipEntry { AssetPath = path, StateName = state, Clip = clip });
+            Debug.Log("[Viu] Пин " + state + " ← " + fileName + " clip=" + clip.name);
         }
 
         static string FindBodyModelPath()
@@ -143,10 +170,11 @@ namespace Viu.Editor
         {
             var path = AnimationsFolder + "/" + ManifestName;
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            if (!File.Exists(path)) return result;
+            var fullManifest = Path.GetFullPath(Path.Combine(Application.dataPath, "..", path));
+            if (!File.Exists(fullManifest)) return result;
             try
             {
-                var json = File.ReadAllText(path);
+                var json = File.ReadAllText(fullManifest);
                 var wrapper = JsonUtility.FromJson<ClipManifest>(json);
                 if (wrapper?.overrides == null) return result;
                 foreach (var o in wrapper.overrides)

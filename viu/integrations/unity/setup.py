@@ -36,7 +36,7 @@ _OVERLAY_DEPTH_REL = f"{_RUNTIME_DIR}/ShanyaOverlayDepth.cs"
 _DOLLHOUSE_REL = f"{_RUNTIME_DIR}/DollhouseWall.cs"
 _MANIFEST_REL = f"{ANIMATIONS_REL}/{MANIFEST_NAME}"
 
-VIU_DEPLOY_REV = "27"
+VIU_DEPLOY_REV = "28"
 VIU_DEPLOY_MARKER = f"@viu-deploy-rev {VIU_DEPLOY_REV}"
 _BROKEN_EDITOR_MARKERS = (
     "activeInputHandler",
@@ -151,16 +151,18 @@ def deploy_runtime_scripts(project_root: Path) -> Tuple[bool, str]:
     return True, ", ".join(copied)
 
 
-def deploy_clips_manifest(project_root: Path, overwrite: bool = False) -> Tuple[bool, str]:
-    """Кладёт viu_clips.json в Animations/, если файла ещё нет."""
+def deploy_clips_manifest(project_root: Path, overwrite: bool = True) -> Tuple[bool, str]:
+    """Кладёт viu_clips.json (overlay_preferred Idle/Walk). По умолчанию перезаписывает —
+    иначе на машине Дена навсегда залипает старый манифест без Walk-пинов."""
     if not _TEMPLATE_MANIFEST.is_file():
         return False, "Шаблон viu_clips.json не найден"
     dest = resolve_in_unity_project(project_root, _MANIFEST_REL)
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() and not overwrite:
         return True, f"Уже есть: {dest}"
+    existed = dest.exists()
     shutil.copy2(_TEMPLATE_MANIFEST, dest)
-    return True, f"Создан: {dest}"
+    return True, f"{'Обновлён' if existed else 'Создан'}: {dest}"
 
 
 def deploy_animation_pipeline(project_root: Path) -> Tuple[bool, str]:

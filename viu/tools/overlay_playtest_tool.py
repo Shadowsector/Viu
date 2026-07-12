@@ -301,7 +301,11 @@ class OverlayPlaytestTool(Tool):
             "state≠Walk" in text
             or "state!=Walk" in text
             or "не нашла стенку" in text
-            or "Z-slab" in text and "скрыто по Z-slab: 0" in text
+            or ("Z-slab" in text and "скрыто по Z-slab: 0" in text)
+            or "hasWalk=False" in text
+            or "ctrl=Shanya_Idle_Stand" in text
+            or "Overlay locomotion FAIL" in text
+            or "НЕ подставляю Idle_Stand" in text
         )
         play_ok = build_ok and (not verdict or verdict.startswith("OK:")) and has_eyes
         if play_ok and "WARN:" in text and "--- вердикт (после eyes) ---" in text:

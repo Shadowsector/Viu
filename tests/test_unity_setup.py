@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 27" in text
+    assert "@viu-deploy-rev 28" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -143,6 +143,15 @@ def test_overlay_templates(tmp_path):
     assert "PlayState" in loco
     sync = (root / "ShanyaAnimationSync.cs").read_text(encoding="utf-8")
     assert "DeleteAsset(OverlayControllerPath)" in sync
+    assert "TryAddPinnedClip" in sync
+    assert "НЕ подставляю Idle_Stand" in sync
+    assert "Overlay locomotion FAIL" in sync
+    assert "EnsureLayeredExStyle" in overlay or "GetWindowLong" in overlay
+    assert "bitblt" in overlay.lower()
+    assert "ControllerHasState" in setup
+    assert "Animator без Walk" in setup
+    assert "НЕ собираю старую сцену" in setup
+    assert "@viu-deploy-rev 28" in setup
 
     from viu.integrations.unity.overlay_tune import load_tune, write_tune_lane
 
@@ -201,3 +210,22 @@ def test_overlay_clips_preferred():
     sync = (root / "ShanyaAnimationSync.cs").read_text(encoding="utf-8")
     assert "ApplyOverlayPreferred" in sync
     assert "Shanya_Idle.fbx" in sync
+    assert "TryAddPinnedClip" in sync
+
+
+def test_deploy_clips_manifest_overwrites(tmp_path):
+    from viu.integrations.unity.setup import deploy_clips_manifest
+
+    (tmp_path / "Assets").mkdir()
+    dest = (
+        tmp_path
+        / "Assets/Characters/Shanya/Animations/viu_clips.json"
+    )
+    dest.parent.mkdir(parents=True)
+    dest.write_text('{"stale": true}', encoding="utf-8")
+    ok, msg = deploy_clips_manifest(tmp_path)
+    assert ok
+    assert "Обновлён" in msg
+    text = dest.read_text(encoding="utf-8")
+    assert "overlay_preferred" in text
+    assert "stale" not in text

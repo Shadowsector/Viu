@@ -60,6 +60,11 @@ namespace Viu.Runtime
         {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
             BootLog("Start args=" + Environment.CommandLine);
+            if (Environment.CommandLine.IndexOf("bitblt", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                BootLog("ERROR: нет -force-d3d11-bitblt-model — ColorKey не сработает (magenta окно). "
+                    + "Запускай через LaunchOverlay.bat / .vbs");
+            }
             StartCoroutine(ConfigureWindowWhenReady());
 #endif
         }
@@ -70,12 +75,16 @@ namespace Viu.Runtime
                 Application.Quit();
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
-            // После успешного ColorKey не спамим overlay_boot.log каждые 30 кадров.
-            if (_hwnd != IntPtr.Zero && !_colorKeyOk && _colorKeyAttempts > 0
-                && _colorKeyAttempts < 40 && Time.frameCount % 30 == 0)
+            // ColorKey часто «успешен» в API, но Unity/DXGI сбрасывает layered.
+            // Первые ~4 сек всегда переставляем ключ; дальше — только если ещё не ok.
+            if (_hwnd != IntPtr.Zero && _colorKeyAttempts > 0 && _colorKeyAttempts < 80
+                && Time.frameCount % 15 == 0)
             {
-                ApplyColorKey();
-                _colorKeyAttempts++;
+                if (!_colorKeyOk || _colorKeyAttempts < 25)
+                {
+                    ApplyColorKey();
+                    _colorKeyAttempts++;
+                }
             }
 #endif
         }
@@ -189,10 +198,8 @@ namespace Viu.Runtime
             long style = WS_POPUP | WS_VISIBLE;
             SetWindowLong(_hwnd, GWL_STYLE, (uint)style);
 
-            uint ex = WS_EX_LAYERED;
-            if (alwaysOnTop) ex |= WS_EX_TOPMOST;
-            if (clickThrough) ex |= WS_EX_TRANSPARENT;
-            SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
+            // OR к существующим exstyle — не затирать флаги Unity (иначе ColorKey «True», а окно magenta).
+            EnsureLayeredExStyle();
 
             SetWindowPos(_hwnd, alwaysOnTop ? HWND_TOPMOST : HWND_NOTOPMOST,
                 x, y, w, h, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
@@ -203,24 +210,35 @@ namespace Viu.Runtime
             BootLog($"Geometry {w}x{h} at {x},{y}");
         }
 
+        void EnsureLayeredExStyle()
+        {
+            uint ex = (uint)GetWindowLong(_hwnd, GWL_EXSTYLE);
+            ex |= WS_EX_LAYERED;
+            if (alwaysOnTop) ex |= WS_EX_TOPMOST;
+            else ex &= ~WS_EX_TOPMOST;
+            if (clickThrough) ex |= WS_EX_TRANSPARENT;
+            else ex &= ~WS_EX_TRANSPARENT;
+            SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
+        }
+
         void ApplyColorKey()
         {
             if (_hwnd == IntPtr.Zero) return;
 
-            // Снова выставить layered — иначе после SetWindowPos ключ иногда слетает
-            // и на рабочем столе остаётся «магента-окно».
-            uint ex = WS_EX_LAYERED;
-            if (alwaysOnTop) ex |= WS_EX_TOPMOST;
-            if (clickThrough) ex |= WS_EX_TRANSPARENT;
-            SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
+            EnsureLayeredExStyle();
 
+            // BitBlt + color key: DWM margins = 0 (не -1 — иначе весь экран magenta без flip fix).
             var margins = new MARGINS();
             DwmExtendFrameIntoClientArea(_hwnd, ref margins);
 
             bool ok = SetLayeredWindowAttributes(_hwnd, ChromaColorRef, 0, LWA_COLORKEY);
             _colorKeyOk = ok;
-            BootLog("SetLayeredWindowAttributes=" + ok + " err=" + Marshal.GetLastWin32Error()
-                + " key=#FF0080 (должен быть прозрачным на рабочем столе)");
+            if (_colorKeyAttempts <= 1 || !ok || _colorKeyAttempts % 8 == 0)
+            {
+                BootLog("SetLayeredWindowAttributes=" + ok + " err=" + Marshal.GetLastWin32Error()
+                    + " key=#FF0080 attempt=" + _colorKeyAttempts
+                    + " (должен быть прозрачным на рабочем столе)");
+            }
         }
 
         static IntPtr ResolveGameWindow()
@@ -354,10 +372,22 @@ namespace Viu.Runtime
         [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")]
         static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, uint dwNewLong);
 
+        [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
+        static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")]
+        static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+
         static void SetWindowLong(IntPtr hWnd, int nIndex, uint dwNewLong)
         {
             if (IntPtr.Size == 8) SetWindowLongPtr64(hWnd, nIndex, dwNewLong);
             else SetWindowLong32(hWnd, nIndex, dwNewLong);
+        }
+
+        static int GetWindowLong(IntPtr hWnd, int nIndex)
+        {
+            if (IntPtr.Size == 8) return (int)GetWindowLongPtr64(hWnd, nIndex);
+            return GetWindowLong32(hWnd, nIndex);
         }
 
         [DllImport("user32.dll", SetLastError = true)]

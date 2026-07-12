@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -17,7 +18,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 27
+        // @viu-deploy-rev 28
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -152,29 +153,32 @@ namespace Viu.Editor
             Directory.CreateDirectory(full);
         }
 
+        /// <summary>
+        /// Готовит OverlayDesktop.unity. Бросает при FAIL — иначе BuildWindows
+        /// молча соберёт старую сцену с Idle_Stand (слайд без Walk).
+        /// </summary>
         public static void Run(string saveScenePath)
         {
             var modelPath = FindModelPath();
             if (string.IsNullOrEmpty(modelPath))
-            {
-                Debug.LogError("[Viu] FBX модели не найден. Сначала GameTest или импорт Shanya_Erisa.");
-                return;
-            }
+                throw new InvalidOperationException(
+                    "[Viu] FBX модели не найден. Сначала GameTest или импорт Shanya_Erisa.");
 
             EnsureHumanoidImport(modelPath);
             var controller = ShanyaAnimationSync.BuildOverlayLocomotionController(log: true);
             if (controller == null)
-            {
-                Debug.LogError("[Viu] Animator не создан. Положи Idle/Walk в Animations/.");
-                return;
-            }
+                throw new InvalidOperationException(
+                    "[Viu] Overlay locomotion FAIL — нет Shanya_Idle/Shanya_Walk. "
+                    + "НЕ собираю старую сцену с Idle_Stand.");
+
+            if (controller.name.IndexOf("Idle_Stand", StringComparison.OrdinalIgnoreCase) >= 0)
+                throw new InvalidOperationException(
+                    "[Viu] Отказ: controller=" + controller.name
+                    + " (нужен Shanya_Overlay_Locomotion с Walk).");
 
             var avatar = LoadModelAvatar(modelPath);
             if (avatar == null)
-            {
-                Debug.LogError("[Viu] Avatar не найден на модели.");
-                return;
-            }
+                throw new InvalidOperationException("[Viu] Avatar не найден на модели.");
 
             var instance = PlaceCharacterInScene(modelPath, controller, avatar);
             DisableWgtMeshes(instance);
@@ -542,6 +546,8 @@ namespace Viu.Editor
                     "animatorPath=" + (animator != null ? GetTransformPath(animator.transform) : ""),
                     "ctrl=" + (animator != null && animator.runtimeAnimatorController != null
                         ? animator.runtimeAnimatorController.name : "null"),
+                    "hasWalk=" + ControllerHasState(animator, "Walk"),
+                    "hasIdle=" + ControllerHasState(animator, "Idle"),
                     "avatar=" + (animator != null && animator.avatar != null ? animator.avatar.name : "null"),
                     "avatarValid=" + (animator != null && animator.avatar != null && animator.avatar.isValid),
                     "human=" + (animator != null && animator.avatar != null && animator.avatar.isHuman),
@@ -562,6 +568,43 @@ namespace Viu.Editor
             {
                 Debug.LogWarning("[Viu] viu_animator.log: " + e.Message);
             }
+
+            if (animator != null && animator.runtimeAnimatorController != null
+                && !ControllerHasState(animator, "Walk"))
+            {
+                throw new InvalidOperationException(
+                    "[Viu] Animator без Walk (ctrl="
+                    + animator.runtimeAnimatorController.name + ") — сборка остановлена.");
+            }
+        }
+
+        static bool ControllerHasState(Animator animator, string state)
+        {
+            if (animator == null || animator.runtimeAnimatorController == null)
+                return false;
+            var ac = animator.runtimeAnimatorController as AnimatorController;
+            if (ac == null)
+            {
+                // Runtime override / built — пробуем через GetCurrentAnimatorClipInfo путь
+                foreach (var clip in animator.runtimeAnimatorController.animationClips)
+                {
+                    if (clip == null) continue;
+                    var n = clip.name.ToLowerInvariant();
+                    if (n.Contains(state.ToLowerInvariant())) return true;
+                }
+                return false;
+            }
+            foreach (var layer in ac.layers)
+            {
+                if (layer.stateMachine == null) continue;
+                foreach (var st in layer.stateMachine.states)
+                {
+                    if (st.state != null
+                        && st.state.name.Equals(state, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>
