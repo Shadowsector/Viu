@@ -207,13 +207,20 @@ namespace Viu.Runtime
         {
             if (_hwnd == IntPtr.Zero) return;
 
-            // BitBlt + color key: DWM margins = 0 (не -1 — иначе весь экран magenta без flip fix).
+            // Снова выставить layered — иначе после SetWindowPos ключ иногда слетает
+            // и на рабочем столе остаётся «магента-окно».
+            uint ex = WS_EX_LAYERED;
+            if (alwaysOnTop) ex |= WS_EX_TOPMOST;
+            if (clickThrough) ex |= WS_EX_TRANSPARENT;
+            SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
+
             var margins = new MARGINS();
             DwmExtendFrameIntoClientArea(_hwnd, ref margins);
 
             bool ok = SetLayeredWindowAttributes(_hwnd, ChromaColorRef, 0, LWA_COLORKEY);
             _colorKeyOk = ok;
-            BootLog("SetLayeredWindowAttributes=" + ok + " err=" + Marshal.GetLastWin32Error());
+            BootLog("SetLayeredWindowAttributes=" + ok + " err=" + Marshal.GetLastWin32Error()
+                + " key=#FF0080 (должен быть прозрачным на рабочем столе)");
         }
 
         static IntPtr ResolveGameWindow()
@@ -241,6 +248,8 @@ namespace Viu.Runtime
         {
             if (windowHeight <= 0) return;
             float frac = Mathf.Clamp(feetLineFromBottomPixels / (float)windowHeight, 0.02f, 0.25f);
+            // Не даём полноэкранному окну уронить стопы ниже ~10% (обрезало Шаню).
+            frac = Mathf.Max(frac, 0.10f);
             var follow = Camera.main != null ? Camera.main.GetComponent<ShanyaOverlayCamera>() : null;
             if (follow != null)
                 follow.feetScreenFraction = frac;

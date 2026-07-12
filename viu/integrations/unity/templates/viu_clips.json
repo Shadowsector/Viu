@@ -1,6 +1,12 @@
 {
-  "comment": "Переименование непонятных FBX: file → состояние Animator",
+  "comment": "Оверлей: жёстко Idle/Walk от Шани. Не X Bot, не SitIdle, не _2/_3/_4.",
   "overrides": [
+    { "file": "Shanya_Idle.fbx", "state": "Idle" },
+    { "file": "Shanya_Walk.fbx", "state": "Walk" },
     { "file": "Take 001.fbx", "state": "Walk" }
-  ]
+  ],
+  "overlay_preferred": {
+    "Idle": "Shanya_Idle.fbx",
+    "Walk": "Shanya_Walk.fbx"
+  }
 }

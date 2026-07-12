@@ -5,7 +5,9 @@ using UnityEngine;
 namespace Viu.Runtime
 {
     /// <summary>
-    /// Глубина коридора: S — отойти, W — подойти. F5 — сохранить overlay_tune.json.
+    /// W/S — Шаня ходит вглубь/к камере по Z. Дом и ortho камеры не трогаем
+    /// (раньше depthBlend зумил и дом, и Шаню — это не то).
+    /// F5 — сохранить Z в overlay_tune.json.
     /// </summary>
     public class ShanyaOverlayDepth : MonoBehaviour
     {
@@ -16,30 +18,28 @@ namespace Viu.Runtime
             public float orthoHalfHeight;
         }
 
-        [Range(0f, 1f)]
-        public float depthBlend;
+        /// <summary>Смещение Шани по Z от базовой позиции (отрицательное = ближе к камере).</summary>
+        public float characterDepthZ;
 
+        public float depthMoveSpeed = 1.35f;
+        public float minDepthZ = -2.5f;
+        public float maxDepthZ = 3.5f;
+
+        /// <summary>Камера: фиксированный «taskbar» кадр, без зума от W/S.</summary>
         public LaneSettings taskbar = new LaneSettings
         {
             distanceZ = 14f,
             orthoHalfHeight = 2.15f,
         };
 
-        public LaneSettings attention = new LaneSettings
-        {
-            distanceZ = 4.5f,
-            orthoHalfHeight = 1.1f,
-        };
+        public float feetLiftMeters = 0.02f;
 
-        public float depthMoveSpeed = 0.55f;
-        public float feetLiftMeters = 0.006f;
-
-        float _smoothBlend;
         ShanyaOverlayCamera _follow;
         Camera _camera;
         Transform _character;
+        float _baseCharZ;
         float _baseFeetY;
-        bool _baseFeetCaptured;
+        bool _baseCaptured;
 
         void Start()
         {
@@ -47,71 +47,80 @@ namespace Viu.Runtime
             _camera = Camera.main;
             _character = _follow != null ? _follow.target : null;
             LoadTuneFile();
-            _smoothBlend = depthBlend;
-            ApplyForBlend(_smoothBlend);
-            Debug.Log("[Viu] Глубина: S — отойти, W — подойти, F5 — сохранить overlay_tune.json");
+            CaptureBase();
+            ApplyCameraLane();
+            ApplyCharacterDepth();
+            Debug.Log("[Viu] Глубина: W/S — Шаня ближе/дальше по Z (дом стоит). F5 — сохранить.");
         }
 
         void Update()
         {
             float dir = 0f;
-            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) dir += 1f;
-            if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) dir -= 1f;
+            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) dir -= 1f; // к камере / «подойти»
+            if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) dir += 1f; // вглубь
             if (Mathf.Abs(dir) > 0.01f)
-                depthBlend = Mathf.Clamp01(depthBlend + dir * depthMoveSpeed * Time.deltaTime);
+            {
+                characterDepthZ = Mathf.Clamp(
+                    characterDepthZ + dir * depthMoveSpeed * Time.deltaTime,
+                    minDepthZ,
+                    maxDepthZ);
+                ApplyCharacterDepth();
+            }
 
             if (Input.GetKeyDown(KeyCode.F5))
                 SaveTuneFile();
-
-            _smoothBlend = Mathf.MoveTowards(_smoothBlend, depthBlend, depthMoveSpeed * 1.8f * Time.deltaTime);
-            ApplyForBlend(_smoothBlend);
         }
 
+        /// <summary>Старый API playtest/tune — больше не зумит, только сдвигает Z.</summary>
         public void SetDepthBlend(float blend)
         {
-            depthBlend = Mathf.Clamp01(blend);
-            _smoothBlend = depthBlend;
-            ApplyForBlend(_smoothBlend);
+            // 0 = далеко (taskbar), 1 = близко → отрицательный Z
+            characterDepthZ = Mathf.Lerp(maxDepthZ * 0.35f, minDepthZ, Mathf.Clamp01(blend));
+            ApplyCharacterDepth();
         }
 
-        void ApplyForBlend(float t)
+        void CaptureBase()
         {
-            var s = Evaluate(t);
+            if (_character == null || _baseCaptured) return;
+            _baseCharZ = _character.position.z;
+            _baseFeetY = _character.position.y;
+            _baseCaptured = true;
+        }
+
+        void ApplyCameraLane()
+        {
             if (_follow != null)
             {
-                _follow.distanceZ = s.distanceZ;
-                _follow.depthBlend = t;
+                _follow.distanceZ = taskbar.distanceZ;
+                _follow.depthBlend = 0f;
             }
             if (_camera != null)
-                _camera.orthographicSize = s.orthoHalfHeight;
-            ApplyFeetLift();
+                _camera.orthographicSize = taskbar.orthoHalfHeight;
         }
 
-        LaneSettings Evaluate(float t)
+        void ApplyCharacterDepth()
         {
-            return new LaneSettings
-            {
-                distanceZ = Mathf.Lerp(taskbar.distanceZ, attention.distanceZ, t),
-                orthoHalfHeight = Mathf.Lerp(taskbar.orthoHalfHeight, attention.orthoHalfHeight, t),
-            };
-        }
-
-        void ApplyFeetLift()
-        {
-            if (_character == null || feetLiftMeters <= 0f) return;
-            if (!_baseFeetCaptured)
-            {
-                _baseFeetY = _character.position.y;
-                _baseFeetCaptured = true;
-            }
+            if (_character == null) return;
+            CaptureBase();
             var p = _character.position;
+            p.z = _baseCharZ + characterDepthZ;
             p.y = _baseFeetY + feetLiftMeters;
             _character.position = p;
         }
 
         string TunePath()
         {
-            var dir = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+            // Рядом с exe в билде; в Editor — корень проекта
+            var dir = Application.isEditor
+                ? Path.GetFullPath(Path.Combine(Application.dataPath, ".."))
+                : Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+            var buildTune = Path.Combine(
+                Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Builds", "AnabarraOverlay")),
+                "overlay_tune.json");
+            if (!Application.isEditor && File.Exists(Path.Combine(dir, "overlay_tune.json")))
+                return Path.Combine(dir, "overlay_tune.json");
+            if (File.Exists(buildTune))
+                return buildTune;
             return Path.Combine(dir, "overlay_tune.json");
         }
 
@@ -122,15 +131,17 @@ namespace Viu.Runtime
             try
             {
                 var json = File.ReadAllText(path);
-                var tune = JsonUtility.FromJson<OverlayTuneData>(json);
-                if (tune == null) return;
-                if (tune.taskbar != null) taskbar = tune.taskbar.ToSettings();
-                if (tune.attention != null) attention = tune.attention.ToSettings();
-                feetLiftMeters = tune.feetLiftMeters > 0f ? tune.feetLiftMeters : feetLiftMeters;
-                if (tune.depthBlend >= 0f)
-                    depthBlend = Mathf.Clamp01(tune.depthBlend);
-                else if (string.Equals(tune.activeLane, "attention", StringComparison.OrdinalIgnoreCase))
-                    depthBlend = 1f;
+                var data = JsonUtility.FromJson<TuneFile>(json);
+                if (data == null) return;
+                if (data.taskbar.distanceZ > 0.1f)
+                    taskbar = data.taskbar;
+                // Старый depthBlend → характер Z; новый characterDepthZ — напрямую
+                if (Mathf.Abs(data.characterDepthZ) > 0.001f)
+                    characterDepthZ = data.characterDepthZ;
+                else if (data.depthBlend > 0.001f)
+                    characterDepthZ = Mathf.Lerp(1.2f, minDepthZ, data.depthBlend);
+                if (data.feetLiftMeters > 0f)
+                    feetLiftMeters = data.feetLiftMeters;
             }
             catch (Exception e)
             {
@@ -138,32 +149,22 @@ namespace Viu.Runtime
             }
         }
 
-        public void SaveTuneFile()
+        void SaveTuneFile()
         {
-            if (_follow == null || _camera == null) return;
-            var live = new LaneSettings
-            {
-                distanceZ = _follow.distanceZ,
-                orthoHalfHeight = _camera.orthographicSize,
-            };
-            if (depthBlend < 0.5f)
-                taskbar = live;
-            else
-                attention = live;
-
-            var data = new OverlayTuneData
-            {
-                feetLiftMeters = feetLiftMeters,
-                characterHeightMeters = 1.77f,
-                depthBlend = depthBlend,
-                activeLane = depthBlend >= 0.5f ? "attention" : "taskbar",
-                taskbar = LaneJson.From(taskbar),
-                attention = LaneJson.From(attention),
-            };
             try
             {
-                File.WriteAllText(TunePath(), JsonUtility.ToJson(data, true));
-                Debug.Log("[Viu] Сохранено overlay_tune.json (depth=" + depthBlend.ToString("F2") + ")");
+                var data = new TuneFile
+                {
+                    feetLiftMeters = feetLiftMeters,
+                    characterDepthZ = characterDepthZ,
+                    depthBlend = 0f,
+                    activeLane = "taskbar",
+                    taskbar = taskbar,
+                    attention = taskbar,
+                };
+                var path = TunePath();
+                File.WriteAllText(path, JsonUtility.ToJson(data, true));
+                Debug.Log("[Viu] Сохранено overlay_tune.json (characterDepthZ=" + characterDepthZ.ToString("F2") + ")");
             }
             catch (Exception e)
             {
@@ -172,34 +173,14 @@ namespace Viu.Runtime
         }
 
         [Serializable]
-        class OverlayTuneData
+        class TuneFile
         {
             public float feetLiftMeters;
-            public float characterHeightMeters;
-            public float depthBlend = -1f;
-            public string activeLane = "taskbar";
-            public LaneJson taskbar;
-            public LaneJson attention;
-        }
-
-        [Serializable]
-        class LaneJson
-        {
-            public float distanceZ;
-            public float orthoHalfHeight;
-            public float viewCenterAboveFeet;
-
-            public LaneSettings ToSettings() => new LaneSettings
-            {
-                distanceZ = distanceZ,
-                orthoHalfHeight = orthoHalfHeight,
-            };
-
-            public static LaneJson From(LaneSettings s) => new LaneJson
-            {
-                distanceZ = s.distanceZ,
-                orthoHalfHeight = s.orthoHalfHeight,
-            };
+            public float characterDepthZ;
+            public float depthBlend;
+            public string activeLane;
+            public LaneSettings taskbar;
+            public LaneSettings attention;
         }
     }
 }

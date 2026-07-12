@@ -193,35 +193,105 @@ namespace Viu.Editor
                 bestScore[state] = score;
             }
 
+            ApplyOverlayPreferred(best, overrides);
             return best.Values.OrderBy(e => StateOrder(e.StateName)).ToList();
         }
 
-        /// <summary>Выше = лучше. SitIdle не должен выигрывать у Idle.</summary>
+        /// <summary>viu_clips.json → overlay_preferred: Idle=Shanya_Idle.fbx, Walk=Shanya_Walk.fbx</summary>
+        static void ApplyOverlayPreferred(
+            Dictionary<string, ClipEntry> best,
+            Dictionary<string, string> overrides)
+        {
+            var preferred = LoadOverlayPreferred();
+            foreach (var kv in preferred)
+            {
+                var state = kv.Key;
+                var file = kv.Value;
+                if (string.IsNullOrEmpty(file)) continue;
+                var path = AnimationsFolder + "/" + file;
+                if (AssetDatabase.LoadMainAssetAtPath(path) == null)
+                {
+                    Debug.LogWarning("[Viu] overlay_preferred не найден: " + path);
+                    continue;
+                }
+                var clip = LoadFirstAnimationClip(path);
+                if (clip == null)
+                {
+                    Debug.LogWarning("[Viu] overlay_preferred без клипа: " + file);
+                    continue;
+                }
+                best[state] = new ClipEntry { AssetPath = path, StateName = state, Clip = clip };
+                Debug.Log("[Viu] overlay_preferred " + state + " ← " + file);
+            }
+        }
+
+        static Dictionary<string, string> LoadOverlayPreferred()
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Idle"] = "Shanya_Idle.fbx",
+                ["Walk"] = "Shanya_Walk.fbx",
+            };
+            try
+            {
+                var full = Path.GetFullPath(
+                    Path.Combine(Application.dataPath, "..", AnimationsFolder, ManifestName));
+                if (!File.Exists(full)) return result;
+                var json = File.ReadAllText(full);
+                var block = json.IndexOf("overlay_preferred", StringComparison.OrdinalIgnoreCase);
+                if (block < 0) return result;
+                json = json.Substring(block);
+                foreach (var state in new[] { "Idle", "Walk", "Run" })
+                {
+                    var key = "\"" + state + "\"";
+                    var idx = json.IndexOf(key, StringComparison.OrdinalIgnoreCase);
+                    if (idx < 0) continue;
+                    var colon = json.IndexOf(':', idx);
+                    if (colon < 0) continue;
+                    var q1 = json.IndexOf('"', colon + 1);
+                    if (q1 < 0) continue;
+                    var q2 = json.IndexOf('"', q1 + 1);
+                    if (q2 < 0) continue;
+                    var file = json.Substring(q1 + 1, q2 - q1 - 1).Trim();
+                    if (file.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase))
+                        result[state] = file;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[Viu] overlay_preferred: " + ex.Message);
+            }
+            return result;
+        }
+
+        /// <summary>Выше = лучше. Оверлей: только Shanya_Idle / Shanya_Walk, не Mixamo/Sit.</summary>
         static int ScoreClipFile(string stemLower, string state)
         {
             var low = stemLower.ToLowerInvariant();
             int score = 50;
-            // Точное Shanya_Idle / Shanya_Walk
+            // Точное Shanya_Idle / Shanya_Walk — абсолютный приоритет
             if (low == "shanya_" + state.ToLowerInvariant())
-                score += 60;
+                score += 200;
             else if (low == state.ToLowerInvariant())
                 score += 40;
+            else if (low.StartsWith("shanya_") && low.Contains(state.ToLowerInvariant()))
+                score += 80;
             else if (low.EndsWith("_" + state.ToLowerInvariant()))
                 score += 20;
             // Варианты _2 _3 _4 — запасные
             if (System.Text.RegularExpressions.Regex.IsMatch(low, @"_\d+$"))
-                score -= 15;
+                score -= 40;
             // SitIdle / SleepIdle никогда не для Idle
             if (state.Equals("Idle", StringComparison.OrdinalIgnoreCase))
             {
                 if (low.Contains("sit")) score -= 200;
                 if (low.Contains("sleep")) score -= 200;
-                // Mixamo Idle часто стабильнее кривого экспорта
-                if (low.Contains("x bot") && low.Contains("idle") && !low.Contains("sit"))
-                    score += 10;
             }
-            if (low.Contains("@") && !state.Equals("Idle", StringComparison.OrdinalIgnoreCase))
-                score -= 10;
+            // Mixamo / X Bot — только запас, не для оверлея если есть Shanya_*
+            if (low.Contains("x bot") || low.Contains("xbot") || low.Contains("@"))
+                score -= 80;
+            if (low.Contains("tough") || low.Contains("female"))
+                score -= 30;
             return score;
         }
 

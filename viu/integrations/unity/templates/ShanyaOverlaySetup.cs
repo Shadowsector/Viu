@@ -17,7 +17,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 26
+        // @viu-deploy-rev 27
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -105,13 +105,24 @@ namespace Viu.Editor
         static void WriteOverlayLauncher()
         {
             var dir = Path.Combine(Application.dataPath, "..", BuildFolder);
+            Directory.CreateDirectory(dir);
             var bat = Path.Combine(dir, "LaunchOverlay.bat");
+            // start без ожидания — cmd-окно не висит; bitblt обязателен для ColorKey
             var body =
                 "@echo off\r\n" +
                 "cd /d \"%~dp0\"\r\n" +
-                "start \"\" \"AnabarraOverlay.exe\" -force-d3d11-bitblt-model -popupwindow\r\n";
+                "start \"AnabarraOverlay\" /B \"AnabarraOverlay.exe\" -force-d3d11-bitblt-model -popupwindow\r\n" +
+                "exit /b 0\r\n";
             File.WriteAllText(bat, body, System.Text.Encoding.ASCII);
-            Debug.Log("[Viu] Launcher: " + bat);
+
+            // Без чёрного терминала вообще
+            var vbs = Path.Combine(dir, "LaunchOverlay.vbs");
+            var vbsBody =
+                "Set sh = CreateObject(\"WScript.Shell\")\r\n" +
+                "sh.CurrentDirectory = CreateObject(\"Scripting.FileSystemObject\").GetParentFolderName(WScript.ScriptFullName)\r\n" +
+                "sh.Run \"AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow\", 0, False\r\n";
+            File.WriteAllText(vbs, vbsBody, System.Text.Encoding.ASCII);
+            Debug.Log("[Viu] Launcher: " + bat + " + LaunchOverlay.vbs");
         }
 
         static void ConfigurePlayerForOverlay()

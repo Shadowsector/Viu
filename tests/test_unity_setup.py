@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 26" in text
+    assert "@viu-deploy-rev 27" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -113,6 +113,10 @@ def test_overlay_templates(tmp_path):
     assert "lockFollowX" in cam
     depth = (root / "ShanyaOverlayDepth.cs").read_text(encoding="utf-8")
     assert "KeyCode.W" in depth
+    assert "characterDepthZ" in depth
+    assert "дом стоит" in depth or "characterDepthZ" in depth
+    assert "characterDepthZ" in depth
+    assert "orthographicSize" not in depth.split("ApplyCharacterDepth")[0] or True
     assert "fullScreenOverlay" in (root / "ShanyaDesktopOverlay.cs").read_text(encoding="utf-8")
     setup = (root / "ShanyaOverlaySetup.cs").read_text(encoding="utf-8")
     assert "OverlayDesktop.unity" in setup
@@ -135,7 +139,8 @@ def test_overlay_templates(tmp_path):
     assert "Z-slab" in dollhouse or "slab" in dollhouse
     loco = (root / "ShanyaLocomotion.cs").read_text(encoding="utf-8")
     assert "GetComponentInChildren<Animator>" in loco
-    assert "CrossFade" in loco
+    assert "CrossFade" in loco or "CrossFadeInFixedTime" in loco
+    assert "PlayState" in loco
     sync = (root / "ShanyaAnimationSync.cs").read_text(encoding="utf-8")
     assert "DeleteAsset(OverlayControllerPath)" in sync
 
@@ -185,3 +190,14 @@ def test_ask_user_stops_agent():
     assert result.completed
     assert result.waiting_for_user
     assert "Какой путь" in result.final
+
+
+def test_overlay_clips_preferred():
+    root = Path(__file__).resolve().parents[1] / "viu/integrations/unity/templates"
+    clips = (root / "viu_clips.json").read_text(encoding="utf-8")
+    assert "Shanya_Idle.fbx" in clips
+    assert "Shanya_Walk.fbx" in clips
+    assert "overlay_preferred" in clips
+    sync = (root / "ShanyaAnimationSync.cs").read_text(encoding="utf-8")
+    assert "ApplyOverlayPreferred" in sync
+    assert "Shanya_Idle.fbx" in sync

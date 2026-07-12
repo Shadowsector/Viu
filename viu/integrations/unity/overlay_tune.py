@@ -10,8 +10,9 @@ from typing import Any, Dict
 from .overlay import OVERLAY_BUILD_DIR
 
 DEFAULT_TUNE: Dict[str, Any] = {
-    "feetLiftMeters": 0.006,
+    "feetLiftMeters": 0.02,
     "characterHeightMeters": 1.77,
+    "characterDepthZ": 0.0,
     "depthBlend": 0.0,
     "activeLane": "taskbar",
     "taskbar": {
@@ -19,8 +20,8 @@ DEFAULT_TUNE: Dict[str, Any] = {
         "orthoHalfHeight": 2.15,
     },
     "attention": {
-        "distanceZ": 4.5,
-        "orthoHalfHeight": 0.95,
+        "distanceZ": 14.0,
+        "orthoHalfHeight": 2.15,
     },
 }
 
@@ -42,13 +43,15 @@ def load_tune(project_root: Path | None = None) -> Dict[str, Any]:
 
 
 def write_tune_lane(project_root: Path, lane: str) -> Path:
-    """lane: taskbar | attention — выставляет depthBlend 0 или 1."""
+    """lane: taskbar | attention — сдвигает Шаню по Z (не зум камеры)."""
     lane = lane.strip().lower()
     if lane not in ("taskbar", "attention"):
         raise ValueError(f"lane must be taskbar or attention, got {lane!r}")
     data = load_tune(project_root)
     data["activeLane"] = lane
-    data["depthBlend"] = 1.0 if lane == "attention" else 0.0
+    # attention = ближе к камере (отрицательный Z), taskbar = 0
+    data["characterDepthZ"] = -1.8 if lane == "attention" else 0.0
+    data["depthBlend"] = 0.0
     dest = tune_file_path(project_root)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

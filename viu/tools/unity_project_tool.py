@@ -508,7 +508,7 @@ class UnityOverlayTool(Tool):
         from .overlay_playtest_tool import OverlayPlaytestTool
 
         merged = dict(args or {})
-        merged.setdefault("reopen_unity", True)
+        merged.setdefault("reopen_unity", False)
         return OverlayPlaytestTool().run(merged, ctx)
 
 

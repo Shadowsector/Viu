@@ -37,6 +37,7 @@ class OverlayPlaytestTool(Tool):
         "timeout": "таймаут сборки сек (по умолчанию 1800)",
         "wait_sec": "сколько ждать после запуска exe (по умолчанию 18)",
         "launch": "запускать ли exe (по умолчанию true)",
+        "reopen_unity": "открыть Unity Editor после playtest (по умолчанию false)",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
@@ -110,8 +111,22 @@ class OverlayPlaytestTool(Tool):
             try:
                 cwd = str(out_exe.parent)
                 if sys.platform == "win32" and launcher.is_file():
-                    subprocess.Popen(["cmd", "/c", "start", "", str(launcher)], cwd=cwd)  # noqa: S603
-                    lines.append(f"Запуск: {launcher}")
+                    # start через cmd без ожидания; предпочтительно .vbs без окна
+                    vbs = launcher.with_suffix(".vbs")
+                    if vbs.is_file():
+                        subprocess.Popen(  # noqa: S603
+                            ["wscript.exe", str(vbs)],
+                            cwd=cwd,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                        )
+                        lines.append(f"Запуск (без терминала): {vbs}")
+                    else:
+                        subprocess.Popen(  # noqa: S603
+                            ["cmd", "/c", "start", "", str(launcher)],
+                            cwd=cwd,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                        )
+                        lines.append(f"Запуск: {launcher}")
                 elif sys.platform == "win32":
                     subprocess.Popen(  # noqa: S603
                         [
@@ -210,7 +225,8 @@ class OverlayPlaytestTool(Tool):
             lines.append(f"eyes: {exc}")
 
         # Вернуть Editor Дену — playtest не должен оставлять Unity мёртвым.
-        reopen = str(args.get("reopen_unity", "true")).lower() not in ("0", "false", "no")
+        # По умолчанию НЕ открываем Unity снова — Дену мешает лишний Editor + консоль.
+        reopen = str(args.get("reopen_unity", "false")).lower() in ("1", "true", "yes")
         if reopen:
             try:
                 if not unity_process_running() and exe is not None:

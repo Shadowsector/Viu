@@ -853,6 +853,13 @@ ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverl
 10:31:44 ColorKey pass 1, Esc=выход
 10:31:44 AfterWindow: renderers=5061/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5046/5048
 
+## 2026-07-12 — Den: walk + magenta + W/S zoom + Unity/terminal
+
+**Жалобы:** анимация ходьбы; надоели magenta; W/S зумит Шаню+дом; Viu открывает Overlay потом Unity; терминал висит.
+
+**rev27:** CrossFade Idle↔Walk на Shanya_Idle/Shanya_Walk (overlay_preferred); W/S = characterDepthZ (дом стоит, ortho фиксирован); reopen_unity=false; LaunchOverlay.vbs; ColorKey re-apply layered.
+
+
 --- вердикт ---
 OK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.
 --- eyes ---
