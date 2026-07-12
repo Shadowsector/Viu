@@ -146,10 +146,32 @@ GUI_ACTIONS: List[GuiAction] = [
     ),
     # --- Игра (Unity playtest) ---
     GuiAction(
+        "unity_overlay_validate",
+        "Overlay: проверить сцену",
+        "Ещё — игра",
+        tool="unity_overlay_validate",
+        hint="Якоря, материалы, rig, Walk. overlay_validate.log",
+    ),
+    GuiAction(
+        "unity_overlay_rebind",
+        "Overlay: rebind материалы",
+        "Ещё — игра",
+        tool="unity_overlay_rebind",
+        hint="Textures/ + .viu.json → .mat r50. Не двигает объекты.",
+    ),
+    GuiAction(
+        "unity_overlay_build",
+        "Overlay: собрать exe",
+        "Ещё — игра",
+        tool="unity_overlay_build",
+        hint="Только build. Сначала Validate + Rebind.",
+    ),
+    GuiAction(
         "unity_overlay",
-        "Оверлей: у панели задач",
+        "Оверлей: полный playtest",
         "Ещё — игра",
         tool="unity_overlay",
+        hint="Deploy + build + launch + boot.log (без eyes в быстром режиме — см. автопилот).",
     ),
     GuiAction(
         "overlay_depth_far",

@@ -141,29 +141,6 @@ def get_pipeline_context(config: Config) -> PipelineContext:
 
     overlay = _overlay_built(config)
 
-    if anim_pending:
-        return PipelineContext(
-            stage="anim_review",
-            step_label=f"Анимации — описать ({anim_pending})",
-            has_inbox_blend=has_inbox,
-            prepared_path=prepared,
-            prepared_name=prep_name,
-            overlay_built=overlay,
-            has_inbox_animation=anim_inbox > 0,
-            pending_animation_reviews=anim_pending,
-        )
-
-    if anim_inbox:
-        return PipelineContext(
-            stage="anim_inbox",
-            step_label="Анимация в Inbox — «Принять анимацию»",
-            has_inbox_blend=has_inbox,
-            prepared_path=prepared,
-            prepared_name=prep_name,
-            overlay_built=overlay,
-            has_inbox_animation=True,
-        )
-
     if needs_prepare:
         return PipelineContext(
             stage="inbox",
@@ -234,6 +211,29 @@ def get_pipeline_context(config: Config) -> PipelineContext:
             overlay_built=overlay,
         )
 
+    if anim_pending:
+        return PipelineContext(
+            stage="anim_review",
+            step_label=f"Анимации — описать ({anim_pending})",
+            has_inbox_blend=has_inbox,
+            prepared_path=prepared,
+            prepared_name=prep_name,
+            overlay_built=overlay,
+            has_inbox_animation=anim_inbox > 0,
+            pending_animation_reviews=anim_pending,
+        )
+
+    if anim_inbox:
+        return PipelineContext(
+            stage="anim_inbox",
+            step_label="Анимация в Inbox — «Принять анимацию»",
+            has_inbox_blend=has_inbox,
+            prepared_path=prepared,
+            prepared_name=prep_name,
+            overlay_built=overlay,
+            has_inbox_animation=True,
+        )
+
     if overlay:
         return PipelineContext(
             stage="playtest",
@@ -263,6 +263,9 @@ _ACTION_VISIBILITY: dict[str, frozenset[str]] = {
     "animation_catalog": frozenset({"anim_review", "anim_inbox", "playtest", "asset_done", "idle"}),
     "unity_apply": frozenset({"anim_review", "playtest", "asset_done", "idle", "anim_inbox"}),
     "unity_overlay": frozenset({"asset_done", "playtest", "idle", "anim_inbox", "anim_review"}),
+    "unity_overlay_validate": frozenset({"asset_done", "playtest", "idle"}),
+    "unity_overlay_rebind": frozenset({"asset_done", "playtest", "idle"}),
+    "unity_overlay_build": frozenset({"asset_done", "playtest", "idle"}),
     "overlay_depth_far": frozenset({"playtest"}),
     "overlay_depth_close": frozenset({"playtest"}),
     "cascadeur_status": frozenset({"idle", "playtest", "asset_done", "anim_review", "anim_inbox"}),

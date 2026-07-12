@@ -90,11 +90,18 @@ def test_director_overlay_build_when_focus(tmp_path):
     (unity / "Assets").mkdir(parents=True)
     config = _config(tmp_path, inbox=inbox, unity=unity)
     RoadmapStore(config.data_dir / "roadmap.json").save()
+    from viu.animation_catalog import AnimationCatalogStore, animation_catalog_path
+
+    ac = AnimationCatalogStore(animation_catalog_path(config))
+    for p in ac.pending_reviews():
+        p.reviewed = True
+        ac.upsert_pending(p)
+    ac.save()
 
     plan = plan_next_step(config)
 
-    assert plan.tool == "unity_overlay"
-    assert "оверлей" in plan.message.lower() or "панел" in plan.message.lower()
+    assert plan.tool == "unity_overlay_validate"
+    assert "оверлей" in plan.message.lower() or "overlay" in plan.message.lower() or "validate" in plan.message.lower()
 
 
 def test_director_idle_when_nothing_pending(tmp_path):
@@ -105,6 +112,13 @@ def test_director_idle_when_nothing_pending(tmp_path):
     for m in store.roadmap.milestones:
         m.status = "done"
     store.save()
+    from viu.animation_catalog import AnimationCatalogStore, animation_catalog_path
+
+    ac = AnimationCatalogStore(animation_catalog_path(config))
+    for p in ac.pending_reviews():
+        p.reviewed = True
+        ac.upsert_pending(p)
+    ac.save()
 
     plan = plan_next_step(config)
 

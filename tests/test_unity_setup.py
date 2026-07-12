@@ -97,7 +97,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 49" in text
+    assert "@viu-deploy-rev 50" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -158,7 +158,14 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 49" in setup
+    assert "@viu-deploy-rev 50" in setup
+    assert "RebindAllOverlayMaterials" in setup
+    assert "ValidateOverlaySceneBatch" in setup
+    assert "RebindMaterialsBatch" in setup
+    assert "BuildWindowsOnly" in setup
+    assert "OverlayValidationReport" in setup
+    assert "AuditSceneMaterials" in setup
+    assert "ViuOverlayMats/r50" in setup
     assert "ValidateOverlayScene" in setup
     assert "BootstrapOverlayScene" in setup
     assert "OverlaySceneAnchor" in setup
@@ -193,7 +200,7 @@ def test_overlay_templates(tmp_path):
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay
     assert "RuntimeRev" in overlay
-    assert 'RuntimeRev = "49"' in overlay
+    assert 'RuntimeRev = "50"' in overlay
     assert "fullScreenOverlay = true" in overlay
     assert "ApplyDisplayMode" in overlay
     assert "instanceHeightPixels" in overlay
@@ -236,10 +243,19 @@ def test_overlay_templates(tmp_path):
     assert path.is_file()
     assert "attention" in path.read_text(encoding="utf-8")
 
-    from viu.integrations.unity.overlay import batch_overlay_build_command, overlay_exe_path
+    from viu.integrations.unity.overlay import (
+        batch_overlay_build_command,
+        batch_overlay_rebind_command,
+        batch_overlay_validate_command,
+        overlay_exe_path,
+    )
 
     cmd = batch_overlay_build_command(Path("U:/Anabarra/Unity/Anabarra"), Path("C:/Unity/Unity.exe"))
     assert "ShanyaOverlaySetup.BuildWindowsBatch" in cmd
+    vcmd = batch_overlay_validate_command(Path("U:/Anabarra/Unity/Anabarra"), Path("C:/Unity/Unity.exe"))
+    assert "ValidateOverlaySceneBatch" in vcmd
+    rcmd = batch_overlay_rebind_command(Path("U:/Anabarra/Unity/Anabarra"), Path("C:/Unity/Unity.exe"))
+    assert "RebindMaterialsBatch" in rcmd
     assert "-nographics" not in cmd
     assert overlay_exe_path(Path("/proj")).name == "AnabarraOverlay.exe"
 

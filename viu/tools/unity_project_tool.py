@@ -12,6 +12,8 @@ from ..integrations.unity.animation_scan import ANIMATIONS_REL
 from ..integrations.unity.paths import resolve_in_unity_project, unity_project_root
 from ..integrations.unity.setup import (
     batch_overlay_build_command,
+    batch_overlay_rebind_command,
+    batch_overlay_validate_command,
     batch_setup_command,
     batch_sync_animations_command,
     deploy_animation_pipeline,
@@ -43,6 +45,91 @@ def _ensure_batch_ready(root: Path, *, auto_kill: bool = True) -> tuple[ToolResu
     if not ok:
         return ToolResult(False, msg), ""
     return None, msg
+
+
+def _run_unity_batch(
+    root: Path,
+    ctx: AgentContext,
+    args: Dict[str, Any],
+    *,
+    cmd: str,
+    log_name: str,
+    ok_label: str,
+    deploy: bool = True,
+    textures: bool = False,
+) -> ToolResult:
+    """Общий раннер overlay batch: deploy → kill Unity → subprocess."""
+    from ..integrations.blender.export_pipeline import ensure_home_textures_exported
+
+    lines: list[str] = []
+    if textures:
+        tex_ok, tex_msg = ensure_home_textures_exported(ctx.config)
+        lines.append(f"Home textures: {tex_msg}")
+        if not tex_ok:
+            return ToolResult(False, "\n".join(lines))
+
+    if deploy:
+        ok, msg = deploy_animation_pipeline(root)
+        lines.append(msg)
+        if not ok:
+            return ToolResult(False, "\n".join(lines))
+        healthy, hint = editor_scripts_healthy(root)
+        if not healthy:
+            lines.append(hint)
+            return ToolResult(False, "\n".join(lines))
+
+    prep, prep_msg = _ensure_batch_ready(root, auto_kill=True)
+    if prep_msg:
+        lines.append(prep_msg)
+    if prep is not None:
+        return prep
+
+    exe = find_unity_exe(ctx.config.unity_exe)
+    if exe is None:
+        return ToolResult(False, "\n".join(lines) + "\nUnity.exe не найден (VIU_UNITY_EXE).")
+
+    timeout = float(args.get("timeout") or 900)
+    try:
+        proc = subprocess.run(
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=str(root),
+        )
+    except subprocess.TimeoutExpired:
+        return ToolResult(False, "\n".join(lines) + f"\nТаймаут {timeout}s. Смотри {root / log_name}")
+
+    log_path = root / log_name
+    tail_lines: list[str] = []
+    if log_path.is_file():
+        tail_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-25:]
+
+    extra_log = root / "overlay_validate.log"
+    if log_name == "viu_overlay_validate.log" and extra_log.is_file():
+        tail_lines.extend(extra_log.read_text(encoding="utf-8", errors="replace").splitlines()[-15:])
+
+    rebind_log = root / "overlay_rebind.log"
+    if log_name == "viu_overlay_rebind.log" and rebind_log.is_file():
+        tail_lines.append(rebind_log.read_text(encoding="utf-8", errors="replace").splitlines()[-1])
+
+    important = [
+        ln
+        for ln in tail_lines
+        if "[Viu]" in ln or "FAIL:" in ln or "WARN:" in ln or "error CS" in ln
+    ]
+    ok_run = proc.returncode == 0
+    body = "\n".join(lines)
+    if ok_run:
+        body += f"\n{ok_label} (exit=0)"
+    else:
+        body += f"\nFAIL exit={proc.returncode}. Смотри {log_name}"
+    if important:
+        body += "\n---\n" + "\n".join(important[-20:])
+    elif tail_lines:
+        body += "\n---\n" + "\n".join(tail_lines[-12:])
+    return ToolResult(ok_run, body)
 
 
 class UnityReadTool(Tool):
@@ -488,6 +575,108 @@ class UnityPrepareSceneTool(Tool):
             "зелёную кнопку ▶ (Play). Шаня стоит на месте (Idle), а по клавишам "
             "A/D должна пойти (Walk). Больше от тебя ничего не нужно — только Play.",
         )
+
+
+class UnityOverlayValidateTool(Tool):
+    name = "unity_overlay_validate"
+    description = (
+        "Проверить OverlayDesktop.unity: якоря, материалы, rig, Walk, deploy rev. "
+        "Пишет overlay_validate.log. Не собирает exe."
+    )
+    parameters = {
+        "project_path": "корень проекта (опционально)",
+        "timeout": "таймаут секунд (по умолчанию 600)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        root = _root(ctx, args)
+        if not (root / "Assets").is_dir():
+            return ToolResult(False, f"Не Unity-проект: {root}")
+        exe = find_unity_exe(ctx.config.unity_exe)
+        if exe is None:
+            return ToolResult(False, "Unity.exe не найден (VIU_UNITY_EXE).")
+        cmd = batch_overlay_validate_command(root, exe)
+        return _run_unity_batch(
+            root,
+            ctx,
+            args,
+            cmd=cmd,
+            log_name="viu_overlay_validate.log",
+            ok_label="Validate OK",
+            deploy=True,
+        )
+
+
+class UnityOverlayRebindTool(Tool):
+    name = "unity_overlay_rebind"
+    description = (
+        "Rebind All Overlay Materials: дом + Шаня из Textures/ и .viu.json. "
+        "Сохраняет сцену и .mat в ViuOverlayMats/r50. Не двигает объекты."
+    )
+    parameters = {
+        "project_path": "корень проекта (опционально)",
+        "timeout": "таймаут секунд (по умолчанию 900)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        root = _root(ctx, args)
+        if not (root / "Assets").is_dir():
+            return ToolResult(False, f"Не Unity-проект: {root}")
+        exe = find_unity_exe(ctx.config.unity_exe)
+        if exe is None:
+            return ToolResult(False, "Unity.exe не найден (VIU_UNITY_EXE).")
+        cmd = batch_overlay_rebind_command(root, exe)
+        return _run_unity_batch(
+            root,
+            ctx,
+            args,
+            cmd=cmd,
+            log_name="viu_overlay_rebind.log",
+            ok_label="Rebind OK",
+            deploy=True,
+            textures=True,
+        )
+
+
+class UnityOverlayBuildTool(Tool):
+    name = "unity_overlay_build"
+    description = (
+        "Только собрать AnabarraOverlay.exe (без validate, без playtest). "
+        "Перед этим желательно Validate + Rebind."
+    )
+    parameters = {
+        "project_path": "корень проекта (опционально)",
+        "timeout": "таймаут секунд (по умолчанию 1800)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        root = _root(ctx, args)
+        if not (root / "Assets").is_dir():
+            return ToolResult(False, f"Не Unity-проект: {root}")
+        exe = find_unity_exe(ctx.config.unity_exe)
+        if exe is None:
+            return ToolResult(False, "Unity.exe не найден (VIU_UNITY_EXE).")
+        cmd = batch_overlay_build_command(root, exe)
+        result = _run_unity_batch(
+            root,
+            ctx,
+            args,
+            cmd=cmd,
+            log_name="viu_overlay_build.log",
+            ok_label="Build OK",
+            deploy=True,
+            textures=True,
+        )
+        if not result.ok:
+            stale = overlay_exe_path(root)
+            if stale.is_file():
+                result.message += (
+                    f"\nWARN: старый exe оставлен: {stale.name} "
+                    "(может быть устаревшим)."
+                )
+        else:
+            result.message += f"\nExe: {overlay_exe_path(root)}"
+        return result
 
 
 class UnityOverlayTool(Tool):

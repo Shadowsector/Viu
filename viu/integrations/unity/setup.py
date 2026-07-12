@@ -46,7 +46,7 @@ _OVERLAY_MODE_REL = f"{_RUNTIME_DIR}/OverlayModeController.cs"
 _DOLLHOUSE_REL = f"{_RUNTIME_DIR}/DollhouseWall.cs"
 _MANIFEST_REL = f"{ANIMATIONS_REL}/{MANIFEST_NAME}"
 
-VIU_DEPLOY_REV = "49"
+VIU_DEPLOY_REV = "50"
 VIU_DEPLOY_MARKER = f"@viu-deploy-rev {VIU_DEPLOY_REV}"
 _BROKEN_EDITOR_MARKERS = (
     "activeInputHandler",
@@ -264,5 +264,17 @@ def open_editor_command(project_root: Path, unity_exe: Path) -> list[str]:
 
 def batch_overlay_build_command(project_root: Path, unity_exe: Path) -> str:
     from .overlay import batch_overlay_build_command as _cmd
+
+    return _cmd(project_root, unity_exe)
+
+
+def batch_overlay_validate_command(project_root: Path, unity_exe: Path) -> str:
+    from .overlay import batch_overlay_validate_command as _cmd
+
+    return _cmd(project_root, unity_exe)
+
+
+def batch_overlay_rebind_command(project_root: Path, unity_exe: Path) -> str:
+    from .overlay import batch_overlay_rebind_command as _cmd
 
     return _cmd(project_root, unity_exe)

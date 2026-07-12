@@ -18,8 +18,9 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 49
+        // @viu-deploy-rev 50
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
+        const string ExpectedRuntimeRev = "50";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
@@ -37,14 +38,17 @@ namespace Viu.Editor
         const float CorridorStartZ = -2.0f;
         /// <summary>Половина высоты ortho-кадра в метрах (2*size = видимая высота мира).</summary>
         const float CameraOrthoHalfHeight = 5.5f;
-        const string HomeMatFolder = "Assets/Environment/ViuOverlayMats/r47";
-        const string CharMatFolder = "Assets/Characters/Shanya/ViuOverlayMats/r47";
+        const string HomeMatFolder = "Assets/Environment/ViuOverlayMats/r50";
+        const string CharMatFolder = "Assets/Characters/Shanya/ViuOverlayMats/r50";
 
         [MenuItem("Viu/Overlay/Bootstrap Overlay Scene (once)")]
         public static void BootstrapMenu() => BootstrapOverlayScene(ScenePath);
 
         [MenuItem("Viu/Overlay/Validate Overlay Scene")]
         public static void ValidateMenu() => ValidateOverlayScene(ScenePath);
+
+        [MenuItem("Viu/Overlay/Rebind All Materials")]
+        public static void RebindMenu() => RebindAllOverlayMaterials(ScenePath);
 
         [MenuItem("Viu/Overlay/Prepare Overlay Scene")]
         public static void RunMenu() => BootstrapOverlayScene(ScenePath);
@@ -53,8 +57,11 @@ namespace Viu.Editor
         public static void BuildMenu()
         {
             ValidateOverlayScene(ScenePath);
-            BuildWindows();
+            BuildWindowsOnly();
         }
+
+        [MenuItem("Viu/Overlay/Build Windows Overlay (no validate)")]
+        public static void BuildOnlyMenu() => BuildWindowsOnly();
 
         public static void RunBatch()
         {
@@ -75,12 +82,42 @@ namespace Viu.Editor
             EditorApplication.Exit(code);
         }
 
+        public static void ValidateOverlaySceneBatch()
+        {
+            int code = 0;
+            try
+            {
+                ValidateOverlayScene(ScenePath);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[Viu] Overlay validate: " + e.Message + "\n" + e.StackTrace);
+                code = 1;
+            }
+            EditorApplication.Exit(code);
+        }
+
+        public static void RebindMaterialsBatch()
+        {
+            int code = 0;
+            try
+            {
+                RebindAllOverlayMaterials(ScenePath);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[Viu] Overlay rebind: " + e.Message + "\n" + e.StackTrace);
+                code = 1;
+            }
+            EditorApplication.Exit(code);
+        }
+
         public static void BuildWindowsBatch()
         {
             int code = 0;
             try
             {
-                BuildWindows();
+                BuildWindowsOnly();
             }
             catch (Exception e)
             {
@@ -90,9 +127,19 @@ namespace Viu.Editor
             EditorApplication.Exit(code);
         }
 
-        public static void BuildWindows()
+        /// <summary>Validate + build (legacy alias).</summary>
+        public static void BuildWindows() => BuildWindows(validateFirst: true);
+
+        public static void BuildWindows(bool validateFirst)
         {
-            ValidateOverlayScene(ScenePath);
+            if (validateFirst)
+                ValidateOverlayScene(ScenePath);
+            BuildWindowsOnly();
+        }
+
+        public static void BuildWindowsOnly()
+        {
+            OpenSceneForOverlay(ScenePath);
             EnsureBuildFolder();
             ConfigurePlayerForOverlay();
 
@@ -185,36 +232,308 @@ namespace Viu.Editor
         }
 
         /// <summary>
-        /// Проверка сцены перед build — НЕ двигает объекты и НЕ пересоздаёт материалы.
+        /// Проверка сцены — НЕ двигает объекты и НЕ пересоздаёт материалы.
+        /// Отчёт: Console + overlay_validate.log в корне проекта.
         /// </summary>
         public static void ValidateOverlayScene(string scenePath)
         {
             OpenSceneForOverlay(scenePath);
+            var report = new OverlayValidationReport();
+
             var shanya = FindCharacterInScene();
             if (shanya == null)
-                throw new InvalidOperationException(
-                    "[Viu] В сцене нет Шани. Один раз: Viu → Overlay → Bootstrap Overlay Scene.");
+                report.Error("В сцене нет Шани. Один раз: Viu → Overlay → Bootstrap Overlay Scene.");
+            else
+                report.Ok("Character: " + shanya.name);
 
-            var controller = ShanyaAnimationSync.BuildOverlayLocomotionController(log: false);
-            if (controller == null)
-                throw new InvalidOperationException(
-                    "[Viu] Overlay locomotion FAIL — нет Walk. Смотри viu_clips.json / Sync.");
+            var home = FindHomeInScene();
+            if (home == null)
+                report.Warn("Нет Viu_Home_* в сцене.");
+            else
+                report.Ok("Home: " + home.name);
 
-            WireCharacterAnimator(shanya, controller);
-            EnsureLocomotion(shanya);
+            CheckDeployRev(report);
+
+            RuntimeAnimatorController controller = null;
+            if (shanya != null)
+            {
+                controller = ShanyaAnimationSync.BuildOverlayLocomotionController(log: false);
+                if (controller == null)
+                    report.Error("Overlay locomotion FAIL — нет Walk. Смотри viu_clips.json / Sync.");
+                else
+                {
+                    WireCharacterAnimator(shanya, controller);
+                    EnsureLocomotion(shanya);
+                    var anim = shanya.GetComponent<Animator>();
+                    if (anim == null || anim.avatar == null)
+                        report.Error("Animator без Humanoid Avatar.");
+                    else if (!anim.avatar.isValid || !anim.avatar.isHuman)
+                        report.Error("Avatar не Humanoid — Rig → Humanoid → Apply.");
+                    else
+                        report.Ok("Humanoid avatar OK");
+
+                    if (anim != null && !ControllerHasState(anim, "Walk"))
+                        report.Error("Animator без состояния Walk.");
+                    else if (anim != null)
+                        report.Ok("Animator Walk state OK");
+                }
+            }
+
             EnsureOverlayManager();
-            WireCameraToCharacter(shanya);
-            EnsureCameraPresets();
+            if (shanya != null)
+            {
+                WireCameraToCharacter(shanya);
+                EnsureCameraPresets();
+            }
 
-            var anchors = UnityEngine.Object.FindObjectsByType<Viu.Runtime.OverlaySceneAnchor>(
-                FindObjectsSortMode.None);
-            if (anchors == null || anchors.Length == 0)
-                Debug.LogWarning(
-                    "[Viu] Нет Anchor_* в сцене. Bootstrap создаст Viu_Anchors — потом двигай в Editor.");
+            if (Camera.main == null)
+                report.Error("Нет Camera.main.");
+            else if (Camera.main.GetComponent<Viu.Runtime.OverlayCameraPresets>() == null)
+                report.Warn("Camera без OverlayCameraPresets.");
+            else
+                report.Ok("OverlayCameraPresets OK");
+
+            CheckSceneAnchors(report);
+            AuditSceneMaterials(shanya, home, report);
+            CheckDollhouse(home, report);
 
             if (!File.Exists(scenePath))
-                Debug.LogWarning("[Viu] Сцена не сохранена на диск: " + scenePath);
-            Debug.Log("[Viu] Validate OK: " + shanya.name + " anchors=" + (anchors?.Length ?? 0));
+                report.Warn("Сцена не сохранена на диск: " + scenePath);
+
+            WriteValidationLog(report);
+            foreach (var line in report.Lines)
+            {
+                if (line.StartsWith("FAIL:", StringComparison.Ordinal))
+                    Debug.LogError("[Viu] " + line);
+                else if (line.StartsWith("WARN:", StringComparison.Ordinal))
+                    Debug.LogWarning("[Viu] " + line);
+                else
+                    Debug.Log("[Viu] " + line);
+            }
+
+            if (report.Errors > 0)
+                throw new InvalidOperationException(
+                    "[Viu] Validate FAIL: errors=" + report.Errors
+                    + " warnings=" + report.Warnings + " — см. overlay_validate.log");
+
+            Debug.Log("[Viu] Validate OK: errors=0 warnings=" + report.Warnings);
+        }
+
+        /// <summary>
+        /// Перепривязать текстуры дома и Шани из Assets/*/Textures + .viu.json.
+        /// Не двигает объекты. Сохраняет .mat в ViuOverlayMats/r50.
+        /// </summary>
+        public static void RebindAllOverlayMaterials(string scenePath)
+        {
+            OpenSceneForOverlay(scenePath);
+            var shanya = FindCharacterInScene();
+            if (shanya == null)
+                throw new InvalidOperationException("[Viu] Rebind: нет Шани в сцене.");
+
+            var home = FindHomeInScene();
+            int homeFixed = 0;
+            int charFixed = 0;
+
+            if (home != null)
+            {
+                ResolveHomeAssetPaths(home, out var buildingDir, out var metaPath);
+                FixOverlayMaterials(home, isHome: true, assetSourceDir: buildingDir,
+                    buildingMetaPath: metaPath);
+                homeFixed = CountRenderers(home);
+                Debug.Log("[Viu] Rebind home: " + home.name + " dir=" + (buildingDir ?? "?"));
+            }
+            else
+                Debug.LogWarning("[Viu] Rebind: дом не найден — только персонаж.");
+
+            var modelPath = FindModelPath();
+            var charDir = string.IsNullOrEmpty(modelPath)
+                ? null
+                : Path.GetDirectoryName(modelPath)?.Replace('\\', '/');
+            FixOverlayMaterials(shanya, isHome: false, assetSourceDir: charDir);
+            charFixed = CountRenderers(shanya);
+
+            EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+            SaveActiveScene(scenePath);
+            AssetDatabase.SaveAssets();
+
+            var logPath = Path.Combine(Application.dataPath, "..", "overlay_rebind.log");
+            var stamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            var body = stamp + " home=" + (home != null ? home.name : "нет")
+                + " shanya=" + shanya.name
+                + " homeRenderers=" + homeFixed
+                + " charRenderers=" + charFixed + "\n";
+            try { File.AppendAllText(logPath, body); }
+            catch { /* ignore */ }
+
+            Debug.Log("[Viu] Rebind OK: сохранено " + scenePath
+                + " (home renderers=" + homeFixed + ", char=" + charFixed + ")");
+        }
+
+        sealed class OverlayValidationReport
+        {
+            public int Errors;
+            public int Warnings;
+            public readonly List<string> Lines = new List<string>();
+
+            public void Error(string msg)
+            {
+                Errors++;
+                Lines.Add("FAIL: " + msg);
+            }
+
+            public void Warn(string msg)
+            {
+                Warnings++;
+                Lines.Add("WARN: " + msg);
+            }
+
+            public void Ok(string msg) => Lines.Add("OK: " + msg);
+        }
+
+        static void WriteValidationLog(OverlayValidationReport report)
+        {
+            var logPath = Path.Combine(Application.dataPath, "..", "overlay_validate.log");
+            var stamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            var body = stamp + " errors=" + report.Errors + " warnings=" + report.Warnings + "\n"
+                + string.Join("\n", report.Lines) + "\n\n";
+            try { File.WriteAllText(logPath, body); }
+            catch (Exception e) { Debug.LogWarning("[Viu] overlay_validate.log: " + e.Message); }
+        }
+
+        static void CheckDeployRev(OverlayValidationReport report)
+        {
+            var runtimePath = "Assets/Scripts/Viu/ShanyaDesktopOverlay.cs";
+            var full = Path.Combine(Application.dataPath, "..", runtimePath);
+            if (!File.Exists(full))
+            {
+                report.Warn("Нет " + runtimePath + " — нажми «Обновить Вью» (deploy).");
+                return;
+            }
+            var text = File.ReadAllText(full);
+            if (text.IndexOf("RuntimeRev = \"" + ExpectedRuntimeRev + "\"", StringComparison.Ordinal) < 0)
+            {
+                report.Warn(
+                    "RuntimeRev != " + ExpectedRuntimeRev
+                    + " в ShanyaDesktopOverlay.cs — deploy скриптов (Обновить Вью).");
+            }
+            else
+                report.Ok("RuntimeRev=" + ExpectedRuntimeRev);
+        }
+
+        static void CheckSceneAnchors(OverlayValidationReport report)
+        {
+            var kinds = new[]
+            {
+                Viu.Runtime.OverlayAnchorKind.CharacterStart,
+                Viu.Runtime.OverlayAnchorKind.BarnEntrance,
+                Viu.Runtime.OverlayAnchorKind.HomeRoot,
+                Viu.Runtime.OverlayAnchorKind.TaskbarFeetLine,
+            };
+            int found = 0;
+            foreach (var kind in kinds)
+            {
+                if (Viu.Runtime.OverlaySceneAnchor.Find(kind) != null)
+                    found++;
+                else
+                    report.Warn("Нет якоря " + kind + " — Bootstrap или добавь в Viu_Anchors.");
+            }
+            if (found == kinds.Length)
+                report.Ok("Anchors 4/4 OK");
+            else if (found == 0)
+                report.Error("Нет ни одного Anchor_* — Bootstrap Overlay Scene (once).");
+        }
+
+        static void AuditSceneMaterials(GameObject shanya, GameObject home, OverlayValidationReport report)
+        {
+            int total = 0;
+            int badShader = 0;
+            int missingAlbedo = 0;
+            foreach (var root in new[] { shanya, home })
+            {
+                if (root == null) continue;
+                foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (r == null) continue;
+                    foreach (var m in r.sharedMaterials)
+                    {
+                        if (m == null) continue;
+                        total++;
+                        var sn = m.shader != null ? m.shader.name : "";
+                        if (string.IsNullOrEmpty(sn)
+                            || sn.IndexOf("Error", StringComparison.OrdinalIgnoreCase) >= 0
+                            || sn.IndexOf("Standard", StringComparison.OrdinalIgnoreCase) >= 0)
+                            badShader++;
+                        else if (!HasMeaningfulAlbedo(m))
+                            missingAlbedo++;
+                    }
+                }
+            }
+            report.Ok("Materials scanned: " + total);
+            if (badShader > 0)
+                report.Error("Bad shader (Standard/Error): " + badShader
+                    + " — Viu → Overlay → Rebind All Materials.");
+            if (missingAlbedo > 0)
+                report.Error("Missing albedo: " + missingAlbedo
+                    + " — Rebind All Materials или проверь Textures/.");
+            if (badShader == 0 && missingAlbedo == 0 && total > 0)
+                report.Ok("Materials albedo OK (" + total + " slots)");
+        }
+
+        static void CheckDollhouse(GameObject home, OverlayValidationReport report)
+        {
+            if (home == null) return;
+            var doll = home.GetComponent<Viu.Runtime.DollhouseWall>();
+            if (doll == null)
+            {
+                report.Warn("Home без DollhouseWall.");
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(doll.wallMeshName))
+                report.Ok("Dollhouse: shell mode (no Wall_front cut)");
+            else
+                report.Ok("Dollhouse wall: «" + doll.wallMeshName + "»");
+        }
+
+        static GameObject FindHomeInScene()
+        {
+            foreach (var go in UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None))
+            {
+                if (go != null && go.name.StartsWith("Viu_Home_", StringComparison.Ordinal))
+                    return go;
+            }
+            return null;
+        }
+
+        static void ResolveHomeAssetPaths(GameObject home, out string assetSourceDir, out string metaAssetPath)
+        {
+            assetSourceDir = null;
+            metaAssetPath = null;
+            if (home == null) return;
+            var suffix = home.name.Length > "Viu_Home_".Length
+                ? home.name.Substring("Viu_Home_".Length)
+                : home.name;
+            if (!AssetDatabase.IsValidFolder(EnvironmentRoot))
+                return;
+            foreach (var guid in AssetDatabase.FindAssets("t:Model", new[] { EnvironmentRoot }))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid).Replace('\\', '/');
+                if (!path.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!Path.GetFileNameWithoutExtension(path)
+                        .Equals(suffix, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                assetSourceDir = Path.GetDirectoryName(path)?.Replace('\\', '/');
+                var meta = assetSourceDir + "/" + suffix + ".viu.json";
+                var metaFull = Path.GetFullPath(Path.Combine(Application.dataPath, "..", meta));
+                metaAssetPath = File.Exists(metaFull) ? meta : null;
+                return;
+            }
+        }
+
+        static int CountRenderers(GameObject root)
+        {
+            if (root == null) return 0;
+            return root.GetComponentsInChildren<Renderer>(true).Length;
         }
 
         static void RunBootstrapBatch(string scenePath)

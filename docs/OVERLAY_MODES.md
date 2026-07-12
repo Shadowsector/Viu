@@ -35,13 +35,17 @@ Runtime: `OverlayModeController` + `OverlayCameraPresets` + `ShanyaDesktopOverla
 | **Validate** + **Build exe** | Ctrl+S сцены |
 | **Bootstrap once** | первичная расстановка |
 
+Кнопка Viu «Overlay: rebind материалы» = deploy + Rebind + save scene (сцена **не** двигается).
+
 ## Меню Unity (Viu)
 
-- **Bootstrap Overlay Scene (once)** — полная первичная сборка (как раньше Prepare)
-- **Validate Overlay Scene** — проверка перед build
+- **Bootstrap Overlay Scene (once)** — полная первичная сборка
+- **Rebind All Materials** — текстуры → .mat r50
+- **Validate Overlay Scene** — проверка (overlay_validate.log)
 - **Build Windows Overlay** — Validate + exe
+- **Build Windows Overlay (no validate)** — только exe
 
-Кнопка Viu «Оверлей: у панели задач» = deploy + Validate + build (сцена **не** двигается).
+Кнопки Viu GUI «Ещё — игра»: Validate → Rebind → Build (или полный playtest).
 
 ## Baseline (не ломать)
 

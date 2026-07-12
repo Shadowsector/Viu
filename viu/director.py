@@ -142,6 +142,28 @@ def plan_next_step(config: Config) -> StepPlan:
             ctx,
         )
 
+    if ctx.stage == "anim_review":
+        return _with_ctx(
+            StepPlan(
+                message=(
+                    f"Анимации — описать pending ({ctx.pending_animation_reviews}).\n"
+                    "Откроется «Очередь анимаций»."
+                ),
+                tool="__animation_review__",
+                human_after="После review — «Обновить аниматор».",
+            ),
+            ctx,
+        )
+
+    if ctx.stage == "anim_inbox":
+        return _with_ctx(
+            StepPlan(
+                message="В Inbox FBX анимация — «Принять анимацию».",
+                tool="__accept_animation__",
+            ),
+            ctx,
+        )
+
     # Playtest / roadmap — не перебиваем незавершённый asset.
     if ctx.prepared_path is not None and not ctx.catalog_ready and ctx.stage not in (
         "markup",
@@ -163,17 +185,21 @@ def plan_next_step(config: Config) -> StepPlan:
 
     focus = _roadmap_store(config).roadmap.current_focus()
     title = (focus.title if focus else "").lower()
+    overlay_idle = ctx.stage in ("idle", "playtest", "asset_done")
 
-    if focus and any(k in title for k in ("панел", "оверлей", "дом", "taskbar")):
+    if focus and overlay_idle and any(k in title for k in ("панел", "оверлей", "дом", "taskbar")):
         if not ctx.overlay_built:
             return _with_ctx(
                 StepPlan(
                     message=(
-                        "Playtest: собрать оверлей — Шаня у панели задач.\n"
-                        "Unity **закрыт**. 5–15 мин. (Не связано с импортом домика.)"
+                        "Overlay Phase 1: Validate → Rebind материалы → Build.\n"
+                        "Кнопки в «Ещё — игра» (или один playtest)."
                     ),
-                    tool="unity_overlay",
-                    human_after="После сборки — AnabarraOverlay.exe, A/D.",
+                    tool="unity_overlay_validate",
+                    human_after=(
+                        "Если FAIL по материалам — «Rebind материалы», затем «Собрать exe». "
+                        "LaunchOverlay.vbs → overlay_boot.log."
+                    ),
                 ),
                 get_pipeline_context(config),
             )
