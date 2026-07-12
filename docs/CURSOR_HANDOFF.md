@@ -719,12 +719,39 @@ Support bundle: U:\Viu\.viu\support\viu_logs_20260712_093501.zip
 web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
 Ничего не найдено по запросу.
 
-## 2026-07-12 — Den: скрины Overlay + GameTest, Animator сломан
 
-**Скрины:** Viu_Home_Old_Stables scale≈0.064 Y≈1.74, Dollhouse Wall_front AtHome; Body rot X=-90 (норма Blender), нет Animator на Body (он на корне); Шаня T-pose / ноги в полу. Console=23. Play на скрине выключен (Edit Mode) — но Den говорит и в Play/оверлее то же.
+---
 
-**Почему логи не читал:** support bundle/gist раньше **не включали Editor.log**. Исправлено в rev24.
+## 2026-07-12 09:59 — direct `overlay_playtest` → done (Viu)
 
-**rev24:** ConfigureExistingAnimator — не Destroy/перенос; snap по Humanoid feet; GroundSink=0; dollhouse NearCameraFace; viu_animator.log; Editor.log в bundle+playtest escalate.
+Unity close: Unity.exe не запущен.
+Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs
+ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs
+Уже есть: U:\Anabarra\Unity\Anabarra\Assets\Characters\Shanya\Animations\viu_clips.json
+Сборка OK: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\AnabarraOverlay.exe
+--- build ---
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs
+[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe
+[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\..\Builds/AnabarraOverlay\LaunchOverlay.bat
+Запуск: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\LaunchOverlay.bat
+--- overlay_boot.log ---
+﻿09:58:47 Awake: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048
+09:58:47 Start args=AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow
+09:58:47 HWND ok
+09:58:47 Geometry 2560x1440 at 0,0
+09:58:47 SetLayeredWindowAttributes=True err=0
+09:58:47 ColorKey pass 1, Esc=выход
+09:58:47 AfterWindow: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048
 
-
+--- вердикт ---
+OK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.
+--- eyes ---
+Окно не найдено ('Unity'). Видны: ['Civitai Video Gallery | AI-Generated Art Showcase - Google Chrome', 'Вью — Анабарра', 'Набросок на фрагменте экрана', '(3) \u200eВью – (72)', 'Total Commander 9.51 - PowerUser v72    Вс 12 июл 2026    09:59:01    Память: 43%    ЦП: 15%', 'EqualizerFrame', 'Shadow Sector - Голос 002', 'Happ 2.5.2 (523)', 'Ollama', 'Медиаплеер', 'Медиаплеер', 'NVIDIA GeForce Overlay', 'Microsoft Text Input Application', 'Program Manager']
+Unity Editor снова открыт.
+Support bundle: U:\Viu\.viu\support\viu_logs_20260712_095902.zip
+Логи отправлены: https://gist.github.com/Shadowsector/2bbfbfe1010bc7f6ff3d71bc0e9184be
