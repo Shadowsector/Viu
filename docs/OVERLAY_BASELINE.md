@@ -39,7 +39,7 @@ Transparency=UpdateLayeredWindow (per-pixel alpha) OK
 | State | FBX (Den preview OK) | Import rig |
 |-------|----------------------|------------|
 | **Idle** | `X Bot@Idle.fbx` | Humanoid → **Create From This Model** |
-| **Walk** (временно) | `Shanya_Run.fbx` | Create From This Model; playback ~**0.55** если Run в слоте Walk |
+| **Walk** (временно) | `Shanya_Run.fbx` | Create From This Model; playback **1.0** (полная скорость) |
 
 Пины: `viu_clips.json` → `overlay_preferred.Idle` / `Walk`, плюс `ShanyaAnimationSync.TryAddPinnedClip`.
 
@@ -98,8 +98,8 @@ Transparency=UpdateLayeredWindow (per-pixel alpha) OK
 | Снаружи (старт) | `false` | Фасад сарая как стенка |
 | У двери (Z ≥ door) | `true` | Передняя стенка скрыта → кукольный дом |
 
-- **W** — лицом к камере, крупнее (`scaleAtNear`)
-- **S** — спиной, к сараю, мельче (`scaleAtFar`)
+- **W** — вглубь к сараю (спиной), мельче
+- **S** — к камере (лицом), крупнее
 - Компонент: `ShanyaOverlayCorridor.cs` — масштаб + `EnterHome`/`ExitHome`
 
 ## Открыто (следующие задачи)

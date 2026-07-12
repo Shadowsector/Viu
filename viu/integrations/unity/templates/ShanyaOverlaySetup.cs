@@ -18,7 +18,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 40
+        // @viu-deploy-rev 41
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -726,7 +726,9 @@ namespace Viu.Editor
                 return;
             }
 
-            const string matFolder = "Assets/Environment/ViuOverlayMats";
+            const string matFolder = isHome
+                ? "Assets/Environment/ViuOverlayMats/r41"
+                : "Assets/Environment/ViuOverlayMats";
             EnsureAssetFolder(matFolder);
 
             int fixedN = 0;
@@ -761,6 +763,9 @@ namespace Viu.Editor
                             && sn.IndexOf("Unlit", StringComparison.OrdinalIgnoreCase) < 0
                             && sn.IndexOf("Sprites", StringComparison.OrdinalIgnoreCase) < 0);
 
+                    // Уже URP Lit с текстурой — не трогаем.
+                    if (!bad && isHome && HasMeaningfulTexture(m)) continue;
+
                     bool whiteLit = !bad && m != null
                         && sn.IndexOf("Lit", StringComparison.OrdinalIgnoreCase) >= 0
                         && !HasMeaningfulTexture(m);
@@ -777,10 +782,17 @@ namespace Viu.Editor
                     var path = matFolder + "/" + safeName + ".mat";
 
                     Material copy = AssetDatabase.LoadAssetAtPath<Material>(path);
+                    bool srcHasTex = m != null && MaterialHasAnyTexture(m);
+                    if (copy != null && isHome && srcHasTex && !HasMeaningfulTexture(copy))
+                    {
+                        AssetDatabase.DeleteAsset(path);
+                        copy = null;
+                    }
+
                     if (copy == null)
                     {
                         copy = new Material(shader);
-                        bool gotTex = CopyMaterialTextures(m, copy);
+                        bool gotTex = CopyMaterialTexturesFull(m, copy);
                         Color c = isHome ? GuessHomeColor(r, m) : new Color(0.45f, 0.32f, 0.22f);
                         if (m != null)
                         {
@@ -792,7 +804,7 @@ namespace Viu.Editor
                         if (copy.HasProperty("_BaseColor")) copy.SetColor("_BaseColor", c);
                         if (copy.HasProperty("_Color")) copy.SetColor("_Color", c);
                         if (isHome && copy.HasProperty("_Smoothness"))
-                            copy.SetFloat("_Smoothness", 0.15f);
+                            copy.SetFloat("_Smoothness", gotTex ? 0.25f : 0.15f);
                         AssetDatabase.CreateAsset(copy, path);
                     }
                     mats[i] = copy;
@@ -807,20 +819,45 @@ namespace Viu.Editor
         }
 
         static bool CopyMaterialTextures(Material src, Material dst)
+            => CopyMaterialTexturesFull(src, dst);
+
+        static bool CopyMaterialTexturesFull(Material src, Material dst)
         {
             if (src == null || dst == null) return false;
             bool gotTex = false;
-            if (src.HasProperty("_MainTex") && dst.HasProperty("_BaseMap"))
+            CopyTexProp(src, dst, "_MainTex", "_BaseMap", ref gotTex);
+            CopyTexProp(src, dst, "_BaseMap", "_BaseMap", ref gotTex);
+            CopyTexProp(src, dst, "_BumpMap", "_BumpMap", ref gotTex);
+            CopyTexProp(src, dst, "_NormalMap", "_BumpMap", ref gotTex);
+            if (!gotTex && src.mainTexture != null && dst.HasProperty("_BaseMap"))
             {
-                var t = src.GetTexture("_MainTex");
-                if (t != null) { dst.SetTexture("_BaseMap", t); gotTex = true; }
+                dst.SetTexture("_BaseMap", src.mainTexture);
+                gotTex = true;
             }
-            if (src.HasProperty("_BaseMap") && dst.HasProperty("_BaseMap"))
+            if (gotTex && src.HasProperty("_MainTex") && dst.HasProperty("_BaseMap"))
             {
-                var t = src.GetTexture("_BaseMap");
-                if (t != null) { dst.SetTexture("_BaseMap", t); gotTex = true; }
+                dst.SetTextureScale("_BaseMap", src.GetTextureScale("_MainTex"));
+                dst.SetTextureOffset("_BaseMap", src.GetTextureOffset("_MainTex"));
             }
             return gotTex;
+        }
+
+        static void CopyTexProp(Material src, Material dst, string srcProp, string dstProp, ref bool got)
+        {
+            if (!src.HasProperty(srcProp) || !dst.HasProperty(dstProp)) return;
+            var t = src.GetTexture(srcProp);
+            if (t == null) return;
+            dst.SetTexture(dstProp, t);
+            got = true;
+        }
+
+        static bool MaterialHasAnyTexture(Material m)
+        {
+            if (m == null) return false;
+            if (HasMeaningfulTexture(m)) return true;
+            if (m.mainTexture != null) return true;
+            if (m.HasProperty("_MainTex") && m.GetTexture("_MainTex") != null) return true;
+            return false;
         }
 
         static Color GuessHomeColor(Renderer r, Material m)
@@ -951,6 +988,16 @@ namespace Viu.Editor
             if (importer.animationType != ModelImporterAnimationType.None)
             {
                 importer.animationType = ModelImporterAnimationType.None;
+                changed = true;
+            }
+            if (importer.materialImportMode != ModelImporterMaterialImportMode.ImportStandard)
+            {
+                importer.materialImportMode = ModelImporterMaterialImportMode.ImportStandard;
+                changed = true;
+            }
+            if (importer.materialLocation != ModelImporterMaterialLocation.External)
+            {
+                importer.materialLocation = ModelImporterMaterialLocation.External;
                 changed = true;
             }
             if (changed)

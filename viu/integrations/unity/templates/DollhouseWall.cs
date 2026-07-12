@@ -67,15 +67,11 @@ namespace Viu.Runtime
         {
             atHome = inside;
             Apply();
+            // Дом всегда фиксирован по X — не UnlockFollow при выходе (иначе «дом едет»).
             var cam = Camera.main != null ? Camera.main.GetComponent<ShanyaOverlayCamera>() : null;
             if (cam == null) return;
-            if (inside)
-            {
-                var b = WorldBounds();
-                cam.LockToHome(b.center.x);
-            }
-            else
-                cam.UnlockFollow();
+            var b = WorldBounds();
+            cam.LockToHome(b.center.x);
         }
 
         public Bounds WorldBounds()

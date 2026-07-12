@@ -97,7 +97,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 40" in text
+    assert "@viu-deploy-rev 41" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -158,9 +158,10 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 40" in setup
+    assert "@viu-deploy-rev 41" in setup
     assert "X Bot@Idle.fbx" in sync
     assert "DetectRunAsWalkSpeed" in loco
+    assert "полная скорость" in loco or "return 1f" in loco
     assert "WalkThreshold = 0.25f" in loco
     assert "depthWalkSpeed" in loco
     assert "ReadDepth" in loco
@@ -182,7 +183,10 @@ def test_overlay_templates(tmp_path):
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay
     assert "RuntimeRev" in overlay
-    assert 'RuntimeRev = "40"' in overlay
+    assert 'RuntimeRev = "41"' in overlay
+    assert "CopyMaterialTexturesFull" in setup
+    assert "ViuOverlayMats/r41" in setup
+    assert "MaterialImportMode.ImportStandard" in setup or "materialImportMode" in setup
     assert "UpdateLayeredWindow" in overlay
     assert "useUpdateLayeredWindow" in overlay
     assert "ChromaKey32" in overlay

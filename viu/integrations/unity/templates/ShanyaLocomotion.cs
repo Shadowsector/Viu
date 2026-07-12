@@ -15,7 +15,7 @@ namespace Viu.Runtime
         public float modelYawOffset;
 
         const float SideFaceRightYaw = 90f;
-        /// <summary>W → лицом к камере (−Z). S → спиной (+Z).</summary>
+        /// <summary>W → вглубь к сараю (+Z). S → к камере (−Z).</summary>
         const float FaceCameraYaw = 180f;
         const float FaceAwayYaw = 0f;
         const float WalkThreshold = 0.25f;
@@ -162,15 +162,7 @@ namespace Viu.Runtime
 
         float DetectRunAsWalkSpeed()
         {
-            if (_animator == null || _animator.runtimeAnimatorController == null)
-                return 1f;
-            foreach (var clip in _animator.runtimeAnimatorController.animationClips)
-            {
-                if (clip == null) continue;
-                var n = clip.name.ToLowerInvariant();
-                if (n.Contains("run") || n.Contains("sprint"))
-                    return 0.55f;
-            }
+            // Run в слоте Walk — полная скорость (не замедлять).
             return 1f;
         }
 
@@ -199,8 +191,9 @@ namespace Viu.Runtime
         static float ReadDepth()
         {
             float v = 0f;
-            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) v -= 1f;
-            if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) v += 1f;
+            // W = вглубь к сараю, S = к камере (как в обычных играх).
+            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) v += 1f;
+            if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) v -= 1f;
             if (Mathf.Abs(v) > 0.01f) return v;
             return ReadDepthNewInput();
         }
@@ -256,8 +249,8 @@ namespace Viu.Runtime
                 if (keyboard == null) return 0f;
 
                 float v = 0f;
-                if (IsPressed(keyboard, "wKey") || IsPressed(keyboard, "upArrowKey")) v -= 1f;
-                if (IsPressed(keyboard, "sKey") || IsPressed(keyboard, "downArrowKey")) v += 1f;
+                if (IsPressed(keyboard, "wKey") || IsPressed(keyboard, "upArrowKey")) v += 1f;
+                if (IsPressed(keyboard, "sKey") || IsPressed(keyboard, "downArrowKey")) v -= 1f;
                 return v;
             }
             catch
