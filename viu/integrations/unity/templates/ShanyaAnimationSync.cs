@@ -12,6 +12,7 @@ namespace Viu.Editor
     /// <summary>
     /// Скан Assets/Characters/Shanya/Animations/*.fbx → Humanoid + состояния в Animator.
     /// Меню: Viu → Sync Animations. Batch: Viu.Editor.ShanyaAnimationSync.RunBatch
+    /// Overlay pins (не откатывать): docs/OVERLAY_BASELINE.md
     /// </summary>
     public static class ShanyaAnimationSync
     {

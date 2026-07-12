@@ -13,6 +13,7 @@ namespace Viu.Runtime
     /// Primary: UpdateLayeredWindow (ULW_ALPHA) — ColorKey на Unity 6 / Win11 часто оставляет solid magenta.
     /// Fallback: SetLayeredWindowAttributes ColorKey + BitBlt (-force-d3d11-bitblt-model).
     /// Chroma: #FF0080 (не Unity missing #FF00FF).
+    /// Baseline (не откатывать): docs/OVERLAY_BASELINE.md
     /// </summary>
     [DefaultExecutionOrder(-50)]
     public class ShanyaDesktopOverlay : MonoBehaviour

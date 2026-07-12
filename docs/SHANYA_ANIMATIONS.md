@@ -122,6 +122,15 @@
 { "file": "X Bot@Female Climbing.fbx", "state": "ClimbUp" }
 ```
 
+### Overlay locomotion (зафиксировано 2026-07-12)
+
+| State | FBX | Примечание |
+|-------|-----|------------|
+| Idle | `X Bot@Idle.fbx` | Create From This Model |
+| Walk | `Shanya_Run.fbx` (временно) | speed ~0.55 в Walk-слоте |
+
+Полный чеклист «не откатывать» → [`OVERLAY_BASELINE.md`](OVERLAY_BASELINE.md).
+
 ---
 
 ## Инструменты Viu

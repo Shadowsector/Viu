@@ -180,8 +180,13 @@ def test_overlay_templates(tmp_path):
     clips = (root / "viu_clips.json").read_text(encoding="utf-8")
     assert "X Bot@Idle.fbx" in clips
     playtest = (Path(__file__).resolve().parents[1] / "viu/tools/overlay_playtest_tool.py").read_text(encoding="utf-8")
-    assert "старый exe оставлен" in playtest
-    assert ".broken" not in playtest or "Не переименовываем" in playtest
+    assert "НЕ переименовываем" in playtest or "старый exe оставлен" in playtest
+
+    baseline = (Path(__file__).resolve().parents[1] / "docs/OVERLAY_BASELINE.md").read_text(encoding="utf-8")
+    assert "UpdateLayeredWindow" in baseline
+    assert "X Bot@Idle.fbx" in baseline
+    assert "DO NOT REGRESS" in baseline or "Запреты" in baseline
+    assert "rev37" in baseline.lower() or "rev37" in baseline
 
     from viu.integrations.unity.overlay_tune import load_tune, write_tune_lane
 

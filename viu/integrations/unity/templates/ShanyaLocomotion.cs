@@ -6,6 +6,7 @@ namespace Viu.Runtime
     /// <summary>
     /// Ходьба вдоль X (A/D / стрелки ←→). Idle/Walk через CrossFade на явные стейты —
     /// не полагаемся только на переходы Animator (часто ломались → слайд).
+    /// Baseline pins: docs/OVERLAY_BASELINE.md (X Bot@Idle, Shanya_Run-as-Walk).
     /// </summary>
     public class ShanyaLocomotion : MonoBehaviour
     {

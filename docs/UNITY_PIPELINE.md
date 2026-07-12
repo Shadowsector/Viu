@@ -38,6 +38,8 @@ Hierarchy → раскрыть `Shanya_Erisa` → снять галочки со
 
 **Никогда** Copy From Other Avatar между Mixamo и Эризой.
 
+> **Overlay baseline (rev37):** прозрачность и пины Idle/Walk зафиксированы в [`OVERLAY_BASELINE.md`](OVERLAY_BASELINE.md) — не откатывать ColorKey-only и не ломать `X Bot@Idle` + `Shanya_Run` как Walk.
+
 На персонаже в сцене:
 
 - **Animator → Avatar** = `Shanya_ErisaAvatar` (от модели)  
@@ -187,3 +189,8 @@ check_unity.bat
 | Переменная | Назначение |
 |------------|------------|
 | `VIU_UNITY_PROJECT` | Путь к корню Unity-проекта (где папка `Assets`) |
+
+## Desktop overlay (Anabarra)
+
+Рабочий baseline **rev37** (прозрачность + анимации) — [`OVERLAY_BASELINE.md`](OVERLAY_BASELINE.md).  
+Не возвращать ColorKey-only; не менять chroma на `#FF00FF`.
