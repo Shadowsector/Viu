@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T08:30:00Z",
+  "updated_at": "2026-07-12T08:24:12Z",
   "note": "rev29: ForceExtractClips — FBX takes→clipAnimations before LoadFirstAnimationClip.",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712f",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev29: extract AnimationClips from FBX takes",
       "created_by": "Cursor",
@@ -14,7 +14,8 @@
         "reopen_unity": false
       },
       "instructions": "deploy-rev 29. Root cause of FAIL: Shanya_Walk/Idle FBX exist but clipAnimations empty → LoadFirstAnimationClip null. Fix: EnsureAllAnimationFbxImport + ForceExtractClips (defaultClipAnimations → clipAnimations + SaveAndReimport) BEFORE discover/pin. Expect build log: Overlay locomotion OK Idle<Shanya_Idle…> Walk<Shanya_Walk…>. NOT Idle_Stand. First run may reimport all Animations/*.fbx (slow once).",
-      "acceptance": "Build OK; viu_animator.log hasWalk=True ctrl=Shanya_Overlay_Locomotion; Walk on A/D; chroma not solid magenta."
+      "acceptance": "Build OK; viu_animator.log hasWalk=True ctrl=Shanya_Overlay_Locomotion; Walk on A/D; chroma not solid magenta.",
+      "started_at": "2026-07-12T08:24:12Z"
     }
   ]
 }
