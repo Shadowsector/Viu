@@ -27,9 +27,11 @@ namespace Viu.Runtime
         static readonly Color32 ChromaKey32 = new Color32(255, 0, 128, 255);
 
         /// <summary>Метка в overlay_boot.log — если нет runtime-rev=37, в exe старые скрипты.</summary>
-        public const string RuntimeRev = "48";
+        public const string RuntimeRev = "49";
 
-        public bool fullScreenOverlay = false;
+        /// <summary>Полный экран — нужен для лазания по иконкам/деревьям вверх. Facade = камера у таскбара, не полоска окна.</summary>
+        public bool fullScreenOverlay = true;
+        [Tooltip("Legacy: узкая полоска у таскбара. Оставлено для отладки; по умолчанию fullScreenOverlay=true.")]
         public int stripHeightPixels = 280;
         public int instanceHeightPixels = 720;
         public int feetLineFromBottomPixels = 72;
@@ -44,6 +46,26 @@ namespace Viu.Runtime
         public bool useColorKeyFallback = true;
 
         Camera _camera;
+        OverlayDisplayMode _displayMode = OverlayDisplayMode.Facade;
+
+        /// <summary>Вызывается OverlayModeController при смене Facade/Corridor/Instance.</summary>
+        public void ApplyDisplayMode(OverlayDisplayMode mode)
+        {
+            _displayMode = mode;
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            if (_hwnd != IntPtr.Zero)
+                ApplyWindowGeometry();
+#endif
+        }
+
+        int ResolveWindowHeight(int monitorHeight)
+        {
+            if (fullScreenOverlay)
+                return monitorHeight;
+            if (_displayMode == OverlayDisplayMode.Instance)
+                return Mathf.Clamp(instanceHeightPixels, stripHeightPixels, monitorHeight);
+            return Mathf.Clamp(stripHeightPixels, 120, monitorHeight);
+        }
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         IntPtr _hwnd;
@@ -303,29 +325,7 @@ namespace Viu.Runtime
             ApplyFeetLineToCamera(h);
             SetForegroundWindow(_hwnd);
 
-            BootLog($"Geometry {w}x{h} at {x},{y} mode={_displayMode}");
-        }
-
-        OverlayDisplayMode _displayMode = OverlayDisplayMode.Facade;
-
-        int ResolveWindowHeight(int monitorHeight)
-        {
-            if (fullScreenOverlay)
-                return monitorHeight;
-            if (_displayMode == OverlayDisplayMode.Instance)
-                return Mathf.Clamp(instanceHeightPixels, stripHeightPixels, monitorHeight);
-            return Mathf.Clamp(stripHeightPixels, 120, monitorHeight);
-        }
-
-        /// <summary>Вызывается OverlayModeController при смене Facade/Corridor/Instance.</summary>
-        public void ApplyDisplayMode(OverlayDisplayMode mode)
-        {
-            _displayMode = mode;
-            fullScreenOverlay = false;
-#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
-            if (_hwnd != IntPtr.Zero)
-                ApplyWindowGeometry();
-#endif
+            BootLog($"Geometry {w}x{h} at {x},{y} mode={_displayMode} fullScreen=" + fullScreenOverlay);
         }
 
         void EnsureLayeredExStyle()

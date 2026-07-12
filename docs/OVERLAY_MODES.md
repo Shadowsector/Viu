@@ -6,9 +6,12 @@
 
 | Режим | Окно | Камера | Когда |
 |-------|------|--------|-------|
-| **Facade** | полоска у таскбара (~280px) | ortho ~5.5, feet 0.07 | дом снаружи, жизнь у порога |
-| **Corridor** | та же полоска | лёгкий depth blend | Шаня идёт к сараю |
-| **Instance** | полоска **выше** (`instanceHeightPixels`) | ortho ~2.4, крупный план | внутри barn (dollhouse) |
+| **Facade** | **весь экран** (прозрачный) | ortho ~5.5, feet у таскбара | дом снаружи, жизнь у порога |
+| **Corridor** | весь экран | лёгкий depth blend | Шаня идёт к сараю |
+| **Instance** | весь экран | ortho ~2.4, крупный план | внутри barn (dollhouse) |
+
+Окно всегда на весь монитор — иначе Шаня не сможет лезть вверх (деревья, иконки, здания).
+«У таскбара» = **камера** и якорь дома, не высота HWND.
 
 Runtime: `OverlayModeController` + `OverlayCameraPresets` + `ShanyaDesktopOverlay.ApplyDisplayMode`.
 

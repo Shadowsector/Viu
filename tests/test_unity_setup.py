@@ -97,7 +97,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 48" in text
+    assert "@viu-deploy-rev 49" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -158,7 +158,7 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 48" in setup
+    assert "@viu-deploy-rev 49" in setup
     assert "ValidateOverlayScene" in setup
     assert "BootstrapOverlayScene" in setup
     assert "OverlaySceneAnchor" in setup
@@ -193,7 +193,8 @@ def test_overlay_templates(tmp_path):
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay
     assert "RuntimeRev" in overlay
-    assert 'RuntimeRev = "48"' in overlay
+    assert 'RuntimeRev = "49"' in overlay
+    assert "fullScreenOverlay = true" in overlay
     assert "ApplyDisplayMode" in overlay
     assert "instanceHeightPixels" in overlay
     matfix = (root / "ShanyaOverlayMaterialFix.cs").read_text(encoding="utf-8")
