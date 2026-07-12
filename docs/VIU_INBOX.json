@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T08:38:30Z",
+  "updated_at": "2026-07-12T08:38:42Z",
   "note": "rev30b: CS0128 bodyAvatar fix — re-run overlay_playtest",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712h",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": 1,
       "title": "rev30b: re-run after CS0128 fix",
       "created_by": "Cursor",
@@ -16,7 +16,9 @@
       },
       "instructions": "deploy-rev 30 + CS0128 fix (duplicate bodyAvatar removed). Same as rev30: Legacy recover, no -nographics. Expect Overlay locomotion OK.",
       "acceptance": "Build compiles; locomotion OK; hasWalk=True",
-      "started_at": "2026-07-12T08:38:30Z"
+      "started_at": "2026-07-12T08:38:30Z",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка FAIL\nAssets\\Editor\\Viu\\ShanyaAnimationSync.cs(78,17): error CS0128: A local variable or function named 'bodyAvatar' is already defined in this scope\nAssets\\Editor\\Viu\\ShanyaAnimationSync.cs(78,17): error CS0128: A local variable or function named 'bodyAvatar' is already defined in this scope\nAssets\\Editor\\Viu\\ShanyaAnimationSync.cs(78,17): error CS0128: A local variable or function named 'bodyAvatar' is already defined in this scope\n\n--- escalate ---\nЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.\nInbox task: `overlay-visual-fix-20260712h`\n\nОшибка / лог:\nUnity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка FAIL\nAssets\\Editor\\Viu\\ShanyaAnimationSync.cs(78,17): error CS0128: A local variable or function named 'bodyAvatar' is already defined in this scope\nAssets\\Editor\\Viu\\ShanyaAnimationSync.cs(78,17): error CS0128: A local variable or function named 'bodyAvatar' is already defined in this scope\nAssets\\Editor\\Viu\\ShanyaAnimationSync.cs(78,17): error CS0128: A local variable or function named 'bodyAvatar' is already defined in this scope\n\nweb_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):\nНичего не найдено по запросу.\n\nHandoff Cursor: OK — Файл на GitHub (Shadowsector/Viu@cursor/viu-agent-core-65c2): docs/CURSOR_HANDOFF.md\nhttps://github.com/Shadowsector/Viu/commit/2de902e0c7535992fdde03b3c0df2cf00e12d160\nДальше не крути тот же инструмент. Жди ответ Cursor в VIU_INBOX или почини по web_search, если фикс ясен.",
+      "finished_at": "2026-07-12T08:38:42Z"
     }
   ]
 }
