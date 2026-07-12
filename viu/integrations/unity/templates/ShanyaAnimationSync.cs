@@ -468,37 +468,39 @@ namespace Viu.Editor
                 changed = true;
             }
 
-            // Скрин Дена: Copy From Other + Source=None → rig error → нет клипов → T-pose.
-            bool brokenCopy = importer.avatarSetup == ModelImporterAvatarSetup.CopyFromOther
-                && importer.sourceAvatar == null;
-
-            if (bodyAvatar != null && bodyAvatar.isValid && bodyAvatar.isHuman)
+            // docs/UNITY_PIPELINE.md: анимации (Mixamo/Shanya_Idle) —
+            // Create From This Model. Copy From Other к Erisa →
+            // «Torso for Hips not found» (скелеты разные).
+            bool isAnimClip = assetPath.IndexOf(
+                "/Animations/", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (isAnimClip)
             {
-                if (brokenCopy
-                    || importer.avatarSetup != ModelImporterAvatarSetup.CopyFromOther
+                if (importer.avatarSetup != ModelImporterAvatarSetup.CreateFromThisModel
+                    || importer.sourceAvatar != null)
+                {
+                    importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+                    importer.sourceAvatar = null;
+                    changed = true;
+                    Debug.Log("[Viu] Rig Create From This Model (не Copy Erisa): "
+                        + Path.GetFileName(assetPath));
+                }
+            }
+            else if (bodyAvatar != null && bodyAvatar.isValid && bodyAvatar.isHuman)
+            {
+                // Не-анимационный FBX (редко) — можно Copy
+                if (importer.avatarSetup != ModelImporterAvatarSetup.CopyFromOther
                     || importer.sourceAvatar != bodyAvatar)
                 {
                     importer.avatarSetup = ModelImporterAvatarSetup.CopyFromOther;
                     importer.sourceAvatar = bodyAvatar;
                     changed = true;
-                    Debug.Log("[Viu] Rig Source ← " + bodyAvatar.name + " for "
-                        + Path.GetFileName(assetPath));
                 }
             }
-            else
+            else if (importer.avatarSetup != ModelImporterAvatarSetup.CreateFromThisModel)
             {
-                // Никогда не оставляем Copy From Other без Source
-                if (brokenCopy
-                    || importer.avatarSetup == ModelImporterAvatarSetup.CopyFromOther
-                    || importer.avatarSetup != ModelImporterAvatarSetup.CreateFromThisModel)
-                {
-                    importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
-                    importer.sourceAvatar = null;
-                    changed = true;
-                    Debug.LogWarning(
-                        "[Viu] Нет body Avatar — Create From This Model для "
-                        + Path.GetFileName(assetPath));
-                }
+                importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+                importer.sourceAvatar = null;
+                changed = true;
             }
 
             if (!importer.importAnimation)
@@ -556,20 +558,13 @@ namespace Viu.Editor
                 return false;
             }
 
-            // Mecanim Humanoid — только с валидным Source, иначе снова Copy+None.
+            // Mecanim Humanoid: анимация = свой Avatar (Create From This Model).
+            // Retarget на Erisa делает Unity через Humanoid muscle space.
             importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
             if (importer == null) return false;
             importer.animationType = ModelImporterAnimationType.Human;
-            if (bodyAvatar != null && bodyAvatar.isValid && bodyAvatar.isHuman)
-            {
-                importer.avatarSetup = ModelImporterAvatarSetup.CopyFromOther;
-                importer.sourceAvatar = bodyAvatar;
-            }
-            else
-            {
-                importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
-                importer.sourceAvatar = null;
-            }
+            importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+            importer.sourceAvatar = null;
             importer.importAnimation = true;
             defaults = importer.defaultClipAnimations;
             if (defaults != null && defaults.Length > 0)
@@ -856,8 +851,10 @@ namespace Viu.Editor
             var mi = assetImporter as ModelImporter;
             if (mi == null) return;
             mi.importAnimation = true;
-            if (mi.animationType == ModelImporterAnimationType.None)
-                mi.animationType = ModelImporterAnimationType.Human;
+            mi.animationType = ModelImporterAnimationType.Human;
+            // Никогда Copy From Other к Erisa — скелет Torso≠Mixamo Hips
+            mi.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+            mi.sourceAvatar = null;
             var defaults = mi.defaultClipAnimations;
             if (defaults == null || defaults.Length == 0) return;
             for (int i = 0; i < defaults.Length; i++)
