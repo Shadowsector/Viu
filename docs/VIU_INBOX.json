@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T09:32:43Z",
+  "updated_at": "2026-07-12T09:32:53Z",
   "note": "rev34: Animations FBX = Create From This Model (docs UNITY_PIPELINE — never Copy Erisa).",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712m",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": 1,
       "title": "rev34: Create From This Model for Idle/Walk (no Copy Erisa)",
       "created_by": "Cursor",
@@ -16,7 +16,9 @@
       },
       "instructions": "deploy-rev 34. Den screenshot: Copy From Other Erisa → Rig Error Torso/Hips mismatch. docs/UNITY_PIPELINE.md: animation FBX MUST be Create From This Model; NEVER Copy From Other between Mixamo and Erisa. Expect log: Rig Create From This Model (не Copy Erisa): Shanya_Idle/Walk. Then clips exist, Overlay locomotion OK. Character Animator still uses Shanya_ErisaAvatar — Humanoid retargets. boot runtime-rev=34.",
       "acceptance": "no rig mismatch; Idle/Walk clips; locomotion OK; not T-pose.",
-      "started_at": "2026-07-12T09:32:43Z"
+      "started_at": "2026-07-12T09:32:43Z",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка FAIL\n(см. viu_overlay_build.log)\n\n--- escalate ---\nЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.\nInbox task: `overlay-visual-fix-20260712m`\n\nОшибка / лог:\nUnity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка FAIL\n(см. viu_overlay_build.log)\n\nweb_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):\nНичего не найдено по запросу.\n\nHandoff Cursor: OK — Файл на GitHub (Shadowsector/Viu@cursor/viu-agent-core-65c2): docs/CURSOR_HANDOFF.md\nhttps://github.com/Shadowsector/Viu/commit/929075371f91f4f4fe56cd4d1af2866614a8e095\nДальше не крути тот же инструмент. Жди ответ Cursor в VIU_INBOX или почини по web_search, если фикс ясен.",
+      "finished_at": "2026-07-12T09:32:53Z"
     }
   ]
 }
