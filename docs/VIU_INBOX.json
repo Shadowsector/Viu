@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T10:35:00Z",
+  "updated_at": "2026-07-12T10:32:07Z",
   "note": "Magenta+anim baseline locked (rev37). See docs/OVERLAY_BASELINE.md. Next: placement/depth.",
   "tasks": [
     {
@@ -24,7 +24,7 @@
     },
     {
       "id": "overlay-placement-20260712c",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "Overlay placement: feet height, home yaw, W/S depth",
       "created_by": "Cursor",
@@ -34,7 +34,8 @@
         "timeout": 2400
       },
       "instructions": "Baseline rev37 OK — do NOT touch ULW or anim pins. Fix: (1) Shanya too high — feetScreenFraction / overlay camera / LiftFeet (2) home backwards — DollhouseWall yaw / HomeShanyaFrontGap / home rotation (3) W/S depth into/out of screen — ShanyaOverlayDepth characterDepthZ, overlay_tune.json. Do not regress magenta or Idle/X Bot@Idle + Run-as-Walk.",
-      "acceptance": "Feet on taskbar line; home faces camera; W/S moves Shanya in Z visibly; boot still UpdateLayeredWindow rev37."
+      "acceptance": "Feet on taskbar line; home faces camera; W/S moves Shanya in Z visibly; boot still UpdateLayeredWindow rev37.",
+      "started_at": "2026-07-12T10:32:07Z"
     }
   ]
 }
