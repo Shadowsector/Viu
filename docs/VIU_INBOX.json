@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T07:10:00Z",
+  "updated_at": "2026-07-12T06:58:18Z",
   "note": "rev23 playtest still NO_HOME/BROKEN. Den screenshots: T-pose, feet in floor, white home. rev24: keep Animator; foot bones; NearCameraFace; Editor.log in bundle. Retest pending.",
   "tasks": [
     {
@@ -30,7 +30,7 @@
     },
     {
       "id": "overlay-visual-fix-20260712b",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev24: Animator keep-in-place + feet bones + Editor.log",
       "created_by": "Cursor",
@@ -39,7 +39,8 @@
         "reopen_unity": true
       },
       "instructions": "deploy-rev 24. После update: overlay_playtest. Idle/Walk не T-pose; стопы на полу; фасад не белый куб; gist с Editor.log + viu_animator.log. Fail→escalate. Дена не спрашивать.",
-      "acceptance": "Animator plays; feet on ground; home facade open; Editor.log in gist."
+      "acceptance": "Animator plays; feet on ground; home facade open; Editor.log in gist.",
+      "started_at": "2026-07-12T06:58:18Z"
     }
   ]
 }
