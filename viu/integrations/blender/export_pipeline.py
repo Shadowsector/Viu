@@ -29,6 +29,7 @@ class ExportPipelineResult:
     dollhouse_wall: str = ""
     textures: List[str] = field(default_factory=list)
     material_textures: Dict[str, str] = field(default_factory=dict)
+    slot_texture_list: List[Dict[str, Any]] = field(default_factory=list)
     message: str = ""
 
 
@@ -212,6 +213,7 @@ def run_export_pipeline(
     dollhouse = _find_dollhouse_wall(meshes)
     textures = [str(t) for t in report.get("textures") or []]
     material_textures = {str(k): str(v) for k, v in (report.get("material_textures") or {}).items()}
+    slot_texture_list = [dict(x) for x in (report.get("slot_texture_list") or [])]
 
     unity_out.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(lib_out, unity_out)
@@ -228,6 +230,7 @@ def run_export_pipeline(
         "material_texture_list": [
             {"material": k, "texture": v} for k, v in sorted(material_textures.items())
         ],
+        "slot_texture_list": slot_texture_list,
         "note": "dollhouse_wall — скрывать в Unity, когда персонаж внутри",
     }
     meta_out.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -256,6 +259,7 @@ def run_export_pipeline(
         dollhouse_wall=dollhouse,
         textures=textures,
         material_textures=material_textures,
+        slot_texture_list=slot_texture_list,
         message=msg,
     )
 

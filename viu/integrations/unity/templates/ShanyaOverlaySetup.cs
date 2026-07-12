@@ -18,7 +18,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 44
+        // @viu-deploy-rev 45
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -37,8 +37,8 @@ namespace Viu.Editor
         const float CorridorStartZ = -2.0f;
         /// <summary>Половина высоты ortho-кадра в метрах (2*size = видимая высота мира).</summary>
         const float CameraOrthoHalfHeight = 5.5f;
-        const string HomeMatFolder = "Assets/Environment/ViuOverlayMats/r44";
-        const string CharMatFolder = "Assets/Environment/ViuOverlayMats";
+        const string HomeMatFolder = "Assets/Environment/ViuOverlayMats/r45";
+        const string CharMatFolder = "Assets/Characters/Shanya/ViuOverlayMats/r45";
 
         [MenuItem("Viu/Overlay/Prepare Overlay Scene")]
         public static void RunMenu() => Run(ScenePath);
@@ -190,6 +190,7 @@ namespace Viu.Editor
                     "[Viu] FBX модели не найден. Сначала GameTest или импорт Shanya_Erisa.");
 
             EnsureHumanoidImport(modelPath);
+            EnsureStandardMaterialImport(modelPath);
             var controller = ShanyaAnimationSync.BuildOverlayLocomotionController(log: true);
             if (controller == null)
                 throw new InvalidOperationException(
@@ -207,7 +208,9 @@ namespace Viu.Editor
 
             var instance = PlaceCharacterInScene(modelPath, controller, avatar);
             DisableWgtMeshes(instance);
-            FixOverlayMaterials(instance); // персонаж тоже — иначе куски magenta
+            var charDir = Path.GetDirectoryName(modelPath)?.Replace('\\', '/');
+            AssetDatabase.Refresh();
+            FixOverlayMaterials(instance, assetSourceDir: charDir, isHome: false);
             try { ShanyaOutfit.Apply(ShanyaOutfit.Mode.Dressed); }
             catch (Exception e) { Debug.LogWarning("[Viu] Outfit: " + e.Message); }
             EnsureLocomotion(instance);
@@ -667,7 +670,7 @@ namespace Viu.Editor
                 return null;
             }
 
-            EnsureBuildingImport(fbxPath);
+            EnsureStandardMaterialImport(fbxPath);
 
             var rootName = "Viu_Home_" + Path.GetFileNameWithoutExtension(fbxPath);
             var existing = GameObject.Find(rootName);
@@ -696,7 +699,7 @@ namespace Viu.Editor
             SnapBuildingToGround(home);
             var buildingDir = Path.GetDirectoryName(fbxPath)?.Replace('\\', '/');
             AssetDatabase.Refresh();
-            FixOverlayMaterials(home, isHome: true, buildingAssetDir: buildingDir, buildingMetaPath: metaAssetPath);
+            FixOverlayMaterials(home, isHome: true, assetSourceDir: buildingDir, buildingMetaPath: metaAssetPath);
 
             var dollhouse = home.GetComponent<Viu.Runtime.DollhouseWall>();
             if (dollhouse == null)
@@ -720,7 +723,7 @@ namespace Viu.Editor
         static void FixOverlayMaterials(
             GameObject root,
             bool isHome = false,
-            string buildingAssetDir = null,
+            string assetSourceDir = null,
             string buildingMetaPath = null)
         {
             var lit = Shader.Find("Universal Render Pipeline/Lit")
@@ -736,7 +739,7 @@ namespace Viu.Editor
 
             string matFolder = isHome ? HomeMatFolder : CharMatFolder;
             EnsureAssetFolder(matFolder);
-            var buildingTexMap = isHome ? LoadBuildingTextureMap(buildingMetaPath) : null;
+            var texMap = LoadAssetTextureMap(buildingMetaPath);
             int texBound = 0;
 
             int fixedN = 0;
@@ -749,7 +752,7 @@ namespace Viu.Editor
                     if (unlit != null)
                     {
                         var c = isHome ? GuessHomeColor(r, null) : new Color(0.45f, 0.32f, 0.22f);
-                        var fallback = LoadOrCreateSolidMat(matFolder, "viu_wood", isHome ? (lit ?? unlit) : unlit, c);
+                        var fallback = LoadOrCreateSolidMat(matFolder, "viu_wood", lit ?? unlit, c);
                         r.sharedMaterial = fallback;
                         fixedN++;
                     }
@@ -771,17 +774,10 @@ namespace Viu.Editor
                             && sn.IndexOf("Unlit", StringComparison.OrdinalIgnoreCase) < 0
                             && sn.IndexOf("Sprites", StringComparison.OrdinalIgnoreCase) < 0);
 
-                    // Уже URP Lit с текстурой — не трогаем.
-                    if (!bad && isHome && HasMeaningfulTexture(m)) continue;
+                    // URP Lit с рабочей albedo — не трогаем (дом и Шаня).
+                    if (!bad && HasMeaningfulTexture(m)) continue;
 
-                    bool whiteLit = !bad && m != null
-                        && sn.IndexOf("Lit", StringComparison.OrdinalIgnoreCase) >= 0
-                        && !HasMeaningfulTexture(m);
-
-                    if (!bad && !(isHome && whiteLit)) continue;
-
-                    // Дом: URP Lit + текстуры/цвет по имени меша (не серый Unlit-куб).
-                    var shader = isHome ? (lit ?? unlit) : (unlit ?? lit);
+                    var shader = lit ?? unlit;
                     var safeName = "viu_" + (m != null ? m.name : "slot" + i);
                     if (isHome)
                         safeName += "_" + r.gameObject.name;
@@ -791,9 +787,9 @@ namespace Viu.Editor
 
                     Material copy = AssetDatabase.LoadAssetAtPath<Material>(path);
                     bool srcHasTex = m != null && MaterialHasAnyTexture(m);
-                    if (copy != null && isHome && !HasMeaningfulTexture(copy)
-                        && TryBindBuildingTexture(copy, buildingAssetDir, m != null ? m.name : null,
-                            r.gameObject.name, buildingTexMap))
+                    if (copy != null && !HasMeaningfulTexture(copy)
+                        && TryBindAssetTexture(copy, assetSourceDir, m != null ? m.name : null,
+                            r.gameObject.name, i, texMap))
                     {
                         EditorUtility.SetDirty(copy);
                         mats[i] = copy;
@@ -802,12 +798,12 @@ namespace Viu.Editor
                         texBound++;
                         continue;
                     }
-                    if (copy != null && isHome && srcHasTex && !HasMeaningfulTexture(copy))
+                    if (copy != null && srcHasTex && !HasMeaningfulTexture(copy))
                     {
                         AssetDatabase.DeleteAsset(path);
                         copy = null;
                     }
-                    if (copy != null && isHome && !HasMeaningfulTexture(copy) && !srcHasTex)
+                    if (copy != null && !HasMeaningfulTexture(copy) && !srcHasTex)
                     {
                         AssetDatabase.DeleteAsset(path);
                         copy = null;
@@ -817,21 +813,21 @@ namespace Viu.Editor
                     {
                         copy = new Material(shader);
                         bool gotTex = CopyMaterialTexturesFull(m, copy);
-                        if (!gotTex && isHome)
-                            gotTex = TryBindBuildingTexture(copy, buildingAssetDir, m != null ? m.name : null,
-                                r.gameObject.name, buildingTexMap);
+                        if (!gotTex)
+                            gotTex = TryBindAssetTexture(copy, assetSourceDir, m != null ? m.name : null,
+                                r.gameObject.name, i, texMap);
                         if (gotTex) texBound++;
-                        Color c = isHome ? GuessHomeColor(r, m) : new Color(0.45f, 0.32f, 0.22f);
+                        Color c = isHome ? GuessHomeColor(r, m) : GuessCharacterColor(r, m);
                         if (m != null)
                         {
                             if (m.HasProperty("_Color")) c = m.GetColor("_Color");
                             else if (m.HasProperty("_BaseColor")) c = m.GetColor("_BaseColor");
                         }
                         if (!gotTex && c.r > 0.9f && c.g > 0.9f && c.b > 0.9f)
-                            c = isHome ? GuessHomeColor(r, m) : new Color(0.45f, 0.32f, 0.22f);
+                            c = isHome ? GuessHomeColor(r, m) : GuessCharacterColor(r, m);
                         if (copy.HasProperty("_BaseColor")) copy.SetColor("_BaseColor", c);
                         if (copy.HasProperty("_Color")) copy.SetColor("_Color", c);
-                        if (isHome && copy.HasProperty("_Smoothness"))
+                        if (copy.HasProperty("_Smoothness"))
                             copy.SetFloat("_Smoothness", gotTex ? 0.25f : 0.15f);
                         AssetDatabase.CreateAsset(copy, path);
                     }
@@ -843,11 +839,29 @@ namespace Viu.Editor
                     r.sharedMaterials = mats;
             }
             AssetDatabase.SaveAssets();
-            Debug.Log("[Viu] " + (isHome ? "Дом" : "Overlay") + ": материалов починено/сохранено: " + fixedN
-                + (isHome ? ", текстур привязано: " + texBound : ""));
+            Debug.Log("[Viu] " + (isHome ? "Дом" : "Шаня") + ": материалов починено/сохранено: " + fixedN
+                + ", текстур привязано: " + texBound);
         }
 
-        static Dictionary<string, string> LoadBuildingTextureMap(string metaAssetPath)
+        static Color GuessCharacterColor(Renderer r, Material m)
+        {
+            var n = (r != null ? r.gameObject.name : "").ToLowerInvariant().Replace("-", "_");
+            if (m != null && !string.IsNullOrEmpty(m.name))
+                n += " " + m.name.ToLowerInvariant().Replace("-", "_");
+            if (n.Contains("hair") || n.Contains("lash") || n.Contains("brow"))
+                return new Color(0.22f, 0.16f, 0.10f);
+            if (n.Contains("eye") || n.Contains("iris") || n.Contains("sclera"))
+                return new Color(0.85f, 0.88f, 0.92f);
+            if (n.Contains("lip") || n.Contains("mouth"))
+                return new Color(0.72f, 0.38f, 0.36f);
+            if (n.Contains("skin") || n.Contains("body") || n.Contains("head"))
+                return new Color(0.82f, 0.66f, 0.56f);
+            if (n.Contains("teeth"))
+                return new Color(0.92f, 0.90f, 0.86f);
+            return new Color(0.55f, 0.48f, 0.42f);
+        }
+
+        static Dictionary<string, string> LoadAssetTextureMap(string metaAssetPath)
         {
             var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (string.IsNullOrEmpty(metaAssetPath))
@@ -868,33 +882,45 @@ namespace Viu.Editor
                         map[e.material.Trim()] = e.texture.Trim().Replace('\\', '/');
                     }
                 }
+                if (meta?.slot_texture_list != null)
+                {
+                    foreach (var e in meta.slot_texture_list)
+                    {
+                        if (e == null || string.IsNullOrWhiteSpace(e.texture))
+                            continue;
+                        if (!string.IsNullOrWhiteSpace(e.mesh) && !string.IsNullOrWhiteSpace(e.material))
+                            map[e.mesh.Trim() + "|" + e.material.Trim()] = e.texture.Trim().Replace('\\', '/');
+                    }
+                }
             }
             catch (Exception e)
             {
-                Debug.LogWarning("[Viu] material_texture_list: " + e.Message);
+                Debug.LogWarning("[Viu] texture map: " + e.Message);
             }
             return map;
         }
 
-        static bool TryBindBuildingTexture(
+        static bool TryBindAssetTexture(
             Material dst,
-            string buildingAssetDir,
+            string assetSourceDir,
             string matName,
             string meshName,
+            int slotIndex,
             Dictionary<string, string> texMap)
         {
-            if (dst == null || string.IsNullOrEmpty(buildingAssetDir))
+            if (dst == null || string.IsNullOrEmpty(assetSourceDir))
                 return false;
-            var rel = LookupBuildingTexturePath(texMap, matName, meshName);
+            var rel = LookupAssetTexturePath(texMap, matName, meshName, slotIndex);
             if (string.IsNullOrEmpty(rel))
-                rel = FuzzyFindBuildingTextureRel(buildingAssetDir, matName, meshName);
+                rel = FuzzyFindAssetTextureRel(assetSourceDir, matName, meshName);
             if (string.IsNullOrEmpty(rel))
                 return false;
             rel = rel.Replace('\\', '/');
-            if (!rel.StartsWith("Textures/", StringComparison.OrdinalIgnoreCase)
-                && !rel.StartsWith("textures/", StringComparison.OrdinalIgnoreCase))
-                rel = "Textures/" + Path.GetFileName(rel);
-            var texPath = buildingAssetDir + "/" + rel;
+            var texPath = rel.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)
+                ? rel
+                : (rel.Contains("/")
+                    ? assetSourceDir + "/" + rel.TrimStart('/')
+                    : assetSourceDir + "/Textures/" + Path.GetFileName(rel));
             var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(texPath);
             if (tex == null)
                 return false;
@@ -904,13 +930,17 @@ namespace Viu.Editor
             return true;
         }
 
-        static string LookupBuildingTexturePath(
+        static string LookupAssetTexturePath(
             Dictionary<string, string> texMap,
             string matName,
-            string meshName)
+            string meshName,
+            int slotIndex)
         {
             if (texMap == null || texMap.Count == 0)
                 return null;
+            if (!string.IsNullOrEmpty(meshName) && !string.IsNullOrEmpty(matName)
+                && texMap.TryGetValue(meshName + "|" + matName, out var slotExact))
+                return slotExact;
             if (!string.IsNullOrEmpty(matName) && texMap.TryGetValue(matName, out var exact))
                 return exact;
             var hay = ((matName ?? "") + " " + (meshName ?? "")).ToLowerInvariant().Replace("-", "_");
@@ -920,31 +950,68 @@ namespace Viu.Editor
             {
                 var key = kv.Key.ToLowerInvariant().Replace("-", "_");
                 if (string.IsNullOrEmpty(key)) continue;
-                int score = 0;
-                if (!string.IsNullOrEmpty(matName) && key.Equals(matName, StringComparison.OrdinalIgnoreCase))
-                    score += 100;
-                if (hay.Contains(key) || key.Contains(hay.Trim()))
-                    score += 40;
-                foreach (var tok in key.Split(new[] { '_', '.', ' ' }, StringSplitOptions.RemoveEmptyEntries))
-                {
-                    if (tok.Length < 4) continue;
-                    if (hay.Contains(tok)) score += tok.Length;
-                }
+                int score = ScoreTextureNameMatch(key, hay, matName, meshName);
                 if (score > bestScore)
                 {
                     bestScore = score;
                     best = kv.Value;
                 }
             }
-            return bestScore >= 8 ? best : null;
+            return bestScore >= 5 ? best : null;
         }
 
-        static string FuzzyFindBuildingTextureRel(string buildingAssetDir, string matName, string meshName)
+        static int ScoreTextureNameMatch(string key, string hay, string matName, string meshName)
         {
-            var texFolder = buildingAssetDir + "/Textures";
-            if (!AssetDatabase.IsValidFolder(texFolder))
-                return null;
-            var guids = AssetDatabase.FindAssets("t:Texture2D", new[] { texFolder });
+            int score = 0;
+            if (!string.IsNullOrEmpty(matName) && key.Equals(matName, StringComparison.OrdinalIgnoreCase))
+                score += 100;
+            if (!string.IsNullOrEmpty(meshName) && key.Contains(meshName, StringComparison.OrdinalIgnoreCase))
+                score += 50;
+            if (hay.Contains(key) || key.Contains(hay.Trim()))
+                score += 35;
+            foreach (var tok in key.Split(new[] { '_', '.', ' ', '|' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (tok.Length < 3) continue;
+                if (hay.Contains(tok)) score += tok.Length * 2;
+            }
+            if (!string.IsNullOrEmpty(meshName))
+            {
+                var meshLow = meshName.ToLowerInvariant().Replace("-", "_");
+                foreach (var tok in meshLow.Split(new[] { '_', '.' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (tok.Length < 3) continue;
+                    if (key.Contains(tok)) score += tok.Length * 3;
+                }
+            }
+            return score;
+        }
+
+        static bool IsLikelyAlbedoTexturePath(string path)
+        {
+            var n = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
+            if (n.Contains("normal") || n.Contains("_nrm") || n.Contains("norm") || n.Contains("bump"))
+                return false;
+            if (n.Contains("rough") || n.Contains("metal") || n.Contains("_ao") || n.Contains("height"))
+                return false;
+            if (n.Contains("spec") || n.Contains("gloss") || n.Contains("opacity") && !n.Contains("diff"))
+                return false;
+            return true;
+        }
+
+        static string FuzzyFindAssetTextureRel(string assetSourceDir, string matName, string meshName)
+        {
+            var folders = new List<string> { assetSourceDir };
+            var texFolder = assetSourceDir + "/Textures";
+            var matFolder = assetSourceDir + "/Materials";
+            if (AssetDatabase.IsValidFolder(texFolder)) folders.Add(texFolder);
+            if (AssetDatabase.IsValidFolder(matFolder)) folders.Add(matFolder);
+            if (assetSourceDir != null && assetSourceDir.IndexOf("/Characters/", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var shanyaRoot = "Assets/Characters/Shanya";
+                if (AssetDatabase.IsValidFolder(shanyaRoot) && !folders.Contains(shanyaRoot))
+                    folders.Add(shanyaRoot);
+            }
+            var guids = AssetDatabase.FindAssets("t:Texture2D", folders.ToArray());
             if (guids == null || guids.Length == 0)
                 return null;
             var hay = ((matName ?? "") + " " + (meshName ?? "")).ToLowerInvariant().Replace("-", "_");
@@ -953,26 +1020,20 @@ namespace Viu.Editor
             foreach (var guid in guids)
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid).Replace('\\', '/');
+                if (!IsLikelyAlbedoTexturePath(path))
+                    continue;
                 var file = Path.GetFileNameWithoutExtension(path).ToLowerInvariant().Replace("-", "_");
                 if (string.IsNullOrEmpty(file)) continue;
-                int score = 0;
-                if (!string.IsNullOrEmpty(matName)
-                    && file.Equals(matName, StringComparison.OrdinalIgnoreCase))
-                    score += 100;
-                if (hay.Contains(file) || file.Contains(hay.Trim()))
-                    score += 30;
-                foreach (var tok in file.Split(new[] { '_', '.', ' ' }, StringSplitOptions.RemoveEmptyEntries))
-                {
-                    if (tok.Length < 4) continue;
-                    if (hay.Contains(tok)) score += tok.Length;
-                }
+                int score = ScoreTextureNameMatch(file, hay, matName, meshName);
+                if (path.IndexOf("/Textures/", StringComparison.OrdinalIgnoreCase) >= 0)
+                    score += 5;
                 if (score > bestScore)
                 {
                     bestScore = score;
-                    best = "Textures/" + Path.GetFileName(path);
+                    best = path;
                 }
             }
-            return bestScore >= 8 ? best : null;
+            return bestScore >= 5 ? best : null;
         }
 
         static bool CopyMaterialTextures(Material src, Material dst)
@@ -1131,21 +1192,29 @@ namespace Viu.Editor
             return true;
         }
 
-        static void EnsureBuildingImport(string assetPath)
+        static void EnsureStandardMaterialImport(string assetPath)
         {
             var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
             if (importer == null) return;
 
             var changed = false;
-            if (importer.importAnimation)
+            if (importer.importAnimation && !assetPath.Contains("/Characters/", StringComparison.OrdinalIgnoreCase))
             {
                 importer.importAnimation = false;
                 changed = true;
             }
-            if (importer.animationType != ModelImporterAnimationType.None)
+            if (assetPath.Contains("/Environment/", StringComparison.OrdinalIgnoreCase))
             {
-                importer.animationType = ModelImporterAnimationType.None;
-                changed = true;
+                if (importer.importAnimation)
+                {
+                    importer.importAnimation = false;
+                    changed = true;
+                }
+                if (importer.animationType != ModelImporterAnimationType.None)
+                {
+                    importer.animationType = ModelImporterAnimationType.None;
+                    changed = true;
+                }
             }
             if (importer.materialImportMode != ModelImporterMaterialImportMode.ImportStandard)
             {
@@ -1161,6 +1230,8 @@ namespace Viu.Editor
                 importer.SaveAndReimport();
         }
 
+        static void EnsureBuildingImport(string assetPath) => EnsureStandardMaterialImport(assetPath);
+
         [Serializable]
         class ViuMaterialTextureEntry
         {
@@ -1169,10 +1240,20 @@ namespace Viu.Editor
         }
 
         [Serializable]
+        class ViuSlotTextureEntry
+        {
+            public string mesh;
+            public string material;
+            public int slot;
+            public string texture;
+        }
+
+        [Serializable]
         class ViuBuildingMeta
         {
             public string dollhouse_wall;
             public ViuMaterialTextureEntry[] material_texture_list;
+            public ViuSlotTextureEntry[] slot_texture_list;
         }
 
         static string LoadDollhouseWallFromMeta(string metaAssetPath)

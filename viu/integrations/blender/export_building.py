@@ -99,8 +99,30 @@ def _find_basecolor_image(mat):
             return link.from_node.image
     for node in nt.nodes:
         if node.type == "TEX_IMAGE" and node.image:
+            name = (node.image.name or "").lower()
+            if any(x in name for x in ("normal", "nrm", "bump", "rough", "metal", "ao", "height")):
+                continue
+            return node.image
+    for node in nt.nodes:
+        if node.type == "TEX_IMAGE" and node.image:
             return node.image
     return None
+
+
+def _collect_material_images(mat):
+    imgs = []
+    seen = set()
+    if mat is None or not getattr(mat, "use_nodes", False) or mat.node_tree is None:
+        return imgs
+    for node in mat.node_tree.nodes:
+        if node.type != "TEX_IMAGE" or not node.image:
+            continue
+        key = node.image.name
+        if key in seen:
+            continue
+        seen.add(key)
+        imgs.append(node.image)
+    return imgs
 
 
 def export_building_textures(out_path, exported_names):
@@ -109,28 +131,48 @@ def export_building_textures(out_path, exported_names):
     tex_dir.mkdir(parents=True, exist_ok=True)
     saved_by_name = {{}}
     material_textures = {{}}
+    slot_texture_list = []
     textures = []
 
     for obj_name in exported_names:
         obj = bpy.data.objects.get(obj_name)
         if obj is None or obj.type != "MESH":
             continue
-        for slot in obj.material_slots:
+        for slot_idx, slot in enumerate(obj.material_slots):
             mat = slot.material
             if mat is None:
                 continue
-            if mat.name in material_textures:
-                continue
-            img = _find_basecolor_image(mat)
-            if img is None:
-                continue
-            rel = _save_image_for_unity(img, tex_dir, saved_by_name)
+            rel = material_textures.get(mat.name)
+            if rel is None:
+                img = _find_basecolor_image(mat)
+                if img is not None:
+                    rel = _save_image_for_unity(img, tex_dir, saved_by_name)
+                if rel is None:
+                    for extra in _collect_material_images(mat):
+                        rel = _save_image_for_unity(extra, tex_dir, saved_by_name)
+                        if rel:
+                            break
+                if rel:
+                    material_textures[mat.name] = rel
+                    if rel not in textures:
+                        textures.append(rel)
             if rel:
-                material_textures[mat.name] = rel
-                if rel not in textures:
-                    textures.append(rel)
+                slot_texture_list.append({{
+                    "mesh": obj_name,
+                    "material": mat.name,
+                    "slot": slot_idx,
+                    "texture": rel,
+                }})
+            for extra in _collect_material_images(mat):
+                extra_rel = _save_image_for_unity(extra, tex_dir, saved_by_name)
+                if extra_rel and extra_rel not in textures:
+                    textures.append(extra_rel)
 
-    return {{"textures": textures, "material_textures": material_textures}}
+    return {{
+        "textures": textures,
+        "material_textures": material_textures,
+        "slot_texture_list": slot_texture_list,
+    }}
 
 
 try:
@@ -198,6 +240,7 @@ try:
         "skipped": skipped,
         "textures": tex_report.get("textures", []),
         "material_textures": tex_report.get("material_textures", {{}}),
+        "slot_texture_list": tex_report.get("slot_texture_list", []),
     }})
 
 except Exception as exc:
