@@ -91,3 +91,11 @@ def get_quiet_hours(config: Config) -> str:
 
 def set_quiet_hours(config: Config, value: str) -> None:
     set_value(config, "quiet_hours", value.strip())
+
+
+def get_window_geometry(config: Config) -> str:
+    return str(get(config, "window_geometry") or "").strip()
+
+
+def set_window_geometry(config: Config, geometry: str) -> None:
+    set_value(config, "window_geometry", geometry.strip())

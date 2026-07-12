@@ -28,6 +28,7 @@ namespace Viu.Runtime
         float _baseZ;
         bool _baseCaptured;
         ShanyaOverlayDepth _depth;
+        ShanyaOverlayCorridor _corridor;
 
         void Awake()
         {
@@ -41,6 +42,7 @@ namespace Viu.Runtime
         {
             transform.rotation = Quaternion.Euler(0f, SideFaceRightYaw + modelYawOffset, 0f);
             _depth = FindFirstObjectByType<ShanyaOverlayDepth>();
+            _corridor = FindFirstObjectByType<ShanyaOverlayCorridor>();
             CaptureBaseZ();
             if (_depth != null)
                 _depth.BindCharacter(transform);
@@ -134,13 +136,23 @@ namespace Viu.Runtime
 
             if (depthMove)
             {
-                float minZ = _depth != null ? _depth.minDepthZ : -2.5f;
-                float maxZ = _depth != null ? _depth.maxDepthZ : 3.5f;
+                float minZ;
+                float maxZ;
+                if (_corridor != null)
+                {
+                    minZ = _corridor.corridorNearZ;
+                    maxZ = _corridor.corridorFarZ;
+                }
+                else
+                {
+                    minZ = _baseZ + (_depth != null ? _depth.minDepthZ : -2.5f);
+                    maxZ = _baseZ + (_depth != null ? _depth.maxDepthZ : 3.5f);
+                }
                 CaptureBaseZ();
                 pos.z = Mathf.Clamp(
                     pos.z + v * depthWalkSpeed * Time.deltaTime,
-                    _baseZ + minZ,
-                    _baseZ + maxZ);
+                    minZ,
+                    maxZ);
                 if (_depth != null)
                     _depth.SyncDepthFromCharacter(_baseZ, pos.z);
             }

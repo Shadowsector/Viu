@@ -18,7 +18,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 39
+        // @viu-deploy-rev 40
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -31,8 +31,10 @@ namespace Viu.Editor
         const float FeetLiftMeters = 0f;
         /// <summary>180 — фасад Old_Stables к камере (0 = «задом» у Дена 2026-07-12).</summary>
         const float HomeYawDegrees = 180f;
-        /// <summary>Шаня ПЕРЕД домом (к камере), не внутри. Камера смотрит +Z с меньшего Z.</summary>
-        const float HomeShanyaFrontGap = 0.45f;
+        /// <summary>Дальняя стенка коридора — фасад сарая (min.z дома).</summary>
+        const float CorridorFarWallZ = 4.5f;
+        /// <summary>Старт Шани у таскбара (ближе к камере).</summary>
+        const float CorridorStartZ = -2.0f;
         /// <summary>Меньше = Шаня крупнее на экране. 5.5 делало её точкой.</summary>
         const float CameraOrthoHalfHeight = 2.15f;
 
@@ -212,22 +214,16 @@ namespace Viu.Editor
             SnapFeetToGround(instance);
             LiftFeet(instance, FeetLiftMeters);
             if (home != null)
-                PositionShanyaInHome(instance, home);
+                PositionHomeAndShanyaInCorridor(instance, home);
             EnsureOverlayManager();
-            // Камера «дома»: X = центр сарая, иначе белая стенка уезжает при A/D
+            // Камера «дома»: X = центр сарая. Фасад/кукольный дом — ShanyaOverlayCorridor.
             if (home != null)
             {
-                var doll = home.GetComponent<Viu.Runtime.DollhouseWall>();
-                if (doll != null)
-                    doll.SetAtHome(true);
-                else
-                {
-                    var camFollow = Camera.main != null
-                        ? Camera.main.GetComponent<Viu.Runtime.ShanyaOverlayCamera>()
-                        : null;
-                    if (camFollow != null)
-                        camFollow.LockToHome(ComputeWorldBounds(home).center.x);
-                }
+                var camFollow = Camera.main != null
+                    ? Camera.main.GetComponent<Viu.Runtime.ShanyaOverlayCamera>()
+                    : null;
+                if (camFollow != null)
+                    camFollow.LockToHome(ComputeWorldBounds(home).center.x);
             }
             AssetDatabase.SaveAssets();
             SaveActiveScene(saveScenePath);
@@ -248,6 +244,8 @@ namespace Viu.Editor
                 root.AddComponent<Viu.Runtime.ShanyaDesktopOverlay>();
             if (root.GetComponent<Viu.Runtime.ShanyaOverlayDepth>() == null)
                 root.AddComponent<Viu.Runtime.ShanyaOverlayDepth>();
+            if (root.GetComponent<Viu.Runtime.ShanyaOverlayCorridor>() == null)
+                root.AddComponent<Viu.Runtime.ShanyaOverlayCorridor>();
         }
 
         static void LiftFeet(GameObject root, float liftMeters)
@@ -700,7 +698,7 @@ namespace Viu.Editor
             if (dollhouse == null)
                 dollhouse = home.AddComponent<Viu.Runtime.DollhouseWall>();
             dollhouse.wallMeshName = LoadDollhouseWallFromMeta(metaAssetPath);
-            dollhouse.atHome = true;
+            dollhouse.atHome = false;
             dollhouse.Apply();
 
             var meshN = home.GetComponentsInChildren<Renderer>(true).Length;
@@ -1001,21 +999,31 @@ namespace Viu.Editor
             root.transform.position = pos;
         }
 
-        static void PositionShanyaInHome(GameObject shanya, GameObject home)
+        static void PositionHomeAndShanyaInCorridor(GameObject shanya, GameObject home)
         {
             var bounds = ComputeWorldBounds(home);
             if (bounds.size.sqrMagnitude < 0.0001f)
                 return;
 
+            // Сарай — дальняя «стенка» коридора (фасад к камере).
+            var hpos = home.transform.position;
+            hpos.z += CorridorFarWallZ - bounds.min.z;
+            home.transform.position = hpos;
+            bounds = ComputeWorldBounds(home);
+
             var pos = shanya.transform.position;
             pos.x = bounds.center.x;
-            // Перед фасадом к камере (min.z), не в центре сарая
-            pos.z = bounds.min.z - HomeShanyaFrontGap;
+            pos.z = CorridorStartZ;
             shanya.transform.position = pos;
             SnapFeetToGround(shanya);
             LiftFeet(shanya, FeetLiftMeters);
-            Debug.Log("[Viu] Шаня перед домом z=" + pos.z.ToString("F2")
-                + " (home min.z=" + bounds.min.z.ToString("F2") + ")");
+            Debug.Log("[Viu] Коридор: Шаня z=" + pos.z.ToString("F2")
+                + " → сарай фасад min.z=" + bounds.min.z.ToString("F2"));
+        }
+
+        static void PositionShanyaInHome(GameObject shanya, GameObject home)
+        {
+            PositionHomeAndShanyaInCorridor(shanya, home);
         }
 
         static Bounds ComputeWorldBounds(GameObject root)

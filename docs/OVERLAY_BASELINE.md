@@ -89,6 +89,19 @@ Transparency=UpdateLayeredWindow (per-pixel alpha) OK
 
 ---
 
+## Коридор и кукольный дом (rev40)
+
+По `VISION.md` §6.5: полоса ~10 м в глубину; сарай — **дальняя стенка** коридора.
+
+| Режим | `DollhouseWall.atHome` | Вид |
+|-------|------------------------|-----|
+| Снаружи (старт) | `false` | Фасад сарая как стенка |
+| У двери (Z ≥ door) | `true` | Передняя стенка скрыта → кукольный дом |
+
+- **W** — лицом к камере, крупнее (`scaleAtNear`)
+- **S** — спиной, к сараю, мельче (`scaleAtFar`)
+- Компонент: `ShanyaOverlayCorridor.cs` — масштаб + `EnterHome`/`ExitHome`
+
 ## Открыто (следующие задачи)
 
 Rev38 (2026-07-12): feet lower (0.07), home yaw 180°, W/S Z walk in Locomotion, stable camera feet offset (no run bobbing).

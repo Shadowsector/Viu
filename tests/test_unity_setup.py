@@ -32,6 +32,7 @@ def test_deploy_shanya_setup(tmp_path):
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaLocomotion.cs").is_file()
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaFollowCamera.cs").is_file()
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaDesktopOverlay.cs").is_file()
+    assert (tmp_path / "Assets/Scripts/Viu/ShanyaOverlayCorridor.cs").is_file()
     assert (tmp_path / "Assets/Scripts/Viu/ShanyaOverlayDepth.cs").is_file()
     assert (tmp_path / "Assets/Scripts/Viu/DollhouseWall.cs").is_file()
     assert (tmp_path / "Assets/Characters/Shanya/Animations/viu_clips.json").is_file()
@@ -96,7 +97,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 39" in text
+    assert "@viu-deploy-rev 40" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -157,7 +158,7 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 39" in setup
+    assert "@viu-deploy-rev 40" in setup
     assert "X Bot@Idle.fbx" in sync
     assert "DetectRunAsWalkSpeed" in loco
     assert "WalkThreshold = 0.25f" in loco
@@ -165,18 +166,23 @@ def test_overlay_templates(tmp_path):
     assert "ReadDepth" in loco
     assert "FaceCameraYaw" in loco
     assert "FaceAwayYaw" in loco
+    assert "ShanyaOverlayCorridor" in loco
     assert 'return Input.GetAxisRaw("Horizontal")' not in loco
     assert "Create From This Model (не Copy Erisa)" in sync
     assert "Никогда Copy From Other к Erisa" in sync
-    assert "HomeShanyaFrontGap" in setup
+    assert "CorridorStartZ" in setup
+    assert "CorridorFarWallZ" in setup
     assert "HomeYawDegrees = 180f" in setup
     assert "HomeTargetHeightMeters = 8.2f" in setup
     assert "GuessHomeColor" in setup
+    corridor = (root / "ShanyaOverlayCorridor.cs").read_text(encoding="utf-8")
+    assert "EnterHome" in corridor
+    assert "SetAtHome(false)" in corridor
     assert "ForceFlipModelOffInProjectSettingsAsset" in setup
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay
     assert "RuntimeRev" in overlay
-    assert 'RuntimeRev = "39"' in overlay
+    assert 'RuntimeRev = "40"' in overlay
     assert "UpdateLayeredWindow" in overlay
     assert "useUpdateLayeredWindow" in overlay
     assert "ChromaKey32" in overlay

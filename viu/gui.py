@@ -27,7 +27,7 @@ from .gui_actions import ACTION_GROUPS, GUI_ACTIONS, GuiAction, actions_by_group
 from .pipeline import action_visible, get_pipeline_context
 from .health import ollama_available
 from .integrations.unity.watcher import AnimationFolderWatcher
-from .runtime_settings import get_update_interval_min
+from .runtime_settings import get_update_interval_min, get_window_geometry, set_window_geometry
 from .updater import (
     apply_update_smart,
     auto_update_on_start,
@@ -46,7 +46,9 @@ from .updater import (
 
 _ICON = Path(__file__).resolve().parent.parent / "assets" / "viu_icon.ico"
 _NAV_KEYS = {"Left", "Right", "Up", "Down", "Home", "End", "Prior", "Next", "Shift_L", "Shift_R"}
-_CLIP_KEYS = {"c", "v", "x", "a", "ф", "м", "ч", "a"}
+_GUI_DEFAULT_GEOMETRY = "1200x840"
+_GUI_MIN_WIDTH = 920
+_GUI_MIN_HEIGHT = 640
 
 
 class ViuGUI:
@@ -66,6 +68,7 @@ class ViuGUI:
         self._chat_history: deque[str] = deque(maxlen=16)
         self._llm_turns: deque[dict[str, str]] = deque(maxlen=14)
         self._boot_sha = read_local_sha(package_root())
+        self._geometry_save_job: str | None = None
 
         stamp = time.strftime("%Y%m%d_%H%M%S")
         self.log_path = self.agent.config.data_dir / "logs" / f"chat_{stamp}.txt"
@@ -114,8 +117,11 @@ class ViuGUI:
     def _build_ui(self) -> None:
         self.root = tk.Tk()
         self.root.title("Вью — Анабарра")
-        self.root.geometry("1024x680")
-        self.root.minsize(760, 480)
+        saved_geom = get_window_geometry(self.agent.config)
+        self.root.geometry(saved_geom if saved_geom else _GUI_DEFAULT_GEOMETRY)
+        self.root.minsize(_GUI_MIN_WIDTH, _GUI_MIN_HEIGHT)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.root.bind("<Configure>", self._on_root_configure, add="+")
         try:
             if _ICON.exists():
                 self.root.iconbitmap(default=str(_ICON))
@@ -138,6 +144,27 @@ class ViuGUI:
             text=f"Провайдер: {self.agent.llm.name}",
         )
         self.status.pack(fill="x", side="bottom")
+
+    def _on_root_configure(self, _event: tk.Event) -> None:
+        if self._geometry_save_job:
+            self.root.after_cancel(self._geometry_save_job)
+
+        def _save() -> None:
+            self._geometry_save_job = None
+            try:
+                if self.root.state() != "iconic":
+                    set_window_geometry(self.agent.config, self.root.geometry())
+            except tk.TclError:
+                pass
+
+        self._geometry_save_job = self.root.after(400, _save)
+
+    def _on_close(self) -> None:
+        try:
+            set_window_geometry(self.agent.config, self.root.geometry())
+        except tk.TclError:
+            pass
+        self.root.destroy()
 
     def _build_top_status(self) -> None:
         """Строка статуса как у Mia: Ollama, Unity, версия."""
@@ -223,7 +250,7 @@ class ViuGUI:
         threading.Thread(target=worker, daemon=True).start()
 
     def _build_sidebar(self, parent: ttk.Frame) -> None:
-        frame = ttk.Frame(parent, width=220)
+        frame = ttk.Frame(parent, width=260)
         frame.pack(side="left", fill="y", padx=(0, 0))
         frame.pack_propagate(False)
 
@@ -232,14 +259,14 @@ class ViuGUI:
         self._sidebar_stage_label = ttk.Label(
             frame,
             text="",
-            wraplength=200,
+            wraplength=240,
             justify="left",
             font=("Segoe UI", 9),
             foreground="#666666",
         )
         self._sidebar_stage_label.pack(anchor="w", padx=10, pady=(0, 6))
 
-        canvas = tk.Canvas(frame, highlightthickness=0, width=210)
+        canvas = tk.Canvas(frame, highlightthickness=0, width=248)
         scroll = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
         inner = ttk.Frame(canvas)
 
@@ -278,7 +305,7 @@ class ViuGUI:
         chat_hint = ttk.Label(
             frame,
             text="Чат справа — свободная задача.\nEnter — отправить.",
-            wraplength=200,
+            wraplength=240,
             justify="left",
             font=("Segoe UI", 9),
         )
@@ -1407,6 +1434,10 @@ class ViuGUI:
         self._run_bg(work, done)
 
     def _restart(self) -> None:
+        try:
+            set_window_geometry(self.agent.config, self.root.geometry())
+        except tk.TclError:
+            pass
         if self._telegram is not None:
             try:
                 self._telegram.stop()
