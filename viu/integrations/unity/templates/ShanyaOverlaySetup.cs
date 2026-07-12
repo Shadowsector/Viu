@@ -18,7 +18,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 42
+        // @viu-deploy-rev 43
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -35,7 +35,8 @@ namespace Viu.Editor
         const float CorridorFarWallZ = 4.5f;
         /// <summary>Старт Шани у таскбара (ближе к камере).</summary>
         const float CorridorStartZ = -2.0f;
-        /// <summary>Меньше = Шаня крупнее на экране. 5.5 делало её точкой.</summary>
+        /// <summary>Половина высоты ortho-кадра в метрах (2*size = видимая высота мира).</summary>
+        const float CameraOrthoHalfHeight = 5.5f;
         const string HomeMatFolder = "Assets/Environment/ViuOverlayMats/r41";
         const string CharMatFolder = "Assets/Environment/ViuOverlayMats";
 

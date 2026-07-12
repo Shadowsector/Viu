@@ -12,7 +12,7 @@ namespace Viu.Runtime
         public Transform target;
         /// <summary>Доля высоты окна от низа для стоп (0.07 ≈ у линии таскбара).</summary>
         public float feetScreenFraction = 0.07f;
-        public float feetFractionCloseBoost = 0.011f;
+        public float feetFractionCloseBoost = 0.016f;
         [HideInInspector] public float depthBlend;
         public float distanceZ = 12f;
         public float followSmoothX = 16f;

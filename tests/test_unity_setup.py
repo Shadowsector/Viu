@@ -97,7 +97,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 42" in text
+    assert "@viu-deploy-rev 43" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -158,7 +158,8 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 42" in setup
+    assert "@viu-deploy-rev 43" in setup
+    assert "CameraOrthoHalfHeight" in setup
     assert "HomeMatFolder" in setup
     assert "X Bot@Idle.fbx" in sync
     assert "DetectRunAsWalkSpeed" in loco
@@ -180,13 +181,14 @@ def test_overlay_templates(tmp_path):
     corridor = (root / "ShanyaOverlayCorridor.cs").read_text(encoding="utf-8")
     assert "EnterHome" in corridor
     assert "SetAtHome(false)" in corridor
+    assert "scaleAtNear = 1.40f" in corridor
     assert "ForceFlipModelOffInProjectSettingsAsset" in setup
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay
     assert "RuntimeRev" in overlay
-    assert 'RuntimeRev = "41"' in overlay
+    assert 'RuntimeRev = "43"' in overlay
     assert "CopyMaterialTexturesFull" in setup
-    assert "ViuOverlayMats/r41" in setup
+    assert "HomeMatFolder" in setup
     assert "MaterialImportMode.ImportStandard" in setup or "materialImportMode" in setup
     assert "UpdateLayeredWindow" in overlay
     assert "useUpdateLayeredWindow" in overlay

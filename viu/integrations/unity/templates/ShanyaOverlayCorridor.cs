@@ -18,7 +18,7 @@ namespace Viu.Runtime
         public float exitMargin = 0.35f;
 
         [Header("Scale (approach / retreat)")]
-        public float scaleAtNear = 1.18f;
+        public float scaleAtNear = 1.40f;
         public float scaleAtFar = 0.72f;
 
         Transform _character;
