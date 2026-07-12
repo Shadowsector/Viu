@@ -39,6 +39,11 @@ namespace Viu.Editor
                 return;
             }
 
+            var bodyPath = FindBodyModelPath();
+            var bodyAvatar = LoadBodyAvatar(bodyPath);
+            // Сначала форс-импорт клипов у всех FBX — иначе Discover видит «Нет AnimationClip».
+            EnsureAllAnimationFbxImport(bodyAvatar, log);
+
             var overrides = LoadOverrides();
             var entries = DiscoverClips(overrides);
             if (entries.Count == 0)
@@ -46,11 +51,6 @@ namespace Viu.Editor
                 Debug.LogWarning("[Viu] В Animations/ нет FBX с анимациями.");
                 return;
             }
-
-            var bodyPath = FindBodyModelPath();
-            var bodyAvatar = LoadBodyAvatar(bodyPath);
-            foreach (var e in entries)
-                EnsureHumanoidImport(e.AssetPath, bodyAvatar);
 
             var controller = BuildOrLoadController();
             ApplyStates(controller, entries);
@@ -70,10 +70,15 @@ namespace Viu.Editor
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
+            var bodyAvatar = LoadBodyAvatar(FindBodyModelPath());
+            EnsureAllAnimationFbxImport(bodyAvatar, log);
+
             // Жёстко: Idle/Walk из Shanya_*.fbx. НИКОГДА не fallback на Idle_Stand (нет Walk).
             var loco = new List<ClipEntry>();
-            TryAddPinnedClip(loco, "Idle", "Shanya_Idle.fbx");
-            TryAddPinnedClip(loco, "Walk", "Shanya_Walk.fbx");
+            foreach (var file in IdlePinFiles)
+                if (TryAddPinnedClip(loco, "Idle", file)) break;
+            foreach (var file in WalkPinFiles)
+                if (TryAddPinnedClip(loco, "Walk", file)) break;
 
             if (!loco.Any(e => e.StateName.Equals("Idle", StringComparison.OrdinalIgnoreCase))
                 || !loco.Any(e => e.StateName.Equals("Walk", StringComparison.OrdinalIgnoreCase)))
@@ -98,7 +103,7 @@ namespace Viu.Editor
                 Debug.LogError(
                     "[Viu] Overlay locomotion FAIL: Idle=" + hasIdle + " Walk=" + hasWalk
                     + ". Нужны Shanya_Idle.fbx и Shanya_Walk.fbx в " + AnimationsFolder
-                    + ". НЕ подставляю Idle_Stand (там нет Walk → слайд).");
+                    + " (после Rig→Humanoid + Animation→Import). НЕ подставляю Idle_Stand.");
                 return null;
             }
 
@@ -115,24 +120,54 @@ namespace Viu.Editor
             return controller;
         }
 
-        static void TryAddPinnedClip(List<ClipEntry> loco, string state, string fileName)
+        static readonly string[] IdlePinFiles =
+        {
+            "Shanya_Idle.fbx", "Shanya_Idle_2.fbx", "Shanya_Idle_3.fbx", "Idle.fbx",
+        };
+        static readonly string[] WalkPinFiles =
+        {
+            "Shanya_Walk.fbx", "Shanya_Walk_2.fbx", "Take 001.fbx", "Walk.fbx",
+        };
+
+        static void EnsureAllAnimationFbxImport(Avatar bodyAvatar, bool log = false)
+        {
+            foreach (var guid in AssetDatabase.FindAssets("t:Model", new[] { AnimationsFolder }))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase)) continue;
+                EnsureHumanoidImport(path, bodyAvatar);
+            }
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            if (log)
+                Debug.Log("[Viu] EnsureAllAnimationFbxImport done in " + AnimationsFolder);
+        }
+
+        /// <returns>true если клип добавлен</returns>
+        static bool TryAddPinnedClip(List<ClipEntry> loco, string state, string fileName)
         {
             var path = AnimationsFolder + "/" + fileName;
             if (AssetDatabase.LoadMainAssetAtPath(path) == null)
-            {
-                Debug.LogWarning("[Viu] Пин " + state + ": нет файла " + path);
-                return;
-            }
+                return false;
+
             EnsureHumanoidImport(path, LoadBodyAvatar(FindBodyModelPath()));
             var clip = LoadFirstAnimationClip(path);
             if (clip == null)
             {
-                Debug.LogWarning("[Viu] Пин " + state + " без AnimationClip: " + path);
-                return;
+                // Второй проход: иногда clipAnimations появляются только после reimport.
+                ForceExtractClips(path);
+                clip = LoadFirstAnimationClip(path);
+            }
+            if (clip == null)
+            {
+                Debug.LogWarning("[Viu] Пин " + state + " без AnimationClip: " + path
+                    + " (проверь Animation tab / takes в FBX)");
+                return false;
             }
             loco.RemoveAll(e => e.StateName.Equals(state, StringComparison.OrdinalIgnoreCase));
             loco.Add(new ClipEntry { AssetPath = path, StateName = state, Clip = clip });
             Debug.Log("[Viu] Пин " + state + " ← " + fileName + " clip=" + clip.name);
+            return true;
         }
 
         static string FindBodyModelPath()
@@ -193,6 +228,7 @@ namespace Viu.Editor
             // state → лучший клип (не SitIdle вместо Idle, не _4 вместо базового)
             var best = new Dictionary<string, ClipEntry>(StringComparer.OrdinalIgnoreCase);
             var bestScore = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var bodyAvatar = LoadBodyAvatar(FindBodyModelPath());
 
             foreach (var guid in AssetDatabase.FindAssets("t:Model", new[] { AnimationsFolder }))
             {
@@ -206,7 +242,14 @@ namespace Viu.Editor
                         " — переименуй (Walk, Idle) или viu_clips.json");
                     continue;
                 }
+                // Discover раньше грузил клип ДО EnsureHumanoidImport → «Нет AnimationClip» на всех FBX.
+                EnsureHumanoidImport(path, bodyAvatar);
                 var clip = LoadFirstAnimationClip(path);
+                if (clip == null)
+                {
+                    ForceExtractClips(path);
+                    clip = LoadFirstAnimationClip(path);
+                }
                 if (clip == null)
                 {
                     Debug.LogWarning("[Viu] Нет AnimationClip в " + fileName);
@@ -242,7 +285,13 @@ namespace Viu.Editor
                     Debug.LogWarning("[Viu] overlay_preferred не найден: " + path);
                     continue;
                 }
+                EnsureHumanoidImport(path, LoadBodyAvatar(FindBodyModelPath()));
                 var clip = LoadFirstAnimationClip(path);
+                if (clip == null)
+                {
+                    ForceExtractClips(path);
+                    clip = LoadFirstAnimationClip(path);
+                }
                 if (clip == null)
                 {
                     Debug.LogWarning("[Viu] overlay_preferred без клипа: " + file);
@@ -383,31 +432,81 @@ namespace Viu.Editor
                 importer.importAnimation = true;
                 changed = true;
             }
-            if (EnsureFbxClipLoops(importer))
-                changed = true;
-            if (changed) importer.SaveAndReimport();
+
+            // Сначала применить Rig/Import Animation — иначе defaultClipAnimations пустой.
+            if (changed)
+                importer.SaveAndReimport();
+
+            if (ForceExtractClips(assetPath))
+            {
+                // ForceExtractClips сам SaveAndReimport при необходимости
+            }
         }
 
-        /// <summary>Loop Time на FBX — иначе Idle/Walk играют один раз и замирают.</summary>
-        static bool EnsureFbxClipLoops(ModelImporter importer)
+        /// <summary>
+        /// Unity не создаёт AnimationClip sub-asset, пока clipAnimations не заполнены
+        /// из defaultClipAnimations (Takes). Без этого LoadAllAssetsAtPath → 0 клипов.
+        /// </summary>
+        static bool ForceExtractClips(string assetPath)
         {
-            var clips = importer.clipAnimations;
-            if (clips == null || clips.Length == 0)
-                clips = importer.defaultClipAnimations;
-            if (clips == null || clips.Length == 0)
-                return false;
+            var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+            if (importer == null) return false;
 
-            var changed = false;
+            bool touched = false;
+            if (!importer.importAnimation
+                || importer.animationType == ModelImporterAnimationType.None)
+            {
+                importer.importAnimation = true;
+                if (importer.animationType == ModelImporterAnimationType.None)
+                    importer.animationType = ModelImporterAnimationType.Human;
+                importer.SaveAndReimport();
+                touched = true;
+                importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+                if (importer == null) return false;
+            }
+
+            var defaults = importer.defaultClipAnimations;
+            if (defaults == null || defaults.Length == 0)
+            {
+                AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
+                importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+                if (importer == null) return false;
+                defaults = importer.defaultClipAnimations;
+            }
+
+            if (defaults == null || defaults.Length == 0)
+            {
+                Debug.LogWarning("[Viu] FBX без takes (defaultClipAnimations пуст): " + Path.GetFileName(assetPath));
+                return false;
+            }
+
+            var current = importer.clipAnimations;
+            bool needAssign = current == null || current.Length == 0;
+            var clips = needAssign ? defaults : current;
+
+            bool loopChanged = false;
             for (int i = 0; i < clips.Length; i++)
             {
                 if (clips[i].loopTime && clips[i].loopPose) continue;
                 clips[i].loopTime = true;
                 clips[i].loopPose = true;
-                changed = true;
+                loopChanged = true;
             }
-            if (changed)
+
+            if (needAssign || loopChanged)
+            {
                 importer.clipAnimations = clips;
-            return changed;
+                importer.SaveAndReimport();
+                return true;
+            }
+            return touched;
+        }
+
+        /// <summary>Loop Time на FBX — иначе Idle/Walk играют один раз и замирают.</summary>
+        static bool EnsureFbxClipLoops(ModelImporter importer)
+        {
+            if (importer == null) return false;
+            return ForceExtractClips(importer.assetPath);
         }
 
         static AnimatorController BuildOrLoadController()
@@ -478,9 +577,22 @@ namespace Viu.Editor
 
         static AnimationClip LoadFirstAnimationClip(string modelPath)
         {
-            return AssetDatabase.LoadAllAssetsAtPath(modelPath)
+            var fromAll = AssetDatabase.LoadAllAssetsAtPath(modelPath)
                 .OfType<AnimationClip>()
-                .FirstOrDefault(c => !c.name.StartsWith("__preview"));
+                .FirstOrDefault(c => c != null && !c.name.StartsWith("__preview"));
+            if (fromAll != null) return fromAll;
+
+            var reps = AssetDatabase.LoadAllAssetRepresentationsAtPath(modelPath);
+            if (reps != null)
+            {
+                foreach (var o in reps)
+                {
+                    var c = o as AnimationClip;
+                    if (c != null && !c.name.StartsWith("__preview"))
+                        return c;
+                }
+            }
+            return null;
         }
 
         static void EnsureFolder(string assetPath)
