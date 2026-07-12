@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T08:15:00Z",
+  "updated_at": "2026-07-12T08:07:10Z",
   "note": "rev28: no Idle_Stand fallback; force overwrite viu_clips; ColorKey OR exstyle; abort build without Walk.",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712e",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev28: Walk pin + abort Idle_Stand + magenta ColorKey harden",
       "created_by": "Cursor",
@@ -14,7 +14,8 @@
         "reopen_unity": false
       },
       "instructions": "deploy-rev 28. BuildOverlay pins Shanya_Idle+Shanya_Walk; NEVER fallback Idle_Stand. Run() throws if no Walk — BuildWindows must not ship old scene. viu_clips.json always overwritten. ColorKey: OR GetWindowLong LAYERED, re-apply ~4s. Expect viu_animator.log: ctrl=Shanya_Overlay_Locomotion hasWalk=True. Boot: SetLayeredWindowAttributes=True + bitblt in args. Eyes: AnabarraOverlay.",
-      "acceptance": "Walk plays on A/D; house not zooming on W/S; chroma keyed (not solid magenta window); Player.log hasWalk=True ctrl≠Idle_Stand."
+      "acceptance": "Walk plays on A/D; house not zooming on W/S; chroma keyed (not solid magenta window); Player.log hasWalk=True ctrl≠Idle_Stand.",
+      "started_at": "2026-07-12T08:07:10Z"
     }
   ]
 }
