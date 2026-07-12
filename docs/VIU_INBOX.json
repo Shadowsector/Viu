@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T07:20:00Z",
+  "updated_at": "2026-07-12T07:20:12Z",
   "note": "Player.log: Wall_front missing + Speed>0 state≠Walk. Viu was on 939233a (pre-rev24). rev25: Z-slab dollhouse, force rebuild overlay controller, CrossFade Walk, playtest not false-done.",
   "tasks": [
     {
@@ -14,7 +14,7 @@
     },
     {
       "id": "overlay-visual-fix-20260712c",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev25: Z-slab фасад + rebuild Walk controller + CrossFade",
       "created_by": "Cursor",
@@ -23,7 +23,8 @@
         "reopen_unity": true
       },
       "instructions": "Сначала убедись что version ≠ 939233a (нужен 1ea0993+ / rev25). overlay_playtest. Player.log не должен содержать state≠Walk и «не нашла стенку» без Z-slab hide. Eyes должны поймать оверлей. False-done запрещён. Дена не спрашивать кроме уже запрошенных 2 пунктов в чате.",
-      "acceptance": "Walk plays; facade open/not solid white; eyes see overlay; Viu version includes rev25."
+      "acceptance": "Walk plays; facade open/not solid white; eyes see overlay; Viu version includes rev25.",
+      "started_at": "2026-07-12T07:20:12Z"
     }
   ]
 }
