@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T06:40:00Z",
+  "updated_at": "2026-07-12T06:34:06Z",
   "note": "Den: walk slide + white wall parallax. rev23: camera LockToHome, Animator on FBX host, Unlit, ortho 2.15. Den only needs update Viu — no reports.",
   "tasks": [
     {
@@ -23,7 +23,7 @@
     },
     {
       "id": "overlay-visual-fix-20260712",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev23: камера дома + Walk на FBX-хосте + Unlit + ortho 2.15",
       "created_by": "Cursor",
@@ -32,7 +32,8 @@
         "reopen_unity": true
       },
       "instructions": "deploy-rev 23. После update: один overlay_playtest. Ожидаем: Walk играет (не slide), дом не едет против Шани (LockToHome), Unlit материалы, ortho 2.15. Eyes: Шаня+дом. Fail→escalate. Дена не спрашивать.",
-      "acceptance": "Walk animation plays; home stays put; eyes see Shanya+home; playtest PASS."
+      "acceptance": "Walk animation plays; home stays put; eyes see Shanya+home; playtest PASS.",
+      "started_at": "2026-07-12T06:34:06Z"
     }
   ]
 }
