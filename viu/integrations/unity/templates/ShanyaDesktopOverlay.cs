@@ -21,7 +21,7 @@ namespace Viu.Runtime
         /// </summary>
         public static readonly Color ChromaKey = new Color(1f, 0f, 0.5f, 1f);
         /// <summary>Метка в overlay_boot.log — если нет runtime-rev=31, в exe старые скрипты.</summary>
-        public const string RuntimeRev = "31";
+        public const string RuntimeRev = "33";
 
         public bool fullScreenOverlay = true;
         public int stripHeightPixels = 280;

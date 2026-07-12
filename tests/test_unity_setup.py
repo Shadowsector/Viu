@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 32" in text
+    assert "@viu-deploy-rev 33" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -157,8 +157,10 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 32" in setup
+    assert "@viu-deploy-rev 33" in setup
     assert "HomeYawDegrees" in setup
+    assert "HomeShanyaFrontGap" in setup
+    assert "brokenCopy" in sync or "Source=None" in sync
     assert "ForceFlipModelOffInProjectSettingsAsset" in setup
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay

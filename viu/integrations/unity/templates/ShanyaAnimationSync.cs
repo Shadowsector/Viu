@@ -231,9 +231,30 @@ namespace Viu.Editor
         static Avatar LoadBodyAvatar(string bodyPath)
         {
             if (string.IsNullOrEmpty(bodyPath)) return null;
+            // Тело: Humanoid + Create From This Model, иначе у клипов Source=None.
+            var bodyImp = AssetImporter.GetAtPath(bodyPath) as ModelImporter;
+            if (bodyImp != null)
+            {
+                var ch = false;
+                if (bodyImp.animationType != ModelImporterAnimationType.Human)
+                {
+                    bodyImp.animationType = ModelImporterAnimationType.Human;
+                    ch = true;
+                }
+                if (bodyImp.avatarSetup != ModelImporterAvatarSetup.CreateFromThisModel)
+                {
+                    bodyImp.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+                    ch = true;
+                }
+                if (ch)
+                {
+                    bodyImp.SaveAndReimport();
+                    Debug.Log("[Viu] Body Rig OK: " + bodyPath);
+                }
+            }
             return AssetDatabase.LoadAllAssetsAtPath(bodyPath)
                 .OfType<Avatar>()
-                .FirstOrDefault();
+                .FirstOrDefault(a => a != null && a.isValid && a.isHuman);
         }
 
         static Dictionary<string, string> LoadOverrides()
@@ -447,20 +468,37 @@ namespace Viu.Editor
                 changed = true;
             }
 
-            if (bodyAvatar != null && bodyAvatar.isValid)
+            // Скрин Дена: Copy From Other + Source=None → rig error → нет клипов → T-pose.
+            bool brokenCopy = importer.avatarSetup == ModelImporterAvatarSetup.CopyFromOther
+                && importer.sourceAvatar == null;
+
+            if (bodyAvatar != null && bodyAvatar.isValid && bodyAvatar.isHuman)
             {
-                if (importer.avatarSetup != ModelImporterAvatarSetup.CopyFromOther
+                if (brokenCopy
+                    || importer.avatarSetup != ModelImporterAvatarSetup.CopyFromOther
                     || importer.sourceAvatar != bodyAvatar)
                 {
                     importer.avatarSetup = ModelImporterAvatarSetup.CopyFromOther;
                     importer.sourceAvatar = bodyAvatar;
                     changed = true;
+                    Debug.Log("[Viu] Rig Source ← " + bodyAvatar.name + " for "
+                        + Path.GetFileName(assetPath));
                 }
             }
-            else if (importer.avatarSetup != ModelImporterAvatarSetup.CreateFromThisModel)
+            else
             {
-                importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
-                changed = true;
+                // Никогда не оставляем Copy From Other без Source
+                if (brokenCopy
+                    || importer.avatarSetup == ModelImporterAvatarSetup.CopyFromOther
+                    || importer.avatarSetup != ModelImporterAvatarSetup.CreateFromThisModel)
+                {
+                    importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+                    importer.sourceAvatar = null;
+                    changed = true;
+                    Debug.LogWarning(
+                        "[Viu] Нет body Avatar — Create From This Model для "
+                        + Path.GetFileName(assetPath));
+                }
             }
 
             if (!importer.importAnimation)
@@ -518,17 +556,20 @@ namespace Viu.Editor
                 return false;
             }
 
-            // Mecanim Humanoid
+            // Mecanim Humanoid — только с валидным Source, иначе снова Copy+None.
             importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
             if (importer == null) return false;
             importer.animationType = ModelImporterAnimationType.Human;
-            if (bodyAvatar != null && bodyAvatar.isValid)
+            if (bodyAvatar != null && bodyAvatar.isValid && bodyAvatar.isHuman)
             {
                 importer.avatarSetup = ModelImporterAvatarSetup.CopyFromOther;
                 importer.sourceAvatar = bodyAvatar;
             }
             else
+            {
                 importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+                importer.sourceAvatar = null;
+            }
             importer.importAnimation = true;
             defaults = importer.defaultClipAnimations;
             if (defaults != null && defaults.Length > 0)

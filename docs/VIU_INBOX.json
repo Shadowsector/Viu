@@ -1,22 +1,21 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T08:54:33Z",
-  "note": "rev32: home yaw 180; runtime-rev boot mark; Den may help with 3 checks below.",
+  "updated_at": "2026-07-12T09:25:00Z",
+  "note": "rev33: fix CopyFromOther Source=None (Den screenshot); Shanya in front of larger home.",
   "tasks": [
     {
-      "id": "overlay-visual-fix-20260712j",
-      "status": "in_progress",
+      "id": "overlay-visual-fix-20260712k",
+      "status": "pending",
       "priority": 1,
-      "title": "rev32: home front + prove runtime-rev in boot",
+      "title": "rev33: Rig Source avatar + Shanya before barn",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
       "direct_args": {
         "reopen_unity": false,
         "timeout": 2400
       },
-      "instructions": "git pull first on U:\\Viu. deploy-rev 32. Last OK build still had OLD DesktopOverlay (boot lacked margins=-1 and -force-d3d11). Expect overlay_boot.log line: runtime-rev=31 (or 32) AND margins=-1 AND args with -force-d3d11. HomeYawDegrees=180. If runtime-rev missing — deploy failed, stop and report. Locomotion: Пин/Recover Idle+Walk.",
-      "acceptance": "boot has runtime-rev=; house front toward camera; Walk/Idle not T-pose; chroma not solid magenta.",
-      "started_at": "2026-07-12T08:54:33Z"
+      "instructions": "deploy-rev 33. Den screenshot: Shanya_Idle Rig=Copy From Other but Source=None → import errors → no clips → T-pose. Fix EnsureHumanoidImport always sets Source to Shanya_Erisa avatar (or Create From This Model). Expect log: Rig Source ← … for Shanya_Idle/Walk. Then Overlay locomotion OK. Home: yaw=0, height 5.2m, Shanya BEFORE house (min.z - gap) not inside. boot runtime-rev=33.",
+      "acceptance": "locomotion OK hasWalk; Shanya Idle not T-pose; standing in front of barn; runtime-rev=33 in boot."
     }
   ]
 }

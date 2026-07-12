@@ -18,21 +18,21 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 32
+        // @viu-deploy-rev 33
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
         const string EnvironmentRoot = "Assets/Environment";
         const float TargetHeightMeters = 1.77f;
-        const float HomeTargetHeightMeters = 3.6f;
+        const float HomeTargetHeightMeters = 5.2f;
         /// <summary>Не топить стопы в пол — раньше 0.03 давало «провал».</summary>
         const float GroundSinkMeters = 0f;
         const float FeetLiftMeters = 0.02f;
-        /// <summary>Сарай часто смотрит «спиной» к камере (открытая сторона +Z). 180 = фасад к экрану.</summary>
-        const float HomeYawDegrees = 180f;
-        /// <summary>Смещение Шани по Z внутри дома (доля half-depth от центра к камере).</summary>
-        const float HomeShanyaZBias = -0.15f;
+        /// <summary>0 = как в FBX. 180 переворачивал «не той стороной» у Old_Stables.</summary>
+        const float HomeYawDegrees = 0f;
+        /// <summary>Шаня ПЕРЕД домом (к камере), не внутри. Камера смотрит +Z с меньшего Z.</summary>
+        const float HomeShanyaFrontGap = 0.45f;
         /// <summary>Меньше = Шаня крупнее на экране. 5.5 делало её точкой.</summary>
         const float CameraOrthoHalfHeight = 2.15f;
 
@@ -981,10 +981,13 @@ namespace Viu.Editor
 
             var pos = shanya.transform.position;
             pos.x = bounds.center.x;
-            pos.z = bounds.center.z + bounds.extents.z * HomeShanyaZBias;
+            // Перед фасадом к камере (min.z), не в центре сарая
+            pos.z = bounds.min.z - HomeShanyaFrontGap;
             shanya.transform.position = pos;
             SnapFeetToGround(shanya);
             LiftFeet(shanya, FeetLiftMeters);
+            Debug.Log("[Viu] Шаня перед домом z=" + pos.z.ToString("F2")
+                + " (home min.z=" + bounds.min.z.ToString("F2") + ")");
         }
 
         static Bounds ComputeWorldBounds(GameObject root)
