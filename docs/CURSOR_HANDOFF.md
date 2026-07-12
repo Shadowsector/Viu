@@ -853,13 +853,6 @@ ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverl
 10:31:44 ColorKey pass 1, Esc=выход
 10:31:44 AfterWindow: renderers=5061/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5046/5048
 
-## 2026-07-12 — Den: walk + magenta + W/S zoom + Unity/terminal
-
-**Жалобы:** анимация ходьбы; надоели magenta; W/S зумит Шаню+дом; Viu открывает Overlay потом Unity; терминал висит.
-
-**rev27:** CrossFade Idle↔Walk на Shanya_Idle/Shanya_Walk (overlay_preferred); W/S = characterDepthZ (дом стоит, ortho фиксирован); reopen_unity=false; LaunchOverlay.vbs; ColorKey re-apply layered.
-
-
 --- вердикт ---
 OK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.
 --- eyes ---
@@ -873,6 +866,57 @@ Unity Editor.log: C:\Users\Den\AppData\Local\Unity\Editor\Editor.log
   • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)
 Support bundle: U:\Viu\.viu\support\viu_logs_20260712_103158.zip
 Логи отправлены: https://gist.github.com/Shadowsector/bbce34236c78eff15f5ec3eadeec98bc
+--- вердикт ---
+FAIL: глаза не видели оверлей (окно не найдено / eyes не отработали). Не done.
+
+web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
+Ничего не найдено по запросу.
+
+
+---
+
+## 2026-07-12 10:49 — ESCALATE `overlay_playtest` / overlay-visual-fix-20260712d (Viu)
+
+ЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.
+Inbox task: `overlay-visual-fix-20260712d`
+
+Ошибка / лог:
+Unity close: Unity.exe не запущен.
+Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs
+ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs
+Уже есть: U:\Anabarra\Unity\Anabarra\Assets\Characters\Shanya\Animations\viu_clips.json
+Сборка OK: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\AnabarraOverlay.exe
+--- build ---
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs
+[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe
+[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\..\Builds/AnabarraOverlay\LaunchOverlay.bat
+Запуск: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\LaunchOverlay.bat
+--- overlay_boot.log ---
+﻿10:49:32 Awake: renderers=2366/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2351/2724
+10:49:32 Start args=AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow
+10:49:32 HWND ok
+10:49:32 Geometry 2560x1440 at 0,0
+10:49:33 SetLayeredWindowAttributes=True err=0
+10:49:33 ColorKey pass 1, Esc=выход
+10:49:33 AfterWindow: renderers=2366/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2351/2724
+
+--- вердикт ---
+OK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.
+--- eyes ---
+Окно не найдено ('Unity'). Видны: ['xiroseb379744 Creator Profile | Civitai - Google Chrome', 'Набросок на фрагменте экрана', 'Вью — Анабарра', 'Total Commander 9.51 - PowerUser v72    Вс 12 июл 2026    10:49:47    Память: 46%    ЦП: 16%', '(9) \u200eВью – (86)', 'EqualizerFrame', 'Shadow Sector - Голос 002', 'Happ 2.5.2 (523)', 'Ollama', 'Медиаплеер', 'Медиаплеер', 'NVIDIA GeForce Overlay', 'Microsoft Text Input Application', 'Program Manager']
+--- Editor.log (summary) ---
+Unity Editor.log: C:\Users\Den\AppData\Local\Unity\Editor\Editor.log
+
+Прочие ошибки (2):
+  • [Licensing::Module] Error: Access token is unavailable; failed to update
+  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)
+Support bundle: U:\Viu\.viu\support\viu_logs_20260712_104947.zip
+Логи отправлены: https://gist.github.com/Shadowsector/61b6854c10e878828cc77aad8f969230
 --- вердикт ---
 FAIL: глаза не видели оверлей (окно не найдено / eyes не отработали). Не done.
 
