@@ -18,7 +18,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 47
+        // @viu-deploy-rev 48
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -40,13 +40,19 @@ namespace Viu.Editor
         const string HomeMatFolder = "Assets/Environment/ViuOverlayMats/r47";
         const string CharMatFolder = "Assets/Characters/Shanya/ViuOverlayMats/r47";
 
+        [MenuItem("Viu/Overlay/Bootstrap Overlay Scene (once)")]
+        public static void BootstrapMenu() => BootstrapOverlayScene(ScenePath);
+
+        [MenuItem("Viu/Overlay/Validate Overlay Scene")]
+        public static void ValidateMenu() => ValidateOverlayScene(ScenePath);
+
         [MenuItem("Viu/Overlay/Prepare Overlay Scene")]
-        public static void RunMenu() => Run(ScenePath);
+        public static void RunMenu() => BootstrapOverlayScene(ScenePath);
 
         [MenuItem("Viu/Overlay/Build Windows Overlay")]
         public static void BuildMenu()
         {
-            Run(ScenePath);
+            ValidateOverlayScene(ScenePath);
             BuildWindows();
         }
 
@@ -59,7 +65,7 @@ namespace Viu.Editor
                     EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
                 else
                     EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
-                Run(ScenePath);
+                RunBootstrapBatch(ScenePath);
             }
             catch (Exception e)
             {
@@ -86,7 +92,7 @@ namespace Viu.Editor
 
         public static void BuildWindows()
         {
-            Run(ScenePath);
+            ValidateOverlayScene(ScenePath);
             EnsureBuildFolder();
             ConfigurePlayerForOverlay();
 
@@ -179,10 +185,62 @@ namespace Viu.Editor
         }
 
         /// <summary>
-        /// Готовит OverlayDesktop.unity. Бросает при FAIL — иначе BuildWindows
-        /// молча соберёт старую сцену с Idle_Stand (слайд без Walk).
+        /// Проверка сцены перед build — НЕ двигает объекты и НЕ пересоздаёт материалы.
         /// </summary>
-        public static void Run(string saveScenePath)
+        public static void ValidateOverlayScene(string scenePath)
+        {
+            OpenSceneForOverlay(scenePath);
+            var shanya = FindCharacterInScene();
+            if (shanya == null)
+                throw new InvalidOperationException(
+                    "[Viu] В сцене нет Шани. Один раз: Viu → Overlay → Bootstrap Overlay Scene.");
+
+            var controller = ShanyaAnimationSync.BuildOverlayLocomotionController(log: false);
+            if (controller == null)
+                throw new InvalidOperationException(
+                    "[Viu] Overlay locomotion FAIL — нет Walk. Смотри viu_clips.json / Sync.");
+
+            WireCharacterAnimator(shanya, controller);
+            EnsureLocomotion(shanya);
+            EnsureOverlayManager();
+            WireCameraToCharacter(shanya);
+            EnsureCameraPresets();
+
+            var anchors = UnityEngine.Object.FindObjectsByType<Viu.Runtime.OverlaySceneAnchor>(
+                FindObjectsSortMode.None);
+            if (anchors == null || anchors.Length == 0)
+                Debug.LogWarning(
+                    "[Viu] Нет Anchor_* в сцене. Bootstrap создаст Viu_Anchors — потом двигай в Editor.");
+
+            if (!File.Exists(scenePath))
+                Debug.LogWarning("[Viu] Сцена не сохранена на диск: " + scenePath);
+            Debug.Log("[Viu] Validate OK: " + shanya.name + " anchors=" + (anchors?.Length ?? 0));
+        }
+
+        static void RunBootstrapBatch(string scenePath)
+        {
+            OpenSceneForOverlay(scenePath);
+            BootstrapOverlayScene(scenePath);
+        }
+
+        static void OpenSceneForOverlay(string scenePath)
+        {
+            if (!string.IsNullOrEmpty(scenePath) && File.Exists(scenePath))
+                EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+        }
+
+        /// <summary>
+        /// Первичная сборка сцены (один раз или после смены FBX). Перезаписывает позиции.
+        /// </summary>
+        public static void BootstrapOverlayScene(string saveScenePath)
+        {
+            RunLegacyBootstrap(saveScenePath);
+        }
+
+        /// <summary>Alias для batch prepare.</summary>
+        public static void Run(string saveScenePath) => BootstrapOverlayScene(saveScenePath);
+
+        static void RunLegacyBootstrap(string saveScenePath)
         {
             var modelPath = FindModelPath();
             if (string.IsNullOrEmpty(modelPath))
@@ -222,6 +280,7 @@ namespace Viu.Editor
             LiftFeet(instance, FeetLiftMeters);
             if (home != null)
                 PositionHomeAndShanyaInCorridor(instance, home);
+            EnsureSceneAnchors(instance, home);
             EnsureOverlayManager();
             // Камера «дома»: X = центр сарая. Фасад/кукольный дом — ShanyaOverlayCorridor.
             if (home != null)
@@ -251,10 +310,107 @@ namespace Viu.Editor
                 root.AddComponent<Viu.Runtime.ShanyaDesktopOverlay>();
             if (root.GetComponent<Viu.Runtime.ShanyaOverlayDepth>() == null)
                 root.AddComponent<Viu.Runtime.ShanyaOverlayDepth>();
+            if (root.GetComponent<Viu.Runtime.OverlayModeController>() == null)
+                root.AddComponent<Viu.Runtime.OverlayModeController>();
             if (root.GetComponent<Viu.Runtime.ShanyaOverlayCorridor>() == null)
                 root.AddComponent<Viu.Runtime.ShanyaOverlayCorridor>();
             if (root.GetComponent<Viu.Runtime.ShanyaOverlayMaterialFix>() == null)
                 root.AddComponent<Viu.Runtime.ShanyaOverlayMaterialFix>();
+        }
+
+        static GameObject FindCharacterInScene()
+        {
+            var byName = GameObject.Find(CharacterRootName);
+            if (byName != null) return byName;
+            foreach (var loc in UnityEngine.Object.FindObjectsByType<Viu.Runtime.ShanyaLocomotion>(
+                         FindObjectsSortMode.None))
+            {
+                if (loc != null && loc.gameObject != null)
+                    return loc.gameObject;
+            }
+            foreach (var anim in UnityEngine.Object.FindObjectsByType<Animator>(FindObjectsSortMode.None))
+            {
+                if (anim == null || anim.gameObject == null) continue;
+                var n = anim.gameObject.name.ToLowerInvariant();
+                if (n.Contains("shanya") || n.Contains("erisa"))
+                    return anim.gameObject;
+            }
+            return null;
+        }
+
+        static void WireCharacterAnimator(GameObject shanya, RuntimeAnimatorController controller)
+        {
+            var anim = shanya.GetComponent<Animator>();
+            if (anim == null)
+                anim = shanya.AddComponent<Animator>();
+            if (anim.runtimeAnimatorController != controller)
+                anim.runtimeAnimatorController = controller;
+            anim.applyRootMotion = false;
+        }
+
+        static void WireCameraToCharacter(GameObject shanya)
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+            var follow = cam.GetComponent<Viu.Runtime.ShanyaOverlayCamera>();
+            if (follow == null)
+                follow = cam.gameObject.AddComponent<Viu.Runtime.ShanyaOverlayCamera>();
+            if (follow.target == null)
+                follow.target = shanya.transform;
+        }
+
+        static void EnsureCameraPresets()
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+            if (cam.GetComponent<Viu.Runtime.OverlayCameraPresets>() == null)
+                cam.gameObject.AddComponent<Viu.Runtime.OverlayCameraPresets>();
+        }
+
+        static void EnsureSceneAnchors(GameObject shanya, GameObject home)
+        {
+            var root = GameObject.Find("Viu_Anchors");
+            if (root == null)
+                root = new GameObject("Viu_Anchors");
+
+            float shanyaZ = shanya != null ? shanya.transform.position.z : CorridorStartZ;
+            float barnZ = CorridorFarWallZ;
+            if (home != null)
+            {
+                var b = ComputeWorldBounds(home);
+                if (b.size.sqrMagnitude > 0.0001f)
+                    barnZ = b.min.z;
+            }
+
+            EnsureAnchor(root.transform, Viu.Runtime.OverlayAnchorKind.CharacterStart,
+                new Vector3(shanya != null ? shanya.transform.position.x : 0f, 0f, shanyaZ));
+            EnsureAnchor(root.transform, Viu.Runtime.OverlayAnchorKind.BarnEntrance,
+                new Vector3(shanya != null ? shanya.transform.position.x : 0f, 0f, barnZ));
+            EnsureAnchor(root.transform, Viu.Runtime.OverlayAnchorKind.HomeRoot,
+                home != null ? home.transform.position : Vector3.zero);
+            EnsureAnchor(root.transform, Viu.Runtime.OverlayAnchorKind.TaskbarFeetLine,
+                new Vector3(0f, shanya != null ? shanya.transform.position.y : 0f, shanyaZ));
+        }
+
+        static void EnsureAnchor(Transform parent, Viu.Runtime.OverlayAnchorKind kind, Vector3 worldPos)
+        {
+            foreach (var a in parent.GetComponentsInChildren<Viu.Runtime.OverlaySceneAnchor>(true))
+            {
+                if (a != null && a.kind == kind)
+                    return;
+            }
+            foreach (var a in UnityEngine.Object.FindObjectsByType<Viu.Runtime.OverlaySceneAnchor>(
+                         FindObjectsSortMode.None))
+            {
+                if (a != null && a.kind == kind)
+                    return;
+            }
+
+            var go = new GameObject("Anchor_" + kind);
+            go.transform.SetParent(parent);
+            go.transform.position = worldPos;
+            var anchor = go.AddComponent<Viu.Runtime.OverlaySceneAnchor>();
+            anchor.kind = kind;
         }
 
         static void LiftFeet(GameObject root, float liftMeters)
@@ -1333,7 +1489,11 @@ namespace Viu.Editor
 
             var pos = shanya.transform.position;
             pos.x = bounds.center.x;
-            pos.z = CorridorStartZ;
+            var anchorStart = Viu.Runtime.OverlaySceneAnchor.TryGetPosition(
+                Viu.Runtime.OverlayAnchorKind.CharacterStart);
+            pos.z = anchorStart.HasValue ? anchorStart.Value.z : CorridorStartZ;
+            if (anchorStart.HasValue)
+                pos.x = anchorStart.Value.x;
             shanya.transform.position = pos;
             SnapFeetToGround(shanya);
             LiftFeet(shanya, FeetLiftMeters);

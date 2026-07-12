@@ -21,6 +21,9 @@ _TEMPLATE_OVERLAY_CAM = Path(__file__).parent / "templates" / "ShanyaOverlayCame
 _TEMPLATE_OVERLAY_DEPTH = Path(__file__).parent / "templates" / "ShanyaOverlayDepth.cs"
 _TEMPLATE_OVERLAY_CORRIDOR = Path(__file__).parent / "templates" / "ShanyaOverlayCorridor.cs"
 _TEMPLATE_OVERLAY_MATFIX = Path(__file__).parent / "templates" / "ShanyaOverlayMaterialFix.cs"
+_TEMPLATE_OVERLAY_ANCHOR = Path(__file__).parent / "templates" / "OverlaySceneAnchor.cs"
+_TEMPLATE_OVERLAY_PRESETS = Path(__file__).parent / "templates" / "OverlayCameraPresets.cs"
+_TEMPLATE_OVERLAY_MODE = Path(__file__).parent / "templates" / "OverlayModeController.cs"
 _TEMPLATE_DOLLHOUSE = Path(__file__).parent / "templates" / "DollhouseWall.cs"
 _TEMPLATE_OVERLAY_SETUP = Path(__file__).parent / "templates" / "ShanyaOverlaySetup.cs"
 _TEMPLATE_MANIFEST = Path(__file__).parent / "templates" / "viu_clips.json"
@@ -37,10 +40,13 @@ _OVERLAY_CAM_REL = f"{_RUNTIME_DIR}/ShanyaOverlayCamera.cs"
 _OVERLAY_DEPTH_REL = f"{_RUNTIME_DIR}/ShanyaOverlayDepth.cs"
 _OVERLAY_CORRIDOR_REL = f"{_RUNTIME_DIR}/ShanyaOverlayCorridor.cs"
 _OVERLAY_MATFIX_REL = f"{_RUNTIME_DIR}/ShanyaOverlayMaterialFix.cs"
+_OVERLAY_ANCHOR_REL = f"{_RUNTIME_DIR}/OverlaySceneAnchor.cs"
+_OVERLAY_PRESETS_REL = f"{_RUNTIME_DIR}/OverlayCameraPresets.cs"
+_OVERLAY_MODE_REL = f"{_RUNTIME_DIR}/OverlayModeController.cs"
 _DOLLHOUSE_REL = f"{_RUNTIME_DIR}/DollhouseWall.cs"
 _MANIFEST_REL = f"{ANIMATIONS_REL}/{MANIFEST_NAME}"
 
-VIU_DEPLOY_REV = "47"
+VIU_DEPLOY_REV = "48"
 VIU_DEPLOY_MARKER = f"@viu-deploy-rev {VIU_DEPLOY_REV}"
 _BROKEN_EDITOR_MARKERS = (
     "activeInputHandler",
@@ -146,6 +152,9 @@ def deploy_runtime_scripts(project_root: Path) -> Tuple[bool, str]:
         (_TEMPLATE_OVERLAY_DEPTH, _OVERLAY_DEPTH_REL),
         (_TEMPLATE_OVERLAY_CORRIDOR, _OVERLAY_CORRIDOR_REL),
         (_TEMPLATE_OVERLAY_MATFIX, _OVERLAY_MATFIX_REL),
+        (_TEMPLATE_OVERLAY_ANCHOR, _OVERLAY_ANCHOR_REL),
+        (_TEMPLATE_OVERLAY_PRESETS, _OVERLAY_PRESETS_REL),
+        (_TEMPLATE_OVERLAY_MODE, _OVERLAY_MODE_REL),
         (_TEMPLATE_DOLLHOUSE, _DOLLHOUSE_REL),
     ):
         if not src.is_file():

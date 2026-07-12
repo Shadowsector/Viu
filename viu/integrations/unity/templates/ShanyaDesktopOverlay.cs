@@ -27,10 +27,11 @@ namespace Viu.Runtime
         static readonly Color32 ChromaKey32 = new Color32(255, 0, 128, 255);
 
         /// <summary>Метка в overlay_boot.log — если нет runtime-rev=37, в exe старые скрипты.</summary>
-        public const string RuntimeRev = "47";
+        public const string RuntimeRev = "48";
 
-        public bool fullScreenOverlay = true;
+        public bool fullScreenOverlay = false;
         public int stripHeightPixels = 280;
+        public int instanceHeightPixels = 720;
         public int feetLineFromBottomPixels = 72;
         public bool clickThrough = false;
         public bool alwaysOnTop = true;
@@ -283,7 +284,7 @@ namespace Viu.Runtime
         {
             var mon = ResolveMonitorRect(monitorIndex);
             int w = mon.width;
-            int h = fullScreenOverlay ? mon.height : Mathf.Clamp(stripHeightPixels, 120, mon.height);
+            int h = ResolveWindowHeight(mon.height);
             int x = mon.x;
             int y = fullScreenOverlay ? mon.y : mon.y + mon.height - h;
 
@@ -302,7 +303,29 @@ namespace Viu.Runtime
             ApplyFeetLineToCamera(h);
             SetForegroundWindow(_hwnd);
 
-            BootLog($"Geometry {w}x{h} at {x},{y}");
+            BootLog($"Geometry {w}x{h} at {x},{y} mode={_displayMode}");
+        }
+
+        OverlayDisplayMode _displayMode = OverlayDisplayMode.Facade;
+
+        int ResolveWindowHeight(int monitorHeight)
+        {
+            if (fullScreenOverlay)
+                return monitorHeight;
+            if (_displayMode == OverlayDisplayMode.Instance)
+                return Mathf.Clamp(instanceHeightPixels, stripHeightPixels, monitorHeight);
+            return Mathf.Clamp(stripHeightPixels, 120, monitorHeight);
+        }
+
+        /// <summary>Вызывается OverlayModeController при смене Facade/Corridor/Instance.</summary>
+        public void ApplyDisplayMode(OverlayDisplayMode mode)
+        {
+            _displayMode = mode;
+            fullScreenOverlay = false;
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            if (_hwnd != IntPtr.Zero)
+                ApplyWindowGeometry();
+#endif
         }
 
         void EnsureLayeredExStyle()
