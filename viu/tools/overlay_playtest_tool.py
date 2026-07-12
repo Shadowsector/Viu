@@ -69,6 +69,8 @@ class OverlayPlaytestTool(Tool):
             lines.append(kill_msg)
         time.sleep(2.0)
 
+        timeout = float(args.get("timeout") or 1800)
+
         # Перед сборкой — bake материалов (иначе снова фиолетовый сарай).
         rebind_cmd = batch_overlay_rebind_command(root, exe)
         try:
@@ -96,7 +98,6 @@ class OverlayPlaytestTool(Tool):
             )
 
         cmd = batch_overlay_build_command(root, exe)
-        timeout = float(args.get("timeout") or 1800)
         try:
             proc = subprocess.run(
                 cmd, shell=True, capture_output=True, text=True, timeout=timeout, cwd=str(root)
