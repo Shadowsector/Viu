@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 22" in text
+    assert "@viu-deploy-rev 23" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -107,6 +107,8 @@ def test_overlay_templates(tmp_path):
     assert "ConfigureWindowWhenReady" in overlay
     cam = (root / "ShanyaOverlayCamera.cs").read_text(encoding="utf-8")
     assert "feetFractionCloseBoost" in cam
+    assert "LockToHome" in cam
+    assert "lockFollowX" in cam
     depth = (root / "ShanyaOverlayDepth.cs").read_text(encoding="utf-8")
     assert "KeyCode.W" in depth
     assert "fullScreenOverlay" in (root / "ShanyaDesktopOverlay.cs").read_text(encoding="utf-8")
@@ -117,14 +119,20 @@ def test_overlay_templates(tmp_path):
     assert "BuildWindowsBatch" in setup
     assert "AnabarraOverlay.exe" in setup
     assert "LaunchOverlay.bat" in setup or "WriteOverlayLauncher" in setup
+    assert "EnsureAnimatorOnAvatarHost" in setup
+    assert "LockToHome" in setup
     dollhouse = (root / "DollhouseWall.cs").read_text(encoding="utf-8")
     assert "Wall_front" in dollhouse
     assert "SetAtHome" in dollhouse
+    assert "LastMatchCount" in dollhouse
+    assert "HeuristicFrontWall" in dollhouse
+    loco = (root / "ShanyaLocomotion.cs").read_text(encoding="utf-8")
+    assert "GetComponentInChildren<Animator>" in loco
 
     from viu.integrations.unity.overlay_tune import load_tune, write_tune_lane
 
     tune = load_tune(None)
-    assert tune["taskbar"]["orthoHalfHeight"] == 5.5
+    assert tune["taskbar"]["orthoHalfHeight"] == 2.15
     path = write_tune_lane(tmp_path, "attention")
     assert path.is_file()
     assert "attention" in path.read_text(encoding="utf-8")

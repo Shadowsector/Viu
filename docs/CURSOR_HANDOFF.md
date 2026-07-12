@@ -657,3 +657,14 @@ Support bundle: U:\Viu\.viu\support\viu_logs_20260711_130320.zip
 
 web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
 Ничего не найдено по запросу.
+
+## 2026-07-12 — Den: анимация не играет, белая стенка едет против Шани
+
+**Что видит Den:** стрелки двигают Шаню (slide), Walk не играет; белая «стенка»=дом, едет в противоположную сторону (камера follow X).
+
+**Почему:** 1) Animator на пустом parent ломает Humanoid Avatar → только Translate 2) камера follow X при стоящем доме = параллакс «стенка против Шани» 3) ortho 5.5 в depth сбрасывал кадр 4) Lit без текстур = белый дом.
+
+**rev23:** camera LockToHome; Animator на FBX-хосте; Unlit; ortho 2.15; matchCount лог; Walk обязателен.
+
+**Что нужно от Den:** только `python -m viu update` (или как обычно обновляет). Дальше Viu сам `overlay_playtest`. Не писать отчёты. Опционально: если после update всё ещё белая стенка без формы дома — прислать имя передней стены из FBX в `Assets/Environment/.../*.viu.json` → `dollhouse_wall` (одна строка).
+

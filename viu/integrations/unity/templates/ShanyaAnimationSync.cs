@@ -75,9 +75,20 @@ namespace Viu.Editor
                     || e.StateName.Equals("Walk", StringComparison.OrdinalIgnoreCase)
                     || e.StateName.Equals("Run", StringComparison.OrdinalIgnoreCase))
                 .ToList();
+
+            bool hasIdle = loco.Any(e => e.StateName.Equals("Idle", StringComparison.OrdinalIgnoreCase));
+            bool hasWalk = loco.Any(e => e.StateName.Equals("Walk", StringComparison.OrdinalIgnoreCase));
+            if (!hasIdle || !hasWalk)
+            {
+                Debug.LogError(
+                    "[Viu] Overlay locomotion: нужны Idle И Walk в Animations/. "
+                    + "Сейчас Idle=" + hasIdle + " Walk=" + hasWalk
+                    + ". Без Walk Шаня будет скользить без анимации ног.");
+                // Всё равно соберём что есть, но это явная ошибка в логе batch
+            }
             if (loco.Count == 0)
             {
-                Debug.LogWarning("[Viu] Overlay locomotion: нет Idle/Walk — беру полный controller.");
+                Debug.LogWarning("[Viu] Overlay locomotion: нет клипов — полный controller.");
                 return AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(ControllerPath);
             }
 

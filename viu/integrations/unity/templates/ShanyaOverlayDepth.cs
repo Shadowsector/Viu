@@ -22,13 +22,13 @@ namespace Viu.Runtime
         public LaneSettings taskbar = new LaneSettings
         {
             distanceZ = 14f,
-            orthoHalfHeight = 5.5f,
+            orthoHalfHeight = 2.15f,
         };
 
         public LaneSettings attention = new LaneSettings
         {
             distanceZ = 4.5f,
-            orthoHalfHeight = 0.95f,
+            orthoHalfHeight = 1.1f,
         };
 
         public float depthMoveSpeed = 0.55f;

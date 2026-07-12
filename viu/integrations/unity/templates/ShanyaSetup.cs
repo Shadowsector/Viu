@@ -16,7 +16,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaSetup
     {
-        // @viu-deploy-rev 22
+        // @viu-deploy-rev 23
         const string ControllerPath = ShanyaAnimationSync.ControllerPath;
         const string ModelNameHint = "Shanya_Erisa";
         /// <summary>Целевой рост персонажа в метрах (можно подкрутить).</summary>
@@ -294,17 +294,27 @@ namespace Viu.Editor
             }
             instance.name = ModelNameHint;
 
-            // Один Animator на корне (Locomotion), без дублей на арматуре.
+            // Avatar-host: не сносим Animator с FBX-хоста на пустой корень.
+            Animator best = null;
             foreach (var a in instance.GetComponentsInChildren<Animator>(true))
             {
-                if (a != null && a.gameObject != instance)
+                if (a == null) continue;
+                if (a.avatar != null && a.avatar.isValid) { best = a; break; }
+                if (best == null) best = a;
+            }
+            Transform host = best != null ? best.transform : instance.transform;
+            foreach (var a in instance.GetComponentsInChildren<Animator>(true))
+            {
+                if (a != null && a.transform != host)
                     UnityEngine.Object.DestroyImmediate(a);
             }
-            var animator = instance.GetComponent<Animator>() ?? instance.AddComponent<Animator>();
+            var animator = host.GetComponent<Animator>() ?? host.gameObject.AddComponent<Animator>();
             animator.runtimeAnimatorController = controller;
             animator.avatar = avatar;
             animator.applyRootMotion = false;
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            animator.Rebind();
+            animator.Update(0f);
 
             if (!instance.activeInHierarchy)
                 instance.SetActive(true);

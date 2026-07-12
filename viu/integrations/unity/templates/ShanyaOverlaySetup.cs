@@ -17,7 +17,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 22
+        // @viu-deploy-rev 23
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -177,6 +177,21 @@ namespace Viu.Editor
             if (home != null)
                 PositionShanyaInHome(instance, home);
             EnsureOverlayManager();
+            // Камера «дома»: X = центр сарая, иначе белая стенка уезжает при A/D
+            if (home != null)
+            {
+                var doll = home.GetComponent<Viu.Runtime.DollhouseWall>();
+                if (doll != null)
+                    doll.SetAtHome(true);
+                else
+                {
+                    var camFollow = Camera.main != null
+                        ? Camera.main.GetComponent<Viu.Runtime.ShanyaOverlayCamera>()
+                        : null;
+                    if (camFollow != null)
+                        camFollow.LockToHome(ComputeWorldBounds(home).center.x);
+                }
+            }
             AssetDatabase.SaveAssets();
             SaveActiveScene(saveScenePath);
             var meshCount = instance.GetComponentsInChildren<Renderer>(true).Length;
@@ -255,8 +270,11 @@ namespace Viu.Editor
             follow.target = target;
             follow.feetScreenFraction = 0.06f;
             follow.distanceZ = 14f;
+            follow.lockFollowX = true;
+            follow.lockedWorldX = target.position.x;
+            follow.followSmoothX = 0f;
             follow.transform.position = new Vector3(
-                target.position.x,
+                follow.lockedWorldX,
                 target.position.y + CameraOrthoHalfHeight * (1f - 2f * follow.feetScreenFraction),
                 target.position.z - follow.distanceZ);
             follow.transform.rotation = Quaternion.identity;
@@ -406,39 +424,71 @@ namespace Viu.Editor
             instance.name = CharacterRootName;
             instance.transform.position = Vector3.zero;
 
-            var animator = EnsureSingleRootAnimator(instance);
+            var animator = EnsureAnimatorOnAvatarHost(instance);
             animator.runtimeAnimatorController = controller;
             animator.avatar = avatar;
             animator.applyRootMotion = false;
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            animator.Rebind();
+            animator.Update(0f);
             if (!instance.activeInHierarchy)
                 instance.SetActive(true);
             return instance;
         }
 
         /// <summary>
-        /// Locomotion на корне требует Animator там же. Лишние Animator на арматуре
-        /// дают «поломанную» анимацию (два контроллера на одной модели).
+        /// Humanoid Avatar привязан к GameObject, на котором был Animator при импорте FBX.
+        /// Если перенести Animator на пустой/другой корень — клипы не двигают кости,
+        /// и Шаня только скользит через Translate. Один Animator на avatar-хосте.
         /// </summary>
-        static Animator EnsureSingleRootAnimator(GameObject root)
+        static Animator EnsureAnimatorOnAvatarHost(GameObject root)
         {
-            var all = root.GetComponentsInChildren<Animator>(true);
-            Avatar keepAvatar = null;
-            RuntimeAnimatorController keepCtrl = null;
-            foreach (var a in all)
+            Animator best = null;
+            foreach (var a in root.GetComponentsInChildren<Animator>(true))
             {
                 if (a == null) continue;
-                if (a.avatar != null) keepAvatar = a.avatar;
+                if (a.avatar != null && a.avatar.isValid)
+                {
+                    best = a;
+                    break;
+                }
+                if (best == null)
+                    best = a;
+            }
+
+            Transform host = best != null ? best.transform : root.transform;
+            // Если Animator только на корне, а меш/арматура в единственном child — чаще
+            // avatar-host = child (типичный nested FBX). Не трогаем, если best уже с avatar.
+            if (best == null || best.avatar == null || !best.avatar.isValid)
+            {
+                if (root.transform.childCount == 1)
+                {
+                    var child = root.transform.GetChild(0);
+                    if (child.GetComponentInChildren<SkinnedMeshRenderer>(true) != null)
+                        host = child;
+                }
+            }
+
+            Avatar keepAvatar = best != null ? best.avatar : null;
+            RuntimeAnimatorController keepCtrl = best != null ? best.runtimeAnimatorController : null;
+            foreach (var a in root.GetComponentsInChildren<Animator>(true))
+            {
+                if (a == null) continue;
+                if (a.avatar != null && a.avatar.isValid) keepAvatar = a.avatar;
                 if (a.runtimeAnimatorController != null) keepCtrl = a.runtimeAnimatorController;
-                if (a.gameObject != root)
+                if (a.transform != host)
                     UnityEngine.Object.DestroyImmediate(a);
             }
 
-            var primary = root.GetComponent<Animator>() ?? root.AddComponent<Animator>();
-            if (primary.avatar == null && keepAvatar != null)
+            var primary = host.GetComponent<Animator>() ?? host.gameObject.AddComponent<Animator>();
+            if (keepAvatar != null)
                 primary.avatar = keepAvatar;
-            if (primary.runtimeAnimatorController == null && keepCtrl != null)
+            if (keepCtrl != null)
                 primary.runtimeAnimatorController = keepCtrl;
+            Debug.Log(
+                "[Viu.Overlay] Animator host=" + host.name
+                + " avatarValid=" + (primary.avatar != null && primary.avatar.isValid)
+                + " human=" + (primary.avatar != null && primary.avatar.isHuman));
             return primary;
         }
 
@@ -531,6 +581,7 @@ namespace Viu.Editor
         {
             var lit = Shader.Find("Universal Render Pipeline/Lit")
                 ?? Shader.Find("Universal Render Pipeline/Simple Lit");
+            // Для сарая Unlit надёжнее Lit (белый «короб» от Lit без карт)
             var unlit = Shader.Find("Universal Render Pipeline/Unlit")
                 ?? Shader.Find("Unlit/Color")
                 ?? Shader.Find("Sprites/Default");
@@ -550,7 +601,6 @@ namespace Viu.Editor
                 var mats = r.sharedMaterials;
                 if (mats == null || mats.Length == 0)
                 {
-                    // Пустой слот → хотя бы unlit дерево, не Error magenta
                     if (unlit != null)
                     {
                         var fallback = LoadOrCreateSolidMat(matFolder, "viu_wood", unlit, new Color(0.45f, 0.32f, 0.22f));
@@ -575,9 +625,14 @@ namespace Viu.Editor
                             && sn.IndexOf("Unlit", StringComparison.OrdinalIgnoreCase) < 0
                             && sn.IndexOf("Sprites", StringComparison.OrdinalIgnoreCase) < 0);
 
-                    if (!bad) continue;
+                    // Уже URP Lit без текстуры → белая стена: всё равно перешиваем в Unlit+цвет
+                    bool whiteLit = !bad && m != null
+                        && sn.IndexOf("Lit", StringComparison.OrdinalIgnoreCase) >= 0
+                        && !HasMeaningfulTexture(m);
 
-                    var shader = lit ?? unlit;
+                    if (!bad && !whiteLit) continue;
+
+                    var shader = unlit ?? lit;
                     var safeName = "viu_" + (m != null ? m.name : "slot" + i);
                     safeName = string.Join("_", safeName.Split(System.IO.Path.GetInvalidFileNameChars()));
                     if (safeName.Length > 40) safeName = safeName.Substring(0, 40);
@@ -587,7 +642,6 @@ namespace Viu.Editor
                     if (copy == null)
                     {
                         copy = new Material(shader);
-                        // Текстуры/цвет с исходника, иначе коричневый unlit
                         bool gotTex = false;
                         if (m != null)
                         {
@@ -601,14 +655,13 @@ namespace Viu.Editor
                                 var t = m.GetTexture("_BaseMap");
                                 if (t != null) { copy.SetTexture("_BaseMap", t); gotTex = true; }
                             }
-                            if (m.HasProperty("_Color") && copy.HasProperty("_BaseColor"))
-                                copy.SetColor("_BaseColor", m.GetColor("_Color"));
-                            else if (m.HasProperty("_BaseColor") && copy.HasProperty("_BaseColor"))
-                                copy.SetColor("_BaseColor", m.GetColor("_BaseColor"));
-                            else if (copy.HasProperty("_BaseColor") && !gotTex)
-                                copy.SetColor("_BaseColor", new Color(0.45f, 0.32f, 0.22f));
-                            if (copy.HasProperty("_Color") && !gotTex)
-                                copy.SetColor("_Color", new Color(0.45f, 0.32f, 0.22f));
+                            Color c = new Color(0.45f, 0.32f, 0.22f);
+                            if (m.HasProperty("_Color")) c = m.GetColor("_Color");
+                            else if (m.HasProperty("_BaseColor")) c = m.GetColor("_BaseColor");
+                            if (!gotTex && c.r > 0.9f && c.g > 0.9f && c.b > 0.9f)
+                                c = new Color(0.45f, 0.32f, 0.22f);
+                            if (copy.HasProperty("_BaseColor")) copy.SetColor("_BaseColor", c);
+                            if (copy.HasProperty("_Color")) copy.SetColor("_Color", c);
                         }
                         else if (copy.HasProperty("_BaseColor"))
                             copy.SetColor("_BaseColor", new Color(0.45f, 0.32f, 0.22f));
@@ -624,6 +677,14 @@ namespace Viu.Editor
             }
             AssetDatabase.SaveAssets();
             Debug.Log("[Viu] Дом: материалов починено/сохранено: " + fixedN);
+        }
+
+        static bool HasMeaningfulTexture(Material m)
+        {
+            if (m == null) return false;
+            if (m.HasProperty("_BaseMap") && m.GetTexture("_BaseMap") != null) return true;
+            if (m.HasProperty("_MainTex") && m.GetTexture("_MainTex") != null) return true;
+            return false;
         }
 
         static Material LoadOrCreateSolidMat(string folder, string name, Shader shader, Color color)

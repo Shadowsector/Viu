@@ -16,7 +16,7 @@ DEFAULT_TUNE: Dict[str, Any] = {
     "activeLane": "taskbar",
     "taskbar": {
         "distanceZ": 14.0,
-        "orthoHalfHeight": 5.5,
+        "orthoHalfHeight": 2.15,
     },
     "attention": {
         "distanceZ": 4.5,

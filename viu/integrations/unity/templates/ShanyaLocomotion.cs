@@ -4,38 +4,76 @@ using UnityEngine;
 namespace Viu.Runtime
 {
     /// <summary>
-    /// Ходьба вдоль X (A/D) для вида сбоку. Walk-анимация вперёд, поворот по направлению.
+    /// Ходьба вдоль X (A/D). Walk через Animator Speed; без Walk-стейта будет только слайд.
+    /// Animator может быть на дочернем FBX-хосте (Avatar), а Locomotion — на корне сцены.
     /// </summary>
-    [RequireComponent(typeof(Animator))]
     public class ShanyaLocomotion : MonoBehaviour
     {
         public float walkSpeed = 1.5f;
         public string speedParameter = "Speed";
-        /// <summary>Подкрутка, если модель смотрит не в +Z: 0, 90, -90, 180.</summary>
         public float modelYawOffset;
 
         const float SideFaceRightYaw = 90f;
 
         Animator _animator;
         int _speedHash;
+        bool _loggedMissingWalk;
+        float _movingSeconds;
 
         void Awake()
         {
-            _animator = GetComponent<Animator>();
+            _animator = GetComponent<Animator>() ?? GetComponentInChildren<Animator>(true);
             _speedHash = Animator.StringToHash(speedParameter);
+            if (_animator == null)
+                Debug.LogError("[Viu] Locomotion: Animator не найден под " + name);
         }
 
         void Start()
         {
-            // Стоя — профиль для камеры с −Z (как Terraria).
             transform.rotation = Quaternion.Euler(0f, SideFaceRightYaw + modelYawOffset, 0f);
+            if (_animator == null) return;
+
+            _animator.applyRootMotion = false;
+            _animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            if (_animator.runtimeAnimatorController != null && _animator.avatar != null)
+            {
+                _animator.Rebind();
+                _animator.Update(0f);
+            }
+            else
+            {
+                Debug.LogWarning(
+                    "[Viu] Locomotion: Animator без controller/avatar — будет слайд без анимации. "
+                    + "ctrl=" + (_animator.runtimeAnimatorController != null)
+                    + " avatar=" + (_animator.avatar != null));
+            }
         }
 
         void Update()
         {
             float h = ReadHorizontal();
             if (_animator != null)
+            {
                 _animator.SetFloat(_speedHash, Mathf.Abs(h));
+                if (Mathf.Abs(h) > 0.05f)
+                {
+                    _movingSeconds += Time.deltaTime;
+                    if (!_loggedMissingWalk && _movingSeconds > 0.3f
+                        && _animator.runtimeAnimatorController != null)
+                    {
+                        var info = _animator.GetCurrentAnimatorStateInfo(0);
+                        if (!info.IsName("Walk"))
+                        {
+                            Debug.LogWarning(
+                                "[Viu] Locomotion: Speed>0 но state≠Walk. "
+                                + "Проверь overlay controller Idle↔Walk и Avatar.");
+                        }
+                        _loggedMissingWalk = true;
+                    }
+                }
+                else
+                    _movingSeconds = 0f;
+            }
 
             if (Mathf.Abs(h) > 0.01f)
             {
