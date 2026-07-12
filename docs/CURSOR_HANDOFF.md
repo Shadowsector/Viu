@@ -1163,3 +1163,54 @@ ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverl
 
 web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
 Ничего не найдено по запросу.
+
+
+---
+
+## 2026-07-12 13:08 — ESCALATE `overlay_playtest` / overlay-magenta-20260712a (Viu)
+
+ЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.
+Inbox task: `overlay-magenta-20260712a`
+
+Ошибка / лог:
+Unity close: Unity.exe не запущен.
+Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs
+ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs
+Обновлён: U:\Anabarra\Unity\Anabarra\Assets\Characters\Shanya\Animations\viu_clips.json
+Сборка OK: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\AnabarraOverlay.exe
+--- build ---
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs
+[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe
+[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\..\Builds/AnabarraOverlay\LaunchOverlay.bat + LaunchOverlay.vbs
+Запуск (без терминала): U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\LaunchOverlay.vbs
+--- overlay_boot.log ---
+﻿13:07:50 Awake: renderers=2513/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2498/2724
+13:07:50 Start runtime-rev=36 args=U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\AnabarraOverlay.exe -force-d3d11 -force-d3d11-bitblt-model -popupwindow
+13:07:50 gfx=Direct3D11 NVIDIA GeForce RTX 3060
+13:07:50 HWND ok
+13:07:50 Geometry 2560x1440 at 0,0
+13:07:51 SetLayeredWindowAttributes=True err=0 key=#FF0080 margins=-1 attempt=0 gfx=Direct3D11 (фон должен быть прозрачным, не магента)
+13:07:51 ColorKey pass 1, Esc=выход
+13:07:51 AfterWindow: renderers=2513/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2498/2724
+13:07:51 SetLayeredWindowAttributes=True err=0 key=#FF0080 margins=-1 attempt=1 gfx=Direct3D11 (фон должен быть прозрачным, не магента)
+13:07:52 SetLayeredWindowAttributes=True err=0 key=#FF0080 margins=-1 attempt=8 gfx=Direct3D11 (фон должен быть прозрачным, не магента)
+13:07:53 SetLayeredWindowAttributes=True err=0 key=#FF0080 margins=-1 attempt=16 gfx=Direct3D11 (фон должен быть прозрачным, не магента)
+13:07:54 SetLayeredWindowAttributes=True err=0 key=#FF0080 margins=-1 attempt=24 gfx=Direct3D11 (фон должен быть прозрачным, не магента)
+
+--- вердикт ---
+OK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.
+--- eyes ---
+Окно не найдено ('Unity'). Видны: ['Приветствие и обращение | Cursor - Google Chrome', 'Вью — Анабарра', 'Total Commander 9.51 - PowerUser v72    Вс 12 июл 2026    13:08:05    Память: 48%    ЦП: 25%', 'Набросок на фрагменте экрана', 'Набросок на фрагменте экрана', '(61) \u200eАнтифишки — НОВОСТИ ОНЛАЙН – (118)', 'EqualizerFrame', 'Shadow Sector - Голос 002', 'Happ 2.5.2 (523)', 'Ollama', 'Медиаплеер', 'Медиаплеер', 'NVIDIA GeForce Overlay', 'Microsoft Text Input Application', 'Program Manager']
+--- Editor.log (summary) ---
+Unity Editor.log: C:\Users\Den\AppData\Local\Unity\Editor\Editor.log
+
+Прочие ошибки (16):
+  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requeste
+
+web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
+Ничего не найдено по запросу.
