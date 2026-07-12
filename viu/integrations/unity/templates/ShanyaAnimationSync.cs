@@ -75,7 +75,6 @@ namespace Viu.Editor
 
             // Жёстко: Idle/Walk. Legacy-recover только для пинов (не для всех X Bot).
             var loco = new List<ClipEntry>();
-            var bodyAvatar = LoadBodyAvatar(FindBodyModelPath());
             foreach (var file in IdlePinFiles)
             {
                 var pinPath = AnimationsFolder + "/" + file;
