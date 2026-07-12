@@ -29,6 +29,74 @@ from ..support import collect_support_bundle, upload_bundle_to_gist
 from .base import AgentContext, Tool, ToolResult
 
 
+def _overlay_process_running() -> bool:
+    if sys.platform != "win32":
+        return False
+    from ..integrations.apps.process import _pids_for_image
+
+    return bool(_pids_for_image("AnabarraOverlay.exe"))
+
+
+def _prepare_boot_log(boot: Path) -> None:
+    """Убрать старый boot-лог — иначе «✓» при неудачном запуске."""
+    if not boot.is_file():
+        return
+    try:
+        boot.unlink()
+        return
+    except OSError:
+        pass
+    stale = boot.parent / f"{boot.name}.stale.{int(time.time())}"
+    try:
+        boot.rename(stale)
+    except OSError:
+        pass
+
+
+def _boot_log_fresh(boot: Path, since_ts: float) -> bool:
+    if not boot.is_file():
+        return False
+    try:
+        return boot.stat().st_mtime >= since_ts - 1.0
+    except OSError:
+        return False
+
+
+def _boot_content_ok(boot_text: str) -> bool:
+    low = boot_text.lower()
+    return (
+        "updatelayeredwindow" in low
+        or "runtime-rev=" in low
+        or "setlayeredwindowattributes=true" in low
+        or "colorkey pass" in low
+    )
+
+
+def _wait_for_overlay_boot(
+    boot: Path,
+    launch_ts: float,
+    wait_sec: float,
+) -> tuple[bool, str]:
+    deadline = time.time() + wait_sec
+    boot_text = ""
+    while time.time() < deadline:
+        if _boot_log_fresh(boot, launch_ts):
+            try:
+                boot_text = boot.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                boot_text = ""
+            if boot_text.strip():
+                return True, boot_text
+        time.sleep(2.0)
+    if _boot_log_fresh(boot, launch_ts):
+        try:
+            boot_text = boot.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            boot_text = ""
+        return bool(boot_text.strip()), boot_text
+    return False, boot_text
+
+
 class OverlayPlaytestTool(Tool):
     name = "overlay_playtest"
     description = (
@@ -130,53 +198,76 @@ class OverlayPlaytestTool(Tool):
             lines.extend(important[-8:])
 
         launch = str(args.get("launch", "true")).lower() not in ("0", "false", "no")
+        launch_requested = launch and out_exe.is_file()
+        launch_attempted = launch_requested and sys.platform == "win32"
+        boot_fresh = False
+        boot_content_ok = False
+        proc_running = False
         verdict = ""
-        if launch and out_exe.is_file():
+        if launch_requested:
             boot = out_exe.parent / "overlay_boot.log"
-            if boot.is_file():
+            launch_ts = time.time()
+            _prepare_boot_log(boot)
+            launch_error = ""
+            if launch_attempted:
                 try:
-                    boot.unlink()
-                except OSError:
-                    pass
-            try:
-                cwd = str(out_exe.parent)
-                if sys.platform == "win32" and launcher.is_file():
-                    # start через cmd без ожидания; предпочтительно .vbs без окна
-                    vbs = launcher.with_suffix(".vbs")
-                    if vbs.is_file():
-                        subprocess.Popen(  # noqa: S603
-                            ["wscript.exe", str(vbs)],
-                            cwd=cwd,
-                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                        )
-                        lines.append(f"Запуск (без терминала): {vbs}")
+                    cwd = str(out_exe.parent)
+                    if launcher.is_file():
+                        # start через cmd без ожидания; предпочтительно .vbs без окна
+                        vbs = launcher.with_suffix(".vbs")
+                        if vbs.is_file():
+                            subprocess.Popen(  # noqa: S603
+                                ["wscript.exe", str(vbs)],
+                                cwd=cwd,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                            )
+                            lines.append(f"Запуск (без терминала): {vbs}")
+                        else:
+                            subprocess.Popen(  # noqa: S603
+                                ["cmd", "/c", "start", "", str(launcher)],
+                                cwd=cwd,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                            )
+                            lines.append(f"Запуск: {launcher}")
                     else:
                         subprocess.Popen(  # noqa: S603
-                            ["cmd", "/c", "start", "", str(launcher)],
+                            [
+                                "cmd", "/c", "start", "", str(out_exe),
+                                "-force-d3d11", "-force-d3d11-bitblt-model", "-popupwindow",
+                            ],
                             cwd=cwd,
-                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                         )
-                        lines.append(f"Запуск: {launcher}")
-                elif sys.platform == "win32":
-                    subprocess.Popen(  # noqa: S603
-                        [
-                            "cmd", "/c", "start", "", str(out_exe),
-                            "-force-d3d11", "-force-d3d11-bitblt-model", "-popupwindow",
-                        ],
-                        cwd=cwd,
-                    )
-                    lines.append(f"Запуск exe + bitblt: {out_exe}")
-                else:
-                    lines.append("(не Windows — запуск пропущен)")
-            except OSError as exc:
-                lines.append(f"Запуск не удался: {exc}")
+                        lines.append(f"Запуск exe + bitblt: {out_exe}")
+                except OSError as exc:
+                    launch_error = str(exc)
+                    lines.append(f"Запуск не удался: {exc}")
+            else:
+                lines.append("(не Windows — запуск пропущен)")
+
+            if launch_error:
+                human = _playtest_human(
+                    ok=False,
+                    build_ok=True,
+                    launch_attempted=True,
+                    boot_fresh=False,
+                    boot_content_ok=False,
+                    proc_running=False,
+                    out_exe=out_exe,
+                    verdict=f"FAIL: запуск — {launch_error}",
+                    eyes_miss=False,
+                    eye_vision="",
+                )
+                return ToolResult(False, human)
 
             wait_sec = float(args.get("wait_sec") or 18)
-            time.sleep(wait_sec)
+            boot_fresh, boot_text = _wait_for_overlay_boot(boot, launch_ts, wait_sec)
+            proc_running = _overlay_process_running()
+            if launch_attempted and not boot_fresh and proc_running:
+                boot_fresh, boot_text = _wait_for_overlay_boot(boot, launch_ts, 8.0)
+                proc_running = _overlay_process_running()
 
-            boot = out_exe.parent / "overlay_boot.log"
-            if boot.is_file():
-                boot_text = boot.read_text(encoding="utf-8", errors="replace")
+            if boot_fresh and boot_text:
+                boot_content_ok = _boot_content_ok(boot_text)
                 lines.append("--- overlay_boot.log ---")
                 # Awake/AfterWindow в начале; ColorKey раньше заливал хвост
                 head = boot_text[:1200]
@@ -190,11 +281,17 @@ class OverlayPlaytestTool(Tool):
                 verdict = _verdict(boot_text)
                 lines.append("--- вердикт ---")
                 lines.append(verdict)
-            else:
-                verdict = "FAIL: overlay_boot.log нет"
-                lines.append(
-                    "overlay_boot.log нет — окно могло не стартовать или скрипт не доехал."
-                )
+            elif launch_attempted:
+                if boot.is_file():
+                    verdict = "FAIL: overlay_boot.log не обновился (старый лог?)"
+                    lines.append(
+                        "overlay_boot.log есть, но не свежий — окно могло не стартовать."
+                    )
+                else:
+                    verdict = "FAIL: overlay_boot.log нет"
+                    lines.append(
+                        "overlay_boot.log нет — окно могло не стартовать или скрипт не доехал."
+                    )
 
         # Глаза: скрин оверлея → VL / gist Cursor — без «Ден, посмотри»
         try:
@@ -302,7 +399,6 @@ class OverlayPlaytestTool(Tool):
             pass
 
         build_ok = proc.returncode == 0
-        has_eyes = "--- eyes ---" in "\n".join(lines)
         eyes_miss = any("окно не найдено" in ln.lower() for ln in lines)
         eye_vision = ""
         for i, ln in enumerate(lines):
@@ -324,23 +420,27 @@ class OverlayPlaytestTool(Tool):
             )
         )
 
-        play_ok = (
-            build_ok
-            and (not verdict or verdict.startswith("OK:"))
-            and has_eyes
-            and not eyes_miss
-            and not player_bad
-            and "--- вердикт (после eyes) ---" not in "\n".join(lines)
+        play_ok = build_ok and (
+            not launch_attempted
+            or (
+                boot_fresh
+                and boot_content_ok
+                and not verdict.startswith("FAIL:")
+                and not player_bad
+            )
         )
 
         human = _playtest_human(
             ok=play_ok,
             build_ok=build_ok,
+            launch_attempted=launch_attempted,
+            boot_fresh=boot_fresh,
+            boot_content_ok=boot_content_ok,
+            proc_running=proc_running,
             out_exe=out_exe if build_ok else None,
             verdict=verdict,
             eyes_miss=eyes_miss,
             eye_vision=eye_vision,
-            boot_ok="UpdateLayeredWindow" in "\n".join(lines) or "runtime-rev=" in "\n".join(lines),
         )
         return ToolResult(play_ok, human)
 
@@ -349,11 +449,14 @@ def _playtest_human(
     *,
     ok: bool,
     build_ok: bool,
+    launch_attempted: bool,
+    boot_fresh: bool,
+    boot_content_ok: bool,
+    proc_running: bool,
     out_exe: Path | None,
     verdict: str,
     eyes_miss: bool,
     eye_vision: str,
-    boot_ok: bool,
 ) -> str:
     """Короткий отчёт для чата — без Unity Licensing и списков файлов."""
     if not build_ok:
@@ -363,11 +466,34 @@ def _playtest_human(
             "Или закрой Unity и попробуй снова «▶ Запустить оверлей»."
         )
 
-    lines = ["✓ Оверлей собран и запущен." if ok or boot_ok else "⚠ Собрано, но есть сомнения."]
+    if launch_attempted and not boot_fresh:
+        lines = ["✗ Сборка прошла, но оверлей не запустился."]
+        if proc_running:
+            lines.append(
+                "Процесс AnabarraOverlay.exe есть, но свежий boot-лог не появился — "
+                "окно может быть невидимо."
+            )
+        else:
+            lines.append("Процесс AnabarraOverlay.exe не найден.")
+        lines.append("→ Запусти вручную: Builds\\AnabarraOverlay\\LaunchOverlay.vbs")
+        lines.append("→ Или «Что сломалось?» — логи уйдут разработчику.")
+        if verdict.startswith("FAIL:"):
+            lines.append(verdict.split("\n")[0][:160])
+        return "\n".join(lines)
+
+    if ok:
+        headline = "✓ Оверлей собран и запущен."
+    elif launch_attempted and boot_fresh:
+        headline = "⚠ Оверлей запущен, но есть сомнения."
+    else:
+        headline = "✓ Сборка оверлея завершена."
+
+    lines = [headline]
     if out_exe is not None:
         lines.append(f"Файл: {out_exe.name}")
-        lines.append("Управление: A/D — ходить, W/S — глубина, Esc — выход.")
-    if boot_ok:
+        if launch_attempted:
+            lines.append("Управление: A/D — ходить, W/S — глубина, Esc — выход.")
+    if boot_content_ok:
         lines.append("Прозрачность: ок (весь экран).")
     if eyes_miss:
         lines.append("Глаза: окно не нашла — глянь на рабочий стол сам.")
@@ -377,9 +503,9 @@ def _playtest_human(
             if "вердикт" in ln.lower() or "OK" in ln or "FAIL" in ln:
                 lines.append("Глаза: " + ln.strip()[:120])
                 break
-    if verdict.startswith("WARN:") or verdict.startswith("FAIL:"):
+    if verdict.startswith("WARN:") or (verdict.startswith("FAIL:") and ok):
         lines.append(verdict.split("\n")[0][:160])
-    if not ok and build_ok:
+    if not ok and build_ok and launch_attempted:
         lines.append("")
         lines.append("→ Если картинка кривая: «Починить текстуры оверлея», потом снова запуск.")
     return "\n".join(lines)
