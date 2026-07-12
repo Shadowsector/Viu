@@ -134,11 +134,11 @@ namespace Viu.Editor
 
         static readonly string[] IdlePinFiles =
         {
-            "Shanya_Idle.fbx", "Shanya_Idle_2.fbx", "Shanya_Idle_3.fbx", "Idle.fbx",
+            "X Bot@Idle.fbx", "Shanya_Idle.fbx", "Shanya_Idle_2.fbx", "Idle.fbx",
         };
         static readonly string[] WalkPinFiles =
         {
-            "Shanya_Walk.fbx", "Shanya_Walk_2.fbx", "Take 001.fbx", "Walk.fbx",
+            "Shanya_Run.fbx", "Shanya_Walk.fbx", "Shanya_Walk_2.fbx", "Take 001.fbx", "Walk.fbx",
         };
 
         static void EnsureAllAnimationFbxImport(Avatar bodyAvatar, bool log = false)
