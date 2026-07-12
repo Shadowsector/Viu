@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T10:41:07Z",
+  "updated_at": "2026-07-12T10:41:53Z",
   "note": "Rev38 placement pushed — Den rebuild + verify. Magenta baseline rev37 locked.",
   "tasks": [
     {
@@ -13,7 +13,7 @@
     },
     {
       "id": "overlay-placement-20260712c",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": 1,
       "title": "Overlay placement rev38: feet, home yaw, W/S, stable camera",
       "created_by": "Cursor",
@@ -24,7 +24,9 @@
       },
       "instructions": "Rev38 landed: feetScreenFraction 0.07, HomeYawDegrees=180, W/S Z in Locomotion + Walk, camera CalibrateFeetOffset (no run bob). Rebuild overlay, expect runtime-rev=38 + UpdateLayeredWindow OK. Prior playtest blocked (eyes) on rev37 build.",
       "acceptance": "Shanya lower; home faces camera; W/S depth walk with anim; camera stable while running.",
-      "started_at": "2026-07-12T10:41:07Z"
+      "started_at": "2026-07-12T10:41:07Z",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe\n--- build ---\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs\n[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe\n[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\\..\\Builds/AnabarraOverlay\\LaunchOverlay.bat + LaunchOverlay.vbs\nЗапуск (без терминала): U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\LaunchOverlay.vbs\n--- overlay_boot.log ---\n﻿13:41:32 Awake: renderers=2513/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2498/2724\n13:41:33 Start runtime-rev=37 UpdateLayered=True args=U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe -force-d3d11 -force-d3d11-bitblt-model -popupwindow\n13:41:33 gfx=Direct3D11 NVIDIA GeForce RTX 3060\n13:41:33 HWND ok\n13:41:33 Geometry 2560x1440 at 0,0\n13:41:33 UpdateLayeredWindow init OK 2560x1440\n13:41:33 Transparency=UpdateLayeredWindow (per-pixel alpha) OK runtime-rev=37 Esc=выход\n13:41:33 AfterWindow: renderers=2513/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2498/2724\n\n--- вердикт ---\nOK: HWND + UpdateLayeredWindow + сцена в boot-логе. Eyes/gist — источник правды, не Ден.\n--- eyes ---\nОкно не найдено ('Unity'). Видны: ['Сохранение', 'Video posted by rawen - Google Chrome', 'Набросок на фрагменте экрана', 'Вью — Анабарра', 'Total Commander 9.51 - PowerUser v72    Вс 12 июл 2026    13:41:47    Память: 46%    ЦП: 21%', '(66) \\u200eАнтифишки — НОВОСТИ ОНЛАЙН – (131)', 'EqualizerFrame', 'Shadow Sector - Голос 002', 'Happ 2.5.2 (523)', 'Ollama', 'Медиаплеер', 'Медиаплеер', 'NVIDIA GeForce Overlay', 'Microsoft Text Input Application', 'Program Manager']\n--- Editor.log (summary) ---\nUnity Editor.log: C:\\Users\\Den\\AppData\\Local\\Unity\\Editor\\Editor.log\n\nПрочие ошибки (16):\n  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)\n  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)\n  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)\n  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)\n  • [Licensing::Client] Error: Code 404 while processing request (status: Found ",
+      "finished_at": "2026-07-12T10:41:53Z"
     }
   ]
 }
