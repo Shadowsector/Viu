@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T11:10:00Z",
+  "updated_at": "2026-07-12T11:08:56Z",
   "note": "Rev40 corridor+dollhouse FSM. Viu GUI saves window geometry.",
   "tasks": [
     {
@@ -12,14 +12,18 @@
     },
     {
       "id": "overlay-corridor-20260712d",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "Corridor rev40: scale depth, facade→dollhouse at door",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
-      "direct_args": { "reopen_unity": false, "timeout": 2400 },
+      "direct_args": {
+        "reopen_unity": false,
+        "timeout": 2400
+      },
       "instructions": "Rev40: start outside (facade). W/S scale+move. S to barn door → EnterHome dollhouse. W back past door → facade. runtime-rev=40. Do NOT regress ULW/anim.",
-      "acceptance": "W bigger/closer; S smaller toward barn wall; at door interior visible; exit restores facade."
+      "acceptance": "W bigger/closer; S smaller toward barn wall; at door interior visible; exit restores facade.",
+      "started_at": "2026-07-12T11:08:56Z"
     }
   ]
 }
