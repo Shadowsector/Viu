@@ -18,7 +18,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 45
+        // @viu-deploy-rev 46
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -37,8 +37,8 @@ namespace Viu.Editor
         const float CorridorStartZ = -2.0f;
         /// <summary>Половина высоты ortho-кадра в метрах (2*size = видимая высота мира).</summary>
         const float CameraOrthoHalfHeight = 5.5f;
-        const string HomeMatFolder = "Assets/Environment/ViuOverlayMats/r45";
-        const string CharMatFolder = "Assets/Characters/Shanya/ViuOverlayMats/r45";
+        const string HomeMatFolder = "Assets/Environment/ViuOverlayMats/r46";
+        const string CharMatFolder = "Assets/Characters/Shanya/ViuOverlayMats/r46";
 
         [MenuItem("Viu/Overlay/Prepare Overlay Scene")]
         public static void RunMenu() => Run(ScenePath);
@@ -213,6 +213,8 @@ namespace Viu.Editor
             FixOverlayMaterials(instance, assetSourceDir: charDir, isHome: false);
             try { ShanyaOutfit.Apply(ShanyaOutfit.Mode.Dressed); }
             catch (Exception e) { Debug.LogWarning("[Viu] Outfit: " + e.Message); }
+            // Повтор после outfit — иначе сапоги/0 переключённые слои остаются FBX-материалами (magenta в Player).
+            FixOverlayMaterials(instance, assetSourceDir: charDir, isHome: false);
             EnsureLocomotion(instance);
             var home = EnsureHomeBuilding();
             EnsureOverlayEnvironment(instance);
@@ -774,8 +776,8 @@ namespace Viu.Editor
                             && sn.IndexOf("Unlit", StringComparison.OrdinalIgnoreCase) < 0
                             && sn.IndexOf("Sprites", StringComparison.OrdinalIgnoreCase) < 0);
 
-                    // URP Lit с рабочей albedo — не трогаем (дом и Шаня).
-                    if (!bad && HasMeaningfulTexture(m)) continue;
+                    // Только наши сохранённые URP-материалы с albedo — FBX-материалы в Player часто magenta.
+                    if (IsViuSavedMaterial(m, matFolder) && HasMeaningfulAlbedo(m)) continue;
 
                     var shader = lit ?? unlit;
                     var safeName = "viu_" + (m != null ? m.name : "slot" + i);
@@ -787,7 +789,7 @@ namespace Viu.Editor
 
                     Material copy = AssetDatabase.LoadAssetAtPath<Material>(path);
                     bool srcHasTex = m != null && MaterialHasAnyTexture(m);
-                    if (copy != null && !HasMeaningfulTexture(copy)
+                    if (copy != null && !HasMeaningfulAlbedo(copy)
                         && TryBindAssetTexture(copy, assetSourceDir, m != null ? m.name : null,
                             r.gameObject.name, i, texMap))
                     {
@@ -798,12 +800,12 @@ namespace Viu.Editor
                         texBound++;
                         continue;
                     }
-                    if (copy != null && srcHasTex && !HasMeaningfulTexture(copy))
+                    if (copy != null && srcHasTex && !HasMeaningfulAlbedo(copy))
                     {
                         AssetDatabase.DeleteAsset(path);
                         copy = null;
                     }
-                    if (copy != null && !HasMeaningfulTexture(copy) && !srcHasTex)
+                    if (copy != null && !HasMeaningfulAlbedo(copy) && !srcHasTex)
                     {
                         AssetDatabase.DeleteAsset(path);
                         copy = null;
@@ -848,6 +850,9 @@ namespace Viu.Editor
             var n = (r != null ? r.gameObject.name : "").ToLowerInvariant().Replace("-", "_");
             if (m != null && !string.IsNullOrEmpty(m.name))
                 n += " " + m.name.ToLowerInvariant().Replace("-", "_");
+            if (n.Contains("boot") || n.Contains("shoe") || n.Contains("gauntlet") || n.Contains("glove")
+                || n.Contains("stock") || n.Contains("legging"))
+                return new Color(0.12f, 0.10f, 0.09f);
             if (n.Contains("hair") || n.Contains("lash") || n.Contains("brow"))
                 return new Color(0.22f, 0.16f, 0.10f);
             if (n.Contains("eye") || n.Contains("iris") || n.Contains("sclera"))
@@ -1096,6 +1101,26 @@ namespace Viu.Editor
             if (n.Contains("interior") || n.Contains("floor"))
                 return new Color(0.48f, 0.36f, 0.26f);
             return new Color(0.58f, 0.50f, 0.40f);
+        }
+
+        static bool IsViuSavedMaterial(Material m, string matFolder)
+        {
+            if (m == null || string.IsNullOrEmpty(matFolder)) return false;
+            var path = AssetDatabase.GetAssetPath(m);
+            if (string.IsNullOrEmpty(path)) return false;
+            return path.Replace('\\', '/').StartsWith(matFolder + "/", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool HasMeaningfulAlbedo(Material m)
+        {
+            if (m == null) return false;
+            Texture tex = null;
+            if (m.HasProperty("_BaseMap")) tex = m.GetTexture("_BaseMap");
+            if (tex == null && m.HasProperty("_MainTex")) tex = m.GetTexture("_MainTex");
+            if (tex == null) return false;
+            var path = AssetDatabase.GetAssetPath(tex);
+            if (string.IsNullOrEmpty(path)) return false;
+            return IsLikelyAlbedoTexturePath(path);
         }
 
         static bool HasMeaningfulTexture(Material m)
