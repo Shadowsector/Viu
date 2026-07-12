@@ -97,7 +97,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 46" in text
+    assert "@viu-deploy-rev 47" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -158,15 +158,16 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 46" in setup
+    assert "@viu-deploy-rev 47" in setup
     assert "CameraOrthoHalfHeight" in setup
     assert "HomeMatFolder" in setup
+    assert "ShanyaOverlayMaterialFix" in setup
     assert "IsViuSavedMaterial" in setup
     assert "HasMeaningfulAlbedo" in setup
     assert "TryBindAssetTexture" in setup
     assert "GuessCharacterColor" in setup
     assert "slot_texture_list" in setup
-    assert "ViuOverlayMats/r46" in setup
+    assert "ViuOverlayMats/r47" in setup
     assert "X Bot@Idle.fbx" in sync
     assert "DetectRunAsWalkSpeed" in loco
     assert "полная скорость" in loco or "return 1f" in loco
@@ -192,7 +193,10 @@ def test_overlay_templates(tmp_path):
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay
     assert "RuntimeRev" in overlay
-    assert 'RuntimeRev = "46"' in overlay
+    assert 'RuntimeRev = "47"' in overlay
+    matfix = (root / "ShanyaOverlayMaterialFix.cs").read_text(encoding="utf-8")
+    assert "RuntimeMaterialFix" in matfix
+    assert "NeedsFix" in matfix
     assert "CopyMaterialTexturesFull" in setup
     assert "HomeMatFolder" in setup
     assert "MaterialImportMode.ImportStandard" in setup or "materialImportMode" in setup

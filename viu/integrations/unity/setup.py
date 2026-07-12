@@ -20,6 +20,7 @@ _TEMPLATE_OVERLAY = Path(__file__).parent / "templates" / "ShanyaDesktopOverlay.
 _TEMPLATE_OVERLAY_CAM = Path(__file__).parent / "templates" / "ShanyaOverlayCamera.cs"
 _TEMPLATE_OVERLAY_DEPTH = Path(__file__).parent / "templates" / "ShanyaOverlayDepth.cs"
 _TEMPLATE_OVERLAY_CORRIDOR = Path(__file__).parent / "templates" / "ShanyaOverlayCorridor.cs"
+_TEMPLATE_OVERLAY_MATFIX = Path(__file__).parent / "templates" / "ShanyaOverlayMaterialFix.cs"
 _TEMPLATE_DOLLHOUSE = Path(__file__).parent / "templates" / "DollhouseWall.cs"
 _TEMPLATE_OVERLAY_SETUP = Path(__file__).parent / "templates" / "ShanyaOverlaySetup.cs"
 _TEMPLATE_MANIFEST = Path(__file__).parent / "templates" / "viu_clips.json"
@@ -35,10 +36,11 @@ _OVERLAY_REL = f"{_RUNTIME_DIR}/ShanyaDesktopOverlay.cs"
 _OVERLAY_CAM_REL = f"{_RUNTIME_DIR}/ShanyaOverlayCamera.cs"
 _OVERLAY_DEPTH_REL = f"{_RUNTIME_DIR}/ShanyaOverlayDepth.cs"
 _OVERLAY_CORRIDOR_REL = f"{_RUNTIME_DIR}/ShanyaOverlayCorridor.cs"
+_OVERLAY_MATFIX_REL = f"{_RUNTIME_DIR}/ShanyaOverlayMaterialFix.cs"
 _DOLLHOUSE_REL = f"{_RUNTIME_DIR}/DollhouseWall.cs"
 _MANIFEST_REL = f"{ANIMATIONS_REL}/{MANIFEST_NAME}"
 
-VIU_DEPLOY_REV = "46"
+VIU_DEPLOY_REV = "47"
 VIU_DEPLOY_MARKER = f"@viu-deploy-rev {VIU_DEPLOY_REV}"
 _BROKEN_EDITOR_MARKERS = (
     "activeInputHandler",
@@ -143,6 +145,7 @@ def deploy_runtime_scripts(project_root: Path) -> Tuple[bool, str]:
         (_TEMPLATE_OVERLAY_CAM, _OVERLAY_CAM_REL),
         (_TEMPLATE_OVERLAY_DEPTH, _OVERLAY_DEPTH_REL),
         (_TEMPLATE_OVERLAY_CORRIDOR, _OVERLAY_CORRIDOR_REL),
+        (_TEMPLATE_OVERLAY_MATFIX, _OVERLAY_MATFIX_REL),
         (_TEMPLATE_DOLLHOUSE, _DOLLHOUSE_REL),
     ):
         if not src.is_file():

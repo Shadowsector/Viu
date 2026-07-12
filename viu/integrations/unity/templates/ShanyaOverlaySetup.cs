@@ -18,7 +18,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 46
+        // @viu-deploy-rev 47
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -37,8 +37,8 @@ namespace Viu.Editor
         const float CorridorStartZ = -2.0f;
         /// <summary>Половина высоты ortho-кадра в метрах (2*size = видимая высота мира).</summary>
         const float CameraOrthoHalfHeight = 5.5f;
-        const string HomeMatFolder = "Assets/Environment/ViuOverlayMats/r46";
-        const string CharMatFolder = "Assets/Characters/Shanya/ViuOverlayMats/r46";
+        const string HomeMatFolder = "Assets/Environment/ViuOverlayMats/r47";
+        const string CharMatFolder = "Assets/Characters/Shanya/ViuOverlayMats/r47";
 
         [MenuItem("Viu/Overlay/Prepare Overlay Scene")]
         public static void RunMenu() => Run(ScenePath);
@@ -253,6 +253,8 @@ namespace Viu.Editor
                 root.AddComponent<Viu.Runtime.ShanyaOverlayDepth>();
             if (root.GetComponent<Viu.Runtime.ShanyaOverlayCorridor>() == null)
                 root.AddComponent<Viu.Runtime.ShanyaOverlayCorridor>();
+            if (root.GetComponent<Viu.Runtime.ShanyaOverlayMaterialFix>() == null)
+                root.AddComponent<Viu.Runtime.ShanyaOverlayMaterialFix>();
         }
 
         static void LiftFeet(GameObject root, float liftMeters)
@@ -776,8 +778,8 @@ namespace Viu.Editor
                             && sn.IndexOf("Unlit", StringComparison.OrdinalIgnoreCase) < 0
                             && sn.IndexOf("Sprites", StringComparison.OrdinalIgnoreCase) < 0);
 
-                    // Только наши сохранённые URP-материалы с albedo — FBX-материалы в Player часто magenta.
-                    if (IsViuSavedMaterial(m, matFolder) && HasMeaningfulAlbedo(m)) continue;
+                    // Только наши URP-материалы с albedo. Остальное — всегда пересохраняем.
+                    if (IsViuSavedMaterial(m, matFolder) && HasMeaningfulAlbedo(m) && !bad) continue;
 
                     var shader = lit ?? unlit;
                     var safeName = "viu_" + (m != null ? m.name : "slot" + i);

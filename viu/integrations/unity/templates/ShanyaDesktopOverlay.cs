@@ -27,7 +27,7 @@ namespace Viu.Runtime
         static readonly Color32 ChromaKey32 = new Color32(255, 0, 128, 255);
 
         /// <summary>Метка в overlay_boot.log — если нет runtime-rev=37, в exe старые скрипты.</summary>
-        public const string RuntimeRev = "46";
+        public const string RuntimeRev = "47";
 
         public bool fullScreenOverlay = true;
         public int stripHeightPixels = 280;
@@ -222,6 +222,9 @@ namespace Viu.Runtime
                 // ignore
             }
         }
+
+        /// <summary>Для других runtime-компонентов (MaterialFix).</summary>
+        public static void WriteBoot(string line) => BootLog(line);
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         IEnumerator ConfigureWindowWhenReady()
