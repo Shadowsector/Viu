@@ -18,9 +18,9 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 50
+        // @viu-deploy-rev 51
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
-        const string ExpectedRuntimeRev = "50";
+        const string ExpectedRuntimeRev = "51";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
@@ -293,7 +293,7 @@ namespace Viu.Editor
             else
                 report.Ok("OverlayCameraPresets OK");
 
-            CheckSceneAnchors(report);
+            EnsureAnchorsForValidate(shanya, home, scenePath, report);
             AuditSceneMaterials(shanya, home, report);
             CheckDollhouse(home, report);
 
@@ -420,8 +420,18 @@ namespace Viu.Editor
                 report.Ok("RuntimeRev=" + ExpectedRuntimeRev);
         }
 
-        static void CheckSceneAnchors(OverlayValidationReport report)
+        static void EnsureAnchorsForValidate(
+            GameObject shanya,
+            GameObject home,
+            string scenePath,
+            OverlayValidationReport report)
         {
+            if (shanya == null)
+            {
+                report.Warn("Якоря не созданы — нет Шани в сцене.");
+                return;
+            }
+
             var kinds = new[]
             {
                 Viu.Runtime.OverlayAnchorKind.CharacterStart,
@@ -434,13 +444,19 @@ namespace Viu.Editor
             {
                 if (Viu.Runtime.OverlaySceneAnchor.Find(kind) != null)
                     found++;
-                else
-                    report.Warn("Нет якоря " + kind + " — Bootstrap или добавь в Viu_Anchors.");
             }
-            if (found == kinds.Length)
-                report.Ok("Anchors 4/4 OK");
-            else if (found == 0)
-                report.Error("Нет ни одного Anchor_* — Bootstrap Overlay Scene (once).");
+
+            if (found < kinds.Length)
+            {
+                EnsureSceneAnchors(shanya, home);
+                EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+                if (!string.IsNullOrEmpty(scenePath))
+                    SaveActiveScene(scenePath);
+                report.Ok(
+                    "Якоря Viu_Anchors/ созданы автоматически — при желании подвинь в Scene и Ctrl+S.");
+            }
+            else
+                report.Ok("Якоря 4/4 на месте");
         }
 
         static void AuditSceneMaterials(GameObject shanya, GameObject home, OverlayValidationReport report)
@@ -470,11 +486,11 @@ namespace Viu.Editor
             }
             report.Ok("Materials scanned: " + total);
             if (badShader > 0)
-                report.Error("Bad shader (Standard/Error): " + badShader
-                    + " — Viu → Overlay → Rebind All Materials.");
+                report.Error("Плохой шейдер (Standard/Error): " + badShader
+                    + " слотов — нажми «Rebind материалы».");
             if (missingAlbedo > 0)
-                report.Error("Missing albedo: " + missingAlbedo
-                    + " — Rebind All Materials или проверь Textures/.");
+                report.Error("Без текстуры (albedo): " + missingAlbedo
+                    + " слотов — сначала «Rebind материалы», потом снова «Проверить».");
             if (badShader == 0 && missingAlbedo == 0 && total > 0)
                 report.Ok("Materials albedo OK (" + total + " slots)");
         }

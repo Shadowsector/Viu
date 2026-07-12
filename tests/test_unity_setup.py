@@ -97,7 +97,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 50" in text
+    assert "@viu-deploy-rev 51" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -158,8 +158,8 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 50" in setup
-    assert "RebindAllOverlayMaterials" in setup
+    assert "@viu-deploy-rev 51" in setup
+    assert "EnsureAnchorsForValidate" in setup
     assert "ValidateOverlaySceneBatch" in setup
     assert "RebindMaterialsBatch" in setup
     assert "BuildWindowsOnly" in setup
@@ -200,7 +200,7 @@ def test_overlay_templates(tmp_path):
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay
     assert "RuntimeRev" in overlay
-    assert 'RuntimeRev = "50"' in overlay
+    assert 'RuntimeRev = "51"' in overlay
     assert "fullScreenOverlay = true" in overlay
     assert "ApplyDisplayMode" in overlay
     assert "instanceHeightPixels" in overlay

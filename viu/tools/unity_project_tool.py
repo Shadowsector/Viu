@@ -47,6 +47,65 @@ def _ensure_batch_ready(root: Path, *, auto_kill: bool = True) -> tuple[ToolResu
     return None, msg
 
 
+def _overlay_human_summary(root: Path, log_name: str, *, ok: bool, ok_label: str) -> str:
+    """Короткий отчёт для Дена — без Unity MemoryLeaks."""
+    lines: list[str] = []
+    if ok:
+        lines.append(f"✓ {ok_label}")
+    else:
+        lines.append("✗ Не прошло. Смотри детали ниже.")
+
+    validate_log = root / "overlay_validate.log"
+    if log_name == "viu_overlay_validate.log" and validate_log.is_file():
+        text = validate_log.read_text(encoding="utf-8", errors="replace")
+        fails = [ln[5:].strip() for ln in text.splitlines() if ln.startswith("FAIL:")]
+        warns = [ln[5:].strip() for ln in text.splitlines() if ln.startswith("WARN:")]
+        oks = [ln[3:].strip() for ln in text.splitlines() if ln.startswith("OK:")]
+        if fails:
+            lines.append("")
+            lines.append("Что мешает:")
+            for f in fails[:6]:
+                lines.append(f"  • {f}")
+            if not ok:
+                if any("albedo" in f.lower() or "текстур" in f.lower() for f in fails):
+                    lines.append("")
+                    lines.append("→ Сначала «Overlay: rebind материалы», потом снова «Проверить».")
+                if any("Walk" in f or "Avatar" in f for f in fails):
+                    lines.append("→ «Обновить аниматор» в меню анимаций.")
+        if warns:
+            lines.append("")
+            lines.append("Замечания (не блокируют, если нет «Что мешает»):")
+            for w in warns[:4]:
+                lines.append(f"  • {w}")
+        if ok and oks:
+            lines.append("")
+            lines.append("В порядке: " + "; ".join(oks[:5]))
+        return "\n".join(lines)
+
+    rebind_log = root / "overlay_rebind.log"
+    if log_name == "viu_overlay_rebind.log" and rebind_log.is_file():
+        last = rebind_log.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+        if last:
+            lines.append("")
+            lines.append("Сохранено: " + last[-1])
+        lines.append("")
+        lines.append("→ Теперь «Overlay: проверить сцену», затем «Собрать exe».")
+        return "\n".join(lines)
+
+    if log_name == "viu_overlay_build.log":
+        exe = overlay_exe_path(root)
+        if ok and exe.is_file():
+            lines.append("")
+            lines.append(f"Файл: {exe}")
+            lines.append("Запуск: Builds\\AnabarraOverlay\\LaunchOverlay.vbs")
+        elif not ok:
+            lines.append("")
+            lines.append("→ Открой viu_overlay_build.log или сначала Validate + Rebind.")
+        return "\n".join(lines)
+
+    return ok_label if ok else "Ошибка — см. лог Unity."
+
+
 def _run_unity_batch(
     root: Path,
     ctx: AgentContext,
@@ -120,15 +179,10 @@ def _run_unity_batch(
         if "[Viu]" in ln or "FAIL:" in ln or "WARN:" in ln or "error CS" in ln
     ]
     ok_run = proc.returncode == 0
-    body = "\n".join(lines)
-    if ok_run:
-        body += f"\n{ok_label} (exit=0)"
-    else:
-        body += f"\nFAIL exit={proc.returncode}. Смотри {log_name}"
-    if important:
-        body += "\n---\n" + "\n".join(important[-20:])
-    elif tail_lines:
-        body += "\n---\n" + "\n".join(tail_lines[-12:])
+    summary = _overlay_human_summary(root, log_name, ok=ok_run, ok_label=ok_label)
+    body = "\n".join(lines) + "\n\n" + summary
+    if not ok_run and important:
+        body += "\n\n--- Unity ---\n" + "\n".join(important[-8:])
     return ToolResult(ok_run, body)
 
 

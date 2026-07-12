@@ -22,6 +22,15 @@ class ToolResult:
     ok: bool
     content: str
 
+    @property
+    def message(self) -> str:
+        """Alias для совместимости (GUI, старый код)."""
+        return self.content
+
+    @message.setter
+    def message(self, value: str) -> None:
+        self.content = value
+
     def render(self) -> str:
         prefix = "OK" if self.ok else "ERROR"
         return f"[{prefix}] {self.content}"
