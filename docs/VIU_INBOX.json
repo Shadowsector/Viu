@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T10:10:00Z",
+  "updated_at": "2026-07-12T10:07:23Z",
   "note": "Anim OK (Idle/Run). Next: magenta transparency — verify BitBlt+ColorKey in boot.",
   "tasks": [
     {
       "id": "overlay-magenta-20260712a",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "Magenta: prove BitBlt ColorKey transparent desktop",
       "created_by": "Cursor",
@@ -15,7 +15,8 @@
         "timeout": 2400
       },
       "instructions": "Anim works (Den). Focus magenta. Recipe: (1) -force-d3d11 -force-d3d11-bitblt-model (2) useFlipModelSwapchain=0 (3) camera #FF0080 not #FF00FF (4) DWM margins=-1 + SetLayeredWindowAttributes (5) URP mats. Expect boot: runtime-rev=36, gfx=Direct3D11, margins=-1, ColorKey=True, both force-d3d11 flags. If still solid pink with ColorKey True — escalate for UpdateLayeredWindow.",
-      "acceptance": "Desktop visible through chroma; Shanya+home opaque; Idle at rest; A/D walks."
+      "acceptance": "Desktop visible through chroma; Shanya+home opaque; Idle at rest; A/D walks.",
+      "started_at": "2026-07-12T10:07:23Z"
     }
   ]
 }
