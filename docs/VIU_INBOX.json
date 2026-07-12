@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T07:49:06Z",
+  "updated_at": "2026-07-12T07:49:52Z",
   "note": "rev27: Walk CrossFade Shanya_*; W/S=Z; no Unity reopen; silent launcher.",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712d",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": 1,
       "title": "rev27: Walk CrossFade + W/S depth Z + no Unity reopen",
       "created_by": "Cursor",
@@ -15,7 +15,9 @@
       },
       "instructions": "deploy-rev 27. Idle=Shanya_Idle Walk=Shanya_Walk. CrossFade. W/S = Z only. No reopen Unity. LaunchOverlay.vbs. ColorKey re-apply.",
       "acceptance": "Walk plays; W/S moves Shanya Z; no Unity/terminal; chroma transparent.",
-      "started_at": "2026-07-12T07:49:06Z"
+      "started_at": "2026-07-12T07:49:06Z",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nУже есть: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe\n--- build ---\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs\n[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe\n[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\\..\\Builds/AnabarraOverlay\\LaunchOverlay.bat\nЗапуск: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\LaunchOverlay.bat\n--- overlay_boot.log ---\n﻿10:49:32 Awake: renderers=2366/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2351/2724\n10:49:32 Start args=AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow\n10:49:32 HWND ok\n10:49:32 Geometry 2560x1440 at 0,0\n10:49:33 SetLayeredWindowAttributes=True err=0\n10:49:33 ColorKey pass 1, Esc=выход\n10:49:33 AfterWindow: renderers=2366/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2351/2724\n\n--- вердикт ---\nOK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.\n--- eyes ---\nОкно не найдено ('Unity'). Видны: ['xiroseb379744 Creator Profile | Civitai - Google Chrome', 'Набросок на фрагменте экрана', 'Вью — Анабарра', 'Total Commander 9.51 - PowerUser v72    Вс 12 июл 2026    10:49:47    Память: 46%    ЦП: 16%', '(9) \\u200eВью – (86)', 'EqualizerFrame', 'Shadow Sector - Голос 002', 'Happ 2.5.2 (523)', 'Ollama', 'Медиаплеер', 'Медиаплеер', 'NVIDIA GeForce Overlay', 'Microsoft Text Input Application', 'Program Manager']\n--- Editor.log (summary) ---\nUnity Editor.log: C:\\Users\\Den\\AppData\\Local\\Unity\\Editor\\Editor.log\n\nПрочие ошибки (2):\n  • [Licensing::Module] Error: Access token is unavailable; failed to update\n  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)\nSupport bundle: U:\\Viu\\.viu\\support\\viu_logs_20260712_104947.zip\nЛоги отправлены: https://gist.github.com/Shadowsector/61b6854c10e878828cc77aad8f969230\n--- вердикт ---\nFAIL: глаза не видели оверлей (окно не найдено / eyes не отработали). Не done.\n\n--- escalate ---\nЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.\nInbox task: `overlay-visual-fix-20260712d`\n\nОшибка / лог:\nUnity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nУже есть: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\An",
+      "finished_at": "2026-07-12T07:49:52Z"
     }
   ]
 }
