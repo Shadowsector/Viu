@@ -134,7 +134,7 @@ def plan_next_step(config: Config) -> StepPlan:
                 message=(
                     f"«{ctx.prepared_name}» в Unity (Assets/Environment/{slug}/).\n"
                     "Новый домик → положи в Inbox → «Следующий шаг».\n"
-                    "Оверлей (Шаня у панели) — только если хочешь playtest, кнопка в «Ещё — Unity»."
+                    "Оверлей (Шаня у панели) — кнопка «▶ Запустить оверлей»."
                 ),
                 idle=True,
                 human_after="Inbox пуст? Положи следующий .blend.",
@@ -192,14 +192,11 @@ def plan_next_step(config: Config) -> StepPlan:
             return _with_ctx(
                 StepPlan(
                     message=(
-                        "Overlay Phase 1: Validate → Rebind материалы → Build.\n"
-                        "Кнопки в «Ещё — игра» (или один playtest)."
+                        "Можно запустить оверлей — Шаня на рабочем столе.\n"
+                        "Кнопка «▶ Запустить оверлей» (Unity закроется на время сборки)."
                     ),
-                    tool="unity_overlay_validate",
-                    human_after=(
-                        "Если FAIL по материалам — «Rebind материалы», затем «Собрать exe». "
-                        "LaunchOverlay.vbs → overlay_boot.log."
-                    ),
+                    tool="unity_overlay",
+                    human_after="A/D — ходить. Если сарай фиолетовый — «Починить текстуры оверлея».",
                 ),
                 get_pipeline_context(config),
             )

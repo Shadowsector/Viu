@@ -27,7 +27,7 @@ namespace Viu.Runtime
         static readonly Color32 ChromaKey32 = new Color32(255, 0, 128, 255);
 
         /// <summary>Метка в overlay_boot.log — если нет runtime-rev=37, в exe старые скрипты.</summary>
-        public const string RuntimeRev = "51";
+        public const string RuntimeRev = "52";
 
         /// <summary>Полный экран — нужен для лазания по иконкам/деревьям вверх. Facade = камера у таскбара, не полоска окна.</summary>
         public bool fullScreenOverlay = true;

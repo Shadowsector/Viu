@@ -1,4 +1,4 @@
-"""Кнопки боковой панели — по задачам, не по названию софта."""
+"""Кнопки боковой панели — минимум, по задачам Дена."""
 
 from __future__ import annotations
 
@@ -30,276 +30,106 @@ class GuiAction:
 
 ACTION_GROUPS: List[str] = [
     "Главное",
-    "Ещё — модели",
-    "Ещё — анимации",
-    "Ещё — Cascadeur",
-    "Ещё — игра",
-    "Ещё — Вью",
-    "Ещё — план",
+    "Редко",
 ]
 
 GUI_ACTIONS: List[GuiAction] = [
+    # --- То, чем пользуешься каждый день ---
     GuiAction(
         "next_step",
         "▶ Следующий шаг",
         "Главное",
         tool="__next_step__",
-        hint="Вью сама решает: Inbox, разметка, экспорт…",
+        hint="Inbox → разметка → экспорт. Вью сама выбирает, что делать.",
+    ),
+    GuiAction(
+        "unity_overlay",
+        "▶ Запустить оверлей",
+        "Главное",
+        tool="unity_overlay",
+        hint="Собрать и запустить Шаню на рабочем столе. Unity закроется на время сборки.",
     ),
     GuiAction(
         "presence_toggle",
-        "Режим: я дома / меня нет",
+        "Я дома / меня нет",
         "Главное",
         tool="__presence_toggle__",
-        hint="Дома — спрашивает. Нет дома — работает сама, копит осмысленные вопросы.",
+        hint="Дома — Вью спрашивает. Нет дома — работает сама.",
     ),
     GuiAction(
-        "decision_queue",
-        "Очередь вопросов",
+        "update_viu",
+        "Обновить Вью",
         "Главное",
-        tool="__decision_queue__",
-        hint="Накопленные вопросы про пайплайн и направление.",
+        tool="__update_viu__",
+        hint="Скачать новую версию с GitHub.",
     ),
     GuiAction(
         "send_logs",
-        "Что сломалось? → разработчику",
+        "Что сломалось?",
         "Главное",
         tool="__collect_logs__",
+        hint="Собрать логи и отправить разработчику.",
     ),
-    GuiAction(
-        "telegram_test",
-        "Telegram: тест связи",
-        "Главное",
-        tool="__telegram_test__",
-    ),
-    # --- Модели (Blender → Unity props) ---
-    GuiAction(
-        "route_inbox",
-        "Разобрать Inbox (модели)",
-        "Ещё — модели",
-        tool="route_inbox",
-        hint="Blend, prop FBX, картинки. Анимации — отдельная кнопка.",
-    ),
-    GuiAction(
-        "prepare_unity_asset",
-        "Prepare .blend (Inbox)",
-        "Ещё — модели",
-        tool="prepare_unity_asset",
-        tool_args={"open_blender": "1"},
-    ),
+    # --- Редко (ручные обходы, если «Следующий шаг» не хватает) ---
     GuiAction(
         "prop_catalog",
         "Разметить предметы",
-        "Ещё — модели",
+        "Редко",
         tool="__prop_catalog__",
-    ),
-    GuiAction(
-        "export_unity_asset",
-        "Экспорт домика → Unity",
-        "Ещё — модели",
-        tool="export_unity_asset",
-    ),
-    GuiAction(
-        "blender_info",
-        "Что в Blender?",
-        "Ещё — модели",
-        tool="blender_info",
-    ),
-    GuiAction(
-        "rig_check",
-        "Скелет персонажа",
-        "Ещё — модели",
-        tool="rig_check",
-    ),
-    # --- Анимации ---
-    GuiAction(
-        "accept_animation",
-        "Принять анимацию (Inbox)",
-        "Ещё — анимации",
-        tool="__accept_animation__",
-        hint="Один Mixamo FBX → описание + scope → Unity Animations/",
+        hint="Вес и галочки для мебели из домика.",
     ),
     GuiAction(
         "animation_catalog",
         "Очередь анимаций",
-        "Ещё — анимации",
+        "Редко",
         tool="__animation_review__",
-        hint="Описать pending или править каталог.",
+        hint="Описать новые FBX-анимации.",
     ),
     GuiAction(
         "unity_apply",
         "Обновить аниматор",
-        "Ещё — анимации",
+        "Редко",
         tool_chain=(
             ("unity_deploy_setup", {}),
             ("unity_sync_animations", {}),
         ),
-        hint="После review — пересобрать Shanya_Idle_Stand.controller",
-    ),
-    # --- Cascadeur ---
-    GuiAction(
-        "cascadeur_status",
-        "Cascadeur: статус",
-        "Ещё — Cascadeur",
-        tool="cascadeur_status",
-        hint="Inbox Cascadeur, пути, что дальше.",
-    ),
-    # --- Игра (Unity playtest) ---
-    GuiAction(
-        "unity_overlay_validate",
-        "Overlay: 1. Проверить",
-        "Ещё — игра",
-        tool="unity_overlay_validate",
-        hint="Шаня, дом, текстуры, якоря. После rebind — повтори проверку.",
+        hint="После новых Idle/Walk — пересобрать контроллер.",
     ),
     GuiAction(
         "unity_overlay_rebind",
-        "Overlay: 2. Rebind текстуры",
-        "Ещё — игра",
+        "Починить текстуры оверлея",
+        "Редко",
         tool="unity_overlay_rebind",
-        hint="Починить фиолетовый сарай / белые волосы. Потом снова «Проверить».",
-    ),
-    GuiAction(
-        "unity_overlay_build",
-        "Overlay: 3. Собрать exe",
-        "Ещё — игра",
-        tool="unity_overlay_build",
-        hint="Только после зелёной «Проверить». Запуск: LaunchOverlay.vbs",
-    ),
-    GuiAction(
-        "unity_overlay",
-        "Overlay: всё сразу (playtest)",
-        "Ещё — игра",
-        tool="unity_overlay",
-        hint="Deploy + build + launch. Для отладки удобнее шаги 1→2→3.",
-    ),
-    GuiAction(
-        "overlay_depth_far",
-        "Оверлей: в глубину",
-        "Ещё — игра",
-        tool="unity_overlay_tune",
-        tool_args={"lane": "taskbar"},
-    ),
-    GuiAction(
-        "overlay_depth_close",
-        "Оверлей: на экран",
-        "Ещё — игра",
-        tool="unity_overlay_tune",
-        tool_args={"lane": "attention"},
+        hint="Если сарай фиолетовый или волосы белые — потом снова «Запустить оверлей».",
     ),
     GuiAction(
         "unity_open",
         "Открыть Unity",
-        "Ещё — игра",
+        "Редко",
         tool="unity_open",
-    ),
-    GuiAction(
-        "unity_prepare",
-        "Тест: Шаня стоит и ходит",
-        "Ещё — игра",
-        tool="unity_prepare_scene",
-    ),
-    GuiAction(
-        "unity_diagnose",
-        "Диагностика Unity",
-        "Ещё — игра",
-        tool="unity_report",
-    ),
-    GuiAction(
-        "apps_status",
-        "Окна: статус",
-        "Ещё — игра",
-        tool="apps_status",
-        hint="Unity / Blender / Cascadeur — запущены ли.",
     ),
     GuiAction(
         "apps_close_unity",
         "Закрыть Unity",
-        "Ещё — игра",
+        "Редко",
         tool="apps_close",
         tool_args={"app": "unity"},
-    ),
-    GuiAction(
-        "apps_close_blender",
-        "Закрыть Blender",
-        "Ещё — игра",
-        tool="apps_close",
-        tool_args={"app": "blender"},
-    ),
-    GuiAction(
-        "apps_close_cascadeur",
-        "Закрыть Cascadeur",
-        "Ещё — игра",
-        tool="apps_close",
-        tool_args={"app": "cascadeur"},
-    ),
-    GuiAction(
-        "apps_close_all",
-        "Закрыть все (Unity+Blender+Cascadeur)",
-        "Ещё — игра",
-        tool="apps_close",
-        tool_args={"app": "all"},
-    ),
-    GuiAction(
-        "apps_restart_unity",
-        "Перезапустить Unity",
-        "Ещё — игра",
-        tool="apps_restart",
-        tool_args={"app": "unity"},
-    ),
-    GuiAction(
-        "apps_restart_blender",
-        "Перезапустить Blender",
-        "Ещё — игра",
-        tool="apps_restart",
-        tool_args={"app": "blender"},
-    ),
-    GuiAction(
-        "apps_restart_cascadeur",
-        "Перезапустить Cascadeur",
-        "Ещё — игра",
-        tool="apps_restart",
-        tool_args={"app": "cascadeur"},
-    ),
-    # --- Вью ---
-    GuiAction(
-        "update_viu",
-        "Обновить Вью",
-        "Ещё — Вью",
-        tool="__update_viu__",
-    ),
-    GuiAction(
-        "open_logs",
-        "Открыть логи",
-        "Ещё — Вью",
-        tool="__open_logs__",
+        hint="Нужно перед сборкой оверлея, если редактор открыт.",
     ),
     GuiAction(
         "clear_chat",
         "Очистить чат",
-        "Ещё — Вью",
+        "Редко",
         tool="__clear__",
-    ),
-    # --- План ---
-    GuiAction(
-        "autopilot",
-        "Автопилот (чат, долго)",
-        "Ещё — план",
-        prompt=(
-            "Двигай Анабарру без кнопок Дена. Сначала cursor_inbox_pull — "
-            "если есть pending от Cursor, выполни и cursor_inbox_complete. "
-            "Иначе project_status → следующий безопасный шаг. "
-            "Оверлей: один `overlay_playtest` → вердикт → handoff; при ошибке "
-            "web_search + cursor_handoff, не крути по кругу. "
-            "ask_user только на decision. Unity мёртв → unity_open."
-        ),
     ),
     GuiAction(
         "roadmap",
-        "Показать план разработки",
-        "Ещё — план",
+        "План разработки",
+        "Редко",
         tool="roadmap_show",
     ),
+    # --- Оставлены для тестов / чата, но в «Редко» не дублируем всё ---
+    # accept_animation, prepare, export — через «Следующий шаг»
 ]
 
 

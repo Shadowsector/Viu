@@ -89,7 +89,7 @@ def _overlay_human_summary(root: Path, log_name: str, *, ok: bool, ok_label: str
             lines.append("")
             lines.append("Сохранено: " + last[-1])
         lines.append("")
-        lines.append("→ Теперь «Overlay: проверить сцену», затем «Собрать exe».")
+        lines.append("→ Дальше: «▶ Запустить оверлей».")
         return "\n".join(lines)
 
     if log_name == "viu_overlay_build.log":
@@ -106,6 +106,18 @@ def _overlay_human_summary(root: Path, log_name: str, *, ok: bool, ok_label: str
     return ok_label if ok else "Ошибка — см. лог Unity."
 
 
+def _quiet_deploy_line(msg: str) -> str:
+    """Короткая строка вместо списка всех .cs файлов."""
+    if not msg:
+        return ""
+    low = msg.lower()
+    if "fail" in low or "ошиб" in low or "устар" in low:
+        return msg.split("\n")[0][:200]
+    if "viu_clips" in msg or "Editor:" in msg or "Shanya" in msg:
+        return "Скрипты обновлены."
+    return msg.split("\n")[0][:120]
+
+
 def _run_unity_batch(
     root: Path,
     ctx: AgentContext,
@@ -120,32 +132,26 @@ def _run_unity_batch(
     """Общий раннер overlay batch: deploy → kill Unity → subprocess."""
     from ..integrations.blender.export_pipeline import ensure_home_textures_exported
 
-    lines: list[str] = []
     if textures:
         tex_ok, tex_msg = ensure_home_textures_exported(ctx.config)
-        lines.append(f"Home textures: {tex_msg}")
         if not tex_ok:
-            return ToolResult(False, "\n".join(lines))
+            return ToolResult(False, f"Текстуры дома: {tex_msg}")
 
     if deploy:
         ok, msg = deploy_animation_pipeline(root)
-        lines.append(msg)
         if not ok:
-            return ToolResult(False, "\n".join(lines))
+            return ToolResult(False, msg)
         healthy, hint = editor_scripts_healthy(root)
         if not healthy:
-            lines.append(hint)
-            return ToolResult(False, "\n".join(lines))
+            return ToolResult(False, hint)
 
-    prep, prep_msg = _ensure_batch_ready(root, auto_kill=True)
-    if prep_msg:
-        lines.append(prep_msg)
+    prep, _prep_msg = _ensure_batch_ready(root, auto_kill=True)
     if prep is not None:
         return prep
 
     exe = find_unity_exe(ctx.config.unity_exe)
     if exe is None:
-        return ToolResult(False, "\n".join(lines) + "\nUnity.exe не найден (VIU_UNITY_EXE).")
+        return ToolResult(False, "Unity.exe не найден. Задай VIU_UNITY_EXE в настройках.")
 
     timeout = float(args.get("timeout") or 900)
     try:
@@ -158,32 +164,22 @@ def _run_unity_batch(
             cwd=str(root),
         )
     except subprocess.TimeoutExpired:
-        return ToolResult(False, "\n".join(lines) + f"\nТаймаут {timeout}s. Смотри {root / log_name}")
+        return ToolResult(False, f"Долго думала ({timeout}s). Попробуй ещё раз.")
 
     log_path = root / log_name
-    tail_lines: list[str] = []
+    important: list[str] = []
     if log_path.is_file():
-        tail_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-25:]
+        important = [
+            ln
+            for ln in log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            if "[Viu]" in ln or "FAIL:" in ln or "error CS" in ln
+        ][-10:]
 
-    extra_log = root / "overlay_validate.log"
-    if log_name == "viu_overlay_validate.log" and extra_log.is_file():
-        tail_lines.extend(extra_log.read_text(encoding="utf-8", errors="replace").splitlines()[-15:])
-
-    rebind_log = root / "overlay_rebind.log"
-    if log_name == "viu_overlay_rebind.log" and rebind_log.is_file():
-        tail_lines.append(rebind_log.read_text(encoding="utf-8", errors="replace").splitlines()[-1])
-
-    important = [
-        ln
-        for ln in tail_lines
-        if "[Viu]" in ln or "FAIL:" in ln or "WARN:" in ln or "error CS" in ln
-    ]
     ok_run = proc.returncode == 0
     summary = _overlay_human_summary(root, log_name, ok=ok_run, ok_label=ok_label)
-    body = "\n".join(lines) + "\n\n" + summary
     if not ok_run and important:
-        body += "\n\n--- Unity ---\n" + "\n".join(important[-8:])
-    return ToolResult(ok_run, body)
+        summary += "\n\nДетали:\n" + "\n".join(f"  • {ln}" for ln in important[-5:])
+    return ToolResult(ok_run, summary)
 
 
 class UnityReadTool(Tool):

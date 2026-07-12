@@ -97,7 +97,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 51" in text
+    assert "@viu-deploy-rev 52" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -158,8 +158,9 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 51" in setup
+    assert "@viu-deploy-rev 52" in setup
     assert "EnsureAnchorsForValidate" in setup
+    assert "Шейдеры материалов OK" in setup
     assert "ValidateOverlaySceneBatch" in setup
     assert "RebindMaterialsBatch" in setup
     assert "BuildWindowsOnly" in setup
@@ -200,7 +201,7 @@ def test_overlay_templates(tmp_path):
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay
     assert "RuntimeRev" in overlay
-    assert 'RuntimeRev = "51"' in overlay
+    assert 'RuntimeRev = "52"' in overlay
     assert "fullScreenOverlay = true" in overlay
     assert "ApplyDisplayMode" in overlay
     assert "instanceHeightPixels" in overlay
@@ -227,7 +228,8 @@ def test_overlay_templates(tmp_path):
     clips = (root / "viu_clips.json").read_text(encoding="utf-8")
     assert "X Bot@Idle.fbx" in clips
     playtest = (Path(__file__).resolve().parents[1] / "viu/tools/overlay_playtest_tool.py").read_text(encoding="utf-8")
-    assert "НЕ переименовываем" in playtest or "старый exe оставлен" in playtest
+    assert "_playtest_human" in playtest
+    assert "Запустить оверлей" in playtest or "оверлей собран" in playtest.lower()
 
     baseline = (Path(__file__).resolve().parents[1] / "docs/OVERLAY_BASELINE.md").read_text(encoding="utf-8")
     assert "UpdateLayeredWindow" in baseline

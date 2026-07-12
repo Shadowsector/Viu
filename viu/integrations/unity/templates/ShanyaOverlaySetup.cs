@@ -18,9 +18,9 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 51
+        // @viu-deploy-rev 52
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
-        const string ExpectedRuntimeRev = "51";
+        const string ExpectedRuntimeRev = "52";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
@@ -487,12 +487,13 @@ namespace Viu.Editor
             report.Ok("Materials scanned: " + total);
             if (badShader > 0)
                 report.Error("Плохой шейдер (Standard/Error): " + badShader
-                    + " слотов — нажми «Rebind материалы».");
+                    + " слотов — «Починить текстуры оверлея».");
             if (missingAlbedo > 0)
-                report.Error("Без текстуры (albedo): " + missingAlbedo
-                    + " слотов — сначала «Rebind материалы», потом снова «Проверить».");
-            if (badShader == 0 && missingAlbedo == 0 && total > 0)
-                report.Ok("Materials albedo OK (" + total + " slots)");
+                report.Warn("Без картинки-текстуры: " + missingAlbedo
+                    + " слотов (часто норма — цвет без albedo). "
+                    + "Если сарай фиолетовый — «Починить текстуры оверлея».");
+            if (badShader == 0 && total > 0)
+                report.Ok("Шейдеры материалов OK (" + total + " слотов)");
         }
 
         static void CheckDollhouse(GameObject home, OverlayValidationReport report)

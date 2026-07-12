@@ -100,8 +100,8 @@ def test_director_overlay_build_when_focus(tmp_path):
 
     plan = plan_next_step(config)
 
-    assert plan.tool == "unity_overlay_validate"
-    assert "оверлей" in plan.message.lower() or "overlay" in plan.message.lower() or "validate" in plan.message.lower()
+    assert plan.tool == "unity_overlay"
+    assert "оверлей" in plan.message.lower() or "overlay" in plan.message.lower()
 
 
 def test_director_idle_when_nothing_pending(tmp_path):

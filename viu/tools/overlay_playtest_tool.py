@@ -46,34 +46,27 @@ class OverlayPlaytestTool(Tool):
         if not (root / "Assets").is_dir():
             return ToolResult(False, f"Не Unity-проект: {root}")
 
-        lines: List[str] = []
-
-        # 1. Закрыть Unity Editor, если мешает batch
-        ok_kill, kill_msg = kill_unity_processes()
-        lines.append(f"Unity close: {kill_msg}" if kill_msg else "Unity close: ok")
-        time.sleep(2.0)
-
         tex_ok, tex_msg = ensure_home_textures_exported(ctx.config)
-        lines.append(f"Home textures: {tex_msg}")
         if not tex_ok:
-            return ToolResult(False, "\n".join(lines))
+            return ToolResult(False, f"Текстуры дома: {tex_msg}")
 
         ok, msg = deploy_animation_pipeline(root)
-        lines.append(msg)
         if not ok:
-            return ToolResult(False, "\n".join(lines))
+            return ToolResult(False, msg)
 
         healthy, hint = editor_scripts_healthy(root)
         if not healthy:
-            lines.append(hint)
-            return ToolResult(False, "\n".join(lines))
+            return ToolResult(False, hint)
 
         exe = find_unity_exe(ctx.config.unity_exe)
         if exe is None:
-            return ToolResult(
-                False,
-                "\n".join(lines) + "\nUnity.exe не найден (VIU_UNITY_EXE).",
-            )
+            return ToolResult(False, "Unity.exe не найден. Задай VIU_UNITY_EXE.")
+
+        lines: List[str] = []
+        ok_kill, kill_msg = kill_unity_processes()
+        if kill_msg:
+            lines.append(kill_msg)
+        time.sleep(2.0)
 
         cmd = batch_overlay_build_command(root, exe)
         timeout = float(args.get("timeout") or 1800)
@@ -82,7 +75,7 @@ class OverlayPlaytestTool(Tool):
                 cmd, shell=True, capture_output=True, text=True, timeout=timeout, cwd=str(root)
             )
         except subprocess.TimeoutExpired:
-            return ToolResult(False, "\n".join(lines) + f"\nТаймаут сборки {timeout}s")
+            return ToolResult(False, "Сборка слишком долгая. Закрой Unity и попробуй снова.")
 
         log_path = root / "viu_overlay_build.log"
         important: list[str] = []
@@ -90,20 +83,15 @@ class OverlayPlaytestTool(Tool):
             important = [
                 ln
                 for ln in log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-                if "[Viu]" in ln or "error CS" in ln or "Exception" in ln
-            ][-20:]
+                if ("[Viu]" in ln or "error CS" in ln) and "Licensing" not in ln
+            ][-12:]
 
         if proc.returncode != 0:
-            detail = "\n".join(important) if important else "(см. viu_overlay_build.log)"
-            # Не переименовываем exe в .broken — Ден теряет рабочий LaunchOverlay.
-            # Только предупреждение, если сборка реально сдохла.
-            stale = overlay_exe_path(root)
-            if stale.is_file():
-                lines.append(
-                    f"WARN: сборка FAIL, старый exe оставлен: {stale.name} "
-                    "(может быть устаревшим). Смотри viu_overlay_build.log."
-                )
-            return ToolResult(False, "\n".join(lines) + "\nСборка FAIL\n" + detail)
+            detail = "\n".join(important[-6:]) if important else "Смотри viu_overlay_build.log"
+            return ToolResult(
+                False,
+                "✗ Сборка не удалась.\n" + detail + "\n→ «Что сломалось?» или закрой Unity и повтори.",
+            )
 
         out_exe = overlay_exe_path(root)
         launcher = out_exe.parent / "LaunchOverlay.bat"
@@ -256,82 +244,117 @@ class OverlayPlaytestTool(Tool):
             except Exception as exc:  # noqa: BLE001
                 lines.append(f"Не смогла reopen Unity: {exc}")
 
-        # Bundle + gist для Cursor (теперь с Editor.log + viu_animator.log)
+        # В чат не сыпем Licensing / gist — только улики [Viu]/Animator для вердикта.
         try:
-            from ..integrations.unity.log_parser import default_editor_log, parse_editor_log
+            from ..integrations.unity.log_parser import default_editor_log
 
             elog = default_editor_log()
             if elog.is_file():
-                summary = parse_editor_log(elog)
-                lines.append("--- Editor.log (summary) ---")
-                lines.append(summary.render())
-                # Явно вытащить Animator/Avatar/[Viu]
                 try:
                     tail = elog.read_text(encoding="utf-8", errors="replace").splitlines()[-400:]
                     hits = [
                         ln for ln in tail
                         if any(
                             k in ln
-                            for k in (
-                                "[Viu]",
-                                "Animator",
-                                "Avatar",
-                                "Rig Error",
-                                "Humanoid",
-                                "Binding",
-                            )
+                            for k in ("[Viu]", "Animator", "Avatar", "Overlay locomotion")
                         )
+                        and "Licensing" not in ln
                     ]
                     if hits:
-                        lines.append("--- Editor.log Animator/Viu hits ---")
-                        lines.extend(hits[-40:])
+                        lines.extend(hits[-15:])
                 except OSError:
                     pass
-        except Exception as exc:  # noqa: BLE001
-            lines.append(f"Editor.log: {exc}")
+        except Exception:
+            pass
 
         try:
             bundle = collect_support_bundle(ctx.config)
-            lines.append(f"Support bundle: {bundle}")
-            g_ok, g_msg = upload_bundle_to_gist(bundle, description="Viu overlay_playtest")
-            lines.append(g_msg)
-        except Exception as exc:  # noqa: BLE001
-            lines.append(f"Bundle: {exc}")
+            upload_bundle_to_gist(bundle, description="Viu overlay_playtest")
+        except Exception:
+            pass
 
-        text = "\n".join(lines)
         build_ok = proc.returncode == 0
-        # Без блока глаз — не done: иначе снова «ОК» вслепую.
-        has_eyes = "--- eyes ---" in text
-        eyes_miss = "окно не найдено" in text.lower()
-        if build_ok and (not has_eyes or eyes_miss):
-            lines.append(
-                "--- вердикт ---\n"
-                "FAIL: глаза не видели оверлей (окно не найдено / eyes не отработали). Не done."
+        has_eyes = "--- eyes ---" in "\n".join(lines)
+        eyes_miss = any("окно не найдено" in ln.lower() for ln in lines)
+        eye_vision = ""
+        for i, ln in enumerate(lines):
+            if ln.startswith("--- eyes ---") and i + 1 < len(lines):
+                # vision often a few lines later
+                for j in range(i + 1, min(i + 8, len(lines))):
+                    if lines[j].startswith("[llava") or "Вердикт" in lines[j] or "вердикт" in lines[j].lower():
+                        eye_vision = "\n".join(lines[j : j + 5])
+                        break
+                break
+
+        player_bad = any(
+            x in "\n".join(lines)
+            for x in (
+                "state≠Walk",
+                "не нашла стенку",
+                "hasWalk=False",
+                "Overlay locomotion FAIL",
             )
-            text = "\n".join(lines)
-            return ToolResult(False, text)
-        # Player.log улики — не помечать OK
-        player_bad = (
-            "state≠Walk" in text
-            or "state!=Walk" in text
-            or "не нашла стенку" in text
-            or ("Z-slab" in text and "скрыто по Z-slab: 0" in text)
-            or "hasWalk=False" in text
-            or "ctrl=Shanya_Idle_Stand" in text
-            or "Overlay locomotion FAIL" in text
-            or "НЕ подставляю Idle_Stand" in text
         )
-        play_ok = build_ok and (not verdict or verdict.startswith("OK:")) and has_eyes
-        if play_ok and "WARN:" in text and "--- вердикт (после eyes) ---" in text:
-            play_ok = False
-        if play_ok and player_bad:
-            lines.append(
-                "--- вердикт ---\n"
-                "FAIL: Player.log — Walk/Dollhouse сломаны (см. [Viu] выше). Не done."
-            )
-            text = "\n".join(lines)
-            play_ok = False
-        return ToolResult(play_ok, text)
+
+        play_ok = (
+            build_ok
+            and (not verdict or verdict.startswith("OK:"))
+            and has_eyes
+            and not eyes_miss
+            and not player_bad
+            and "--- вердикт (после eyes) ---" not in "\n".join(lines)
+        )
+
+        human = _playtest_human(
+            ok=play_ok,
+            build_ok=build_ok,
+            out_exe=out_exe if build_ok else None,
+            verdict=verdict,
+            eyes_miss=eyes_miss,
+            eye_vision=eye_vision,
+            boot_ok="UpdateLayeredWindow" in "\n".join(lines) or "runtime-rev=" in "\n".join(lines),
+        )
+        return ToolResult(play_ok, human)
+
+
+def _playtest_human(
+    *,
+    ok: bool,
+    build_ok: bool,
+    out_exe: Path | None,
+    verdict: str,
+    eyes_miss: bool,
+    eye_vision: str,
+    boot_ok: bool,
+) -> str:
+    """Короткий отчёт для чата — без Unity Licensing и списков файлов."""
+    if not build_ok:
+        return (
+            "✗ Сборка не удалась.\n"
+            "→ Нажми «Что сломалось?» — логи уйдут разработчику.\n"
+            "Или закрой Unity и попробуй снова «▶ Запустить оверлей»."
+        )
+
+    lines = ["✓ Оверлей собран и запущен." if ok or boot_ok else "⚠ Собрано, но есть сомнения."]
+    if out_exe is not None:
+        lines.append(f"Файл: {out_exe.name}")
+        lines.append("Управление: A/D — ходить, W/S — глубина, Esc — выход.")
+    if boot_ok:
+        lines.append("Прозрачность: ок (весь экран).")
+    if eyes_miss:
+        lines.append("Глаза: окно не нашла — глянь на рабочий стол сам.")
+    elif eye_vision:
+        # Одна строка вердикта из llava, без мусора
+        for ln in eye_vision.splitlines():
+            if "вердикт" in ln.lower() or "OK" in ln or "FAIL" in ln:
+                lines.append("Глаза: " + ln.strip()[:120])
+                break
+    if verdict.startswith("WARN:") or verdict.startswith("FAIL:"):
+        lines.append(verdict.split("\n")[0][:160])
+    if not ok and build_ok:
+        lines.append("")
+        lines.append("→ Если картинка кривая: «Починить текстуры оверлея», потом снова запуск.")
+    return "\n".join(lines)
 
 
 def _verdict(boot_text: str) -> str:

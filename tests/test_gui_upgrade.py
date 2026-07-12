@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from viu.config import Config
-from viu.gui_actions import GUI_ACTIONS, actions_by_group
+from viu.gui_actions import ACTION_GROUPS, GUI_ACTIONS, actions_by_group
 from viu.memory import MemoryStore
 from viu.planning import Planner
 from viu.tools import AgentContext, build_default_registry
@@ -14,15 +14,21 @@ from viu.updater import find_git_root, package_root, version_label
 def test_gui_actions_grouped():
     grouped = actions_by_group()
     assert "Главное" in grouped
-    assert "Ещё — анимации" in grouped
-    assert "Ещё — модели" in grouped
+    assert "Редко" in grouped
+    assert ACTION_GROUPS == ["Главное", "Редко"]
+    # Минимум кнопок — не стена из 30 пунктов
+    assert len(GUI_ACTIONS) <= 14
     assert any(a.action_id == "next_step" and a.tool == "__next_step__" for a in GUI_ACTIONS)
-    assert any(a.action_id == "accept_animation" for a in GUI_ACTIONS)
-    assert any(a.action_id == "unity_apply" and a.is_chain for a in GUI_ACTIONS)
     assert any(a.action_id == "unity_overlay" and a.tool == "unity_overlay" for a in GUI_ACTIONS)
     assert any(a.tool == "__update_viu__" for a in GUI_ACTIONS)
-    assert any(a.action_id == "autopilot" and a.uses_agent for a in GUI_ACTIONS)
+    assert any(a.action_id == "unity_apply" and a.is_chain for a in GUI_ACTIONS)
     assert all("диска U" not in a.label for a in GUI_ACTIONS)
+    # Убрали Cascadeur / apps restart / три шага overlay из главного UI
+    ids = {a.action_id for a in GUI_ACTIONS}
+    assert "cascadeur_status" not in ids
+    assert "apps_restart_unity" not in ids
+    assert "unity_overlay_validate" not in ids
+    assert "unity_overlay_build" not in ids
     apply_btn = next(a for a in GUI_ACTIONS if a.action_id == "unity_apply")
     assert "unity_sync_animations" in [t[0] for t in apply_btn.tool_chain]
 
