@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T08:37:08Z",
+  "updated_at": "2026-07-12T08:38:30Z",
   "note": "rev30b: CS0128 bodyAvatar fix — re-run overlay_playtest",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712h",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev30b: re-run after CS0128 fix",
       "created_by": "Cursor",
@@ -15,7 +15,8 @@
         "timeout": 2400
       },
       "instructions": "deploy-rev 30 + CS0128 fix (duplicate bodyAvatar removed). Same as rev30: Legacy recover, no -nographics. Expect Overlay locomotion OK.",
-      "acceptance": "Build compiles; locomotion OK; hasWalk=True"
+      "acceptance": "Build compiles; locomotion OK; hasWalk=True",
+      "started_at": "2026-07-12T08:38:30Z"
     }
   ]
 }
