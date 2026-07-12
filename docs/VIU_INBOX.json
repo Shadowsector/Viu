@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T08:55:00Z",
+  "updated_at": "2026-07-12T08:54:33Z",
   "note": "rev32: home yaw 180; runtime-rev boot mark; Den may help with 3 checks below.",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712j",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev32: home front + prove runtime-rev in boot",
       "created_by": "Cursor",
@@ -15,7 +15,8 @@
         "timeout": 2400
       },
       "instructions": "git pull first on U:\\Viu. deploy-rev 32. Last OK build still had OLD DesktopOverlay (boot lacked margins=-1 and -force-d3d11). Expect overlay_boot.log line: runtime-rev=31 (or 32) AND margins=-1 AND args with -force-d3d11. HomeYawDegrees=180. If runtime-rev missing — deploy failed, stop and report. Locomotion: Пин/Recover Idle+Walk.",
-      "acceptance": "boot has runtime-rev=; house front toward camera; Walk/Idle not T-pose; chroma not solid magenta."
+      "acceptance": "boot has runtime-rev=; house front toward camera; Walk/Idle not T-pose; chroma not solid magenta.",
+      "started_at": "2026-07-12T08:54:33Z"
     }
   ]
 }
