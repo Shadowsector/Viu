@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T09:25:00Z",
+  "updated_at": "2026-07-12T09:22:32Z",
   "note": "rev33: fix CopyFromOther Source=None (Den screenshot); Shanya in front of larger home.",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712k",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev33: Rig Source avatar + Shanya before barn",
       "created_by": "Cursor",
@@ -15,7 +15,8 @@
         "timeout": 2400
       },
       "instructions": "deploy-rev 33. Den screenshot: Shanya_Idle Rig=Copy From Other but Source=None → import errors → no clips → T-pose. Fix EnsureHumanoidImport always sets Source to Shanya_Erisa avatar (or Create From This Model). Expect log: Rig Source ← … for Shanya_Idle/Walk. Then Overlay locomotion OK. Home: yaw=0, height 5.2m, Shanya BEFORE house (min.z - gap) not inside. boot runtime-rev=33.",
-      "acceptance": "locomotion OK hasWalk; Shanya Idle not T-pose; standing in front of barn; runtime-rev=33 in boot."
+      "acceptance": "locomotion OK hasWalk; Shanya Idle not T-pose; standing in front of barn; runtime-rev=33 in boot.",
+      "started_at": "2026-07-12T09:22:32Z"
     }
   ]
 }
