@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T09:52:02Z",
+  "updated_at": "2026-07-12T09:52:10Z",
   "note": "rev35: Den confirmed working Idle=X Bot@Idle, Walk←Shanya_Run. Pin those.",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712n",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": 1,
       "title": "rev35: pin working Idle/Run clips from Den",
       "created_by": "Cursor",
@@ -16,7 +16,9 @@
       },
       "instructions": "deploy-rev 35. Den cut bad clips; preview OK for X Bot@Idle and Shanya_Run. viu_clips overlay_preferred Idle=X Bot@Idle.fbx Walk=Shanya_Run.fbx (Run as Walk until real Walk). Create From This Model. Expect Overlay locomotion OK Idle<X Bot@Idle> Walk<Shanya_Run>. Then launch overlay.",
       "acceptance": "locomotion OK; Shanya Idle in overlay not T-pose; A/D plays Run-as-Walk.",
-      "started_at": "2026-07-12T09:52:02Z"
+      "started_at": "2026-07-12T09:52:02Z",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка FAIL\n(см. viu_overlay_build.log)\n\n--- escalate ---\nЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.\nInbox task: `overlay-visual-fix-20260712n`\n\nОшибка / лог:\nUnity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка FAIL\n(см. viu_overlay_build.log)\n\nweb_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):\nНичего не найдено по запросу.\n\nHandoff Cursor: OK — Файл на GitHub (Shadowsector/Viu@cursor/viu-agent-core-65c2): docs/CURSOR_HANDOFF.md\nhttps://github.com/Shadowsector/Viu/commit/e6fa9757a9ebd629b77063964b8dcf9f1aafdf29\nДальше не крути тот же инструмент. Жди ответ Cursor в VIU_INBOX или почини по web_search, если фикс ясен.",
+      "finished_at": "2026-07-12T09:52:10Z"
     }
   ]
 }
