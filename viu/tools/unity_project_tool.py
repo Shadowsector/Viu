@@ -87,9 +87,16 @@ def _overlay_human_summary(root: Path, log_name: str, *, ok: bool, ok_label: str
         last = rebind_log.read_text(encoding="utf-8", errors="replace").strip().splitlines()
         if last:
             lines.append("")
-            lines.append("Сохранено: " + last[-1])
-        lines.append("")
-        lines.append("→ Дальше: «▶ Запустить оверлей».")
+            lines.append(last[-1])
+        if ok:
+            lines.append("")
+            lines.append("→ Дальше: «▶ Запустить оверлей».")
+        else:
+            lines.append("")
+            lines.append(
+                "Bake не смог привязать текстуры. "
+                "Проверь папку Assets/Environment/.../Textures и файл .viu.json."
+            )
         return "\n".join(lines)
 
     if log_name == "viu_overlay_build.log":

@@ -25,23 +25,18 @@
 
 ## 3. Фаза 1 — Стабильность (текущий спринт, rev50)
 
-### 3.1 Material Pipeline
+## Material Pipeline (rev53 — принципиально иначе)
 
-**Проблема:** Runtime `MaterialFix` чинит единицы; фиолетовый barn / белые волосы — Editor-side missing albedo.
+**Старый путь (не работает):** ImportStandard FBX → Standard .mat без Textures → Rebind «дописывает» кэш → пишет OK без проверки texBound → Player magenta/white.
 
-**Решение (rev50):**
+**Новый путь:**
+1. Environment FBX: `MaterialImportMode.None` (не создаём Standard)
+2. Wipe `ViuOverlayMats/r53`
+3. `BakeOverlayMaterials` — каждый слот → новый URP Lit + Textures/ + `.viu.json`
+4. FAIL, если дом почти без привязанных текстур
+5. «▶ Запустить оверлей» сам делает bake перед build
 
-- Unity: **Viu → Overlay → Rebind All Materials**
-- Viu GUI: **Overlay: rebind материалы**
-- Tool: `unity_overlay_rebind`
-- Материалы сохраняются в `Assets/*/ViuOverlayMats/r50/`
-- Viu копирует текстуры при export; Rebind **привязывает** их к .mat в сцене
-
-**Workflow:**
-
-```
-Export FBX + Textures/  →  Rebind All Materials  →  Validate  →  Build exe
-```
+Кнопка «Починить текстуры оверлея» = только bake.
 
 ### 3.2 Scene Validation
 

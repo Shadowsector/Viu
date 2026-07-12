@@ -70,7 +70,27 @@ namespace Viu.Runtime
                 && sn.IndexOf("Unlit/Color", StringComparison.OrdinalIgnoreCase) < 0)
                 return true;
             if (IsUnityPink(m)) return true;
+            // URP Lit без albedo + белый/розовый = белые волосы / пустые слоты
+            if (!HasAlbedo(m) && IsWhiteOrPink(m)) return true;
             return false;
+        }
+
+        static bool HasAlbedo(Material m)
+        {
+            if (m == null) return false;
+            if (m.HasProperty("_BaseMap") && m.GetTexture("_BaseMap") != null) return true;
+            if (m.HasProperty("_MainTex") && m.GetTexture("_MainTex") != null) return true;
+            return false;
+        }
+
+        static bool IsWhiteOrPink(Material m)
+        {
+            if (m == null) return false;
+            Color c = Color.white;
+            if (m.HasProperty("_BaseColor")) c = m.GetColor("_BaseColor");
+            else if (m.HasProperty("_Color")) c = m.GetColor("_Color");
+            if (c.r > 0.92f && c.g > 0.92f && c.b > 0.92f) return true;
+            return IsUnityPinkColor(c);
         }
 
         static bool IsUnityPink(Material m)

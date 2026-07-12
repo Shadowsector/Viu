@@ -18,9 +18,9 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 52
+        // @viu-deploy-rev 53
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
-        const string ExpectedRuntimeRev = "52";
+        const string ExpectedRuntimeRev = "53";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
@@ -38,8 +38,9 @@ namespace Viu.Editor
         const float CorridorStartZ = -2.0f;
         /// <summary>Половина высоты ortho-кадра в метрах (2*size = видимая высота мира).</summary>
         const float CameraOrthoHalfHeight = 5.5f;
-        const string HomeMatFolder = "Assets/Environment/ViuOverlayMats/r50";
-        const string CharMatFolder = "Assets/Characters/Shanya/ViuOverlayMats/r50";
+        /// <summary>r53 = wipe+json bake (не кэш r50 с битыми Standard).</summary>
+        const string HomeMatFolder = "Assets/Environment/ViuOverlayMats/r53";
+        const string CharMatFolder = "Assets/Characters/Shanya/ViuOverlayMats/r53";
 
         [MenuItem("Viu/Overlay/Bootstrap Overlay Scene (once)")]
         public static void BootstrapMenu() => BootstrapOverlayScene(ScenePath);
@@ -320,8 +321,8 @@ namespace Viu.Editor
         }
 
         /// <summary>
-        /// Перепривязать текстуры дома и Шани из Assets/*/Textures + .viu.json.
-        /// Не двигает объекты. Сохраняет .mat в ViuOverlayMats/r50.
+        /// Пересборка материалов с нуля (не «дописать кэш»).
+        /// Wipe ViuOverlayMats/r53 → URP Lit из Textures/ + .viu.json → FAIL если дом без текстур.
         /// </summary>
         public static void RebindAllOverlayMaterials(string scenePath)
         {
@@ -330,27 +331,47 @@ namespace Viu.Editor
             if (shanya == null)
                 throw new InvalidOperationException("[Viu] Rebind: нет Шани в сцене.");
 
+            WipeMatFolder(HomeMatFolder);
+            WipeMatFolder(CharMatFolder);
+
             var home = FindHomeInScene();
-            int homeFixed = 0;
-            int charFixed = 0;
+            int homeBound = 0;
+            int charBound = 0;
+            int homeSlots = 0;
+            int charSlots = 0;
 
             if (home != null)
             {
                 ResolveHomeAssetPaths(home, out var buildingDir, out var metaPath);
-                FixOverlayMaterials(home, isHome: true, assetSourceDir: buildingDir,
-                    buildingMetaPath: metaPath);
-                homeFixed = CountRenderers(home);
-                Debug.Log("[Viu] Rebind home: " + home.name + " dir=" + (buildingDir ?? "?"));
+                if (string.IsNullOrEmpty(buildingDir))
+                    throw new InvalidOperationException(
+                        "[Viu] Rebind: не нашёл папку FBX дома. Ожидаю Assets/Environment/<slug>/.");
+                if (string.IsNullOrEmpty(metaPath))
+                    Debug.LogWarning(
+                        "[Viu] Нет .viu.json рядом с FBX — буду матчить Textures/ по имени меша.");
+                TryReimportEnvironmentFbx(buildingDir);
+                var stats = BakeOverlayMaterials(
+                    home, isHome: true, assetSourceDir: buildingDir, buildingMetaPath: metaPath);
+                homeBound = stats.texBound;
+                homeSlots = stats.slots;
+                Debug.Log("[Viu] Bake home: " + home.name + " dir=" + buildingDir
+                    + " texBound=" + homeBound + "/" + homeSlots + " mapKeys=" + stats.mapKeys);
+                if (homeBound < Mathf.Max(5, homeSlots / 20))
+                    throw new InvalidOperationException(
+                        "[Viu] Bake FAIL: дом почти без текстур (" + homeBound + "/" + homeSlots
+                        + "). Проверь Assets/Environment/.../Textures и .viu.json.");
             }
             else
                 Debug.LogWarning("[Viu] Rebind: дом не найден — только персонаж.");
 
             var modelPath = FindModelPath();
             var charDir = string.IsNullOrEmpty(modelPath)
-                ? null
+                ? "Assets/Characters/Shanya"
                 : Path.GetDirectoryName(modelPath)?.Replace('\\', '/');
-            FixOverlayMaterials(shanya, isHome: false, assetSourceDir: charDir);
-            charFixed = CountRenderers(shanya);
+            var charStats = BakeOverlayMaterials(
+                shanya, isHome: false, assetSourceDir: charDir, buildingMetaPath: null);
+            charBound = charStats.texBound;
+            charSlots = charStats.slots;
 
             EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
             SaveActiveScene(scenePath);
@@ -358,15 +379,217 @@ namespace Viu.Editor
 
             var logPath = Path.Combine(Application.dataPath, "..", "overlay_rebind.log");
             var stamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-            var body = stamp + " home=" + (home != null ? home.name : "нет")
-                + " shanya=" + shanya.name
-                + " homeRenderers=" + homeFixed
-                + " charRenderers=" + charFixed + "\n";
+            var body = stamp + " BAKE r53 homeBound=" + homeBound + "/" + homeSlots
+                + " charBound=" + charBound + "/" + charSlots
+                + " home=" + (home != null ? home.name : "нет")
+                + " shanya=" + shanya.name + "\n";
             try { File.AppendAllText(logPath, body); }
             catch { /* ignore */ }
 
-            Debug.Log("[Viu] Rebind OK: сохранено " + scenePath
-                + " (home renderers=" + homeFixed + ", char=" + charFixed + ")");
+            Debug.Log("[Viu] Bake OK r53: " + body.Trim());
+        }
+
+        static void WipeMatFolder(string folder)
+        {
+            if (!AssetDatabase.IsValidFolder(folder))
+            {
+                EnsureAssetFolder(folder);
+                return;
+            }
+            foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { folder }))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!string.IsNullOrEmpty(path))
+                    AssetDatabase.DeleteAsset(path);
+            }
+            AssetDatabase.Refresh();
+        }
+
+        static void TryReimportEnvironmentFbx(string buildingDir)
+        {
+            if (string.IsNullOrEmpty(buildingDir) || !AssetDatabase.IsValidFolder(buildingDir))
+                return;
+            foreach (var guid in AssetDatabase.FindAssets("t:Model", new[] { buildingDir }))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase)) continue;
+                EnsureEnvironmentImportNoMaterials(path);
+            }
+        }
+
+        struct BakeStats
+        {
+            public int slots;
+            public int texBound;
+            public int mapKeys;
+        }
+
+        /// <summary>
+        /// Полная пересборка: каждый слот → новый URP Lit .mat + текстура из Textures/ или .viu.json.
+        /// Никакого skip-кэша. Standard FBX-материалы не используются.
+        /// </summary>
+        static BakeStats BakeOverlayMaterials(
+            GameObject root,
+            bool isHome,
+            string assetSourceDir,
+            string buildingMetaPath)
+        {
+            var lit = Shader.Find("Universal Render Pipeline/Lit")
+                ?? Shader.Find("Universal Render Pipeline/Simple Lit");
+            if (lit == null)
+                throw new InvalidOperationException("[Viu] Нет URP Lit — поставь URP в проекте.");
+
+            string matFolder = isHome ? HomeMatFolder : CharMatFolder;
+            EnsureAssetFolder(matFolder);
+            var texMap = LoadAssetTextureMap(buildingMetaPath);
+            var stats = new BakeStats { mapKeys = texMap != null ? texMap.Count : 0 };
+
+            foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r == null) continue;
+                var mats = r.sharedMaterials;
+                if (mats == null || mats.Length == 0)
+                {
+                    var solid = new Material(lit);
+                    var c = isHome ? GuessHomeColor(r, null) : GuessCharacterColor(r, null);
+                    if (solid.HasProperty("_BaseColor")) solid.SetColor("_BaseColor", c);
+                    var path = matFolder + "/viu_empty_" + SanitizeMatName(r.gameObject.name) + ".mat";
+                    AssetDatabase.CreateAsset(solid, path);
+                    r.sharedMaterial = solid;
+                    stats.slots++;
+                    continue;
+                }
+
+                var next = new Material[mats.Length];
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    stats.slots++;
+                    var src = mats[i];
+                    var matName = src != null ? src.name : ("slot" + i);
+                    var meshName = r.gameObject.name;
+                    var safe = "viu_" + SanitizeMatName(matName + "_" + meshName + "_" + i);
+                    if (safe.Length > 60) safe = safe.Substring(0, 60);
+                    var path = matFolder + "/" + safe + ".mat";
+
+                    var copy = new Material(lit);
+                    bool gotTex = false;
+                    // 1) копировать с FBX-материала, если Unity уже загрузил Texture2D
+                    gotTex = CopyMaterialTexturesFull(src, copy);
+                    // 2) .viu.json + Textures/
+                    if (!gotTex)
+                        gotTex = TryBindAssetTexture(copy, assetSourceDir, matName, meshName, i, texMap);
+                    // 3) персонаж: искать по ключевым словам (hair, skin…)
+                    if (!gotTex && !isHome)
+                        gotTex = TryBindCharacterKeywordTexture(copy, assetSourceDir, meshName, matName);
+                    // 4) дом: любой albedo из Textures/ с пересечением токенов имени
+                    if (!gotTex && isHome)
+                        gotTex = TryBindAssetTexture(copy, assetSourceDir, matName, meshName, i, texMap);
+
+                    Color c = isHome ? GuessHomeColor(r, src) : GuessCharacterColor(r, src);
+                    if (src != null)
+                    {
+                        if (src.HasProperty("_BaseColor")) c = src.GetColor("_BaseColor");
+                        else if (src.HasProperty("_Color")) c = src.GetColor("_Color");
+                    }
+                    // Белые/розовые без текстуры → угаданный цвет (не белые волосы / не magenta)
+                    if (!gotTex || IsPinkOrWhite(c))
+                        c = isHome ? GuessHomeColor(r, src) : GuessCharacterColor(r, src);
+
+                    if (copy.HasProperty("_BaseColor")) copy.SetColor("_BaseColor", c);
+                    if (copy.HasProperty("_Color")) copy.SetColor("_Color", c);
+                    if (copy.HasProperty("_Smoothness"))
+                        copy.SetFloat("_Smoothness", gotTex ? 0.28f : 0.18f);
+
+                    if (AssetDatabase.LoadAssetAtPath<Material>(path) != null)
+                        AssetDatabase.DeleteAsset(path);
+                    AssetDatabase.CreateAsset(copy, path);
+                    next[i] = copy;
+                    if (gotTex) stats.texBound++;
+                }
+                r.sharedMaterials = next;
+            }
+
+            AssetDatabase.SaveAssets();
+            Debug.Log("[Viu] Bake " + (isHome ? "дом" : "Шаня")
+                + ": slots=" + stats.slots + " texBound=" + stats.texBound
+                + " mapKeys=" + stats.mapKeys);
+            return stats;
+        }
+
+        static string SanitizeMatName(string name)
+        {
+            var s = string.Join("_", (name ?? "mat").Split(Path.GetInvalidFileNameChars()));
+            return string.IsNullOrEmpty(s) ? "mat" : s;
+        }
+
+        static bool IsPinkOrWhite(Color c)
+        {
+            if (c.r > 0.92f && c.g > 0.92f && c.b > 0.92f) return true;
+            if (c.r > 0.92f && c.b > 0.92f && c.g < 0.08f) return true;
+            if (c.r > 0.92f && c.g < 0.08f && c.b > 0.45f && c.b < 0.55f) return true;
+            return false;
+        }
+
+        static bool TryBindCharacterKeywordTexture(
+            Material dst, string assetSourceDir, string meshName, string matName)
+        {
+            if (dst == null) return false;
+            var folders = new List<string>();
+            if (!string.IsNullOrEmpty(assetSourceDir) && AssetDatabase.IsValidFolder(assetSourceDir))
+                folders.Add(assetSourceDir);
+            if (AssetDatabase.IsValidFolder("Assets/Characters/Shanya"))
+                folders.Add("Assets/Characters/Shanya");
+            if (folders.Count == 0) return false;
+
+            var hay = ((meshName ?? "") + " " + (matName ?? "")).ToLowerInvariant();
+            string prefer = null;
+            if (hay.Contains("hair") || hay.Contains("lash") || hay.Contains("brow"))
+                prefer = "hair";
+            else if (hay.Contains("skin") || hay.Contains("body") || hay.Contains("head") || hay.Contains("face"))
+                prefer = "skin";
+            else if (hay.Contains("eye") || hay.Contains("iris"))
+                prefer = "eye";
+            else if (hay.Contains("boot") || hay.Contains("shoe") || hay.Contains("gauntlet"))
+                prefer = "boot";
+            else if (hay.Contains("cloth") || hay.Contains("dress") || hay.Contains("outfit"))
+                prefer = "cloth";
+
+            var guids = AssetDatabase.FindAssets("t:Texture2D", folders.ToArray());
+            string best = null;
+            int bestScore = 0;
+            foreach (var guid in guids)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid).Replace('\\', '/');
+                if (!IsLikelyAlbedoTexturePath(path)) continue;
+                var file = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
+                int score = ScoreTextureNameMatch(file, hay, matName, meshName);
+                if (prefer != null && file.Contains(prefer)) score += 40;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = path;
+                }
+            }
+            if (bestScore < 8 || best == null) return false;
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(best);
+            if (tex == null) return false;
+            if (dst.HasProperty("_BaseMap")) dst.SetTexture("_BaseMap", tex);
+            if (dst.HasProperty("_MainTex")) dst.SetTexture("_MainTex", tex);
+            return true;
+        }
+
+        /// <summary>Legacy alias — Bootstrap зовёт старое имя.</summary>
+        static void FixOverlayMaterials(
+            GameObject root,
+            bool isHome = false,
+            string assetSourceDir = null,
+            string buildingMetaPath = null)
+        {
+            if (isHome)
+                WipeMatFolder(HomeMatFolder);
+            else
+                WipeMatFolder(CharMatFolder);
+            BakeOverlayMaterials(root, isHome, assetSourceDir, buildingMetaPath);
         }
 
         sealed class OverlayValidationReport
@@ -1212,133 +1435,6 @@ namespace Viu.Editor
             return home;
         }
 
-        /// <summary>
-        /// Standard/Error → magenta void в Player. Материалы сохраняем как ассеты,
-        /// иначе new Material() не переживает build. Fallback: URP Unlit дерево.
-        /// </summary>
-        static void FixOverlayMaterials(
-            GameObject root,
-            bool isHome = false,
-            string assetSourceDir = null,
-            string buildingMetaPath = null)
-        {
-            var lit = Shader.Find("Universal Render Pipeline/Lit")
-                ?? Shader.Find("Universal Render Pipeline/Simple Lit");
-            var unlit = Shader.Find("Universal Render Pipeline/Unlit")
-                ?? Shader.Find("Unlit/Color")
-                ?? Shader.Find("Sprites/Default");
-            if (lit == null && unlit == null)
-            {
-                Debug.LogError("[Viu] Нет URP/Unlit шейдеров — дом будет magenta.");
-                return;
-            }
-
-            string matFolder = isHome ? HomeMatFolder : CharMatFolder;
-            EnsureAssetFolder(matFolder);
-            var texMap = LoadAssetTextureMap(buildingMetaPath);
-            int texBound = 0;
-
-            int fixedN = 0;
-            foreach (var r in root.GetComponentsInChildren<Renderer>(true))
-            {
-                if (r == null) continue;
-                var mats = r.sharedMaterials;
-                if (mats == null || mats.Length == 0)
-                {
-                    if (unlit != null)
-                    {
-                        var c = isHome ? GuessHomeColor(r, null) : new Color(0.45f, 0.32f, 0.22f);
-                        var fallback = LoadOrCreateSolidMat(matFolder, "viu_wood", lit ?? unlit, c);
-                        r.sharedMaterial = fallback;
-                        fixedN++;
-                    }
-                    continue;
-                }
-
-                var changed = false;
-                for (int i = 0; i < mats.Length; i++)
-                {
-                    var m = mats[i];
-                    var sn = m != null && m.shader != null ? m.shader.name : "";
-                    bool bad = m == null
-                        || string.IsNullOrEmpty(sn)
-                        || sn.IndexOf("Error", StringComparison.OrdinalIgnoreCase) >= 0
-                        || sn.IndexOf("Hidden/InternalErrorShader", StringComparison.OrdinalIgnoreCase) >= 0
-                        || sn.IndexOf("Standard", StringComparison.OrdinalIgnoreCase) >= 0
-                        || sn.IndexOf("Legacy", StringComparison.OrdinalIgnoreCase) >= 0
-                        || (sn.IndexOf("Universal Render Pipeline", StringComparison.OrdinalIgnoreCase) < 0
-                            && sn.IndexOf("Unlit", StringComparison.OrdinalIgnoreCase) < 0
-                            && sn.IndexOf("Sprites", StringComparison.OrdinalIgnoreCase) < 0);
-
-                    // Только наши URP-материалы с albedo. Остальное — всегда пересохраняем.
-                    if (IsViuSavedMaterial(m, matFolder) && HasMeaningfulAlbedo(m) && !bad) continue;
-
-                    var shader = lit ?? unlit;
-                    var safeName = "viu_" + (m != null ? m.name : "slot" + i);
-                    if (isHome)
-                        safeName += "_" + r.gameObject.name;
-                    safeName = string.Join("_", safeName.Split(System.IO.Path.GetInvalidFileNameChars()));
-                    if (safeName.Length > 48) safeName = safeName.Substring(0, 48);
-                    var path = matFolder + "/" + safeName + ".mat";
-
-                    Material copy = AssetDatabase.LoadAssetAtPath<Material>(path);
-                    bool srcHasTex = m != null && MaterialHasAnyTexture(m);
-                    if (copy != null && !HasMeaningfulAlbedo(copy)
-                        && TryBindAssetTexture(copy, assetSourceDir, m != null ? m.name : null,
-                            r.gameObject.name, i, texMap))
-                    {
-                        EditorUtility.SetDirty(copy);
-                        mats[i] = copy;
-                        changed = true;
-                        fixedN++;
-                        texBound++;
-                        continue;
-                    }
-                    if (copy != null && srcHasTex && !HasMeaningfulAlbedo(copy))
-                    {
-                        AssetDatabase.DeleteAsset(path);
-                        copy = null;
-                    }
-                    if (copy != null && !HasMeaningfulAlbedo(copy) && !srcHasTex)
-                    {
-                        AssetDatabase.DeleteAsset(path);
-                        copy = null;
-                    }
-
-                    if (copy == null)
-                    {
-                        copy = new Material(shader);
-                        bool gotTex = CopyMaterialTexturesFull(m, copy);
-                        if (!gotTex)
-                            gotTex = TryBindAssetTexture(copy, assetSourceDir, m != null ? m.name : null,
-                                r.gameObject.name, i, texMap);
-                        if (gotTex) texBound++;
-                        Color c = isHome ? GuessHomeColor(r, m) : GuessCharacterColor(r, m);
-                        if (m != null)
-                        {
-                            if (m.HasProperty("_Color")) c = m.GetColor("_Color");
-                            else if (m.HasProperty("_BaseColor")) c = m.GetColor("_BaseColor");
-                        }
-                        if (!gotTex && c.r > 0.9f && c.g > 0.9f && c.b > 0.9f)
-                            c = isHome ? GuessHomeColor(r, m) : GuessCharacterColor(r, m);
-                        if (copy.HasProperty("_BaseColor")) copy.SetColor("_BaseColor", c);
-                        if (copy.HasProperty("_Color")) copy.SetColor("_Color", c);
-                        if (copy.HasProperty("_Smoothness"))
-                            copy.SetFloat("_Smoothness", gotTex ? 0.25f : 0.15f);
-                        AssetDatabase.CreateAsset(copy, path);
-                    }
-                    mats[i] = copy;
-                    changed = true;
-                    fixedN++;
-                }
-                if (changed)
-                    r.sharedMaterials = mats;
-            }
-            AssetDatabase.SaveAssets();
-            Debug.Log("[Viu] " + (isHome ? "Дом" : "Шаня") + ": материалов починено/сохранено: " + fixedN
-                + ", текстур привязано: " + texBound);
-        }
-
         static Color GuessCharacterColor(Renderer r, Material m)
         {
             var n = (r != null ? r.gameObject.name : "").ToLowerInvariant().Replace("-", "_");
@@ -1724,6 +1820,8 @@ namespace Viu.Editor
             }
             if (assetPath.Contains("/Environment/", StringComparison.OrdinalIgnoreCase))
             {
+                // Environment: НЕ ImportStandard — Standard без Textures/ = magenta в Player.
+                // Материалы строим сами (BakeOverlayMaterials → URP Lit + Textures/).
                 if (importer.importAnimation)
                 {
                     importer.importAnimation = false;
@@ -1734,19 +1832,32 @@ namespace Viu.Editor
                     importer.animationType = ModelImporterAnimationType.None;
                     changed = true;
                 }
+                if (importer.materialImportMode != ModelImporterMaterialImportMode.None)
+                {
+                    importer.materialImportMode = ModelImporterMaterialImportMode.None;
+                    changed = true;
+                }
             }
-            if (importer.materialImportMode != ModelImporterMaterialImportMode.ImportStandard)
+            else if (importer.materialImportMode != ModelImporterMaterialImportMode.ImportStandard)
             {
                 importer.materialImportMode = ModelImporterMaterialImportMode.ImportStandard;
                 changed = true;
             }
-            if (importer.materialLocation != ModelImporterMaterialLocation.External)
+            if (!assetPath.Contains("/Environment/", StringComparison.OrdinalIgnoreCase)
+                && importer.materialLocation != ModelImporterMaterialLocation.External)
             {
                 importer.materialLocation = ModelImporterMaterialLocation.External;
                 changed = true;
             }
             if (changed)
                 importer.SaveAndReimport();
+        }
+
+        static void EnsureEnvironmentImportNoMaterials(string assetPath)
+        {
+            if (string.IsNullOrEmpty(assetPath) || !assetPath.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase))
+                return;
+            EnsureStandardMaterialImport(assetPath);
         }
 
         static void EnsureBuildingImport(string assetPath) => EnsureStandardMaterialImport(assetPath);

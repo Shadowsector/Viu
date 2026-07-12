@@ -97,7 +97,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 52" in text
+    assert "@viu-deploy-rev 53" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -158,15 +158,18 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 52" in setup
+    assert "@viu-deploy-rev 53" in setup
     assert "EnsureAnchorsForValidate" in setup
     assert "Шейдеры материалов OK" in setup
+    assert "BakeOverlayMaterials" in setup
+    assert "WipeMatFolder" in setup
+    assert "MaterialImportMode.None" in setup
+    assert "ViuOverlayMats/r53" in setup
     assert "ValidateOverlaySceneBatch" in setup
     assert "RebindMaterialsBatch" in setup
     assert "BuildWindowsOnly" in setup
     assert "OverlayValidationReport" in setup
     assert "AuditSceneMaterials" in setup
-    assert "ViuOverlayMats/r50" in setup
     assert "ValidateOverlayScene" in setup
     assert "BootstrapOverlayScene" in setup
     assert "OverlaySceneAnchor" in setup
@@ -201,7 +204,7 @@ def test_overlay_templates(tmp_path):
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay
     assert "RuntimeRev" in overlay
-    assert 'RuntimeRev = "52"' in overlay
+    assert 'RuntimeRev = "53"' in overlay
     assert "fullScreenOverlay = true" in overlay
     assert "ApplyDisplayMode" in overlay
     assert "instanceHeightPixels" in overlay
@@ -216,7 +219,7 @@ def test_overlay_templates(tmp_path):
     assert "OverlayModeController" in corridor
     assert "CopyMaterialTexturesFull" in setup
     assert "HomeMatFolder" in setup
-    assert "MaterialImportMode.ImportStandard" in setup or "materialImportMode" in setup
+    assert "MaterialImportMode.None" in setup or "materialImportMode" in setup
     assert "UpdateLayeredWindow" in overlay
     assert "useUpdateLayeredWindow" in overlay
     assert "ChromaKey32" in overlay

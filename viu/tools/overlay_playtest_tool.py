@@ -18,6 +18,7 @@ from ..integrations.unity.process import (
 )
 from ..integrations.unity.setup import (
     batch_overlay_build_command,
+    batch_overlay_rebind_command,
     deploy_animation_pipeline,
     editor_scripts_healthy,
     find_unity_exe,
@@ -67,6 +68,32 @@ class OverlayPlaytestTool(Tool):
         if kill_msg:
             lines.append(kill_msg)
         time.sleep(2.0)
+
+        # Перед сборкой — bake материалов (иначе снова фиолетовый сарай).
+        rebind_cmd = batch_overlay_rebind_command(root, exe)
+        try:
+            rebind_proc = subprocess.run(
+                rebind_cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=min(timeout, 900),
+                cwd=str(root),
+            )
+        except subprocess.TimeoutExpired:
+            return ToolResult(False, "Починка текстур зависла. Закрой Unity и попробуй снова.")
+        if rebind_proc.returncode != 0:
+            rebind_log = root / "overlay_rebind.log"
+            hint = ""
+            if rebind_log.is_file():
+                hint = rebind_log.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-1:]
+                hint = ("\n" + hint[0]) if hint else ""
+            return ToolResult(
+                False,
+                "✗ Не удалось привязать текстуры (bake)."
+                + hint
+                + "\n→ «Починить текстуры оверлея» или проверь Textures/ и .viu.json.",
+            )
 
         cmd = batch_overlay_build_command(root, exe)
         timeout = float(args.get("timeout") or 1800)
