@@ -922,3 +922,54 @@ FAIL: глаза не видели оверлей (окно не найдено 
 
 web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
 Ничего не найдено по запросу.
+
+
+---
+
+## 2026-07-12 11:07 — ESCALATE `overlay_playtest` / overlay-visual-fix-20260712e (Viu)
+
+ЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.
+Inbox task: `overlay-visual-fix-20260712e`
+
+Ошибка / лог:
+Unity close: Unity.exe не запущен.
+Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs
+ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs
+Уже есть: U:\Anabarra\Unity\Anabarra\Assets\Characters\Shanya\Animations\viu_clips.json
+Сборка OK: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\AnabarraOverlay.exe
+--- build ---
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs
+[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe
+[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\..\Builds/AnabarraOverlay\LaunchOverlay.bat + LaunchOverlay.vbs
+Запуск (без терминала): U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\LaunchOverlay.vbs
+--- overlay_boot.log ---
+﻿11:07:35 Awake: renderers=2366/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2351/2724
+11:07:35 Start args=U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow
+11:07:35 HWND ok
+11:07:35 Geometry 2560x1440 at 0,0
+11:07:36 SetLayeredWindowAttributes=True err=0 key=#FF0080 (должен быть прозрачным на рабочем столе)
+11:07:36 ColorKey pass 1, Esc=выход
+11:07:36 AfterWindow: renderers=2366/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2351/2724
+
+--- вердикт ---
+OK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.
+--- eyes ---
+Окно не найдено ('Unity'). Видны: ['Приветствие и обращение | Cursor - Google Chrome', '(46) \u200eАнтифишки — НОВОСТИ ОНЛАЙН – (80)', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'Набросок на фрагменте экрана', 'Вью — Анабарра', 'Total Commander 9.51 - PowerUser v72    Вс 12 июл 2026    11:07:50    Память: 45%    ЦП: 2%', 'EqualizerFrame', 'Shadow Sector - Голос 002', 'Happ 2.5.2 (523)', 'Ollama', 'Медиаплеер', 'Медиаплеер', 'NVIDIA GeForce Overlay', 'Microsoft Text Input Application']
+--- Editor.log (summary) ---
+Unity Editor.log: C:\Users\Den\AppData\Local\Unity\Editor\Editor.log
+
+Прочие ошибки (2):
+  • [Licensing::Module] Error: Access token is unavailable; failed to update
+  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)
+Support bundle: U:\Viu\.viu\support\viu_logs_20260712_110750.zip
+Логи отправлены: https://gist.github.com/Shadowsector/afb2cdea46b25662615efc06d8046009
+--- вердикт ---
+FAIL: глаза не видели оверлей (окно не найдено / eyes не отработали). Не done.
+
+web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
+Ничего не найдено по запросу.
