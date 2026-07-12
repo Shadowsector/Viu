@@ -14,12 +14,15 @@ namespace Viu.Runtime
         public float modelYawOffset;
 
         const float SideFaceRightYaw = 90f;
-        const float WalkThreshold = 0.05f;
+        /// <summary>Выше — меньше ложных Walk от дребезга/стика.</summary>
+        const float WalkThreshold = 0.25f;
 
         Animator _animator;
         int _speedHash;
         bool _walking;
         bool _loggedOnce;
+        /// <summary>Если в Walk подложен Run-клип — замедляем playback.</summary>
+        float _walkAnimSpeed = 1f;
 
         void Awake()
         {
@@ -36,17 +39,22 @@ namespace Viu.Runtime
 
             _animator.applyRootMotion = false;
             _animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            _walkAnimSpeed = DetectRunAsWalkSpeed();
             if (_animator.runtimeAnimatorController != null && _animator.avatar != null)
             {
                 _animator.Rebind();
                 _animator.Update(0f);
+                _walking = false;
+                _animator.SetFloat(_speedHash, 0f);
+                _animator.speed = 1f;
                 PlayState("Idle", 0f);
                 Debug.Log(
                     "[Viu] Locomotion start human=" + _animator.isHuman
                     + " avatarValid=" + (_animator.avatar.isValid)
                     + " ctrl=" + _animator.runtimeAnimatorController.name
                     + " hasIdle=" + HasState("Idle")
-                    + " hasWalk=" + HasState("Walk"));
+                    + " hasWalk=" + HasState("Walk")
+                    + " walkAnimSpeed=" + _walkAnimSpeed);
             }
             else
             {
@@ -79,14 +87,30 @@ namespace Viu.Runtime
                             + " now=" + (info.IsName("Walk") ? "Walk" : "other"));
                     }
                 }
+                // Run-клип в слоте Walk: на месте Idle на полной скорости, в движении — медленнее
+                _animator.speed = _walking ? _walkAnimSpeed : 1f;
             }
 
-            if (speed > 0.01f)
+            if (speed > WalkThreshold)
             {
                 float yaw = (h > 0f ? SideFaceRightYaw : -SideFaceRightYaw) + modelYawOffset;
                 transform.rotation = Quaternion.Euler(0f, yaw, 0f);
                 transform.position += Vector3.right * (h * walkSpeed * Time.deltaTime);
             }
+        }
+
+        float DetectRunAsWalkSpeed()
+        {
+            if (_animator == null || _animator.runtimeAnimatorController == null)
+                return 1f;
+            foreach (var clip in _animator.runtimeAnimatorController.animationClips)
+            {
+                if (clip == null) continue;
+                var n = clip.name.ToLowerInvariant();
+                if (n.Contains("run") || n.Contains("sprint"))
+                    return 0.55f;
+            }
+            return 1f;
         }
 
         bool HasState(string stateName)
@@ -115,12 +139,12 @@ namespace Viu.Runtime
         {
             try
             {
-                // Только A/D и ←→ — W/S заняты глубиной (Z), не мешаем.
+                // Только A/D и ←→. GetAxisRaw("Horizontal") НЕ использовать —
+                // дрейф геймпада → Speed>0 → вечный Run в слоте Walk.
                 float h = 0f;
                 if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) h -= 1f;
                 if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) h += 1f;
-                if (Mathf.Abs(h) > 0.01f) return h;
-                return Input.GetAxisRaw("Horizontal");
+                return h;
             }
             catch
             {

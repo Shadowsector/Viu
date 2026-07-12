@@ -1,24 +1,21 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T09:52:10Z",
-  "note": "rev35: Den confirmed working Idle=X Bot@Idle, Walk←Shanya_Run. Pin those.",
+  "updated_at": "2026-07-12T10:05:00Z",
+  "note": "rev36: stop always-run (no GetAxisRaw drift; Run-as-Walk speed 0.55); never rename exe.broken",
   "tasks": [
     {
-      "id": "overlay-visual-fix-20260712n",
-      "status": "blocked",
+      "id": "overlay-visual-fix-20260712o",
+      "status": "pending",
       "priority": 1,
-      "title": "rev35: pin working Idle/Run clips from Den",
+      "title": "rev36: Idle at rest, slow Run-as-Walk, keep exe on FAIL",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
       "direct_args": {
         "reopen_unity": false,
         "timeout": 2400
       },
-      "instructions": "deploy-rev 35. Den cut bad clips; preview OK for X Bot@Idle and Shanya_Run. viu_clips overlay_preferred Idle=X Bot@Idle.fbx Walk=Shanya_Run.fbx (Run as Walk until real Walk). Create From This Model. Expect Overlay locomotion OK Idle<X Bot@Idle> Walk<Shanya_Run>. Then launch overlay.",
-      "acceptance": "locomotion OK; Shanya Idle in overlay not T-pose; A/D plays Run-as-Walk.",
-      "started_at": "2026-07-12T09:52:02Z",
-      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка FAIL\n(см. viu_overlay_build.log)\n\n--- escalate ---\nЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.\nInbox task: `overlay-visual-fix-20260712n`\n\nОшибка / лог:\nUnity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка FAIL\n(см. viu_overlay_build.log)\n\nweb_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):\nНичего не найдено по запросу.\n\nHandoff Cursor: OK — Файл на GitHub (Shadowsector/Viu@cursor/viu-agent-core-65c2): docs/CURSOR_HANDOFF.md\nhttps://github.com/Shadowsector/Viu/commit/e6fa9757a9ebd629b77063964b8dcf9f1aafdf29\nДальше не крути тот же инструмент. Жди ответ Cursor в VIU_INBOX или почини по web_search, если фикс ясен.",
-      "finished_at": "2026-07-12T09:52:10Z"
+      "instructions": "deploy-rev 36. Den: LaunchOverlay worked but Shanya always ran — GetAxisRaw stick drift + Run in Walk slot. Fix: keyboard-only horizontal; WalkThreshold 0.25; Walk←Run gets state.speed 0.55; prefer real Walk if importable. NEVER rename exe to .broken on FAIL (leave with WARN). Expect Idle when no keys; Run-slow only on A/D.",
+      "acceptance": "standing Idle without keys; A/D moves with slower run; FAIL does not rename exe.broken."
     }
   ]
 }

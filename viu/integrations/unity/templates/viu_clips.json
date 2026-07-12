@@ -1,15 +1,15 @@
 {
-  "comment": "Дени: рабочие клипы — X Bot@Idle (Idle) и Shanya_Run (как Walk, пока нет нормального Walk).",
+  "comment": "Idle=X Bot@Idle. Walk сначала Shanya_Walk, иначе Shanya_Run (замедленный).",
   "overrides": [
     { "file": "X Bot@Idle.fbx", "state": "Idle" },
     { "file": "Shanya_Idle.fbx", "state": "Idle" },
-    { "file": "Shanya_Run.fbx", "state": "Walk" },
     { "file": "Shanya_Walk.fbx", "state": "Walk" },
+    { "file": "Shanya_Run.fbx", "state": "Walk" },
     { "file": "Take 001.fbx", "state": "Walk" }
   ],
   "overlay_preferred": {
     "Idle": "X Bot@Idle.fbx",
-    "Walk": "Shanya_Run.fbx",
+    "Walk": "Shanya_Walk.fbx",
     "Run": "Shanya_Run.fbx"
   }
 }

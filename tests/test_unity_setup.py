@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 35" in text
+    assert "@viu-deploy-rev 36" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -157,9 +157,11 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 35" in setup
+    assert "@viu-deploy-rev 36" in setup
     assert "X Bot@Idle.fbx" in sync
-    assert "Shanya_Run.fbx" in sync
+    assert "DetectRunAsWalkSpeed" in loco
+    assert "WalkThreshold = 0.25f" in loco
+    assert "GetAxisRaw" not in loco
     assert "Create From This Model (не Copy Erisa)" in sync
     assert "Никогда Copy From Other к Erisa" in sync
     assert "HomeShanyaFrontGap" in setup
@@ -171,7 +173,9 @@ def test_overlay_templates(tmp_path):
 
     clips = (root / "viu_clips.json").read_text(encoding="utf-8")
     assert "X Bot@Idle.fbx" in clips
-    assert "Shanya_Run.fbx" in clips
+    playtest = (Path(__file__).resolve().parents[1] / "viu/tools/overlay_playtest_tool.py").read_text(encoding="utf-8")
+    assert "старый exe оставлен" in playtest
+    assert ".broken" not in playtest or "Не переименовываем" in playtest
 
     from viu.integrations.unity.overlay_tune import load_tune, write_tune_lane
 

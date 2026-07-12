@@ -138,7 +138,8 @@ namespace Viu.Editor
         };
         static readonly string[] WalkPinFiles =
         {
-            "Shanya_Run.fbx", "Shanya_Walk.fbx", "Shanya_Walk_2.fbx", "Take 001.fbx", "Walk.fbx",
+            "Shanya_Walk.fbx", "Shanya_Walk_2.fbx", "Take 001.fbx", "Walk.fbx",
+            "Shanya_Run.fbx",  // запас: Run как Walk (state.speed 0.55)
         };
 
         static void EnsureAllAnimationFbxImport(Avatar bodyAvatar, bool log = false)
@@ -362,8 +363,9 @@ namespace Viu.Editor
         {
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["Idle"] = "Shanya_Idle.fbx",
+                ["Idle"] = "X Bot@Idle.fbx",
                 ["Walk"] = "Shanya_Walk.fbx",
+                ["Run"] = "Shanya_Run.fbx",
             };
             try
             {
@@ -755,18 +757,33 @@ namespace Viu.Editor
             if (idleState != null)
                 sm.defaultState = idleState;
 
-            // Idle <-> Walk по Speed
+            // Idle <-> Walk по Speed (порог выше — иначе дрейф → вечный Walk/Run)
             if (byName.TryGetValue("Idle", out var idle) && byName.TryGetValue("Walk", out var walk))
             {
                 var toWalk = idle.AddTransition(walk);
                 toWalk.hasExitTime = false;
                 toWalk.duration = 0.1f;
-                toWalk.AddCondition(AnimatorConditionMode.Greater, 0.05f, SpeedParam);
+                toWalk.AddCondition(AnimatorConditionMode.Greater, 0.25f, SpeedParam);
 
                 var toIdle = walk.AddTransition(idle);
                 toIdle.hasExitTime = false;
                 toIdle.duration = 0.1f;
-                toIdle.AddCondition(AnimatorConditionMode.Less, 0.05f, SpeedParam);
+                toIdle.AddCondition(AnimatorConditionMode.Less, 0.2f, SpeedParam);
+            }
+
+            // Если в Walk попал Run-клип — замедлить стейт (~похожая на ходьбу)
+            if (byName.TryGetValue("Walk", out var walkState))
+            {
+                var motion = walkState.motion as AnimationClip;
+                var pathHint = entries.FirstOrDefault(e =>
+                    e.StateName.Equals("Walk", StringComparison.OrdinalIgnoreCase));
+                bool looksRun = (motion != null && motion.name.IndexOf("run", StringComparison.OrdinalIgnoreCase) >= 0)
+                    || (pathHint != null && pathHint.AssetPath.IndexOf("run", StringComparison.OrdinalIgnoreCase) >= 0);
+                if (looksRun)
+                {
+                    walkState.speed = 0.55f;
+                    Debug.Log("[Viu] Walk ← Run-клип, state.speed=0.55");
+                }
             }
 
             EditorUtility.SetDirty(controller);
