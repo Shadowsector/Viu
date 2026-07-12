@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T06:34:06Z",
+  "updated_at": "2026-07-12T06:35:05Z",
   "note": "Den: walk slide + white wall parallax. rev23: camera LockToHome, Animator on FBX host, Unlit, ortho 2.15. Den only needs update Viu — no reports.",
   "tasks": [
     {
@@ -23,7 +23,7 @@
     },
     {
       "id": "overlay-visual-fix-20260712",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": 1,
       "title": "rev23: камера дома + Walk на FBX-хосте + Unlit + ortho 2.15",
       "created_by": "Cursor",
@@ -33,7 +33,9 @@
       },
       "instructions": "deploy-rev 23. После update: один overlay_playtest. Ожидаем: Walk играет (не slide), дом не едет против Шани (LockToHome), Unlit материалы, ortho 2.15. Eyes: Шаня+дом. Fail→escalate. Дена не спрашивать.",
       "acceptance": "Walk animation plays; home stays put; eyes see Shanya+home; playtest PASS.",
-      "started_at": "2026-07-12T06:34:06Z"
+      "started_at": "2026-07-12T06:34:06Z",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nУже есть: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe\n--- build ---\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs\n[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe\n[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\\..\\Builds/AnabarraOverlay\\LaunchOverlay.bat\nЗапуск: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\LaunchOverlay.bat\n--- overlay_boot.log ---\n﻿09:34:32 Awake: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048\n09:34:33 Start args=AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow\n09:34:33 HWND ok\n09:34:33 Geometry 2560x1440 at 0,0\n09:34:33 SetLayeredWindowAttributes=True err=0\n09:34:33 ColorKey pass 1, Esc=выход\n09:34:33 AfterWindow: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048\n\n--- вердикт ---\nOK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.\n--- eyes ---\nСкрин 2560x1440 → U:\\Viu\\.viu\\shots\\overlay_eye_20260712_093447.png\nshot: U:\\Viu\\.viu\\shots\\overlay_eye_20260712_093447.png\n[llava:latest]\n1) Виден ли персонаж? Стоит норmaльно или тело/кости искажены?\nПерсонаж виден, т.к. его тело и кости замещают окно Unity Editor в заднем плане.\n\n2) Виден ли дом/сарай на фоне?\nДом не виден, т.к. он никак не упоминается в даном скринном ответе.\n\n3) Это оверley на рабочем стоle или окно Unity Editor?\nЭто окno Unity Editor, поскольку в заднем плане виден его интерfeй (список дел).\n\n4) Verdict одной строкой: OK | BROKEN_IDLE | NO_HOME | NO_CHARACTER | NO_OVERLAY | UNKNOWN\nОК | BROKEN_IDLE | NO_CHARACTER | NO_OVERLAY | UNKNOWN\neye gist: Handoff в приватном Gist:\nhttps://gist.github.com/Shadowsector/d057b74b811521ef6d2bcdcabceed9ef\n--- вердикт (после eyes) ---\nWARN: eyes — дом/персонаж криво (см. --- eyes ---). Дена не спрашивать.\nUnity Editor снова открыт.\nSupport bundle: U:\\Viu\\.viu\\support\\viu_logs_20260712_093501.zip\nЛоги отправлены: https://gist.github.com/Shadowsector/b370c780b718973cfce1c76a5fb6e99d\n\n--- escalate ---\nЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.\nInbox task: `overlay-visual-fix-20260712`\n\nОшибка / лог:\nUnity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nУже есть: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarr",
+      "finished_at": "2026-07-12T06:35:05Z"
     }
   ]
 }
