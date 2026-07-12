@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T07:40:00Z",
+  "updated_at": "2026-07-12T07:31:15Z",
   "note": "Den viu.json: dollhouse_wall empty, barn_interior=grey slab. rev25 still Wall_front miss + state≠Walk. rev26: shell-hide + feetY camera.",
   "tasks": [
     {
@@ -14,7 +14,7 @@
     },
     {
       "id": "overlay-visual-fix-20260712d",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev26: barn_interior shell-hide + ResolveFeetY",
       "created_by": "Cursor",
@@ -23,7 +23,8 @@
         "reopen_unity": true
       },
       "instructions": "deploy-rev 26. Old_Stables без стен — прячем thatched_house_big_barn_interior. Камера по стопам. overlay_playtest; false-done запрещён если state≠Walk или нет дома/персонажа.",
-      "acceptance": "No grey slab; Shanya full body; Idle/Walk; eyes see character."
+      "acceptance": "No grey slab; Shanya full body; Idle/Walk; eyes see character.",
+      "started_at": "2026-07-12T07:31:15Z"
     }
   ]
 }
