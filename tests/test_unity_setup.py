@@ -97,7 +97,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 41" in text
+    assert "@viu-deploy-rev 42" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -158,7 +158,8 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 41" in setup
+    assert "@viu-deploy-rev 42" in setup
+    assert "HomeMatFolder" in setup
     assert "X Bot@Idle.fbx" in sync
     assert "DetectRunAsWalkSpeed" in loco
     assert "полная скорость" in loco or "return 1f" in loco
