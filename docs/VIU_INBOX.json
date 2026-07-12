@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T10:05:00Z",
+  "updated_at": "2026-07-12T10:03:41Z",
   "note": "rev36: stop always-run (no GetAxisRaw drift; Run-as-Walk speed 0.55); never rename exe.broken",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712o",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev36: Idle at rest, slow Run-as-Walk, keep exe on FAIL",
       "created_by": "Cursor",
@@ -15,7 +15,8 @@
         "timeout": 2400
       },
       "instructions": "deploy-rev 36. Den: LaunchOverlay worked but Shanya always ran — GetAxisRaw stick drift + Run in Walk slot. Fix: keyboard-only horizontal; WalkThreshold 0.25; Walk←Run gets state.speed 0.55; prefer real Walk if importable. NEVER rename exe to .broken on FAIL (leave with WARN). Expect Idle when no keys; Run-slow only on A/D.",
-      "acceptance": "standing Idle without keys; A/D moves with slower run; FAIL does not rename exe.broken."
+      "acceptance": "standing Idle without keys; A/D moves with slower run; FAIL does not rename exe.broken.",
+      "started_at": "2026-07-12T10:03:41Z"
     }
   ]
 }
