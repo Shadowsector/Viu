@@ -17,7 +17,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 25
+        // @viu-deploy-rev 26
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -269,7 +269,7 @@ namespace Viu.Editor
                 follow = cam.gameObject.AddComponent<Viu.Runtime.ShanyaOverlayCamera>();
             }
             follow.target = target;
-            follow.feetScreenFraction = 0.06f;
+            follow.feetScreenFraction = 0.12f;
             follow.distanceZ = 14f;
             follow.lockFollowX = true;
             follow.lockedWorldX = target.position.x;
@@ -630,7 +630,8 @@ namespace Viu.Editor
             var meshN = home.GetComponentsInChildren<Renderer>(true).Length;
             Debug.Log(
                 "[Viu] Дом в overlay: " + fbxPath
-                + ", стенка «" + dollhouse.wallMeshName + "» скрыта, renderers=" + meshN);
+                + ", dollhouse_wall=«" + dollhouse.wallMeshName + "»"
+                + " (пусто → shell/barn_interior), renderers=" + meshN);
             return home;
         }
 
@@ -806,8 +807,21 @@ namespace Viu.Editor
                 var score = 0;
                 if (slug.IndexOf("Stables", StringComparison.OrdinalIgnoreCase) >= 0) score += 10;
                 if (slug.IndexOf("Old", StringComparison.OrdinalIgnoreCase) >= 0) score += 5;
-                if (File.Exists(Path.GetFullPath(Path.Combine(Application.dataPath, "..", meta))))
+                var metaFull = Path.GetFullPath(Path.Combine(Application.dataPath, "..", meta));
+                if (File.Exists(metaFull))
+                {
                     score += 3;
+                    try
+                    {
+                        var wall = LoadDollhouseWallFromMeta(meta);
+                        if (!string.IsNullOrWhiteSpace(wall))
+                            score += 40; // есть вырез фасада
+                        else
+                            score -= 15; // Old_Stables без Wall_front
+                    }
+                    catch { /* ignore */ }
+                }
+                if (slug.EndsWith("_2", StringComparison.OrdinalIgnoreCase)) score += 2;
 
                 candidates.Add((score, path, meta));
             }
@@ -849,12 +863,13 @@ namespace Viu.Editor
 
         static string LoadDollhouseWallFromMeta(string metaAssetPath)
         {
+            // Пустая строка = нет выреза (Old_Stables). Не подставлять фейковый Wall_front.
             if (string.IsNullOrEmpty(metaAssetPath))
-                return "Wall_front";
+                return "";
 
             var full = Path.GetFullPath(Path.Combine(Application.dataPath, "..", metaAssetPath));
             if (!File.Exists(full))
-                return "Wall_front";
+                return "";
 
             try
             {
@@ -868,7 +883,7 @@ namespace Viu.Editor
                 Debug.LogWarning("[Viu] viu.json дома: " + e.Message);
             }
 
-            return "Wall_front";
+            return "";
         }
 
         static void SnapBuildingToGround(GameObject root)

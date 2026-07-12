@@ -39,6 +39,12 @@ namespace Viu.Runtime
             {
                 _animator.Rebind();
                 _animator.Update(0f);
+                if (_animator.HasState(0, Animator.StringToHash("Idle")))
+                    _animator.Play("Idle", 0, 0f);
+                Debug.Log(
+                    "[Viu] Locomotion start human=" + _animator.isHuman
+                    + " avatarValid=" + (_animator.avatar != null && _animator.avatar.isValid)
+                    + " ctrl=" + _animator.runtimeAnimatorController.name);
             }
             else
             {

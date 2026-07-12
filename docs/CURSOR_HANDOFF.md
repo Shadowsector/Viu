@@ -819,3 +819,13 @@ Support bundle: U:\Viu\.viu\support\viu_logs_20260712_10210
 
 web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
 Ничего не найдено по запросу.
+
+## 2026-07-12 — Den: magenta screenshot + Old_Stables.viu.json
+
+**viu.json:** dollhouse_wall="" ; meshes = props + thatched_house_big_barn_interior + pines. **Нет стен.** Серый блок на скрине = barn_interior shell.
+
+**Камера:** target=root (бёдра), формула думала что это стопы → Шаня обрезана снизу. Fix ResolveFeetY.
+
+**rev26:** IsBuildingShell(barn_interior); empty wall ok; prefer pack with dollhouse_wall; feetScreenFraction 0.12; Play Idle on start.
+
+

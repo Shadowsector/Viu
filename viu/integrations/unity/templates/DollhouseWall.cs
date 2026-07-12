@@ -3,15 +3,15 @@ using UnityEngine;
 namespace Viu.Runtime
 {
     /// <summary>
-    /// Кукольный дом: передняя стенка скрывается, когда Шаня «дома».
-    /// Имя из viu.json + эвристика «стена к камере» (камера оверлея смотрит +Z).
+    /// Кукольный дом: передняя стенка / оболочка скрывается, когда Шаня «дома».
+    /// Old_Stables часто без Wall_front (только barn_interior) — прячем shell по имени.
     /// </summary>
     public class DollhouseWall : MonoBehaviour
     {
-        [Tooltip("Имя меша из viu.json → dollhouse_wall, обычно Wall_front")]
-        public string wallMeshName = "Wall_front";
+        [Tooltip("Имя меша из viu.json → dollhouse_wall. Пусто = только эвристики.")]
+        public string wallMeshName = "";
 
-        [Tooltip("true = Шаня дома, стенка к экрану не рисуется")]
+        [Tooltip("true = Шаня дома, фасад/оболочка к экрану не рисуется")]
         public bool atHome = true;
 
         public int LastMatchCount { get; private set; }
@@ -19,7 +19,6 @@ namespace Viu.Runtime
         public void Apply()
         {
             LastMatchCount = 0;
-            // Сначала всё включить, потом спрятать фасад
             foreach (var r in GetComponentsInChildren<Renderer>(true))
             {
                 if (r != null)
@@ -37,16 +36,15 @@ namespace Viu.Runtime
             foreach (var r in GetComponentsInChildren<Renderer>(true))
             {
                 if (r == null) continue;
-                bool match = RendererMatchesWall(r, target)
+                bool match = (!string.IsNullOrEmpty(target) && RendererMatchesWall(r, target))
                     || HeuristicFrontWall(r)
+                    || IsBuildingShell(r)
                     || NearCameraFace(r, nearZ, depth);
                 if (!match) continue;
                 LastMatchCount++;
                 r.enabled = false;
             }
 
-            // Если имени Wall_front нет (типично для сырого FBX) — режем переднюю
-            // «плиту» по Z: всё, что касается ближних 22% глубины дома к камере.
             if (LastMatchCount == 0)
             {
                 float slab = nearZ + depth * 0.22f;
@@ -58,11 +56,11 @@ namespace Viu.Runtime
                     LastMatchCount++;
                 }
                 Debug.LogWarning(
-                    "[Viu] Dollhouse: «" + target + "» не найдена — скрыто по Z-slab: "
-                    + LastMatchCount + " (белый куб = фасад). Пришли имена детей дома.");
+                    "[Viu] Dollhouse: «" + target + "» пусто/не найдено — Z-slab hide="
+                    + LastMatchCount + ". Нужен open_wall в Blender или shell-имя.");
             }
             else
-                Debug.Log("[Viu] Dollhouse: скрыто мешей передней стенки: " + LastMatchCount);
+                Debug.Log("[Viu] Dollhouse: скрыто мешей фасада/оболочки: " + LastMatchCount);
         }
 
         public void SetAtHome(bool inside)
@@ -101,18 +99,38 @@ namespace Viu.Runtime
         }
 
         /// <summary>
-        /// Камера оверлея с −Z смотрит на +Z: ближняя грань дома = min Z.
-        /// Прячем тонкие «стенные» меши у этой грани — даже если имя не Wall_front.
+        /// Old_Stables: нет Wall_front, зато есть thatched_house_big_barn_interior —
+        /// это и есть серый «куб» на скрине. Прячем оболочку дома.
         /// </summary>
+        static bool IsBuildingShell(Renderer r)
+        {
+            if (r == null) return false;
+            var n = r.gameObject.name.ToLowerInvariant().Replace("-", "_");
+            if (n.Contains("barn_interior") || n.Contains("house_big") || n.Contains("thatched"))
+                return true;
+            if (n.Contains("interior") && (n.Contains("house") || n.Contains("barn") || n.Contains("stable")))
+                return true;
+            if (n.Contains("wall") || n.Contains("facade") || n.Contains("roof") || n.Contains("ceiling"))
+                return true;
+            if (n.Contains("fog") || n == "dust")
+                return true;
+            var mf = r.GetComponent<MeshFilter>();
+            if (mf != null && mf.sharedMesh != null)
+            {
+                var mn = mf.sharedMesh.name.ToLowerInvariant().Replace("-", "_");
+                if (mn.Contains("barn_interior") || mn.Contains("thatched_house"))
+                    return true;
+            }
+            return false;
+        }
+
         static bool NearCameraFace(Renderer r, float nearZ, float depth)
         {
             if (r == null) return false;
             var b = r.bounds;
-            // ближняя четверть дома по Z
             if (b.center.z > nearZ + depth * 0.28f)
                 return false;
             var size = b.size;
-            // стена: тонкая по Z относительно ширины/высоты
             bool thinZ = size.z < Mathf.Max(size.x, size.y) * 0.35f + 0.05f;
             var n = r.gameObject.name.ToLowerInvariant();
             bool wallName = n.Contains("wall") || n.Contains("facade") || n.Contains("front")

@@ -1,32 +1,29 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T07:21:14Z",
-  "note": "Player.log: Wall_front missing + Speed>0 state≠Walk. Viu was on 939233a (pre-rev24). rev25: Z-slab dollhouse, force rebuild overlay controller, CrossFade Walk, playtest not false-done.",
+  "updated_at": "2026-07-12T07:40:00Z",
+  "note": "Den viu.json: dollhouse_wall empty, barn_interior=grey slab. rev25 still Wall_front miss + state≠Walk. rev26: shell-hide + feetY camera.",
   "tasks": [
-    {
-      "id": "overlay-visual-fix-20260712b",
-      "status": "blocked",
-      "priority": 2,
-      "title": "rev24 playtest false-done (eyes miss + old Viu 939233a)",
-      "created_by": "Cursor",
-      "result": "gist https://gist.github.com/Shadowsector/2bbfbfe1010bc7f6ff3d71bc0e9184be — Dollhouse Wall_front missing; Locomotion state≠Walk. Viu version 939233a.",
-      "finished_at": "2026-07-12T06:59:03Z"
-    },
     {
       "id": "overlay-visual-fix-20260712c",
       "status": "blocked",
+      "priority": 2,
+      "title": "rev25 playtest: still Wall_front miss + state≠Walk",
+      "created_by": "Cursor",
+      "result": "Eyes WARN no home. Editor hits: Dollhouse Wall_front; Locomotion state≠Walk. gist eye https://gist.github.com/Shadowsector/12c7e7a39e4efcfa96217185ebe5f6f8",
+      "finished_at": "2026-07-12T07:21:14Z"
+    },
+    {
+      "id": "overlay-visual-fix-20260712d",
+      "status": "pending",
       "priority": 1,
-      "title": "rev25: Z-slab фасад + rebuild Walk controller + CrossFade",
+      "title": "rev26: barn_interior shell-hide + ResolveFeetY",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
       "direct_args": {
         "reopen_unity": true
       },
-      "instructions": "Сначала убедись что version ≠ 939233a (нужен 1ea0993+ / rev25). overlay_playtest. Player.log не должен содержать state≠Walk и «не нашла стенку» без Z-slab hide. Eyes должны поймать оверлей. False-done запрещён. Дена не спрашивать кроме уже запрошенных 2 пунктов в чате.",
-      "acceptance": "Walk plays; facade open/not solid white; eyes see overlay; Viu version includes rev25.",
-      "started_at": "2026-07-12T07:20:12Z",
-      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nУже есть: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe\n--- build ---\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs\n[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe\n[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\\..\\Builds/AnabarraOverlay\\LaunchOverlay.bat\nЗапуск: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\LaunchOverlay.bat\n--- overlay_boot.log ---\n﻿10:20:41 Awake: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048\n10:20:42 Start args=AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow\n10:20:42 HWND ok\n10:20:42 Geometry 2560x1440 at 0,0\n10:20:42 SetLayeredWindowAttributes=True err=0\n10:20:42 ColorKey pass 1, Esc=выход\n10:20:42 AfterWindow: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048\n\n--- вердикт ---\nOK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.\n--- eyes ---\nСкрин 2560x1440 → U:\\Viu\\.viu\\shots\\overlay_eye_20260712_102056.png\nshot: U:\\Viu\\.viu\\shots\\overlay_eye_20260712_102056.png\n[llava:latest]\n1. Виден ли персонаж? Стоит норmaльно или тело/кости искажены? Один персонаж стоит на нормальном позиции.\n2. Виден ли дом/сарай на фоне? Дом/сарай на fоне не виден.\n3. Это оверley на рабочеm столе или окно Unity Editor? Оверлей эта на рабочем столе или окне Unity editor.\n4. Вердикт одной строкой: OK\neye gist: Handoff в приватном Gist:\nhttps://gist.github.com/Shadowsector/12c7e7a39e4efcfa96217185ebe5f6f8\n--- вердикт (после eyes) ---\nWARN: eyes — дом/персонаж криво (см. --- eyes ---). Дена не спрашивать.\nUnity Editor снова открыт.\n--- Editor.log (summary) ---\nUnity Editor.log: C:\\Users\\Den\\AppData\\Local\\Unity\\Editor\\Editor.log\n\nПрочие ошибки (3):\n  • [Licensing::Module] Error: Access token is unavailable; failed to update\n  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)\n  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)\n--- Editor.log Animator/Viu hits ---\n[Viu] Dollhouse: не нашла стенку «Wall_front». Проверь .viu.json / имена в FBX. Белая «коробка» = фасад не скрыт.\n[Viu] Глубина: S — отойти, W — подойти, F5 — сохранить overlay_tune.json\n[Viu] Locomotion: Speed>0 но state≠Walk. Проверь overlay controller Idle↔Walk и Avatar.\nSupport bundle: U:\\Viu\\.viu\\support\\viu_logs_20260712_10210",
-      "finished_at": "2026-07-12T07:21:14Z"
+      "instructions": "deploy-rev 26. Old_Stables без стен — прячем thatched_house_big_barn_interior. Камера по стопам. overlay_playtest; false-done запрещён если state≠Walk или нет дома/персонажа.",
+      "acceptance": "No grey slab; Shanya full body; Idle/Walk; eyes see character."
     }
   ]
 }

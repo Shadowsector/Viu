@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 25" in text
+    assert "@viu-deploy-rev 26" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -107,6 +107,8 @@ def test_overlay_templates(tmp_path):
     assert "ConfigureWindowWhenReady" in overlay
     cam = (root / "ShanyaOverlayCamera.cs").read_text(encoding="utf-8")
     assert "feetFractionCloseBoost" in cam
+    assert "ResolveFeetY" in cam
+    assert "feetScreenFraction = 0.12f" in cam or "0.12f" in cam
     assert "LockToHome" in cam
     assert "lockFollowX" in cam
     depth = (root / "ShanyaOverlayDepth.cs").read_text(encoding="utf-8")
@@ -128,8 +130,14 @@ def test_overlay_templates(tmp_path):
     assert "LastMatchCount" in dollhouse
     assert "HeuristicFrontWall" in dollhouse
     assert "NearCameraFace" in dollhouse
+    assert "IsBuildingShell" in dollhouse
+    assert "barn_interior" in dollhouse
+    assert "Z-slab" in dollhouse or "slab" in dollhouse
     loco = (root / "ShanyaLocomotion.cs").read_text(encoding="utf-8")
     assert "GetComponentInChildren<Animator>" in loco
+    assert "CrossFade" in loco
+    sync = (root / "ShanyaAnimationSync.cs").read_text(encoding="utf-8")
+    assert "DeleteAsset(OverlayControllerPath)" in sync
 
     from viu.integrations.unity.overlay_tune import load_tune, write_tune_lane
 
