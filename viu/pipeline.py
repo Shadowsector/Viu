@@ -262,10 +262,10 @@ _ACTION_VISIBILITY: dict[str, frozenset[str]] = {
     "accept_animation": frozenset({"anim_inbox", "idle", "playtest", "asset_done", "anim_review"}),
     "animation_catalog": frozenset({"anim_review", "anim_inbox", "playtest", "asset_done", "idle"}),
     "unity_apply": frozenset({"anim_review", "playtest", "asset_done", "idle", "anim_inbox"}),
-    "unity_overlay": frozenset({"asset_done", "playtest", "idle", "anim_inbox", "anim_review"}),
-    "unity_overlay_validate": frozenset({"asset_done", "playtest", "idle"}),
-    "unity_overlay_rebind": frozenset({"asset_done", "playtest", "idle"}),
-    "unity_overlay_build": frozenset({"asset_done", "playtest", "idle"}),
+    "unity_overlay": frozenset({"export", "asset_done", "playtest", "idle", "anim_inbox", "anim_review"}),
+    "unity_overlay_validate": frozenset({"export", "asset_done", "playtest", "idle"}),
+    "unity_overlay_rebind": frozenset({"export", "asset_done", "playtest", "idle"}),
+    "unity_overlay_build": frozenset({"export", "asset_done", "playtest", "idle"}),
     "overlay_depth_far": frozenset({"playtest"}),
     "overlay_depth_close": frozenset({"playtest"}),
     "cascadeur_status": frozenset({"idle", "playtest", "asset_done", "anim_review", "anim_inbox"}),
@@ -279,7 +279,7 @@ def action_visible(action_id: str, ctx: PipelineContext) -> bool:
     if action_id in ("overlay_depth_far", "overlay_depth_close") and not ctx.overlay_built:
         return False
     if action_id == "unity_overlay" and ctx.stage in (
-        "inbox", "catalog", "markup", "wall", "export"
+        "inbox", "catalog", "markup", "wall"
     ):
         return False
     if action_id == "prepare_unity_asset" and not ctx.has_inbox_blend:

@@ -85,3 +85,39 @@ def test_overlay_hidden_during_markup(tmp_path, monkeypatch):
         assert not action_visible("overlay_depth_far", ctx)
     finally:
         os.environ.pop("VIU_LIBRARY_ROOT", None)
+
+
+def test_overlay_visible_after_export(tmp_path, monkeypatch):
+    lib = tmp_path / "Library"
+    env = tmp_path / "Unity" / "Anabarra" / "Assets" / "Environment" / "Old_Stables"
+    env.mkdir(parents=True)
+    (env / "Old_Stables.fbx").write_bytes(b"fbx")
+    (env / "Textures").mkdir()
+    (env / "Textures" / "wood.png").write_bytes(b"png")
+    prepared = lib / "Processed" / "Old Stables" / "Old Stables_prepared.blend"
+    prepared.parent.mkdir(parents=True)
+    prepared.write_bytes(b"blend")
+
+    import os
+    import time
+
+    os.environ["VIU_LIBRARY_ROOT"] = str(lib)
+    os.environ["VIU_UNITY_PROJECT"] = str(tmp_path / "Unity" / "Anabarra")
+    try:
+        # blend новее fbx → stage export
+        old = time.time() - 120
+        os.utime(env / "Old_Stables.fbx", (old, old))
+        cfg = Config(
+            root=tmp_path,
+            data_dir=tmp_path / ".viu",
+            inbox_dir=str(tmp_path / "Inbox"),
+            library_root=str(lib),
+            unity_project=str(tmp_path / "Unity" / "Anabarra"),
+        ).ensure_dirs()
+        ctx = get_pipeline_context(cfg)
+        assert ctx.stage == "export"
+        assert action_visible("unity_overlay", ctx)
+        assert action_visible("unity_overlay_rebind", ctx)
+    finally:
+        os.environ.pop("VIU_LIBRARY_ROOT", None)
+        os.environ.pop("VIU_UNITY_PROJECT", None)

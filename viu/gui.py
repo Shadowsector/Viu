@@ -1075,6 +1075,7 @@ class ViuGUI:
                 elif kind == "tool":
                     self._append("Вью", text, tag="tool")
                     self._set_busy(False)
+                    self._refresh_action_visibility()
                     if text.startswith("[") and "ОШИБКА" in text:
                         self._telegram_notify_error(text)
                 elif kind == "final":
