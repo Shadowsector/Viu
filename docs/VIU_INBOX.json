@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T11:08:56Z",
+  "updated_at": "2026-07-12T11:10:05Z",
   "note": "Rev40 corridor+dollhouse FSM. Viu GUI saves window geometry.",
   "tasks": [
     {
@@ -12,7 +12,7 @@
     },
     {
       "id": "overlay-corridor-20260712d",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": 1,
       "title": "Corridor rev40: scale depth, facade→dollhouse at door",
       "created_by": "Cursor",
@@ -23,7 +23,9 @@
       },
       "instructions": "Rev40: start outside (facade). W/S scale+move. S to barn door → EnterHome dollhouse. W back past door → facade. runtime-rev=40. Do NOT regress ULW/anim.",
       "acceptance": "W bigger/closer; S smaller toward barn wall; at door interior visible; exit restores facade.",
-      "started_at": "2026-07-12T11:08:56Z"
+      "started_at": "2026-07-12T11:08:56Z",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe\n--- build ---\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs\n[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe\n[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\\..\\Builds/AnabarraOverlay\\LaunchOverlay.bat + LaunchOverlay.vbs\nЗапуск (без терминала): U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\LaunchOverlay.vbs\n--- overlay_boot.log ---\n﻿14:09:24 Awake: renderers=2738/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2723/2724\n14:09:24 Start runtime-rev=39 UpdateLayered=True args=U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe -force-d3d11 -force-d3d11-bitblt-model -popupwindow\n14:09:24 gfx=Direct3D11 NVIDIA GeForce RTX 3060\n14:09:24 HWND ok\n14:09:24 Geometry 2560x1440 at 0,0\n14:09:25 UpdateLayeredWindow init OK 2560x1440\n14:09:25 Transparency=UpdateLayeredWindow (per-pixel alpha) OK runtime-rev=39 Esc=выход\n14:09:25 AfterWindow: renderers=2738/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2723/2724\n\n--- вердикт ---\nOK: HWND + UpdateLayeredWindow + сцена в boot-логе. Eyes/gist — источник правды, не Ден.\n--- eyes ---\nСкрин 2560x1440 → U:\\Viu\\.viu\\shots\\overlay_eye_20260712_140939.png\nshot: U:\\Viu\\.viu\\shots\\overlay_eye_20260712_140939.png\n[llava:latest]\n1) Это скрин Unity/оверлея игры Анабарra. Виден ли персонаж? Стоит норmaльно или тело/кости искажены?\nAnswer: Но, на sкринке нема лица костюмиста, а в игре есть персонаж по имени Шаня, который виден целиком. В оверлея игры нема ни одного элемента скрина.\n2) Виден li дом/сарай на фоне?\nAnswer: Da, дом/сарай виден на fоне.\n3) Это оверley на рабочем стоle Unity Editor или окно Unity Editor?\nAnswer: Это скринка, то есть окno оверлея игры Анабарra, а не окno в Unity Editor. В Unity Editor нема ни одного элемента скрина.\n4) Verdict на русском языке: OK | BROKEN_IDLE | NO_HOME | NO_CHARACTER | NO_OVERLAY | UNKNOWN\nAnswer: OK | NO_HOME | NO_CHARACTER | NO_OVERLAY | UNKNOWN\neye gist: Handoff в приватном Gist:\nhttps://gist.github.com/Shadowsector/0d8bf1acd9e79546ea489ce3d47cf9a0\n--- вердикт (после eyes) ---\nWARN: eyes — дом/персонаж криво (см. --- eyes ---). Дена не спрашивать.\n--- Editor.log (summary) ---\nUnity Editor.log: C:\\Users\\Den\\AppData\\Local\\Unity\\Editor\\Editor.log\n\nПрочие ошибки (16):\n  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)\n  • [Licensing",
+      "finished_at": "2026-07-12T11:10:05Z"
     }
   ]
 }
