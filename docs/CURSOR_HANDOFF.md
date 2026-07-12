@@ -658,13 +658,63 @@ Support bundle: U:\Viu\.viu\support\viu_logs_20260711_130320.zip
 web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
 Ничего не найдено по запросу.
 
-## 2026-07-12 — Den: анимация не играет, белая стенка едет против Шани
 
-**Что видит Den:** стрелки двигают Шаню (slide), Walk не играет; белая «стенка»=дом, едет в противоположную сторону (камера follow X).
+---
 
-**Почему:** 1) Animator на пустом parent ломает Humanoid Avatar → только Translate 2) камера follow X при стоящем доме = параллакс «стенка против Шани» 3) ortho 5.5 в depth сбрасывал кадр 4) Lit без текстур = белый дом.
+## 2026-07-12 09:35 — ESCALATE `overlay_playtest` / overlay-visual-fix-20260712 (Viu)
 
-**rev23:** camera LockToHome; Animator на FBX-хосте; Unlit; ortho 2.15; matchCount лог; Walk обязателен.
+ЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.
+Inbox task: `overlay-visual-fix-20260712`
 
-**Что нужно от Den:** только `python -m viu update` (или как обычно обновляет). Дальше Viu сам `overlay_playtest`. Не писать отчёты. Опционально: если после update всё ещё белая стенка без формы дома — прислать имя передней стены из FBX в `Assets/Environment/.../*.viu.json` → `dollhouse_wall` (одна строка).
+Ошибка / лог:
+Unity close: Unity.exe не запущен.
+Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs
+ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs
+Уже есть: U:\Anabarra\Unity\Anabarra\Assets\Characters\Shanya\Animations\viu_clips.json
+Сборка OK: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\AnabarraOverlay.exe
+--- build ---
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs
+ 0.1 kb	 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs
+[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe
+[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\..\Builds/AnabarraOverlay\LaunchOverlay.bat
+Запуск: U:\Anabarra\Unity\Anabarra\Builds\AnabarraOverlay\LaunchOverlay.bat
+--- overlay_boot.log ---
+﻿09:34:32 Awake: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048
+09:34:33 Start args=AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow
+09:34:33 HWND ok
+09:34:33 Geometry 2560x1440 at 0,0
+09:34:33 SetLayeredWindowAttributes=True err=0
+09:34:33 ColorKey pass 1, Esc=выход
+09:34:33 AfterWindow: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048
 
+--- вердикт ---
+OK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.
+--- eyes ---
+Скрин 2560x1440 → U:\Viu\.viu\shots\overlay_eye_20260712_093447.png
+shot: U:\Viu\.viu\shots\overlay_eye_20260712_093447.png
+[llava:latest]
+1) Виден ли персонаж? Стоит норmaльно или тело/кости искажены?
+Персонаж виден, т.к. его тело и кости замещают окно Unity Editor в заднем плане.
+
+2) Виден ли дом/сарай на фоне?
+Дом не виден, т.к. он никак не упоминается в даном скринном ответе.
+
+3) Это оверley на рабочем стоle или окно Unity Editor?
+Это окno Unity Editor, поскольку в заднем плане виден его интерfeй (список дел).
+
+4) Verdict одной строкой: OK | BROKEN_IDLE | NO_HOME | NO_CHARACTER | NO_OVERLAY | UNKNOWN
+ОК | BROKEN_IDLE | NO_CHARACTER | NO_OVERLAY | UNKNOWN
+eye gist: Handoff в приватном Gist:
+https://gist.github.com/Shadowsector/d057b74b811521ef6d2bcdcabceed9ef
+--- вердикт (после eyes) ---
+WARN: eyes — дом/персонаж криво (см. --- eyes ---). Дена не спрашивать.
+Unity Editor снова открыт.
+Support bundle: U:\Viu\.viu\support\viu_logs_20260712_093501.zip
+Логи отправлены: https://gist.github.com/Shadowsector/b370c780b718973cfce1c76a5fb6e99d
+
+web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
+Ничего не найдено по запросу.
