@@ -1,24 +1,21 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T10:03:49Z",
-  "note": "rev36: stop always-run (no GetAxisRaw drift; Run-as-Walk speed 0.55); never rename exe.broken",
+  "updated_at": "2026-07-12T10:10:00Z",
+  "note": "Anim OK (Idle/Run). Next: magenta transparency — verify BitBlt+ColorKey in boot.",
   "tasks": [
     {
-      "id": "overlay-visual-fix-20260712o",
-      "status": "blocked",
+      "id": "overlay-magenta-20260712a",
+      "status": "pending",
       "priority": 1,
-      "title": "rev36: Idle at rest, slow Run-as-Walk, keep exe on FAIL",
+      "title": "Magenta: prove BitBlt ColorKey transparent desktop",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
       "direct_args": {
         "reopen_unity": false,
         "timeout": 2400
       },
-      "instructions": "deploy-rev 36. Den: LaunchOverlay worked but Shanya always ran — GetAxisRaw stick drift + Run in Walk slot. Fix: keyboard-only horizontal; WalkThreshold 0.25; Walk←Run gets state.speed 0.55; prefer real Walk if importable. NEVER rename exe to .broken on FAIL (leave with WARN). Expect Idle when no keys; Run-slow only on A/D.",
-      "acceptance": "standing Idle without keys; A/D moves with slower run; FAIL does not rename exe.broken.",
-      "started_at": "2026-07-12T10:03:41Z",
-      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСтарый exe убран → AnabarraOverlay.exe.broken (не запускай его).\nСборка FAIL\n(см. viu_overlay_build.log)\n\n--- escalate ---\nЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.\nInbox task: `overlay-visual-fix-20260712o`\n\nОшибка / лог:\nUnity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСтарый exe убран → AnabarraOverlay.exe.broken (не запускай его).\nСборка FAIL\n(см. viu_overlay_build.log)\n\nweb_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):\nНичего не найдено по запросу.\n\nHandoff Cursor: OK — Файл на GitHub (Shadowsector/Viu@cursor/viu-agent-core-65c2): docs/CURSOR_HANDOFF.md\nhttps://github.com/Shadowsector/Viu/commit/0bd692fd417ae28e1e3ab47d11ad06efd002f1ae\nДальше не крути тот же инструмент. Жди ответ Cursor в VIU_INBOX или почини по web_search, если фикс ясен.",
-      "finished_at": "2026-07-12T10:03:49Z"
+      "instructions": "Anim works (Den). Focus magenta. Recipe: (1) -force-d3d11 -force-d3d11-bitblt-model (2) useFlipModelSwapchain=0 (3) camera #FF0080 not #FF00FF (4) DWM margins=-1 + SetLayeredWindowAttributes (5) URP mats. Expect boot: runtime-rev=36, gfx=Direct3D11, margins=-1, ColorKey=True, both force-d3d11 flags. If still solid pink with ColorKey True — escalate for UpdateLayeredWindow.",
+      "acceptance": "Desktop visible through chroma; Shanya+home opaque; Idle at rest; A/D walks."
     }
   ]
 }
