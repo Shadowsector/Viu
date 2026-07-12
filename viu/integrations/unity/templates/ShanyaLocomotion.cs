@@ -15,6 +15,9 @@ namespace Viu.Runtime
         public float modelYawOffset;
 
         const float SideFaceRightYaw = 90f;
+        /// <summary>W → лицом к камере (−Z). S → спиной (+Z).</summary>
+        const float FaceCameraYaw = 180f;
+        const float FaceAwayYaw = 0f;
         const float WalkThreshold = 0.25f;
 
         Animator _animator;
@@ -112,14 +115,24 @@ namespace Viu.Runtime
                 return;
 
             var pos = transform.position;
-            if (Mathf.Abs(h) > WalkThreshold)
+            bool depthMove = Mathf.Abs(v) > WalkThreshold;
+            bool sideMove = Mathf.Abs(h) > WalkThreshold;
+
+            if (depthMove && (!sideMove || Mathf.Abs(v) >= Mathf.Abs(h)))
+            {
+                float depthYaw = (v < 0f ? FaceCameraYaw : FaceAwayYaw) + modelYawOffset;
+                transform.rotation = Quaternion.Euler(0f, depthYaw, 0f);
+            }
+            else if (sideMove)
             {
                 float yaw = (h > 0f ? SideFaceRightYaw : -SideFaceRightYaw) + modelYawOffset;
                 transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-                pos.x += h * walkSpeed * Time.deltaTime;
             }
 
-            if (Mathf.Abs(v) > WalkThreshold)
+            if (sideMove)
+                pos.x += h * walkSpeed * Time.deltaTime;
+
+            if (depthMove)
             {
                 float minZ = _depth != null ? _depth.minDepthZ : -2.5f;
                 float maxZ = _depth != null ? _depth.maxDepthZ : 3.5f;

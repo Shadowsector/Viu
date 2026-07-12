@@ -18,14 +18,14 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 38
+        // @viu-deploy-rev 39
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
         const string BuildExe = "AnabarraOverlay.exe";
         const string EnvironmentRoot = "Assets/Environment";
         const float TargetHeightMeters = 1.77f;
-        const float HomeTargetHeightMeters = 5.2f;
+        const float HomeTargetHeightMeters = 8.2f;
         /// <summary>Не топить стопы в пол — раньше 0.03 давало «провал».</summary>
         const float GroundSinkMeters = 0f;
         const float FeetLiftMeters = 0f;
@@ -694,7 +694,7 @@ namespace Viu.Editor
             SnapBuildingToGround(home);
             ScaleHomeToHeight(home, HomeTargetHeightMeters);
             SnapBuildingToGround(home);
-            FixOverlayMaterials(home);
+            FixOverlayMaterials(home, isHome: true);
 
             var dollhouse = home.GetComponent<Viu.Runtime.DollhouseWall>();
             if (dollhouse == null)
@@ -715,11 +715,10 @@ namespace Viu.Editor
         /// Standard/Error → magenta void в Player. Материалы сохраняем как ассеты,
         /// иначе new Material() не переживает build. Fallback: URP Unlit дерево.
         /// </summary>
-        static void FixOverlayMaterials(GameObject root)
+        static void FixOverlayMaterials(GameObject root, bool isHome = false)
         {
             var lit = Shader.Find("Universal Render Pipeline/Lit")
                 ?? Shader.Find("Universal Render Pipeline/Simple Lit");
-            // Для сарая Unlit надёжнее Lit (белый «короб» от Lit без карт)
             var unlit = Shader.Find("Universal Render Pipeline/Unlit")
                 ?? Shader.Find("Unlit/Color")
                 ?? Shader.Find("Sprites/Default");
@@ -741,7 +740,8 @@ namespace Viu.Editor
                 {
                     if (unlit != null)
                     {
-                        var fallback = LoadOrCreateSolidMat(matFolder, "viu_wood", unlit, new Color(0.45f, 0.32f, 0.22f));
+                        var c = isHome ? GuessHomeColor(r, null) : new Color(0.45f, 0.32f, 0.22f);
+                        var fallback = LoadOrCreateSolidMat(matFolder, "viu_wood", isHome ? (lit ?? unlit) : unlit, c);
                         r.sharedMaterial = fallback;
                         fixedN++;
                     }
@@ -763,47 +763,38 @@ namespace Viu.Editor
                             && sn.IndexOf("Unlit", StringComparison.OrdinalIgnoreCase) < 0
                             && sn.IndexOf("Sprites", StringComparison.OrdinalIgnoreCase) < 0);
 
-                    // Уже URP Lit без текстуры → белая стена: всё равно перешиваем в Unlit+цвет
                     bool whiteLit = !bad && m != null
                         && sn.IndexOf("Lit", StringComparison.OrdinalIgnoreCase) >= 0
                         && !HasMeaningfulTexture(m);
 
-                    if (!bad && !whiteLit) continue;
+                    if (!bad && !(isHome && whiteLit)) continue;
 
-                    var shader = unlit ?? lit;
+                    // Дом: URP Lit + текстуры/цвет по имени меша (не серый Unlit-куб).
+                    var shader = isHome ? (lit ?? unlit) : (unlit ?? lit);
                     var safeName = "viu_" + (m != null ? m.name : "slot" + i);
+                    if (isHome)
+                        safeName += "_" + r.gameObject.name;
                     safeName = string.Join("_", safeName.Split(System.IO.Path.GetInvalidFileNameChars()));
-                    if (safeName.Length > 40) safeName = safeName.Substring(0, 40);
+                    if (safeName.Length > 48) safeName = safeName.Substring(0, 48);
                     var path = matFolder + "/" + safeName + ".mat";
 
                     Material copy = AssetDatabase.LoadAssetAtPath<Material>(path);
                     if (copy == null)
                     {
                         copy = new Material(shader);
-                        bool gotTex = false;
+                        bool gotTex = CopyMaterialTextures(m, copy);
+                        Color c = isHome ? GuessHomeColor(r, m) : new Color(0.45f, 0.32f, 0.22f);
                         if (m != null)
                         {
-                            if (m.HasProperty("_MainTex") && copy.HasProperty("_BaseMap"))
-                            {
-                                var t = m.GetTexture("_MainTex");
-                                if (t != null) { copy.SetTexture("_BaseMap", t); gotTex = true; }
-                            }
-                            if (m.HasProperty("_BaseMap") && copy.HasProperty("_BaseMap"))
-                            {
-                                var t = m.GetTexture("_BaseMap");
-                                if (t != null) { copy.SetTexture("_BaseMap", t); gotTex = true; }
-                            }
-                            Color c = new Color(0.45f, 0.32f, 0.22f);
                             if (m.HasProperty("_Color")) c = m.GetColor("_Color");
                             else if (m.HasProperty("_BaseColor")) c = m.GetColor("_BaseColor");
-                            if (!gotTex && c.r > 0.9f && c.g > 0.9f && c.b > 0.9f)
-                                c = new Color(0.45f, 0.32f, 0.22f);
-                            if (copy.HasProperty("_BaseColor")) copy.SetColor("_BaseColor", c);
-                            if (copy.HasProperty("_Color")) copy.SetColor("_Color", c);
                         }
-                        else if (copy.HasProperty("_BaseColor"))
-                            copy.SetColor("_BaseColor", new Color(0.45f, 0.32f, 0.22f));
-
+                        if (!gotTex && c.r > 0.9f && c.g > 0.9f && c.b > 0.9f)
+                            c = isHome ? GuessHomeColor(r, m) : new Color(0.45f, 0.32f, 0.22f);
+                        if (copy.HasProperty("_BaseColor")) copy.SetColor("_BaseColor", c);
+                        if (copy.HasProperty("_Color")) copy.SetColor("_Color", c);
+                        if (isHome && copy.HasProperty("_Smoothness"))
+                            copy.SetFloat("_Smoothness", 0.15f);
                         AssetDatabase.CreateAsset(copy, path);
                     }
                     mats[i] = copy;
@@ -814,7 +805,44 @@ namespace Viu.Editor
                     r.sharedMaterials = mats;
             }
             AssetDatabase.SaveAssets();
-            Debug.Log("[Viu] Дом: материалов починено/сохранено: " + fixedN);
+            Debug.Log("[Viu] " + (isHome ? "Дом" : "Overlay") + ": материалов починено/сохранено: " + fixedN);
+        }
+
+        static bool CopyMaterialTextures(Material src, Material dst)
+        {
+            if (src == null || dst == null) return false;
+            bool gotTex = false;
+            if (src.HasProperty("_MainTex") && dst.HasProperty("_BaseMap"))
+            {
+                var t = src.GetTexture("_MainTex");
+                if (t != null) { dst.SetTexture("_BaseMap", t); gotTex = true; }
+            }
+            if (src.HasProperty("_BaseMap") && dst.HasProperty("_BaseMap"))
+            {
+                var t = src.GetTexture("_BaseMap");
+                if (t != null) { dst.SetTexture("_BaseMap", t); gotTex = true; }
+            }
+            return gotTex;
+        }
+
+        static Color GuessHomeColor(Renderer r, Material m)
+        {
+            var n = (r != null ? r.gameObject.name : "").ToLowerInvariant().Replace("-", "_");
+            if (m != null && !string.IsNullOrEmpty(m.name))
+                n += " " + m.name.ToLowerInvariant().Replace("-", "_");
+            if (n.Contains("thatch") || n.Contains("roof") || n.Contains("reed"))
+                return new Color(0.62f, 0.48f, 0.28f);
+            if (n.Contains("beam") || n.Contains("wood") || n.Contains("plank") || n.Contains("timber"))
+                return new Color(0.42f, 0.28f, 0.16f);
+            if (n.Contains("door") || n.Contains("window") || n.Contains("frame"))
+                return new Color(0.35f, 0.24f, 0.14f);
+            if (n.Contains("stone") || n.Contains("rock"))
+                return new Color(0.55f, 0.52f, 0.48f);
+            if (n.Contains("wall") || n.Contains("plaster") || n.Contains("facade"))
+                return new Color(0.72f, 0.66f, 0.56f);
+            if (n.Contains("interior") || n.Contains("floor"))
+                return new Color(0.48f, 0.36f, 0.26f);
+            return new Color(0.58f, 0.50f, 0.40f);
         }
 
         static bool HasMeaningfulTexture(Material m)

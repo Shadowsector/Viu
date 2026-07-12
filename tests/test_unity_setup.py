@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 38" in text
+    assert "@viu-deploy-rev 39" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -157,22 +157,26 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 38" in setup
+    assert "@viu-deploy-rev 39" in setup
     assert "X Bot@Idle.fbx" in sync
     assert "DetectRunAsWalkSpeed" in loco
     assert "WalkThreshold = 0.25f" in loco
     assert "depthWalkSpeed" in loco
     assert "ReadDepth" in loco
+    assert "FaceCameraYaw" in loco
+    assert "FaceAwayYaw" in loco
     assert 'return Input.GetAxisRaw("Horizontal")' not in loco
     assert "Create From This Model (не Copy Erisa)" in sync
     assert "Никогда Copy From Other к Erisa" in sync
     assert "HomeShanyaFrontGap" in setup
     assert "HomeYawDegrees = 180f" in setup
+    assert "HomeTargetHeightMeters = 8.2f" in setup
+    assert "GuessHomeColor" in setup
     assert "ForceFlipModelOffInProjectSettingsAsset" in setup
     assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
     assert "GetActiveWindow" in overlay
     assert "RuntimeRev" in overlay
-    assert 'RuntimeRev = "38"' in overlay
+    assert 'RuntimeRev = "39"' in overlay
     assert "UpdateLayeredWindow" in overlay
     assert "useUpdateLayeredWindow" in overlay
     assert "ChromaKey32" in overlay
