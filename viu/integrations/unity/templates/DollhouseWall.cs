@@ -4,6 +4,7 @@ namespace Viu.Runtime
 {
     /// <summary>
     /// Кукольный дом: передняя стенка скрывается, когда Шаня «дома».
+    /// Имя из viu.json + эвристика «стена к камере» (камера оверлея смотрит +Z).
     /// </summary>
     public class DollhouseWall : MonoBehaviour
     {
@@ -18,25 +19,37 @@ namespace Viu.Runtime
         public void Apply()
         {
             LastMatchCount = 0;
-            if (string.IsNullOrWhiteSpace(wallMeshName) && !atHome)
+            // Сначала всё включить, потом спрятать фасад
+            foreach (var r in GetComponentsInChildren<Renderer>(true))
+            {
+                if (r != null)
+                    r.enabled = true;
+            }
+
+            if (!atHome)
                 return;
 
             var target = (wallMeshName ?? "").Trim();
+            var homeBounds = WorldBounds();
+            float nearZ = homeBounds.min.z;
+            float depth = Mathf.Max(homeBounds.size.z, 0.01f);
+
             foreach (var r in GetComponentsInChildren<Renderer>(true))
             {
                 if (r == null) continue;
-                bool match = RendererMatchesWall(r, target) || HeuristicFrontWall(r);
+                bool match = RendererMatchesWall(r, target)
+                    || HeuristicFrontWall(r)
+                    || NearCameraFace(r, nearZ, depth);
                 if (!match) continue;
                 LastMatchCount++;
-                // Дома прячем переднюю стенку; в походе — показываем
-                r.enabled = !atHome;
+                r.enabled = false;
             }
 
-            if (atHome && LastMatchCount == 0)
+            if (LastMatchCount == 0)
                 Debug.LogWarning(
                     "[Viu] Dollhouse: не нашла стенку «" + target +
                     "». Проверь .viu.json / имена в FBX. Белая «коробка» = фасад не скрыт.");
-            else if (atHome)
+            else
                 Debug.Log("[Viu] Dollhouse: скрыто мешей передней стенки: " + LastMatchCount);
         }
 
@@ -57,21 +70,48 @@ namespace Viu.Runtime
 
         public Bounds WorldBounds()
         {
-            var renderers = GetComponentsInChildren<Renderer>();
+            var renderers = GetComponentsInChildren<Renderer>(true);
             if (renderers == null || renderers.Length == 0)
                 return new Bounds(transform.position, Vector3.one);
-            var b = renderers[0].bounds;
-            for (int i = 1; i < renderers.Length; i++)
-                if (renderers[i] != null && renderers[i].enabled)
-                    b.Encapsulate(renderers[i].bounds);
-            return b;
+            Bounds? b = null;
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                if (renderers[i] == null) continue;
+                if (b == null) b = renderers[i].bounds;
+                else
+                {
+                    var bb = b.Value;
+                    bb.Encapsulate(renderers[i].bounds);
+                    b = bb;
+                }
+            }
+            return b ?? new Bounds(transform.position, Vector3.one);
+        }
+
+        /// <summary>
+        /// Камера оверлея с −Z смотрит на +Z: ближняя грань дома = min Z.
+        /// Прячем тонкие «стенные» меши у этой грани — даже если имя не Wall_front.
+        /// </summary>
+        static bool NearCameraFace(Renderer r, float nearZ, float depth)
+        {
+            if (r == null) return false;
+            var b = r.bounds;
+            // ближняя четверть дома по Z
+            if (b.center.z > nearZ + depth * 0.28f)
+                return false;
+            var size = b.size;
+            // стена: тонкая по Z относительно ширины/высоты
+            bool thinZ = size.z < Mathf.Max(size.x, size.y) * 0.35f + 0.05f;
+            var n = r.gameObject.name.ToLowerInvariant();
+            bool wallName = n.Contains("wall") || n.Contains("facade") || n.Contains("front")
+                || n.Contains("стен");
+            return thinZ || wallName;
         }
 
         static bool HeuristicFrontWall(Renderer r)
         {
             if (r == null) return false;
             var n = r.gameObject.name.ToLowerInvariant().Replace("-", "_");
-            // типичные имена экспорта
             if (n.Contains("wall") && (n.Contains("front") || n.Contains("перед") || n.EndsWith("_f")))
                 return true;
             var mf = r.GetComponent<MeshFilter>();

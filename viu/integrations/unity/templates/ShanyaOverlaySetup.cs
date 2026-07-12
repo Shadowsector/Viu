@@ -17,7 +17,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 23
+        // @viu-deploy-rev 24
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -25,8 +25,9 @@ namespace Viu.Editor
         const string EnvironmentRoot = "Assets/Environment";
         const float TargetHeightMeters = 1.77f;
         const float HomeTargetHeightMeters = 3.6f;
-        const float GroundSinkMeters = 0.03f;
-        const float FeetLiftMeters = 0.006f;
+        /// <summary>Не топить стопы в пол — раньше 0.03 давало «провал».</summary>
+        const float GroundSinkMeters = 0f;
+        const float FeetLiftMeters = 0.02f;
         /// <summary>Меньше = Шаня крупнее на экране. 5.5 делало её точкой.</summary>
         const float CameraOrthoHalfHeight = 2.15f;
         const float HomeShanyaZBias = 0.12f;
@@ -310,16 +311,17 @@ namespace Viu.Editor
                 if (!name.Contains("shanya") && !name.Contains("erisa"))
                     continue;
 
+                // Клипы анимации (Shanya_Run/Idle/…) — НИКОГДА не тело. Иначе T-pose.
+                if (path.IndexOf("/Animations/", StringComparison.OrdinalIgnoreCase) >= 0)
+                    continue;
+                if (IsAnimationClipName(name))
+                    continue;
+
                 int score = 0;
                 if (name == "shanya_erisa" || name == "erisa" || name == "shanya")
                     score += 100;
                 if (path.IndexOf("/Characters/", StringComparison.OrdinalIgnoreCase) >= 0)
                     score += 40;
-                if (path.IndexOf("/Animations/", StringComparison.OrdinalIgnoreCase) >= 0)
-                    score -= 80;
-                if (IsAnimationClipName(name))
-                    score -= 60;
-
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -403,6 +405,25 @@ namespace Viu.Editor
 
         static void SnapFeetToGround(GameObject root)
         {
+            var anim = root.GetComponentInChildren<Animator>(true);
+            if (anim != null && anim.enabled)
+            {
+                anim.Update(0f);
+                if (anim.isHuman)
+                {
+                    var lf = anim.GetBoneTransform(HumanBodyBones.LeftFoot);
+                    var rf = anim.GetBoneTransform(HumanBodyBones.RightFoot);
+                    if (lf != null && rf != null)
+                    {
+                        float minY = Mathf.Min(lf.position.y, rf.position.y);
+                        var p = root.transform.position;
+                        p.y -= minY + GroundSinkMeters;
+                        root.transform.position = p;
+                        return;
+                    }
+                }
+            }
+
             var renderers = root.GetComponentsInChildren<Renderer>();
             if (renderers.Length == 0) return;
             Bounds bounds = renderers[0].bounds;
@@ -424,30 +445,28 @@ namespace Viu.Editor
             instance.name = CharacterRootName;
             instance.transform.position = Vector3.zero;
 
-            var animator = EnsureAnimatorOnAvatarHost(instance);
-            animator.runtimeAnimatorController = controller;
-            animator.avatar = avatar;
-            animator.applyRootMotion = false;
-            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-            animator.Rebind();
-            animator.Update(0f);
+            var animator = ConfigureExistingAnimator(instance, controller, avatar);
             if (!instance.activeInHierarchy)
                 instance.SetActive(true);
+            WriteAnimatorDiag(instance, animator, modelPath);
             return instance;
         }
 
         /// <summary>
-        /// Humanoid Avatar привязан к GameObject, на котором был Animator при импорте FBX.
-        /// Если перенести Animator на пустой/другой корень — клипы не двигают кости,
-        /// и Шаня только скользит через Translate. Один Animator на avatar-хосте.
+        /// Нельзя Destroy/переносить Animator между объектами — Humanoid Avatar
+        /// привязан к иерархии GameObject, иначе T-pose и «провал» в пол.
+        /// Берём существующий Animator и только настраиваем controller/avatar.
         /// </summary>
-        static Animator EnsureAnimatorOnAvatarHost(GameObject root)
+        static Animator ConfigureExistingAnimator(
+            GameObject root,
+            RuntimeAnimatorController controller,
+            Avatar avatar)
         {
             Animator best = null;
             foreach (var a in root.GetComponentsInChildren<Animator>(true))
             {
                 if (a == null) continue;
-                if (a.avatar != null && a.avatar.isValid)
+                if (a.avatar != null && a.avatar.isValid && a.avatar.isHuman)
                 {
                     best = a;
                     break;
@@ -455,41 +474,83 @@ namespace Viu.Editor
                 if (best == null)
                     best = a;
             }
+            if (best == null)
+                best = root.AddComponent<Animator>();
 
-            Transform host = best != null ? best.transform : root.transform;
-            // Если Animator только на корне, а меш/арматура в единственном child — чаще
-            // avatar-host = child (типичный nested FBX). Не трогаем, если best уже с avatar.
-            if (best == null || best.avatar == null || !best.avatar.isValid)
-            {
-                if (root.transform.childCount == 1)
-                {
-                    var child = root.transform.GetChild(0);
-                    if (child.GetComponentInChildren<SkinnedMeshRenderer>(true) != null)
-                        host = child;
-                }
-            }
-
-            Avatar keepAvatar = best != null ? best.avatar : null;
-            RuntimeAnimatorController keepCtrl = best != null ? best.runtimeAnimatorController : null;
             foreach (var a in root.GetComponentsInChildren<Animator>(true))
             {
-                if (a == null) continue;
-                if (a.avatar != null && a.avatar.isValid) keepAvatar = a.avatar;
-                if (a.runtimeAnimatorController != null) keepCtrl = a.runtimeAnimatorController;
-                if (a.transform != host)
+                if (a == null || a == best) continue;
+                // Пустой дубликат (часто от старого RequireComponent) — убрать.
+                if (a.avatar == null || !a.avatar.isValid)
                     UnityEngine.Object.DestroyImmediate(a);
+                else
+                    a.enabled = false;
             }
 
-            var primary = host.GetComponent<Animator>() ?? host.gameObject.AddComponent<Animator>();
-            if (keepAvatar != null)
-                primary.avatar = keepAvatar;
-            if (keepCtrl != null)
-                primary.runtimeAnimatorController = keepCtrl;
+            best.enabled = true;
+            best.runtimeAnimatorController = controller;
+            if (avatar != null)
+                best.avatar = avatar;
+            best.applyRootMotion = false;
+            best.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            best.Rebind();
+            best.Update(0f);
+
             Debug.Log(
-                "[Viu.Overlay] Animator host=" + host.name
-                + " avatarValid=" + (primary.avatar != null && primary.avatar.isValid)
-                + " human=" + (primary.avatar != null && primary.avatar.isHuman));
-            return primary;
+                "[Viu.Overlay] Animator keep=" + best.name
+                + " path=" + GetTransformPath(best.transform)
+                + " avatarValid=" + (best.avatar != null && best.avatar.isValid)
+                + " human=" + (best.avatar != null && best.avatar.isHuman)
+                + " ctrl=" + (best.runtimeAnimatorController != null));
+            return best;
+        }
+
+        static string GetTransformPath(Transform t)
+        {
+            var parts = new List<string>();
+            while (t != null)
+            {
+                parts.Add(t.name);
+                t = t.parent;
+            }
+            parts.Reverse();
+            return string.Join("/", parts);
+        }
+
+        static void WriteAnimatorDiag(GameObject root, Animator animator, string modelPath)
+        {
+            try
+            {
+                var path = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "viu_animator.log"));
+                var lines = new List<string>
+                {
+                    DateTime.Now.ToString("o"),
+                    "model=" + modelPath,
+                    "root=" + root.name,
+                    "animatorGO=" + (animator != null ? animator.name : "null"),
+                    "animatorPath=" + (animator != null ? GetTransformPath(animator.transform) : ""),
+                    "ctrl=" + (animator != null && animator.runtimeAnimatorController != null
+                        ? animator.runtimeAnimatorController.name : "null"),
+                    "avatar=" + (animator != null && animator.avatar != null ? animator.avatar.name : "null"),
+                    "avatarValid=" + (animator != null && animator.avatar != null && animator.avatar.isValid),
+                    "human=" + (animator != null && animator.avatar != null && animator.avatar.isHuman),
+                    "isHumanAnimator=" + (animator != null && animator.isHuman),
+                };
+                if (animator != null)
+                {
+                    foreach (var p in animator.parameters)
+                        lines.Add("param " + p.name + " type=" + p.type);
+                }
+                foreach (var a in root.GetComponentsInChildren<Animator>(true))
+                    lines.Add("foundAnimator " + GetTransformPath(a.transform)
+                        + " enabled=" + a.enabled
+                        + " avatar=" + (a.avatar != null));
+                File.WriteAllText(path, string.Join("\n", lines) + "\n");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[Viu] viu_animator.log: " + e.Message);
+            }
         }
 
         /// <summary>

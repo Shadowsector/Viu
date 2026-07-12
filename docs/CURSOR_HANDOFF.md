@@ -718,3 +718,13 @@ Support bundle: U:\Viu\.viu\support\viu_logs_20260712_093501.zip
 
 web_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):
 Ничего не найдено по запросу.
+
+## 2026-07-12 — Den: скрины Overlay + GameTest, Animator сломан
+
+**Скрины:** Viu_Home_Old_Stables scale≈0.064 Y≈1.74, Dollhouse Wall_front AtHome; Body rot X=-90 (норма Blender), нет Animator на Body (он на корне); Шаня T-pose / ноги в полу. Console=23. Play на скрине выключен (Edit Mode) — но Den говорит и в Play/оверлее то же.
+
+**Почему логи не читал:** support bundle/gist раньше **не включали Editor.log**. Исправлено в rev24.
+
+**rev24:** ConfigureExistingAnimator — не Destroy/перенос; snap по Humanoid feet; GroundSink=0; dollhouse NearCameraFace; viu_animator.log; Editor.log в bundle+playtest escalate.
+
+

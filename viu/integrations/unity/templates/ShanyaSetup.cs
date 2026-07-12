@@ -16,12 +16,12 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaSetup
     {
-        // @viu-deploy-rev 23
+        // @viu-deploy-rev 24
         const string ControllerPath = ShanyaAnimationSync.ControllerPath;
         const string ModelNameHint = "Shanya_Erisa";
         /// <summary>Целевой рост персонажа в метрах (можно подкрутить).</summary>
         const float TargetHeightMeters = 1.75f;
-        const float GroundSinkMeters = 0.03f;
+        const float GroundSinkMeters = 0f;
         /// <summary>Половина высоты кадра в метрах (2*size = видимая высота мира).</summary>
         const float CameraOrthoHalfHeight = 5.5f;
 
@@ -94,7 +94,8 @@ namespace Viu.Editor
             SnapFeetToGround(instance);
             AssetDatabase.SaveAssets();
             SaveActiveScene(saveScenePath);
-            Debug.Log("[Viu] Setup готов: " + instance.name + " + " + controller.name +
+            Debug.Log("[Viu] Setup готов: " + instance.name + " from=" + modelPath
+                + " + " + controller.name +
                 ". Сцена: " + (saveScenePath ?? "текущая") + ". Открой её и нажми Play.");
         }
 
@@ -130,18 +131,17 @@ namespace Viu.Editor
                 if (!name.Contains("shanya") && !name.Contains("erisa"))
                     continue;
 
+                // Клипы анимации (Shanya_Run/Idle/…) — НИКОГДА не тело. Иначе T-pose.
+                if (path.IndexOf("/Animations/", StringComparison.OrdinalIgnoreCase) >= 0)
+                    continue;
+                if (IsAnimationClipName(name))
+                    continue;
+
                 int score = 0;
                 if (name == "shanya_erisa" || name == "erisa" || name == "shanya")
                     score += 100;
                 if (path.IndexOf("/Characters/", StringComparison.OrdinalIgnoreCase) >= 0)
                     score += 40;
-                if (path.IndexOf("/Animations/", StringComparison.OrdinalIgnoreCase) >= 0)
-                    score -= 80;
-                if (name.Contains("idle") || name.Contains("walk") || name.Contains("run")
-                    || name.Contains("fall") || name.Contains("sit") || name.Contains("sleep")
-                    || name.Contains("yawn") || name.Contains("@"))
-                    score -= 60;
-
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -149,6 +149,18 @@ namespace Viu.Editor
                 }
             }
             return bestScore >= 40 ? best : null;
+        }
+
+        static bool IsAnimationClipName(string nameLower)
+        {
+            return nameLower.Contains("idle")
+                || nameLower.Contains("walk")
+                || nameLower.Contains("run")
+                || nameLower.Contains("fall")
+                || nameLower.Contains("sit")
+                || nameLower.Contains("sleep")
+                || nameLower.Contains("yawn")
+                || nameLower.Contains("@");
         }
 
         static string FindIdleInAnimationsFolder()
@@ -241,6 +253,24 @@ namespace Viu.Editor
 
         static void SnapFeetToGround(GameObject root)
         {
+            var anim = root.GetComponentInChildren<Animator>(true);
+            if (anim != null && anim.enabled)
+            {
+                anim.Update(0f);
+                if (anim.isHuman)
+                {
+                    var lf = anim.GetBoneTransform(HumanBodyBones.LeftFoot);
+                    var rf = anim.GetBoneTransform(HumanBodyBones.RightFoot);
+                    if (lf != null && rf != null)
+                    {
+                        float minY = Mathf.Min(lf.position.y, rf.position.y);
+                        var p = root.transform.position;
+                        p.y -= minY + GroundSinkMeters;
+                        root.transform.position = p;
+                        return;
+                    }
+                }
+            }
             var renderers = root.GetComponentsInChildren<Renderer>();
             if (renderers.Length == 0) return;
             Bounds bounds = renderers[0].bounds;
@@ -279,36 +309,43 @@ namespace Viu.Editor
 
         static GameObject PlaceCharacterInScene(string modelPath, RuntimeAnimatorController controller, Avatar avatar)
         {
+            // Снести старые корни (в т.ч. ошибочный Shanya_Run из прошлых setup)
+            foreach (var go in UnityEngine.Object.FindObjectsByType<GameObject>(
+                         FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (go == null || go.transform.parent != null) continue;
+                var n = go.name.ToLowerInvariant();
+                if (n.Contains("shanya") || n.Contains("erisa"))
+                    UnityEngine.Object.DestroyImmediate(go);
+            }
+
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
-            var existing = GameObject.Find(ModelNameHint)
-                ?? GameObject.Find(prefab != null ? prefab.name : ModelNameHint);
-            GameObject instance;
-            if (existing != null)
-            {
-                instance = existing;
-            }
-            else
-            {
-                instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
-                instance.transform.position = Vector3.zero;
-            }
+            if (prefab == null)
+                throw new InvalidOperationException("[Viu] Не загрузился FBX: " + modelPath);
+            var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            instance.transform.position = Vector3.zero;
             instance.name = ModelNameHint;
 
-            // Avatar-host: не сносим Animator с FBX-хоста на пустой корень.
+            // Не переносить Animator — только настроить существующий (иначе T-pose).
             Animator best = null;
             foreach (var a in instance.GetComponentsInChildren<Animator>(true))
             {
                 if (a == null) continue;
-                if (a.avatar != null && a.avatar.isValid) { best = a; break; }
+                if (a.avatar != null && a.avatar.isValid && a.avatar.isHuman) { best = a; break; }
                 if (best == null) best = a;
             }
-            Transform host = best != null ? best.transform : instance.transform;
+            if (best == null)
+                best = instance.AddComponent<Animator>();
             foreach (var a in instance.GetComponentsInChildren<Animator>(true))
             {
-                if (a != null && a.transform != host)
+                if (a == null || a == best) continue;
+                if (a.avatar == null || !a.avatar.isValid)
                     UnityEngine.Object.DestroyImmediate(a);
+                else
+                    a.enabled = false;
             }
-            var animator = host.GetComponent<Animator>() ?? host.gameObject.AddComponent<Animator>();
+            var animator = best;
+            animator.enabled = true;
             animator.runtimeAnimatorController = controller;
             animator.avatar = avatar;
             animator.applyRootMotion = false;

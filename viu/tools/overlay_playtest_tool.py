@@ -226,7 +226,40 @@ class OverlayPlaytestTool(Tool):
             except Exception as exc:  # noqa: BLE001
                 lines.append(f"Не смогла reopen Unity: {exc}")
 
-        # Bundle + gist для Cursor
+        # Bundle + gist для Cursor (теперь с Editor.log + viu_animator.log)
+        try:
+            from ..integrations.unity.log_parser import default_editor_log, parse_editor_log
+
+            elog = default_editor_log()
+            if elog.is_file():
+                summary = parse_editor_log(elog)
+                lines.append("--- Editor.log (summary) ---")
+                lines.append(summary.render())
+                # Явно вытащить Animator/Avatar/[Viu]
+                try:
+                    tail = elog.read_text(encoding="utf-8", errors="replace").splitlines()[-400:]
+                    hits = [
+                        ln for ln in tail
+                        if any(
+                            k in ln
+                            for k in (
+                                "[Viu]",
+                                "Animator",
+                                "Avatar",
+                                "Rig Error",
+                                "Humanoid",
+                                "Binding",
+                            )
+                        )
+                    ]
+                    if hits:
+                        lines.append("--- Editor.log Animator/Viu hits ---")
+                        lines.extend(hits[-40:])
+                except OSError:
+                    pass
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"Editor.log: {exc}")
+
         try:
             bundle = collect_support_bundle(ctx.config)
             lines.append(f"Support bundle: {bundle}")

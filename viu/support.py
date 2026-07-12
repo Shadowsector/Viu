@@ -100,13 +100,33 @@ def _overlay_diagnostics_text(config: Config) -> str:
         p = overlay_dir / name
         parts.append(f"  {name}: {'OK' if p.is_file() else 'нет'}\n")
 
-    for log_name in ("viu_overlay_build.log", "viu_overlay_scene.log", "viu_setup.log"):
+    for log_name in (
+        "viu_overlay_build.log",
+        "viu_overlay_scene.log",
+        "viu_setup.log",
+        "viu_animator.log",
+    ):
         parts.append(_tail_text(proj / log_name, max_lines=80))
 
     for pl in _player_log_candidates(config):
         parts.append(_tail_text(pl, max_lines=80))
 
     parts.append(_tail_text(overlay_dir / "overlay_boot.log", max_lines=80))
+
+    # Unity Editor.log — Console / Animator / Rig (раньше не попадало в bundle)
+    try:
+        from .integrations.unity.log_parser import default_editor_log, parse_editor_log
+
+        editor_log = default_editor_log()
+        parts.append(_tail_text(editor_log, max_lines=200))
+        if editor_log.is_file():
+            summary = parse_editor_log(editor_log)
+            parts.append("=== Editor.log summary ===\n")
+            parts.append(summary.render())
+            parts.append("\n")
+    except Exception as exc:  # noqa: BLE001
+        parts.append(f"(Editor.log: {exc})\n")
+
     return "".join(parts)
 
 
@@ -128,6 +148,31 @@ def _iter_log_files(config: Config, max_chats: int = 5) -> List[Path]:
     startup = root / "viu_startup.log"
     if startup.is_file():
         files.append(startup)
+
+    # Unity project diagnostics
+    try:
+        proj = unity_project_path(config)
+        for name in (
+            "viu_animator.log",
+            "viu_setup.log",
+            "viu_overlay_scene.log",
+            "viu_overlay_build.log",
+        ):
+            p = proj / name
+            if p.is_file():
+                files.append(p)
+    except Exception:
+        pass
+
+    try:
+        from .integrations.unity.log_parser import default_editor_log
+
+        editor = default_editor_log()
+        if editor.is_file():
+            files.append(editor)
+    except Exception:
+        pass
+
     return files
 
 

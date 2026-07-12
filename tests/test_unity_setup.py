@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 23" in text
+    assert "@viu-deploy-rev 24" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -119,13 +119,15 @@ def test_overlay_templates(tmp_path):
     assert "BuildWindowsBatch" in setup
     assert "AnabarraOverlay.exe" in setup
     assert "LaunchOverlay.bat" in setup or "WriteOverlayLauncher" in setup
-    assert "EnsureAnimatorOnAvatarHost" in setup
+    assert "ConfigureExistingAnimator" in setup
     assert "LockToHome" in setup
+    assert "WriteAnimatorDiag" in setup
     dollhouse = (root / "DollhouseWall.cs").read_text(encoding="utf-8")
     assert "Wall_front" in dollhouse
     assert "SetAtHome" in dollhouse
     assert "LastMatchCount" in dollhouse
     assert "HeuristicFrontWall" in dollhouse
+    assert "NearCameraFace" in dollhouse
     loco = (root / "ShanyaLocomotion.cs").read_text(encoding="utf-8")
     assert "GetComponentInChildren<Animator>" in loco
 
