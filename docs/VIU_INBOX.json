@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T09:50:00Z",
+  "updated_at": "2026-07-12T09:52:02Z",
   "note": "rev35: Den confirmed working Idle=X Bot@Idle, Walk←Shanya_Run. Pin those.",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712n",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev35: pin working Idle/Run clips from Den",
       "created_by": "Cursor",
@@ -15,7 +15,8 @@
         "timeout": 2400
       },
       "instructions": "deploy-rev 35. Den cut bad clips; preview OK for X Bot@Idle and Shanya_Run. viu_clips overlay_preferred Idle=X Bot@Idle.fbx Walk=Shanya_Run.fbx (Run as Walk until real Walk). Create From This Model. Expect Overlay locomotion OK Idle<X Bot@Idle> Walk<Shanya_Run>. Then launch overlay.",
-      "acceptance": "locomotion OK; Shanya Idle in overlay not T-pose; A/D plays Run-as-Walk."
+      "acceptance": "locomotion OK; Shanya Idle in overlay not T-pose; A/D plays Run-as-Walk.",
+      "started_at": "2026-07-12T09:52:02Z"
     }
   ]
 }
