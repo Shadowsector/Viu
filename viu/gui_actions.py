@@ -96,11 +96,19 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="После новых Idle/Walk — пересобрать контроллер.",
     ),
     GuiAction(
+        "export_unity_asset",
+        "Переэкспорт сарая в Unity",
+        "Редко",
+        tool="export_unity_asset",
+        tool_args={"force": "1"},
+        hint="После Ctrl+S в Blender: FBX + Textures/ + .viu.json → Assets/Environment/.",
+    ),
+    GuiAction(
         "unity_overlay_rebind",
         "Починить текстуры оверлея",
         "Редко",
         tool="unity_overlay_rebind",
-        hint="Если сарай фиолетовый или волосы белые — потом снова «Запустить оверлей».",
+        hint="После переэкспорта — bake материалов. Потом «▶ Запустить оверлей».",
     ),
     GuiAction(
         "unity_open",

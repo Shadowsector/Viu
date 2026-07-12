@@ -129,15 +129,19 @@ def plan_next_step(config: Config) -> StepPlan:
     # Asset в Unity — можно новый Inbox или (опционально) оверлей.
     if ctx.stage == "asset_done":
         slug = ctx.prepared_name.replace(" ", "_")
+        after_blender = (
+            "Правил сарай в Blender (Ctrl+S)?\n"
+            "→ «Переэкспорт сарая в Unity» (Редко) → «Починить текстуры» → «▶ Запустить оверлей»."
+        )
         return _with_ctx(
             StepPlan(
                 message=(
                     f"«{ctx.prepared_name}» в Unity (Assets/Environment/{slug}/).\n"
-                    "Новый домик → положи в Inbox → «Следующий шаг».\n"
-                    "Оверлей (Шаня у панели) — кнопка «▶ Запустить оверлей»."
+                    f"{after_blender}\n"
+                    "Новый домик → Inbox → «▶ Следующий шаг»."
                 ),
                 idle=True,
-                human_after="Inbox пуст? Положи следующий .blend.",
+                human_after="После переэкспорта проверь папку Textures/ в Unity.",
             ),
             ctx,
         )
