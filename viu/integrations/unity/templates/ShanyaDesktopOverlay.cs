@@ -20,6 +20,8 @@ namespace Viu.Runtime
         /// Ключ: #FF0080 (розово-красный), COLORREF 0x008000FF (BGR).
         /// </summary>
         public static readonly Color ChromaKey = new Color(1f, 0f, 0.5f, 1f);
+        /// <summary>Метка в overlay_boot.log — если нет runtime-rev=31, в exe старые скрипты.</summary>
+        public const string RuntimeRev = "31";
 
         public bool fullScreenOverlay = true;
         public int stripHeightPixels = 280;
@@ -59,7 +61,7 @@ namespace Viu.Runtime
         void Start()
         {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
-            BootLog("Start args=" + Environment.CommandLine);
+            BootLog("Start runtime-rev=" + RuntimeRev + " args=" + Environment.CommandLine);
             BootLog("gfx=" + SystemInfo.graphicsDeviceType
                 + " " + SystemInfo.graphicsDeviceName);
             if (Environment.CommandLine.IndexOf("bitblt", StringComparison.OrdinalIgnoreCase) < 0)

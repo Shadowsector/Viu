@@ -1,24 +1,21 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T08:46:43Z",
-  "note": "rev31: CS0128 already fixed; DWM margins=-1 ColorKey; -force-d3d11; quarantine stale exe on FAIL; flip YAML force.",
+  "updated_at": "2026-07-12T08:55:00Z",
+  "note": "rev32: home yaw 180; runtime-rev boot mark; Den may help with 3 checks below.",
   "tasks": [
     {
-      "id": "overlay-visual-fix-20260712i",
-      "status": "blocked",
+      "id": "overlay-visual-fix-20260712j",
+      "status": "pending",
       "priority": 1,
-      "title": "rev31: compile+magenta DWM-1 + Idle/Walk recover",
+      "title": "rev32: home front + prove runtime-rev in boot",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
       "direct_args": {
         "reopen_unity": false,
         "timeout": 2400
       },
-      "instructions": "MUST pull latest first (c0a580c+rev31). CS0128 bodyAvatar duplicate is GONE — if you still see CS0128, deploy is stale. Build: Legacy recover Idle/Walk, no -nographics. Magenta: launcher -force-d3d11 -force-d3d11-bitblt-model; ColorKey margins=-1; ProjectSettings flip=0 YAML. On build FAIL rename exe to .broken so Den cannot run old T-pose build. Expect Overlay locomotion OK + boot gfx=Direct3D11 + SetLayeredWindowAttributes=True margins=-1. Eyes: transparent bg not solid magenta; Shanya Idle not T-pose.",
-      "acceptance": "Build OK; hasWalk=True; chroma transparent (desktop visible); Shanya Idle/Walk not T-pose.",
-      "started_at": "2026-07-12T08:45:48Z",
-      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe\n--- build ---\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs\n[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe\n[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\\..\\Builds/AnabarraOverlay\\LaunchOverlay.bat + LaunchOverlay.vbs\nЗапуск (без терминала): U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\LaunchOverlay.vbs\n--- overlay_boot.log ---\n﻿11:46:23 Awake: renderers=2366/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2351/2724\n11:46:23 Start args=U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow\n11:46:23 HWND ok\n11:46:23 Geometry 2560x1440 at 0,0\n11:46:24 SetLayeredWindowAttributes=True err=0 key=#FF0080 attempt=0 (должен быть прозрачным на рабочем столе)\n11:46:24 ColorKey pass 1, Esc=выход\n11:46:24 AfterWindow: renderers=2366/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2351/2724\n11:46:24 SetLayeredWindowAttributes=True err=0 key=#FF0080 attempt=1 (должен быть прозрачным на рабочем столе)\n11:46:25 SetLayeredWindowAttributes=True err=0 key=#FF0080 attempt=8 (должен быть прозрачным на рабочем столе)\n11:46:26 SetLayeredWindowAttributes=True err=0 key=#FF0080 attempt=16 (должен быть прозрачным на рабочем столе)\n11:46:27 SetLayeredWindowAttributes=True err=0 key=#FF0080 attempt=24 (должен быть прозрачным на рабочем столе)\n\n--- вердикт ---\nOK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.\n--- eyes ---\nОкно не найдено ('Unity'). Видны: ['Civitai Video Gallery | AI-Generated Art Showcase - Google Chrome', 'Вью — Анабарра', 'Набросок на фрагменте экрана', '(51) \\u200eАнтифишки — НОВОСТИ ОНЛАЙН – (94)', 'Total Commander 9.51 - PowerUser v72    Вс 12 июл 2026    11:46:38    Память: 46%    ЦП: 27%', 'EqualizerFrame', 'Shadow Sector - Голос 002', 'Happ 2.5.2 (523)', 'Ollama', 'Медиаплеер', 'Медиаплеер', 'NVIDIA GeForce Overlay', 'Microsoft Text Input Application', 'Program Manager']\n--- Editor.log (summary) ---\nUnity Editor.log: C:\\Users\\Den\\AppData\\Local\\Unity\\Editor\\Editor.log\n\nПрочие ошибки (2):\n  • [Licensing::Module] Error: Access token is unavailable; failed to update\n  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)\nSupport bundle: U:\\Viu\\.viu\\support\\viu_logs_20260712_114638.zip\nЛоги отправлены: https://gist.github.com/Shadowsector/483",
-      "finished_at": "2026-07-12T08:46:43Z"
+      "instructions": "git pull first on U:\\Viu. deploy-rev 32. Last OK build still had OLD DesktopOverlay (boot lacked margins=-1 and -force-d3d11). Expect overlay_boot.log line: runtime-rev=31 (or 32) AND margins=-1 AND args with -force-d3d11. HomeYawDegrees=180. If runtime-rev missing — deploy failed, stop and report. Locomotion: Пин/Recover Idle+Walk.",
+      "acceptance": "boot has runtime-rev=; house front toward camera; Walk/Idle not T-pose; chroma not solid magenta."
     }
   ]
 }

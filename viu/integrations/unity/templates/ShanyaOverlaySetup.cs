@@ -18,7 +18,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 31
+        // @viu-deploy-rev 32
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -29,9 +29,12 @@ namespace Viu.Editor
         /// <summary>Не топить стопы в пол — раньше 0.03 давало «провал».</summary>
         const float GroundSinkMeters = 0f;
         const float FeetLiftMeters = 0.02f;
+        /// <summary>Сарай часто смотрит «спиной» к камере (открытая сторона +Z). 180 = фасад к экрану.</summary>
+        const float HomeYawDegrees = 180f;
+        /// <summary>Смещение Шани по Z внутри дома (доля half-depth от центра к камере).</summary>
+        const float HomeShanyaZBias = -0.15f;
         /// <summary>Меньше = Шаня крупнее на экране. 5.5 делало её точкой.</summary>
         const float CameraOrthoHalfHeight = 2.15f;
-        const float HomeShanyaZBias = 0.12f;
 
         [MenuItem("Viu/Overlay/Prepare Overlay Scene")]
         public static void RunMenu() => Run(ScenePath);
@@ -684,8 +687,9 @@ namespace Viu.Editor
                 home = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
                 home.name = rootName;
                 home.transform.position = Vector3.zero;
-                home.transform.rotation = Quaternion.identity;
             }
+            // Фасад к камере (иначе «дом с обратной стороны»)
+            home.transform.rotation = Quaternion.Euler(0f, HomeYawDegrees, 0f);
 
             SnapBuildingToGround(home);
             ScaleHomeToHeight(home, HomeTargetHeightMeters);
