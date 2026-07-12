@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T10:07:23Z",
+  "updated_at": "2026-07-12T10:08:11Z",
   "note": "Anim OK (Idle/Run). Next: magenta transparency — verify BitBlt+ColorKey in boot.",
   "tasks": [
     {
       "id": "overlay-magenta-20260712a",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": 1,
       "title": "Magenta: prove BitBlt ColorKey transparent desktop",
       "created_by": "Cursor",
@@ -16,7 +16,9 @@
       },
       "instructions": "Anim works (Den). Focus magenta. Recipe: (1) -force-d3d11 -force-d3d11-bitblt-model (2) useFlipModelSwapchain=0 (3) camera #FF0080 not #FF00FF (4) DWM margins=-1 + SetLayeredWindowAttributes (5) URP mats. Expect boot: runtime-rev=36, gfx=Direct3D11, margins=-1, ColorKey=True, both force-d3d11 flags. If still solid pink with ColorKey True — escalate for UpdateLayeredWindow.",
       "acceptance": "Desktop visible through chroma; Shanya+home opaque; Idle at rest; A/D walks.",
-      "started_at": "2026-07-12T10:07:23Z"
+      "started_at": "2026-07-12T10:07:23Z",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe\n--- build ---\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs\n[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe\n[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\\..\\Builds/AnabarraOverlay\\LaunchOverlay.bat + LaunchOverlay.vbs\nЗапуск (без терминала): U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\LaunchOverlay.vbs\n--- overlay_boot.log ---\n﻿13:07:50 Awake: renderers=2513/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2498/2724\n13:07:50 Start runtime-rev=36 args=U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe -force-d3d11 -force-d3d11-bitblt-model -popupwindow\n13:07:50 gfx=Direct3D11 NVIDIA GeForce RTX 3060\n13:07:50 HWND ok\n13:07:50 Geometry 2560x1440 at 0,0\n13:07:51 SetLayeredWindowAttributes=True err=0 key=#FF0080 margins=-1 attempt=0 gfx=Direct3D11 (фон должен быть прозрачным, не магента)\n13:07:51 ColorKey pass 1, Esc=выход\n13:07:51 AfterWindow: renderers=2513/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2498/2724\n13:07:51 SetLayeredWindowAttributes=True err=0 key=#FF0080 margins=-1 attempt=1 gfx=Direct3D11 (фон должен быть прозрачным, не магента)\n13:07:52 SetLayeredWindowAttributes=True err=0 key=#FF0080 margins=-1 attempt=8 gfx=Direct3D11 (фон должен быть прозрачным, не магента)\n13:07:53 SetLayeredWindowAttributes=True err=0 key=#FF0080 margins=-1 attempt=16 gfx=Direct3D11 (фон должен быть прозрачным, не магента)\n13:07:54 SetLayeredWindowAttributes=True err=0 key=#FF0080 margins=-1 attempt=24 gfx=Direct3D11 (фон должен быть прозрачным, не магента)\n\n--- вердикт ---\nOK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.\n--- eyes ---\nОкно не найдено ('Unity'). Видны: ['Приветствие и обращение | Cursor - Google Chrome', 'Вью — Анабарра', 'Total Commander 9.51 - PowerUser v72    Вс 12 июл 2026    13:08:05    Память: 48%    ЦП: 25%', 'Набросок на фрагменте экрана', 'Набросок на фрагменте экрана', '(61) \\u200eАнтифишки — НОВОСТИ ОНЛАЙН – (118)', 'EqualizerFrame', 'Shadow Sector - Голос 002', 'Happ 2.5.2 (523)', 'Ollama', 'Медиаплеер', 'Медиаплеер', 'NVIDIA GeForce Overlay', 'Microsoft Text Input Application', 'Program Manager']\n--- Editor.log (summary) ---\nUnity Editor.log: C:\\Users\\Den\\AppData\\Local\\Unity\\Editor\\Editor.log\n\nПрочие ошибки (16):\n  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requeste",
+      "finished_at": "2026-07-12T10:08:11Z"
     }
   ]
 }
