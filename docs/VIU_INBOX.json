@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T08:07:10Z",
+  "updated_at": "2026-07-12T08:07:55Z",
   "note": "rev28: no Idle_Stand fallback; force overwrite viu_clips; ColorKey OR exstyle; abort build without Walk.",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712e",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": 1,
       "title": "rev28: Walk pin + abort Idle_Stand + magenta ColorKey harden",
       "created_by": "Cursor",
@@ -15,7 +15,9 @@
       },
       "instructions": "deploy-rev 28. BuildOverlay pins Shanya_Idle+Shanya_Walk; NEVER fallback Idle_Stand. Run() throws if no Walk — BuildWindows must not ship old scene. viu_clips.json always overwritten. ColorKey: OR GetWindowLong LAYERED, re-apply ~4s. Expect viu_animator.log: ctrl=Shanya_Overlay_Locomotion hasWalk=True. Boot: SetLayeredWindowAttributes=True + bitblt in args. Eyes: AnabarraOverlay.",
       "acceptance": "Walk plays on A/D; house not zooming on W/S; chroma keyed (not solid magenta window); Player.log hasWalk=True ctrl≠Idle_Stand.",
-      "started_at": "2026-07-12T08:07:10Z"
+      "started_at": "2026-07-12T08:07:10Z",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nУже есть: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe\n--- build ---\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs\n[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe\n[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\\..\\Builds/AnabarraOverlay\\LaunchOverlay.bat + LaunchOverlay.vbs\nЗапуск (без терминала): U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\LaunchOverlay.vbs\n--- overlay_boot.log ---\n﻿11:07:35 Awake: renderers=2366/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2351/2724\n11:07:35 Start args=U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow\n11:07:35 HWND ok\n11:07:35 Geometry 2560x1440 at 0,0\n11:07:36 SetLayeredWindowAttributes=True err=0 key=#FF0080 (должен быть прозрачным на рабочем столе)\n11:07:36 ColorKey pass 1, Esc=выход\n11:07:36 AfterWindow: renderers=2366/2739 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables_2 homeMesh=2351/2724\n\n--- вердикт ---\nOK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.\n--- eyes ---\nОкно не найдено ('Unity'). Видны: ['Приветствие и обращение | Cursor - Google Chrome', '(46) \\u200eАнтифишки — НОВОСТИ ОНЛАЙН – (80)', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'PopupHost', 'Набросок на фрагменте экрана', 'Вью — Анабарра', 'Total Commander 9.51 - PowerUser v72    Вс 12 июл 2026    11:07:50    Память: 45%    ЦП: 2%', 'EqualizerFrame', 'Shadow Sector - Голос 002', 'Happ 2.5.2 (523)', 'Ollama', 'Медиаплеер', 'Медиаплеер', 'NVIDIA GeForce Overlay', 'Microsoft Text Input Application']\n--- Editor.log (summary) ---\nUnity Editor.log: C:\\Users\\Den\\AppData\\Local\\Unity\\Editor\\Editor.log\n\nПрочие ошибки (2):\n  • [Licensing::Module] Error: Access token is unavailable; failed to update\n  • [Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)\nSupport bundle: U:\\Viu\\.viu\\support\\viu_logs_20260712_110750.zip\nЛоги отправлены: https://gist.github.com/Shadowsector/afb2cdea46b25662615efc06d8046009\n--- вердикт ---\nFAIL: глаза не видели оверлей (окно не найдено / eyes не отработали). Не done.\n\n--- escalate ---\nЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.\nInbox task: `overlay-visual-fix-20260712e`\n\nОшибка / лог:\nUnity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, Shany",
+      "finished_at": "2026-07-12T08:07:55Z"
     }
   ]
 }
