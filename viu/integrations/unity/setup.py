@@ -38,7 +38,7 @@ _OVERLAY_CORRIDOR_REL = f"{_RUNTIME_DIR}/ShanyaOverlayCorridor.cs"
 _DOLLHOUSE_REL = f"{_RUNTIME_DIR}/DollhouseWall.cs"
 _MANIFEST_REL = f"{ANIMATIONS_REL}/{MANIFEST_NAME}"
 
-VIU_DEPLOY_REV = "43"
+VIU_DEPLOY_REV = "44"
 VIU_DEPLOY_MARKER = f"@viu-deploy-rev {VIU_DEPLOY_REV}"
 _BROKEN_EDITOR_MARKERS = (
     "activeInputHandler",

@@ -16,6 +16,7 @@ _MARK_END = "<<<VIU_EXPORT_JSON_END>>>"
 EXPORT_BUILDING_SCRIPT = f'''
 import bpy
 import json
+import os
 import sys
 import traceback
 
@@ -25,6 +26,111 @@ MARK_END = "{_MARK_END}"
 
 def emit(payload):
     print(MARK_BEGIN + json.dumps(payload, ensure_ascii=False) + MARK_END, flush=True)
+
+
+def _sanitize_tex_name(name):
+    import re
+    name = (name or "texture").strip()
+    name = re.sub(r"[^\\w\\-. ]", "_", name)
+    name = name.strip("._ ")
+    return name or "texture"
+
+
+def _image_ext(img):
+    fp = img.filepath or ""
+    if fp:
+        ext = os.path.splitext(os.path.basename(fp))[1].lower()
+        if ext in (".png", ".jpg", ".jpeg", ".tga", ".bmp", ".webp"):
+            return ext
+    return ".png"
+
+
+def _save_image_for_unity(img, tex_dir, saved_by_name):
+    if img is None:
+        return None
+    key = img.name or img.filepath or "texture"
+    if key in saved_by_name:
+        return saved_by_name[key]
+
+    ext = _image_ext(img)
+    base = _sanitize_tex_name(img.name or os.path.basename(img.filepath or "texture"))
+    dest = tex_dir / f"{{base}}{{ext}}"
+    n = 0
+    while dest.exists():
+        n += 1
+        dest = tex_dir / f"{{base}}_{{n}}{{ext}}"
+
+    abs_fp = bpy.path.abspath(img.filepath) if img.filepath else ""
+    try:
+        if img.packed_file or not abs_fp or not os.path.isfile(abs_fp):
+            prev_fmt = img.file_format
+            img.file_format = "PNG" if ext == ".png" else "JPEG"
+            img.save(filepath=str(dest))
+            if prev_fmt:
+                img.file_format = prev_fmt
+        else:
+            import shutil
+            shutil.copy2(abs_fp, dest)
+    except Exception as exc:
+        print("[Viu] texture save fail:", key, exc, flush=True)
+        return None
+
+    rel = "Textures/" + dest.name
+    saved_by_name[key] = rel
+    return rel
+
+
+def _find_basecolor_image(mat):
+    if mat is None or not getattr(mat, "use_nodes", False) or mat.node_tree is None:
+        return None
+    nt = mat.node_tree
+    principled = None
+    for node in nt.nodes:
+        if node.type == "BSDF_PRINCIPLED":
+            principled = node
+            break
+    if principled is not None:
+        link = None
+        for l in nt.links:
+            if l.to_node == principled and l.to_socket.name in ("Base Color", "BaseColor"):
+                link = l
+                break
+        if link and link.from_node.type == "TEX_IMAGE" and link.from_node.image:
+            return link.from_node.image
+    for node in nt.nodes:
+        if node.type == "TEX_IMAGE" and node.image:
+            return node.image
+    return None
+
+
+def export_building_textures(out_path, exported_names):
+    from pathlib import Path
+    tex_dir = Path(out_path).parent / "Textures"
+    tex_dir.mkdir(parents=True, exist_ok=True)
+    saved_by_name = {{}}
+    material_textures = {{}}
+    textures = []
+
+    for obj_name in exported_names:
+        obj = bpy.data.objects.get(obj_name)
+        if obj is None or obj.type != "MESH":
+            continue
+        for slot in obj.material_slots:
+            mat = slot.material
+            if mat is None:
+                continue
+            if mat.name in material_textures:
+                continue
+            img = _find_basecolor_image(mat)
+            if img is None:
+                continue
+            rel = _save_image_for_unity(img, tex_dir, saved_by_name)
+            if rel:
+                material_textures[mat.name] = rel
+                if rel not in textures:
+                    textures.append(rel)
+
+    return {{"textures": textures, "material_textures": material_textures}}
 
 
 try:
@@ -84,7 +190,15 @@ try:
         add_leaf_bones=False,
     )
 
-    emit({{"ok": True, "output": out_path, "meshes": exported, "skipped": skipped}})
+    tex_report = export_building_textures(out_path, exported)
+    emit({{
+        "ok": True,
+        "output": out_path,
+        "meshes": exported,
+        "skipped": skipped,
+        "textures": tex_report.get("textures", []),
+        "material_textures": tex_report.get("material_textures", {{}}),
+    }})
 
 except Exception as exc:
     emit({{

@@ -6,12 +6,14 @@ import json
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ...anabarra_layout import library_root, unity_project_path
 from ...config import Config
 from .exe import resolve_blender_exe
 from .export_building import export_building_fbx, pack_name_from_prepared, slugify_pack_name
+
+_TEXTURE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".webp"}
 
 
 @dataclass
@@ -25,6 +27,8 @@ class ExportPipelineResult:
     metadata: str = ""
     meshes: List[str] = field(default_factory=list)
     dollhouse_wall: str = ""
+    textures: List[str] = field(default_factory=list)
+    material_textures: Dict[str, str] = field(default_factory=dict)
     message: str = ""
 
 
@@ -65,9 +69,48 @@ def _find_dollhouse_wall(mesh_names: List[str]) -> str:
     return ""
 
 
+def unity_textures_dir(config: Config, slug: str) -> Path:
+    return unity_fbx_dir(config, slug) / "Textures"
+
+
+def library_textures_dir(config: Config, slug: str) -> Path:
+    return library_fbx_path(config, slug).parent / "Textures"
+
+
+def _count_texture_files(folder: Path) -> int:
+    if not folder.is_dir():
+        return 0
+    return sum(1 for p in folder.iterdir() if p.is_file() and p.suffix.lower() in _TEXTURE_SUFFIXES)
+
+
+def _copy_textures_to_unity(config: Config, slug: str) -> Tuple[int, Path]:
+    src = library_textures_dir(config, slug)
+    dst = unity_textures_dir(config, slug)
+    if not src.is_dir():
+        return 0, dst
+    dst.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for item in src.iterdir():
+        if not item.is_file() or item.suffix.lower() not in _TEXTURE_SUFFIXES:
+            continue
+        target = dst / item.name
+        if not target.is_file() or item.stat().st_mtime > target.stat().st_mtime:
+            shutil.copy2(item, target)
+        copied += 1
+    return copied, dst
+
+
+def home_textures_missing(config: Config, slug: str) -> bool:
+    return _count_texture_files(unity_textures_dir(config, slug)) == 0
+
+
 def needs_export(config: Config, prepared: Path) -> bool:
-    """FBX нет или blend новее."""
+    """FBX нет, blend новее или нет Textures/ в Unity."""
     slug = slugify_pack_name(pack_name_from_prepared(prepared))
+    if home_textures_missing(config, slug):
+        unity_fbx = unity_fbx_path(config, slug)
+        if unity_fbx.is_file():
+            return True
     unity_fbx = unity_fbx_path(config, slug)
     if not unity_fbx.is_file():
         lib_fbx = library_fbx_path(config, slug)
@@ -78,6 +121,35 @@ def needs_export(config: Config, prepared: Path) -> bool:
         return prepared.stat().st_mtime > unity_fbx.stat().st_mtime
     except OSError:
         return True
+
+
+def ensure_home_textures_exported(
+    config: Config,
+    *,
+    blend_file: str | Path | None = None,
+    force: bool = False,
+) -> Tuple[bool, str]:
+    """Перед оверлеем: если Textures/ пуст — переэкспорт из prepared.blend."""
+    prepared = Path(blend_file).expanduser().resolve() if blend_file else find_latest_prepared(config)
+    if prepared is None or not prepared.is_file():
+        return True, "Нет prepared blend — экспорт текстур пропущен"
+
+    slug = slugify_pack_name(pack_name_from_prepared(prepared))
+    tex_n = _count_texture_files(unity_textures_dir(config, slug))
+    if tex_n > 0 and not force:
+        return True, f"Текстуры дома OK ({tex_n} в Assets/Environment/{slug}/Textures)"
+
+    result = run_export_pipeline(config, blend_file=prepared, force=True)
+    if not result.ok:
+        return False, result.message
+    tex_n = _count_texture_files(unity_textures_dir(config, slug))
+    if tex_n == 0:
+        return (
+            False,
+            "Экспорт прошёл, но Textures/ пуст. "
+            "Открой prepared.blend — видны ли текстуры на сарае?",
+        )
+    return True, f"Текстуры дома экспортированы: {tex_n} файлов → Environment/{slug}/Textures"
 
 
 def catalog_ready_for_export(config: Config, prepared: Path) -> bool:
@@ -138,9 +210,12 @@ def run_export_pipeline(
 
     meshes = [str(m) for m in report.get("meshes") or []]
     dollhouse = _find_dollhouse_wall(meshes)
+    textures = [str(t) for t in report.get("textures") or []]
+    material_textures = {str(k): str(v) for k, v in (report.get("material_textures") or {}).items()}
 
     unity_out.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(lib_out, unity_out)
+    tex_copied, tex_dir = _copy_textures_to_unity(config, slug)
 
     meta = {
         "pack": pack,
@@ -148,6 +223,11 @@ def run_export_pipeline(
         "source_blend": str(prepared),
         "meshes": meshes,
         "dollhouse_wall": dollhouse,
+        "textures": textures,
+        "material_textures": material_textures,
+        "material_texture_list": [
+            {"material": k, "texture": v} for k, v in sorted(material_textures.items())
+        ],
         "note": "dollhouse_wall — скрывать в Unity, когда персонаж внутри",
     }
     meta_out.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -156,7 +236,8 @@ def run_export_pipeline(
         f"Экспорт «{pack}» OK.\n"
         f"Library: {lib_out}\n"
         f"Unity: {unity_out}\n"
-        f"Мешей: {len(meshes)}"
+        f"Мешей: {len(meshes)}\n"
+        f"Текстур: {tex_copied} → {tex_dir}"
     )
     if dollhouse:
         msg += f"\nDollhouse wall: {dollhouse} (см. {meta_out.name})"
@@ -173,6 +254,8 @@ def run_export_pipeline(
         metadata=str(meta_out),
         meshes=meshes,
         dollhouse_wall=dollhouse,
+        textures=textures,
+        material_textures=material_textures,
         message=msg,
     )
 

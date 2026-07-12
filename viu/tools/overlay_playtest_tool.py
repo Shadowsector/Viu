@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
+from ..integrations.blender.export_pipeline import ensure_home_textures_exported
 from ..integrations.unity.overlay import overlay_exe_path
 from ..integrations.unity.paths import unity_project_root
 from ..integrations.unity.process import (
@@ -51,6 +52,11 @@ class OverlayPlaytestTool(Tool):
         ok_kill, kill_msg = kill_unity_processes()
         lines.append(f"Unity close: {kill_msg}" if kill_msg else "Unity close: ok")
         time.sleep(2.0)
+
+        tex_ok, tex_msg = ensure_home_textures_exported(ctx.config)
+        lines.append(f"Home textures: {tex_msg}")
+        if not tex_ok:
+            return ToolResult(False, "\n".join(lines))
 
         ok, msg = deploy_animation_pipeline(root)
         lines.append(msg)
