@@ -18,7 +18,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaOverlaySetup
     {
-        // @viu-deploy-rev 30
+        // @viu-deploy-rev 31
         const string ScenePath = "Assets/Scenes/OverlayDesktop.unity";
         const string CharacterRootName = "Shanya_Erisa";
         const string BuildFolder = "Builds/AnabarraOverlay";
@@ -112,7 +112,7 @@ namespace Viu.Editor
             var body =
                 "@echo off\r\n" +
                 "cd /d \"%~dp0\"\r\n" +
-                "start \"AnabarraOverlay\" /B \"AnabarraOverlay.exe\" -force-d3d11-bitblt-model -popupwindow\r\n" +
+                "start \"AnabarraOverlay\" /B \"AnabarraOverlay.exe\" -force-d3d11 -force-d3d11-bitblt-model -popupwindow\r\n" +
                 "exit /b 0\r\n";
             File.WriteAllText(bat, body, System.Text.Encoding.ASCII);
 
@@ -121,7 +121,7 @@ namespace Viu.Editor
             var vbsBody =
                 "Set sh = CreateObject(\"WScript.Shell\")\r\n" +
                 "sh.CurrentDirectory = CreateObject(\"Scripting.FileSystemObject\").GetParentFolderName(WScript.ScriptFullName)\r\n" +
-                "sh.Run \"AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow\", 0, False\r\n";
+                "sh.Run \"AnabarraOverlay.exe -force-d3d11 -force-d3d11-bitblt-model -popupwindow\", 0, False\r\n";
             File.WriteAllText(vbs, vbsBody, System.Text.Encoding.ASCII);
             Debug.Log("[Viu] Launcher: " + bat + " + LaunchOverlay.vbs");
         }
@@ -143,6 +143,24 @@ namespace Viu.Editor
                 BuildTarget.StandaloneWindows64,
                 new[] { UnityEngine.Rendering.GraphicsDeviceType.Direct3D11 });
             PlayerSettings.productName = "AnabarraOverlay";
+            ForceFlipModelOffInProjectSettingsAsset();
+        }
+
+        /// <summary>PlayerSettings API иногда не пишет YAML вовремя — дублируем в .asset.</summary>
+        static void ForceFlipModelOffInProjectSettingsAsset()
+        {
+            var path = Path.Combine(Application.dataPath, "..", "ProjectSettings", "ProjectSettings.asset");
+            if (!File.Exists(path)) return;
+            var text = File.ReadAllText(path);
+            var updated = System.Text.RegularExpressions.Regex.Replace(
+                text,
+                @"(?m)^(\s*)useFlipModelSwapchain:\s*1\s*$",
+                "$1useFlipModelSwapchain: 0");
+            if (updated != text)
+            {
+                File.WriteAllText(path, updated);
+                Debug.Log("[Viu] ProjectSettings.asset: useFlipModelSwapchain → 0");
+            }
         }
 
         static void EnsureBuildFolder()

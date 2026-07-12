@@ -89,6 +89,17 @@ class OverlayPlaytestTool(Tool):
 
         if proc.returncode != 0:
             detail = "\n".join(important) if important else "(см. viu_overlay_build.log)"
+            # Старый exe иначе Ден запускает руками и видит T-pose/magenta «как будто новый».
+            stale = overlay_exe_path(root)
+            if stale.is_file():
+                broken = stale.with_name(stale.name + ".broken")
+                try:
+                    if broken.is_file():
+                        broken.unlink()
+                    stale.rename(broken)
+                    lines.append(f"Старый exe убран → {broken.name} (не запускай его).")
+                except OSError as exc:
+                    lines.append(f"Не смогла убрать старый exe: {exc}")
             return ToolResult(False, "\n".join(lines) + "\nСборка FAIL\n" + detail)
 
         out_exe = overlay_exe_path(root)
@@ -131,7 +142,7 @@ class OverlayPlaytestTool(Tool):
                     subprocess.Popen(  # noqa: S603
                         [
                             "cmd", "/c", "start", "", str(out_exe),
-                            "-force-d3d11-bitblt-model", "-popupwindow",
+                            "-force-d3d11", "-force-d3d11-bitblt-model", "-popupwindow",
                         ],
                         cwd=cwd,
                     )

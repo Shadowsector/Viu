@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 30" in text
+    assert "@viu-deploy-rev 31" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -157,7 +157,11 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 30" in setup
+    assert "@viu-deploy-rev 31" in setup
+    assert "ForceFlipModelOffInProjectSettingsAsset" in setup
+    assert "margins=-1" in overlay or "cxLeftWidth = -1" in overlay
+    assert "GetActiveWindow" in overlay
+    assert "-force-d3d11" in setup
 
     from viu.integrations.unity.overlay_tune import load_tune, write_tune_lane
 

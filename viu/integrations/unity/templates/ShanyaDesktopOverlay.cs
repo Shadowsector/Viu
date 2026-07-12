@@ -60,6 +60,8 @@ namespace Viu.Runtime
         {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
             BootLog("Start args=" + Environment.CommandLine);
+            BootLog("gfx=" + SystemInfo.graphicsDeviceType
+                + " " + SystemInfo.graphicsDeviceName);
             if (Environment.CommandLine.IndexOf("bitblt", StringComparison.OrdinalIgnoreCase) < 0)
             {
                 BootLog("ERROR: нет -force-d3d11-bitblt-model — ColorKey не сработает (magenta окно). "
@@ -227,8 +229,15 @@ namespace Viu.Runtime
 
             EnsureLayeredExStyle();
 
-            // BitBlt + color key: DWM margins = 0 (не -1 — иначе весь экран magenta без flip fix).
-            var margins = new MARGINS();
+            // С BitBlt: margins=-1 + ColorKey — классический рецепт Unity transparent window.
+            // margins=0 часто оставляет непрозрачный chroma (магента на весь экран).
+            var margins = new MARGINS
+            {
+                cxLeftWidth = -1,
+                cxRightWidth = -1,
+                cyTopHeight = -1,
+                cyBottomHeight = -1,
+            };
             DwmExtendFrameIntoClientArea(_hwnd, ref margins);
 
             bool ok = SetLayeredWindowAttributes(_hwnd, ChromaColorRef, 0, LWA_COLORKEY);
@@ -236,14 +245,19 @@ namespace Viu.Runtime
             if (_colorKeyAttempts <= 1 || !ok || _colorKeyAttempts % 8 == 0)
             {
                 BootLog("SetLayeredWindowAttributes=" + ok + " err=" + Marshal.GetLastWin32Error()
-                    + " key=#FF0080 attempt=" + _colorKeyAttempts
-                    + " (должен быть прозрачным на рабочем столе)");
+                    + " key=#FF0080 margins=-1 attempt=" + _colorKeyAttempts
+                    + " gfx=" + SystemInfo.graphicsDeviceType
+                    + " (фон должен быть прозрачным, не магента)");
             }
         }
 
         static IntPtr ResolveGameWindow()
         {
-            var hwnd = FindWindow("UnityWndClass", null);
+            // GetActiveWindow в batch/launcher часто 0 — но в player после фокуса ок.
+            var hwnd = GetActiveWindow();
+            if (hwnd != IntPtr.Zero) return hwnd;
+
+            hwnd = FindWindow("UnityWndClass", null);
             if (hwnd != IntPtr.Zero) return hwnd;
 
             hwnd = FindWindow(null, Application.productName);
@@ -350,6 +364,9 @@ namespace Viu.Runtime
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+        [DllImport("user32.dll")]
+        static extern IntPtr GetActiveWindow();
 
         [DllImport("user32.dll")]
         static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);

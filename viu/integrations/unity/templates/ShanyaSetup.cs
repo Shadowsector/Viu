@@ -16,7 +16,7 @@ namespace Viu.Editor
     /// </summary>
     public static class ShanyaSetup
     {
-        // @viu-deploy-rev 30
+        // @viu-deploy-rev 31
         const string ControllerPath = ShanyaAnimationSync.ControllerPath;
         const string ModelNameHint = "Shanya_Erisa";
         /// <summary>Целевой рост персонажа в метрах (можно подкрутить).</summary>
