@@ -96,7 +96,7 @@ def test_setup_builds_test_scene_environment():
     assert "CameraOrthoHalfHeight" in text
     assert "SnapFeetToGround" in text
     assert "orthographic" in text
-    assert "@viu-deploy-rev 29" in text
+    assert "@viu-deploy-rev 30" in text
 
 
 def test_overlay_templates(tmp_path):
@@ -149,12 +149,15 @@ def test_overlay_templates(tmp_path):
     assert "ForceExtractClips" in sync
     assert "EnsureAllAnimationFbxImport" in sync
     assert "defaultClipAnimations" in sync
+    assert "RecoverClipsViaLegacyThenHumanoid" in sync
+    assert "FindClipInProject" in sync
+    assert "OnPreprocessAnimation" in sync
     assert "EnsureLayeredExStyle" in overlay or "GetWindowLong" in overlay
     assert "bitblt" in overlay.lower()
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 29" in setup
+    assert "@viu-deploy-rev 30" in setup
 
     from viu.integrations.unity.overlay_tune import load_tune, write_tune_lane
 
@@ -168,6 +171,7 @@ def test_overlay_templates(tmp_path):
 
     cmd = batch_overlay_build_command(Path("U:/Anabarra/Unity/Anabarra"), Path("C:/Unity/Unity.exe"))
     assert "ShanyaOverlaySetup.BuildWindowsBatch" in cmd
+    assert "-nographics" not in cmd
     assert overlay_exe_path(Path("/proj")).name == "AnabarraOverlay.exe"
 
 

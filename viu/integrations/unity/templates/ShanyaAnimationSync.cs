@@ -73,12 +73,25 @@ namespace Viu.Editor
             var bodyAvatar = LoadBodyAvatar(FindBodyModelPath());
             EnsureAllAnimationFbxImport(bodyAvatar, log);
 
-            // Жёстко: Idle/Walk из Shanya_*.fbx. НИКОГДА не fallback на Idle_Stand (нет Walk).
+            // Жёстко: Idle/Walk. Legacy-recover только для пинов (не для всех X Bot).
             var loco = new List<ClipEntry>();
+            var bodyAvatar = LoadBodyAvatar(FindBodyModelPath());
             foreach (var file in IdlePinFiles)
+            {
+                var pinPath = AnimationsFolder + "/" + file;
+                if (AssetDatabase.LoadMainAssetAtPath(pinPath) != null
+                    && LoadFirstAnimationClip(pinPath) == null)
+                    RecoverClipsViaLegacyThenHumanoid(pinPath, bodyAvatar);
                 if (TryAddPinnedClip(loco, "Idle", file)) break;
+            }
             foreach (var file in WalkPinFiles)
+            {
+                var pinPath = AnimationsFolder + "/" + file;
+                if (AssetDatabase.LoadMainAssetAtPath(pinPath) != null
+                    && LoadFirstAnimationClip(pinPath) == null)
+                    RecoverClipsViaLegacyThenHumanoid(pinPath, bodyAvatar);
                 if (TryAddPinnedClip(loco, "Walk", file)) break;
+            }
 
             if (!loco.Any(e => e.StateName.Equals("Idle", StringComparison.OrdinalIgnoreCase))
                 || !loco.Any(e => e.StateName.Equals("Walk", StringComparison.OrdinalIgnoreCase)))
@@ -147,26 +160,49 @@ namespace Viu.Editor
         static bool TryAddPinnedClip(List<ClipEntry> loco, string state, string fileName)
         {
             var path = AnimationsFolder + "/" + fileName;
-            if (AssetDatabase.LoadMainAssetAtPath(path) == null)
-                return false;
+            AnimationClip clip = null;
+            string from = null;
 
-            EnsureHumanoidImport(path, LoadBodyAvatar(FindBodyModelPath()));
-            var clip = LoadFirstAnimationClip(path);
-            if (clip == null)
+            if (AssetDatabase.LoadMainAssetAtPath(path) != null)
             {
-                // Второй проход: иногда clipAnimations появляются только после reimport.
-                ForceExtractClips(path);
+                EnsureHumanoidImport(path, LoadBodyAvatar(FindBodyModelPath()));
                 clip = LoadFirstAnimationClip(path);
+                if (clip == null)
+                {
+                    RecoverClipsViaLegacyThenHumanoid(path, LoadBodyAvatar(FindBodyModelPath()));
+                    clip = LoadFirstAnimationClip(path);
+                }
+                if (clip != null)
+                    from = fileName;
             }
+
             if (clip == null)
             {
-                Debug.LogWarning("[Viu] Пин " + state + " без AnimationClip: " + path
-                    + " (проверь Animation tab / takes в FBX)");
+                clip = FindClipInProject(state);
+                if (clip != null)
+                    from = "project:" + clip.name;
+            }
+
+            if (clip == null)
+            {
+                clip = FindClipInControllers(state);
+                if (clip != null)
+                    from = "controller:" + clip.name;
+            }
+
+            if (clip == null)
+            {
+                Debug.LogWarning("[Viu] Пин " + state + " FAIL — нет клипа (файл="
+                    + fileName + ", project search пуст)");
                 return false;
             }
+
+            var assetPath = string.IsNullOrEmpty(path) || AssetDatabase.LoadMainAssetAtPath(path) == null
+                ? AssetDatabase.GetAssetPath(clip)
+                : path;
             loco.RemoveAll(e => e.StateName.Equals(state, StringComparison.OrdinalIgnoreCase));
-            loco.Add(new ClipEntry { AssetPath = path, StateName = state, Clip = clip });
-            Debug.Log("[Viu] Пин " + state + " ← " + fileName + " clip=" + clip.name);
+            loco.Add(new ClipEntry { AssetPath = assetPath, StateName = state, Clip = clip });
+            Debug.Log("[Viu] Пин " + state + " ← " + from + " clip=" + clip.name);
             return true;
         }
 
@@ -405,13 +441,14 @@ namespace Viu.Editor
             var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
             if (importer == null) return;
             var changed = false;
+
             if (importer.animationType != ModelImporterAnimationType.Human)
             {
                 importer.animationType = ModelImporterAnimationType.Human;
                 changed = true;
             }
 
-            if (bodyAvatar != null)
+            if (bodyAvatar != null && bodyAvatar.isValid)
             {
                 if (importer.avatarSetup != ModelImporterAvatarSetup.CopyFromOther
                     || importer.sourceAvatar != bodyAvatar)
@@ -433,14 +470,79 @@ namespace Viu.Editor
                 changed = true;
             }
 
-            // Сначала применить Rig/Import Animation — иначе defaultClipAnimations пустой.
             if (changed)
                 importer.SaveAndReimport();
 
-            if (ForceExtractClips(assetPath))
+            ForceExtractClips(assetPath);
+        }
+
+        /// <summary>
+        /// Legacy-импорт часто единственный способ, когда Humanoid+CopyFromOther
+        /// оставил defaultClipAnimations пустым. Потом возвращаем Humanoid.
+        /// </summary>
+        static bool RecoverClipsViaLegacyThenHumanoid(string assetPath, Avatar bodyAvatar)
+        {
+            var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+            if (importer == null) return false;
+
+            Debug.Log("[Viu] RecoverClips Legacy→Humanoid: " + Path.GetFileName(assetPath));
+            importer.animationType = ModelImporterAnimationType.Legacy;
+            importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+            importer.importAnimation = true;
+            importer.clipAnimations = System.Array.Empty<ModelImporterClipAnimation>();
+            importer.SaveAndReimport();
+
+            importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+            if (importer == null) return false;
+
+            var defaults = importer.defaultClipAnimations;
+            if (defaults != null && defaults.Length > 0)
             {
-                // ForceExtractClips сам SaveAndReimport при необходимости
+                for (int i = 0; i < defaults.Length; i++)
+                {
+                    defaults[i].loopTime = true;
+                    defaults[i].loopPose = true;
+                }
+                importer.clipAnimations = defaults;
+                importer.SaveAndReimport();
+                importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
             }
+
+            if (LoadFirstAnimationClip(assetPath) == null
+                && LoadClipFromLegacyAnimationComponent(assetPath) == null)
+            {
+                Debug.LogWarning(
+                    "[Viu] Legacy тоже без клипа: " + Path.GetFileName(assetPath)
+                    + " (файл без AnimationStack? type="
+                    + (importer != null ? importer.animationType.ToString() : "?")
+                    + " importAnim=" + (importer != null && importer.importAnimation) + ")");
+                return false;
+            }
+
+            // Mecanim Humanoid
+            importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+            if (importer == null) return false;
+            importer.animationType = ModelImporterAnimationType.Human;
+            if (bodyAvatar != null && bodyAvatar.isValid)
+            {
+                importer.avatarSetup = ModelImporterAvatarSetup.CopyFromOther;
+                importer.sourceAvatar = bodyAvatar;
+            }
+            else
+                importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+            importer.importAnimation = true;
+            defaults = importer.defaultClipAnimations;
+            if (defaults != null && defaults.Length > 0)
+            {
+                for (int i = 0; i < defaults.Length; i++)
+                {
+                    defaults[i].loopTime = true;
+                    defaults[i].loopPose = true;
+                }
+                importer.clipAnimations = defaults;
+            }
+            importer.SaveAndReimport();
+            return LoadFirstAnimationClip(assetPath) != null;
         }
 
         /// <summary>
@@ -475,10 +577,7 @@ namespace Viu.Editor
             }
 
             if (defaults == null || defaults.Length == 0)
-            {
-                Debug.LogWarning("[Viu] FBX без takes (defaultClipAnimations пуст): " + Path.GetFileName(assetPath));
-                return false;
-            }
+                return false; // тише: RecoverClips / FindClipInProject разберутся
 
             var current = importer.clipAnimations;
             bool needAssign = current == null || current.Length == 0;
@@ -500,6 +599,79 @@ namespace Viu.Editor
                 return true;
             }
             return touched;
+        }
+
+        static AnimationClip LoadClipFromLegacyAnimationComponent(string modelPath)
+        {
+            var go = AssetDatabase.LoadMainAssetAtPath(modelPath) as GameObject;
+            if (go == null) return null;
+            var clips = AnimationUtility.GetAnimationClips(go);
+            if (clips == null || clips.Length == 0)
+            {
+                var anim = go.GetComponent<Animation>() ?? go.GetComponentInChildren<Animation>();
+                if (anim != null)
+                    clips = AnimationUtility.GetAnimationClips(anim.gameObject);
+            }
+            if (clips == null) return null;
+            return clips.FirstOrDefault(c => c != null && !c.name.StartsWith("__preview"));
+        }
+
+        /// <summary>Ищем любой AnimationClip в проекте по имени состояния.</summary>
+        static AnimationClip FindClipInProject(string state)
+        {
+            AnimationClip best = null;
+            int bestScore = int.MinValue;
+            foreach (var guid in AssetDatabase.FindAssets("t:AnimationClip"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                foreach (var clip in AssetDatabase.LoadAllAssetsAtPath(path).OfType<AnimationClip>())
+                {
+                    if (clip == null || clip.name.StartsWith("__preview")) continue;
+                    int score = ScoreClipFile(clip.name, state);
+                    score += ScoreClipFile(Path.GetFileNameWithoutExtension(path), state);
+                    if (path.IndexOf("/Animations/", StringComparison.OrdinalIgnoreCase) >= 0)
+                        score += 20;
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        best = clip;
+                    }
+                }
+            }
+            // Нужен уверенный матч, не случайный SitIdle для Idle
+            if (best == null || bestScore < 80)
+                return null;
+            Debug.Log("[Viu] FindClipInProject " + state + " ← " + best.name
+                + " score=" + bestScore + " @ " + AssetDatabase.GetAssetPath(best));
+            return best;
+        }
+
+        static AnimationClip FindClipInControllers(string state)
+        {
+            foreach (var guid in AssetDatabase.FindAssets("t:AnimatorController"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var ctrl = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
+                if (ctrl == null) continue;
+                foreach (var layer in ctrl.layers)
+                {
+                    if (layer.stateMachine == null) continue;
+                    foreach (var st in layer.stateMachine.states)
+                    {
+                        if (st.state == null) continue;
+                        if (!st.state.name.Equals(state, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        var clip = st.state.motion as AnimationClip;
+                        if (clip != null)
+                        {
+                            Debug.Log("[Viu] FindClipInControllers " + state
+                                + " ← " + clip.name + " from " + Path.GetFileName(path));
+                            return clip;
+                        }
+                    }
+                }
+            }
+            return null;
         }
 
         /// <summary>Loop Time на FBX — иначе Idle/Walk играют один раз и замирают.</summary>
@@ -630,9 +802,32 @@ namespace Viu.Editor
         }
     }
 
-    /// <summary>При импорте FBX в Animations/ — автосинк (если Unity открыт).</summary>
+    /// <summary>
+    /// Импорт FBX в Animations/: назначить takes в OnPreprocessAnimation
+    /// (единственный момент, когда defaultClipAnimations стабильно непустой).
+    /// </summary>
     public class ShanyaAnimationPostprocessor : AssetPostprocessor
     {
+        void OnPreprocessAnimation()
+        {
+            if (!assetPath.StartsWith(
+                    ShanyaAnimationSync.AnimationsFolder, StringComparison.OrdinalIgnoreCase))
+                return;
+            var mi = assetImporter as ModelImporter;
+            if (mi == null) return;
+            mi.importAnimation = true;
+            if (mi.animationType == ModelImporterAnimationType.None)
+                mi.animationType = ModelImporterAnimationType.Human;
+            var defaults = mi.defaultClipAnimations;
+            if (defaults == null || defaults.Length == 0) return;
+            for (int i = 0; i < defaults.Length; i++)
+            {
+                defaults[i].loopTime = true;
+                defaults[i].loopPose = true;
+            }
+            mi.clipAnimations = defaults;
+        }
+
         static void OnPostprocessAllAssets(
             string[] importedAssets,
             string[] deletedAssets,

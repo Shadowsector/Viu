@@ -1,23 +1,38 @@
 {
   "version": 1,
+<<<<<<< Updated upstream
   "updated_at": "2026-07-12T08:24:30Z",
   "note": "rev29: ForceExtractClips — FBX takes→clipAnimations before LoadFirstAnimationClip.",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712f",
       "status": "blocked",
+=======
+  "updated_at": "2026-07-12T08:40:00Z",
+  "note": "rev30: Legacy→Humanoid recover, FindClipInProject, OnPreprocessAnimation, no -nographics.",
+  "tasks": [
+    {
+      "id": "overlay-visual-fix-20260712g",
+      "status": "pending",
+>>>>>>> Stashed changes
       "priority": 1,
-      "title": "rev29: extract AnimationClips from FBX takes",
+      "title": "rev30: recover Idle/Walk clips (Legacy + project search)",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
       "direct_args": {
-        "reopen_unity": false
+        "reopen_unity": false,
+        "timeout": 2400
       },
+<<<<<<< Updated upstream
       "instructions": "deploy-rev 29. Root cause of FAIL: Shanya_Walk/Idle FBX exist but clipAnimations empty → LoadFirstAnimationClip null. Fix: EnsureAllAnimationFbxImport + ForceExtractClips (defaultClipAnimations → clipAnimations + SaveAndReimport) BEFORE discover/pin. Expect build log: Overlay locomotion OK Idle<Shanya_Idle…> Walk<Shanya_Walk…>. NOT Idle_Stand. First run may reimport all Animations/*.fbx (slow once).",
       "acceptance": "Build OK; viu_animator.log hasWalk=True ctrl=Shanya_Overlay_Locomotion; Walk on A/D; chroma not solid magenta.",
       "started_at": "2026-07-12T08:24:12Z",
       "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка FAIL\n[Viu] Нет AnimationClip в Shanya_SitIdle_4.fbx\n[Viu] Нет AnimationClip в Shanya_SleepIdle.fbx\n[Viu] Нет AnimationClip в Shanya_Walk.fbx\n[Viu] Нет AnimationClip в Shanya_Yawn.fbx\n[Viu] Пропуск (непонятное имя): X Bot@Bashful.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Crawling.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Нет AnimationClip в X Bot@Female Tough Walk.fbx\n[Viu] Пропуск (непонятное имя): X Bot@Flying Kick.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Gathering Objects.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Нет AnimationClip в X Bot@Idle.fbx\n[Viu] Пропуск (непонятное имя): X Bot@Kicking Out.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Laying.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Reacting.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Roll Kicking.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Нет AnimationClip в X Bot@Sit To Stand.fbx\n[Viu] Нет AnimationClip в X Bot@Stand To Sit.fbx\n[Viu] overlay_preferred без клипа: Shanya_Idle.fbx\n[Viu] overlay_preferred без клипа: Shanya_Walk.fbx\n[Viu] Overlay locomotion FAIL: Idle=False Walk=False. Нужны Shanya_Idle.fbx и Shanya_Walk.fbx в Assets/Characters/Shanya/Animations. НЕ подставляю Idle_Stand (там нет Walk → слайд).\n[Viu] Overlay build: [Viu] Overlay locomotion FAIL — нет Shanya_Idle/Shanya_Walk. НЕ собираю старую сцену с Idle_Stand.\n\n--- escalate ---\nЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.\nInbox task: `overlay-visual-fix-20260712f`\n\nОшибка / лог:\nUnity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка FAIL\n[Viu] Нет AnimationClip в Shanya_SitIdle_4.fbx\n[Viu] Нет AnimationClip в Shanya_SleepIdle.fbx\n[Viu] Нет AnimationClip в Shanya_Walk.fbx\n[Viu] Нет AnimationClip в Shanya_Yawn.fbx\n[Viu] Пропуск (непонятное имя): X Bot@Bashful.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Crawling.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Нет AnimationClip в X Bot@Female Tough Walk.fbx\n[Viu] Пропуск (непонятное имя): X Bot@Flying Kick.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Gathering Objects.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Нет AnimationClip в X Bot@Idle.fbx\n[Viu] Пропуск (непонятное имя): X Bot@Kicking Out.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Laying.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Reacting.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Roll Kicking.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Нет AnimationClip в X Bot@Sit To Stan",
       "finished_at": "2026-07-12T08:24:30Z"
+=======
+      "instructions": "deploy-rev 30. defaultClipAnimations was empty on Shanya_Idle/Walk. Fix: (1) overlay build WITHOUT -nographics (2) OnPreprocessAnimation assigns takes (3) RecoverClipsViaLegacyThenHumanoid for Idle/Walk pins (4) FindClipInProject / FindClipInControllers fallback. Expect: RecoverClips Legacy→Humanoid OR Пин Idle/Walk OK. Overlay locomotion OK. Timeout up to 2400s — Legacy reimport can be slow.",
+      "acceptance": "Build OK; locomotion OK with Walk; hasWalk=True; not Idle_Stand."
+>>>>>>> Stashed changes
     }
   ]
 }

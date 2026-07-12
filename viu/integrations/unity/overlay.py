@@ -16,8 +16,9 @@ def overlay_exe_path(project_root: Path) -> Path:
 def batch_overlay_scene_command(project_root: Path, unity_exe: Path) -> str:
     proj = str(project_root.resolve())
     exe = str(unity_exe.resolve())
+    # Без -nographics: иначе FBX animation takes часто пустые (defaultClipAnimations=0).
     return (
-        f'"{exe}" -batchmode -quit -nographics '
+        f'"{exe}" -batchmode -quit '
         f'-projectPath "{proj}" '
         f'-executeMethod Viu.Editor.ShanyaOverlaySetup.RunBatch '
         f'-logFile "{proj}/viu_overlay_scene.log"'
@@ -27,8 +28,9 @@ def batch_overlay_scene_command(project_root: Path, unity_exe: Path) -> str:
 def batch_overlay_build_command(project_root: Path, unity_exe: Path) -> str:
     proj = str(project_root.resolve())
     exe = str(unity_exe.resolve())
+    # Без -nographics: импорт AnimationClip из FBX в headless часто ломается.
     return (
-        f'"{exe}" -batchmode -quit -nographics '
+        f'"{exe}" -batchmode -quit '
         f'-projectPath "{proj}" '
         f'-executeMethod Viu.Editor.ShanyaOverlaySetup.BuildWindowsBatch '
         f'-logFile "{proj}/viu_overlay_build.log"'
