@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T10:03:41Z",
+  "updated_at": "2026-07-12T10:03:49Z",
   "note": "rev36: stop always-run (no GetAxisRaw drift; Run-as-Walk speed 0.55); never rename exe.broken",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712o",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": 1,
       "title": "rev36: Idle at rest, slow Run-as-Walk, keep exe on FAIL",
       "created_by": "Cursor",
@@ -16,7 +16,9 @@
       },
       "instructions": "deploy-rev 36. Den: LaunchOverlay worked but Shanya always ran — GetAxisRaw stick drift + Run in Walk slot. Fix: keyboard-only horizontal; WalkThreshold 0.25; Walk←Run gets state.speed 0.55; prefer real Walk if importable. NEVER rename exe to .broken on FAIL (leave with WARN). Expect Idle when no keys; Run-slow only on A/D.",
       "acceptance": "standing Idle without keys; A/D moves with slower run; FAIL does not rename exe.broken.",
-      "started_at": "2026-07-12T10:03:41Z"
+      "started_at": "2026-07-12T10:03:41Z",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСтарый exe убран → AnabarraOverlay.exe.broken (не запускай его).\nСборка FAIL\n(см. viu_overlay_build.log)\n\n--- escalate ---\nЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.\nInbox task: `overlay-visual-fix-20260712o`\n\nОшибка / лог:\nUnity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСтарый exe убран → AnabarraOverlay.exe.broken (не запускай его).\nСборка FAIL\n(см. viu_overlay_build.log)\n\nweb_search (`Unity 6 overlay_playtest Unity close: Unity.exe не запущен. Editor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs ShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, Shany`):\nНичего не найдено по запросу.\n\nHandoff Cursor: OK — Файл на GitHub (Shadowsector/Viu@cursor/viu-agent-core-65c2): docs/CURSOR_HANDOFF.md\nhttps://github.com/Shadowsector/Viu/commit/0bd692fd417ae28e1e3ab47d11ad06efd002f1ae\nДальше не крути тот же инструмент. Жди ответ Cursor в VIU_INBOX или почини по web_search, если фикс ясен.",
+      "finished_at": "2026-07-12T10:03:49Z"
     }
   ]
 }
