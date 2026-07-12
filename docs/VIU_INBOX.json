@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T09:35:00Z",
+  "updated_at": "2026-07-12T09:32:43Z",
   "note": "rev34: Animations FBX = Create From This Model (docs UNITY_PIPELINE — never Copy Erisa).",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712m",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev34: Create From This Model for Idle/Walk (no Copy Erisa)",
       "created_by": "Cursor",
@@ -15,7 +15,8 @@
         "timeout": 2400
       },
       "instructions": "deploy-rev 34. Den screenshot: Copy From Other Erisa → Rig Error Torso/Hips mismatch. docs/UNITY_PIPELINE.md: animation FBX MUST be Create From This Model; NEVER Copy From Other between Mixamo and Erisa. Expect log: Rig Create From This Model (не Copy Erisa): Shanya_Idle/Walk. Then clips exist, Overlay locomotion OK. Character Animator still uses Shanya_ErisaAvatar — Humanoid retargets. boot runtime-rev=34.",
-      "acceptance": "no rig mismatch; Idle/Walk clips; locomotion OK; not T-pose."
+      "acceptance": "no rig mismatch; Idle/Walk clips; locomotion OK; not T-pose.",
+      "started_at": "2026-07-12T09:32:43Z"
     }
   ]
 }
