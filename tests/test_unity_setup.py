@@ -157,7 +157,9 @@ def test_overlay_templates(tmp_path):
     assert "ControllerHasState" in setup
     assert "Animator без Walk" in setup
     assert "НЕ собираю старую сцену" in setup
-    assert "@viu-deploy-rev 34" in setup
+    assert "@viu-deploy-rev 35" in setup
+    assert "X Bot@Idle.fbx" in sync
+    assert "Shanya_Run.fbx" in sync
     assert "Create From This Model (не Copy Erisa)" in sync
     assert "Никогда Copy From Other к Erisa" in sync
     assert "HomeShanyaFrontGap" in setup
@@ -166,6 +168,10 @@ def test_overlay_templates(tmp_path):
     assert "GetActiveWindow" in overlay
     assert "RuntimeRev" in overlay
     assert "-force-d3d11" in setup
+
+    clips = (root / "viu_clips.json").read_text(encoding="utf-8")
+    assert "X Bot@Idle.fbx" in clips
+    assert "Shanya_Run.fbx" in clips
 
     from viu.integrations.unity.overlay_tune import load_tune, write_tune_lane
 
