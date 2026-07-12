@@ -755,3 +755,13 @@ OK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источни�
 Unity Editor снова открыт.
 Support bundle: U:\Viu\.viu\support\viu_logs_20260712_095902.zip
 Логи отправлены: https://gist.github.com/Shadowsector/2bbfbfe1010bc7f6ff3d71bc0e9184be
+
+## 2026-07-12 — Den: всё то же; помогу чем
+
+**Факт из gist 2bbfbfe (Viu 939233a = ДО rev24):**
+- Player.log: Dollhouse не нашла Wall_front
+- Player.log: Locomotion Speed>0 state≠Walk
+- playtest ложно done (eyes: окно не найдено)
+
+**rev25:** Z-slab hide фасада; DeleteAsset+rebuild Overlay controller; CrossFade Walk; playtest FAIL если eyes miss / state≠Walk.
+

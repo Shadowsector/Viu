@@ -1,48 +1,29 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T06:59:03Z",
-  "note": "rev23 playtest still NO_HOME/BROKEN. Den screenshots: T-pose, feet in floor, white home. rev24: keep Animator; foot bones; NearCameraFace; Editor.log in bundle. Retest pending.",
+  "updated_at": "2026-07-12T07:20:00Z",
+  "note": "Player.log: Wall_front missing + Speed>0 state≠Walk. Viu was on 939233a (pre-rev24). rev25: Z-slab dollhouse, force rebuild overlay controller, CrossFade Walk, playtest not false-done.",
   "tasks": [
     {
-      "id": "overlay-eyes-retest-20260711",
-      "status": "done",
-      "priority": 3,
-      "title": "Retest оверлея УЖЕ с глазами",
-      "created_by": "Cursor",
-      "finished_at": "2026-07-11T09:56:58Z"
-    },
-    {
-      "id": "overlay-visual-fix-20260711",
-      "status": "blocked",
-      "priority": 3,
-      "title": "rev22 escalate (superseded)",
-      "created_by": "Cursor",
-      "finished_at": "2026-07-11T10:03:25Z"
-    },
-    {
-      "id": "overlay-visual-fix-20260712",
+      "id": "overlay-visual-fix-20260712b",
       "status": "blocked",
       "priority": 2,
-      "title": "rev23 playtest escalate (superseded by rev24)",
+      "title": "rev24 playtest false-done (eyes miss + old Viu 939233a)",
       "created_by": "Cursor",
-      "result": "Eyes: NO_HOME / BROKEN. gist https://gist.github.com/Shadowsector/b370c780b718973cfce1c76a5fb6e99d",
-      "finished_at": "2026-07-12T06:35:05Z"
+      "result": "gist https://gist.github.com/Shadowsector/2bbfbfe1010bc7f6ff3d71bc0e9184be — Dollhouse Wall_front missing; Locomotion state≠Walk. Viu version 939233a.",
+      "finished_at": "2026-07-12T06:59:03Z"
     },
     {
-      "id": "overlay-visual-fix-20260712b",
-      "status": "done",
+      "id": "overlay-visual-fix-20260712c",
+      "status": "pending",
       "priority": 1,
-      "title": "rev24: Animator keep-in-place + feet bones + Editor.log",
+      "title": "rev25: Z-slab фасад + rebuild Walk controller + CrossFade",
       "created_by": "Cursor",
       "direct_tool": "overlay_playtest",
       "direct_args": {
         "reopen_unity": true
       },
-      "instructions": "deploy-rev 24. После update: overlay_playtest. Idle/Walk не T-pose; стопы на полу; фасад не белый куб; gist с Editor.log + viu_animator.log. Fail→escalate. Дена не спрашивать.",
-      "acceptance": "Animator plays; feet on ground; home facade open; Editor.log in gist.",
-      "started_at": "2026-07-12T06:58:18Z",
-      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nУже есть: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка OK: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\AnabarraOverlay.exe\n--- build ---\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphsExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Graphs/GraphPointerException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Reflection/Operators/OperatorException.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Ensure/ExceptionMessages.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Utilities/ExceptionUtility.cs\n 0.1 kb\t 0.0% Packages/com.unity.visualscripting/Runtime/VisualScripting.Core/Exceptions/DebugUtility.cs\n[Viu] Overlay build OK: U:/Anabarra/Unity/Anabarra/Builds/AnabarraOverlay/AnabarraOverlay.exe\n[Viu] Launcher: U:/Anabarra/Unity/Anabarra/Assets\\..\\Builds/AnabarraOverlay\\LaunchOverlay.bat\nЗапуск: U:\\Anabarra\\Unity\\Anabarra\\Builds\\AnabarraOverlay\\LaunchOverlay.bat\n--- overlay_boot.log ---\n﻿09:58:47 Awake: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048\n09:58:47 Start args=AnabarraOverlay.exe -force-d3d11-bitblt-model -popupwindow\n09:58:47 HWND ok\n09:58:47 Geometry 2560x1440 at 0,0\n09:58:47 SetLayeredWindowAttributes=True err=0\n09:58:47 ColorKey pass 1, Esc=выход\n09:58:47 AfterWindow: renderers=5063/5063 shanya=True name=Shanya_Erisa home=Viu_Home_Old_Stables homeMesh=5048/5048\n\n--- вердикт ---\nOK: HWND + ColorKey + сцена в boot-логе. Eyes/gist — источник правды, не Ден.\n--- eyes ---\nОкно не найдено ('Unity'). Видны: ['Civitai Video Gallery | AI-Generated Art Showcase - Google Chrome', 'Вью — Анабарра', 'Набросок на фрагменте экрана', '(3) \\u200eВью – (72)', 'Total Commander 9.51 - PowerUser v72    Вс 12 июл 2026    09:59:01    Память: 43%    ЦП: 15%', 'EqualizerFrame', 'Shadow Sector - Голос 002', 'Happ 2.5.2 (523)', 'Ollama', 'Медиаплеер', 'Медиаплеер', 'NVIDIA GeForce Overlay', 'Microsoft Text Input Application', 'Program Manager']\nUnity Editor снова открыт.\nSupport bundle: U:\\Viu\\.viu\\support\\viu_logs_20260712_095902.zip\nЛоги отправлены: https://gist.github.com/Shadowsector/2bbfbfe1010bc7f6ff3d71bc0e9184be",
-      "finished_at": "2026-07-12T06:59:03Z"
+      "instructions": "Сначала убедись что version ≠ 939233a (нужен 1ea0993+ / rev25). overlay_playtest. Player.log не должен содержать state≠Walk и «не нашла стенку» без Z-slab hide. Eyes должны поймать оверлей. False-done запрещён. Дена не спрашивать кроме уже запрошенных 2 пунктов в чате.",
+      "acceptance": "Walk plays; facade open/not solid white; eyes see overlay; Viu version includes rev25."
     }
   ]
 }

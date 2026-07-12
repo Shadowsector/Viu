@@ -45,10 +45,22 @@ namespace Viu.Runtime
                 r.enabled = false;
             }
 
+            // Если имени Wall_front нет (типично для сырого FBX) — режем переднюю
+            // «плиту» по Z: всё, что касается ближних 22% глубины дома к камере.
             if (LastMatchCount == 0)
+            {
+                float slab = nearZ + depth * 0.22f;
+                foreach (var r in GetComponentsInChildren<Renderer>(true))
+                {
+                    if (r == null || !r.enabled) continue;
+                    if (r.bounds.min.z > slab) continue;
+                    r.enabled = false;
+                    LastMatchCount++;
+                }
                 Debug.LogWarning(
-                    "[Viu] Dollhouse: не нашла стенку «" + target +
-                    "». Проверь .viu.json / имена в FBX. Белая «коробка» = фасад не скрыт.");
+                    "[Viu] Dollhouse: «" + target + "» не найдена — скрыто по Z-slab: "
+                    + LastMatchCount + " (белый куб = фасад). Пришли имена детей дома.");
+            }
             else
                 Debug.Log("[Viu] Dollhouse: скрыто мешей передней стенки: " + LastMatchCount);
         }

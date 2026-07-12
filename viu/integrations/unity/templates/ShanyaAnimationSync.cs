@@ -93,11 +93,10 @@ namespace Viu.Editor
             }
 
             EnsureFolder(Path.GetDirectoryName(OverlayControllerPath).Replace('\\', '/'));
-            AnimatorController controller;
+            // Всегда пересобираем: старый .controller часто без Idle↔Walk → слайд.
             if (File.Exists(OverlayControllerPath))
-                controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(OverlayControllerPath);
-            else
-                controller = AnimatorController.CreateAnimatorControllerAtPath(OverlayControllerPath);
+                AssetDatabase.DeleteAsset(OverlayControllerPath);
+            var controller = AnimatorController.CreateAnimatorControllerAtPath(OverlayControllerPath);
 
             ApplyStates(controller, loco);
             AssetDatabase.SaveAssets();

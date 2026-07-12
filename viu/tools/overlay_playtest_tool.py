@@ -272,15 +272,30 @@ class OverlayPlaytestTool(Tool):
         build_ok = proc.returncode == 0
         # Без блока глаз — не done: иначе снова «ОК» вслепую.
         has_eyes = "--- eyes ---" in text
-        if build_ok and not has_eyes:
+        eyes_miss = "окно не найдено" in text.lower()
+        if build_ok and (not has_eyes or eyes_miss):
             lines.append(
                 "--- вердикт ---\n"
-                "WARN: boot есть, но глаза не отработали (обнови Viu до сборки с eyes)."
+                "FAIL: глаза не видели оверлей (окно не найдено / eyes не отработали). Не done."
             )
             text = "\n".join(lines)
             return ToolResult(False, text)
+        # Player.log улики — не помечать OK
+        player_bad = (
+            "state≠Walk" in text
+            or "state!=Walk" in text
+            or "не нашла стенку" in text
+            or "Z-slab" in text and "скрыто по Z-slab: 0" in text
+        )
         play_ok = build_ok and (not verdict or verdict.startswith("OK:")) and has_eyes
         if play_ok and "WARN:" in text and "--- вердикт (после eyes) ---" in text:
+            play_ok = False
+        if play_ok and player_bad:
+            lines.append(
+                "--- вердикт ---\n"
+                "FAIL: Player.log — Walk/Dollhouse сломаны (см. [Viu] выше). Не done."
+            )
+            text = "\n".join(lines)
             play_ok = False
         return ToolResult(play_ok, text)
 

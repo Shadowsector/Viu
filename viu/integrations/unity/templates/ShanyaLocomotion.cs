@@ -64,9 +64,16 @@ namespace Viu.Runtime
                         var info = _animator.GetCurrentAnimatorStateInfo(0);
                         if (!info.IsName("Walk"))
                         {
+                            bool hasWalk = _animator.HasState(0, Animator.StringToHash("Walk"));
                             Debug.LogWarning(
-                                "[Viu] Locomotion: Speed>0 но state≠Walk. "
-                                + "Проверь overlay controller Idle↔Walk и Avatar.");
+                                "[Viu] Locomotion: Speed>0 state≠Walk hasWalk=" + hasWalk
+                                + " avatar=" + (_animator.avatar != null && _animator.avatar.isValid)
+                                + " human=" + _animator.isHuman
+                                + " ctrl=" + (_animator.runtimeAnimatorController != null
+                                    ? _animator.runtimeAnimatorController.name : "null")
+                                + " — CrossFade Walk fallback.");
+                            if (hasWalk)
+                                _animator.CrossFade("Walk", 0.05f, 0);
                         }
                         _loggedMissingWalk = true;
                     }
