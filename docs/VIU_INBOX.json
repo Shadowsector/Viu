@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T08:50:00Z",
+  "updated_at": "2026-07-12T08:45:48Z",
   "note": "rev31: CS0128 already fixed; DWM margins=-1 ColorKey; -force-d3d11; quarantine stale exe on FAIL; flip YAML force.",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712i",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "rev31: compile+magenta DWM-1 + Idle/Walk recover",
       "created_by": "Cursor",
@@ -15,7 +15,8 @@
         "timeout": 2400
       },
       "instructions": "MUST pull latest first (c0a580c+rev31). CS0128 bodyAvatar duplicate is GONE — if you still see CS0128, deploy is stale. Build: Legacy recover Idle/Walk, no -nographics. Magenta: launcher -force-d3d11 -force-d3d11-bitblt-model; ColorKey margins=-1; ProjectSettings flip=0 YAML. On build FAIL rename exe to .broken so Den cannot run old T-pose build. Expect Overlay locomotion OK + boot gfx=Direct3D11 + SetLayeredWindowAttributes=True margins=-1. Eyes: transparent bg not solid magenta; Shanya Idle not T-pose.",
-      "acceptance": "Build OK; hasWalk=True; chroma transparent (desktop visible); Shanya Idle/Walk not T-pose."
+      "acceptance": "Build OK; hasWalk=True; chroma transparent (desktop visible); Shanya Idle/Walk not T-pose.",
+      "started_at": "2026-07-12T08:45:48Z"
     }
   ]
 }
