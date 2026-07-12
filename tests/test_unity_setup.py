@@ -161,7 +161,8 @@ def test_overlay_templates(tmp_path):
     assert "X Bot@Idle.fbx" in sync
     assert "DetectRunAsWalkSpeed" in loco
     assert "WalkThreshold = 0.25f" in loco
-    assert "GetAxisRaw" not in loco
+    assert 'return Input.GetAxisRaw("Horizontal")' not in loco
+    assert "НЕ использовать" in loco
     assert "Create From This Model (не Copy Erisa)" in sync
     assert "Никогда Copy From Other к Erisa" in sync
     assert "HomeShanyaFrontGap" in setup
