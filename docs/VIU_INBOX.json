@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-07-12T08:24:12Z",
+  "updated_at": "2026-07-12T08:24:30Z",
   "note": "rev29: ForceExtractClips — FBX takes→clipAnimations before LoadFirstAnimationClip.",
   "tasks": [
     {
       "id": "overlay-visual-fix-20260712f",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": 1,
       "title": "rev29: extract AnimationClips from FBX takes",
       "created_by": "Cursor",
@@ -15,7 +15,9 @@
       },
       "instructions": "deploy-rev 29. Root cause of FAIL: Shanya_Walk/Idle FBX exist but clipAnimations empty → LoadFirstAnimationClip null. Fix: EnsureAllAnimationFbxImport + ForceExtractClips (defaultClipAnimations → clipAnimations + SaveAndReimport) BEFORE discover/pin. Expect build log: Overlay locomotion OK Idle<Shanya_Idle…> Walk<Shanya_Walk…>. NOT Idle_Stand. First run may reimport all Animations/*.fbx (slow once).",
       "acceptance": "Build OK; viu_animator.log hasWalk=True ctrl=Shanya_Overlay_Locomotion; Walk on A/D; chroma not solid magenta.",
-      "started_at": "2026-07-12T08:24:12Z"
+      "started_at": "2026-07-12T08:24:12Z",
+      "result": "Unity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка FAIL\n[Viu] Нет AnimationClip в Shanya_SitIdle_4.fbx\n[Viu] Нет AnimationClip в Shanya_SleepIdle.fbx\n[Viu] Нет AnimationClip в Shanya_Walk.fbx\n[Viu] Нет AnimationClip в Shanya_Yawn.fbx\n[Viu] Пропуск (непонятное имя): X Bot@Bashful.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Crawling.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Нет AnimationClip в X Bot@Female Tough Walk.fbx\n[Viu] Пропуск (непонятное имя): X Bot@Flying Kick.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Gathering Objects.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Нет AnimationClip в X Bot@Idle.fbx\n[Viu] Пропуск (непонятное имя): X Bot@Kicking Out.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Laying.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Reacting.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Roll Kicking.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Нет AnimationClip в X Bot@Sit To Stand.fbx\n[Viu] Нет AnimationClip в X Bot@Stand To Sit.fbx\n[Viu] overlay_preferred без клипа: Shanya_Idle.fbx\n[Viu] overlay_preferred без клипа: Shanya_Walk.fbx\n[Viu] Overlay locomotion FAIL: Idle=False Walk=False. Нужны Shanya_Idle.fbx и Shanya_Walk.fbx в Assets/Characters/Shanya/Animations. НЕ подставляю Idle_Stand (там нет Walk → слайд).\n[Viu] Overlay build: [Viu] Overlay locomotion FAIL — нет Shanya_Idle/Shanya_Walk. НЕ собираю старую сцену с Idle_Stand.\n\n--- escalate ---\nЭСКАЛАЦИЯ: инструмент `overlay_playtest` не справился.\nInbox task: `overlay-visual-fix-20260712f`\n\nОшибка / лог:\nUnity close: Unity.exe не запущен.\nEditor: ShanyaSetup.cs, ShanyaOutfit.cs, ShanyaAnimationSync.cs, ShanyaOverlaySetup.cs\nShanyaLocomotion.cs, ShanyaFollowCamera.cs, ShanyaDesktopOverlay.cs, ShanyaOverlayCamera.cs, ShanyaOverlayDepth.cs, DollhouseWall.cs\nОбновлён: U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Animations\\viu_clips.json\nСборка FAIL\n[Viu] Нет AnimationClip в Shanya_SitIdle_4.fbx\n[Viu] Нет AnimationClip в Shanya_SleepIdle.fbx\n[Viu] Нет AnimationClip в Shanya_Walk.fbx\n[Viu] Нет AnimationClip в Shanya_Yawn.fbx\n[Viu] Пропуск (непонятное имя): X Bot@Bashful.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Crawling.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Нет AnimationClip в X Bot@Female Tough Walk.fbx\n[Viu] Пропуск (непонятное имя): X Bot@Flying Kick.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Gathering Objects.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Нет AnimationClip в X Bot@Idle.fbx\n[Viu] Пропуск (непонятное имя): X Bot@Kicking Out.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Laying.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Reacting.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Пропуск (непонятное имя): X Bot@Roll Kicking.fbx — переименуй (Walk, Idle) или viu_clips.json\n[Viu] Нет AnimationClip в X Bot@Sit To Stan",
+      "finished_at": "2026-07-12T08:24:30Z"
     }
   ]
 }
