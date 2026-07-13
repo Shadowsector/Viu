@@ -35,6 +35,9 @@ class LabSession:
     inbox_ok: bool = False
     import_ok: bool = False
     import_auto: bool = False
+    import_deployed: bool = False
+    viewport_ok: bool = False
+    capture_verdict: str = ""
     last_fail_step: int = -1
     last_fail_msg: str = ""
     step_fail_counts: Dict[str, int] = field(default_factory=dict)

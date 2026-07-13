@@ -97,6 +97,28 @@ def _journal_tail_for_report(text: str, *, max_chars: int = 1200) -> str:
 _WS_RE = re.compile(r"\s+")
 
 
+def _iteration_outcome(session: LabSession) -> Tuple[str, str]:
+    """(код, человекочитаемое описание): SUCCESS | PARTIAL | FAIL."""
+    if session.viewport_ok and session.capture_verdict == "MODEL_OK":
+        return (
+            "SUCCESS",
+            "✅ Успех: модель в viewport Cascadeur (vision: MODEL_OK).",
+        )
+    if session.launch_ok and any(a.lower().endswith(".png") for a in session.artifacts):
+        v = session.capture_verdict or "?"
+        return (
+            "PARTIAL",
+            f"⚠ Частично: Cascadeur запущен, скрин сохранён, но модель **не** в viewport "
+            f"(vision: {v}). Deploy/import-скрипт ≠ импорт в UI.",
+        )
+    if session.import_deployed:
+        return (
+            "PARTIAL",
+            "⚠ Частично: команда import задеплоена, viewport не проверен.",
+        )
+    return ("FAIL", "❌ Цель не достигнута: нет подтверждённого скрина с моделью.")
+
+
 def _check_abort(session: LabSession) -> Optional[StepResult]:
     if lab_controller.should_abort_step():
         session.status = "paused"
@@ -124,6 +146,7 @@ def step_models_scan(config: Config, session: LabSession) -> StepResult:
     if aborted:
         return aborted
     ok, msg, art = build_models_summary(config, topic=session.topic)
+    msg = msg + "\n(Blender rig-check — headless, окно не показывается.)"
     append_journal(config, session.topic, f"### Модели (rig-check)\n\n{msg}")
     if art:
         _append_artifact(session, art)
@@ -215,8 +238,12 @@ def step_import_fbx(config: Config, session: LabSession) -> StepResult:
     focus_cascadeur_window()
     fbx = latest_inbox_fbx(config)
     ok, msg, opened = trigger_fbx_import(config, fbx, topic=session.topic)
-    session.import_ok = ok
+    session.import_deployed = ok
     session.import_auto = opened
+    session.import_ok = False
+    session.viewport_ok = False
+    if opened:
+        session.import_ok = True  # tentative — vision на шаге скрина подтвердит
     time.sleep(2.0 if opened else 0.5)
     append_journal(config, session.topic, f"### Import FBX\n\n{msg}")
     return ok, msg, None
@@ -255,6 +282,8 @@ def step_capture(config: Config, session: LabSession) -> StepResult:
     from ..integrations.cascadeur.window import find_cascadeur_hwnd
     from ..integrations.apps.process import app_running
 
+    from ..integrations.cascadeur.import_fbx import latest_inbox_fbx
+
     if not session.launch_ok and not app_running("cascadeur"):
         msg = "Пропуск скрина: Cascadeur не запущен (шаг 5 не пройден)."
         append_journal(config, session.topic, f"### Скрин\n\n{msg}")
@@ -266,13 +295,17 @@ def step_capture(config: Config, session: LabSession) -> StepResult:
     time.sleep(1.5)
     shot = artifacts_dir(config, session.topic) / f"cascadeur_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
     mon = lab_monitor_index(config)
+    has_fbx = latest_inbox_fbx(config) is not None
     ok, msg, meta = capture_and_verify_cascadeur(
         config,
         shot,
         monitor_index=mon,
-        require_model=bool(session.import_ok),
+        require_model=has_fbx,
     )
+    verdict = str(meta.get("verdict") or "UNKNOWN")
+    session.capture_verdict = verdict
     if meta.get("verdict") == "MODEL_OK":
+        session.viewport_ok = True
         session.import_ok = True
     append_journal(config, session.topic, f"### Скрин\n\n{msg}")
     if ok:
@@ -293,17 +326,28 @@ def step_report(config: Config, session: LabSession) -> StepResult:
         except OSError:
             pass
     arts = "\n".join(f"- {a}" for a in session.artifacts[-8:])
+    outcome_code, outcome_text = _iteration_outcome(session)
     import_hint = ""
-    if session.import_ok and not session.import_auto:
+    if session.import_deployed and not session.viewport_ok:
         import_hint = (
-            "\n⚠ FBX не открыт автоматически (нет ассоциации .fbx). "
-            "На скрине может быть welcome — Commands → Reload scripts → **Viu.Lab Import**.\n"
+            "\n--- Что сделать вручную ---\n"
+            "1. Cascadeur → **New scene**\n"
+            "2. **File → Import → Fbx/Dae** — preset **Scene**, Add new, Open first take\n"
+            "   или **Commands → Reload scripts → Viu → LabImport**\n"
+            "3. Rig Mode Helper → **No**\n"
+            "4. Снова «Лаборатория» (или только шаг скрина после импорта)\n"
+        )
+    elif session.import_ok and not session.import_auto:
+        import_hint = (
+            "\n⚠ FBX открыт без ассоциации .fbx — проверь диалог Import на скрине.\n"
         )
     report = (
-        "Лаборатория Cascadeur — итерация завершена.\n\n"
+        f"Лаборатория Cascadeur — итерация завершена [{outcome_code}].\n\n"
+        f"{outcome_text}\n\n"
         f"Артефакты:\n{arts or '(нет)'}\n"
         f"{import_hint}\n"
-        "Жду оценки: техника, изобретательность, старание, полезность, ясность (1–5).\n\n"
+        "Жду оценки: техника, изобретательность, старание, полезность, ясность (1–5).\n"
+        "Оценивай по факту: PARTIAL = пайплайн не доведён до модели в viewport.\n\n"
         f"Journal: {jpath}\n\n"
         "--- хвост journal ---\n"
         f"{tail}"

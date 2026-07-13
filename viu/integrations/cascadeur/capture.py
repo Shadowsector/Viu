@@ -21,15 +21,56 @@ _CASCADEUR_VISION_PROMPT = (
 
 
 def _parse_verdict(vision_text: str) -> str:
+    """Разбор ответа VL-модели (llava часто пишет «Start Screen», не WELCOME)."""
     if not vision_text:
         return "UNKNOWN"
+    upper = vision_text.upper()
+    # Явные теги из промпта (если модель их вывела)
     for tag in ("MODEL_OK", "WELCOME", "EMPTY_SCENE", "DIALOG", "UNKNOWN"):
-        if tag in vision_text.upper():
+        if tag in upper:
             return tag
+
+    low = vision_text.lower()
+    model_hints = (
+        "model_ok",
+        "модель видна",
+        "персонаж вид",
+        "видна модель",
+        "character visible",
+        "3d viewport",
+        "viewport с модель",
+    )
+    if any(h in low for h in model_hints):
+        return "MODEL_OK"
+
+    dialog_hints = ("import", "rig mode", "rig mode helper", "диалог")
+    if sum(1 for h in dialog_hints if h in low) >= 2 or (
+        "import" in low and ("rig" in low or "диалог" in low)
+    ):
+        return "DIALOG"
+
+    welcome_hints = (
+        "start screen",
+        "welcome",
+        "стартов",
+        "welcome screen",
+        "start screen или",
+        "это start",
+    )
+    if any(h in low for h in welcome_hints):
+        return "WELCOME"
+
+    empty_hints = ("пустая сцена", "empty scene", "нет модел", "нет персонаж", "no model", "no character")
+    if any(h in low for h in empty_hints):
+        return "EMPTY_SCENE"
+
     m = re.search(r"вердикт[^\n]*?:?\s*(\w+)", vision_text, re.I)
     if m:
         return m.group(1).upper()
     return "UNKNOWN"
+
+
+_NOT_OK_VERDICTS = frozenset({"WELCOME", "EMPTY_SCENE", "DIALOG"})
 
 
 def capture_cascadeur_png(
@@ -88,13 +129,27 @@ def capture_and_verify_cascadeur(
     if v_ok:
         lines.append("--- vision ---")
         lines.append(v_text)
-        if require_model and verdict in ("WELCOME", "EMPTY_SCENE"):
+        lines.append(f"verdict: {verdict}")
+        if require_model and (verdict in _NOT_OK_VERDICTS or verdict == "UNKNOWN"):
+            hint = {
+                "WELCOME": "стартовый экран Cascadeur",
+                "EMPTY_SCENE": "пустой viewport",
+                "DIALOG": "открыт диалог Import/Rig — импорт не завершён",
+                "UNKNOWN": "vision не уверена — модель не подтверждена",
+            }.get(verdict, verdict)
             lines.append(
-                f"\n⏸ Vision: {verdict} — модель не в viewport. "
-                "Import FBX (File→Import или Viu.LabImport) и повтори."
+                f"\n⏸ Vision: {verdict} ({hint}). "
+                "Нужен viewport с моделью: New scene → File→Import (Scene) "
+                "или Commands → Viu → LabImport."
             )
             return False, "\n".join(lines), meta
     else:
         lines.append(f"(vision: {v_text})")
+        if require_model:
+            lines.append(
+                "\n⏸ Vision недоступна — модель в viewport не подтверждена "
+                "(ollama pull llava)."
+            )
+            return False, "\n".join(lines), meta
 
     return True, "\n".join(lines), meta

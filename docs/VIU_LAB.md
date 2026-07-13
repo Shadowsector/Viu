@@ -53,8 +53,8 @@ U:\Anabarra\Library\Lab\Models\Inbox\    ← rig-check + сводка models_sum
 5. Запуск + монитор
 6. **Import FBX** — команда `Viu.Lab Import` (Python) + `pending_import.json`
 7. **Фокус мышью** — только в **away** и только Windows; курсор сразу возвращается на место
-8. **Скрин UI** — HWND по PID `cascadeur.exe` (не по заголовку «Cascadeur») + **vision** (Ollama VL): WELCOME / MODEL_OK / EMPTY_SCENE
-9. Отчёт → **awaiting_rating** (+ Telegram в away)
+8. **Скрин UI** — HWND по PID + **vision** (Ollama VL). Шаг **не проходит**, если welcome/диалог/пусто — только `MODEL_OK`
+9. Отчёт → **awaiting_rating** с меткой **[SUCCESS]** или **[PARTIAL]** (+ Telegram в away)
 
 **Inbox / launch / import / capture** — при ошибке шаг **не сдвигается**. После **2 неудач** на одном шаге следующий клик «Лаборатория» — не слепой повтор, а **RECOVER**: `cascadeur_status`, список окон, web, vision по последнему PNG, запись в journal + Telegram (away). При 4× — auto-reset с шага 1; при capture без окна — откат к шагу «Запуск».
 

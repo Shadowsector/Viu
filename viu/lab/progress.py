@@ -14,7 +14,12 @@ def format_lab_progress(session: LabSession, msg: str, *, continued: bool = Fals
         prefix = "Продолжаю итерацию (не с нуля).\n"
 
     if session.status == "awaiting_rating":
-        head = f"Lab «{session.topic}» — итерация завершена, жду оценку"
+        outcome = ""
+        if session.capture_verdict and not session.viewport_ok:
+            outcome = f" [PARTIAL — vision: {session.capture_verdict}]"
+        elif session.viewport_ok:
+            outcome = " [SUCCESS]"
+        head = f"Lab «{session.topic}» — итерация завершена{outcome}, жду оценку"
     elif session.last_fail_step >= 0:
         n = session.last_fail_step + 1
         label = STEP_LABELS[session.last_fail_step]
