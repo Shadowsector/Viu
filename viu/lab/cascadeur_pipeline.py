@@ -165,10 +165,13 @@ def step_mouse_focus(config: Config, session: LabSession) -> StepResult:
     aborted = _check_abort(session)
     if aborted:
         return aborted
-    from ..integrations.input.mouse import focus_window_center, lab_mouse_enabled
+    from ..integrations.input.mouse import focus_window_center, lab_mouse_allowed
 
-    if not lab_mouse_enabled(config):
-        msg = "Мышь: пропуск (VIU_LAB_MOUSE=0 или не Windows)."
+    if not lab_mouse_allowed(config):
+        msg = (
+            "Мышь: пропуск — ты дома (lab не трогает курсор) "
+            "или VIU_LAB_MOUSE=0."
+        )
         append_journal(config, session.topic, f"### Мышь\n\n{msg}")
         return True, msg, None
 

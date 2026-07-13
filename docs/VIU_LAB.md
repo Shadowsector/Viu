@@ -49,7 +49,7 @@ Lab для каждого `.blend` запускает Blender headless (`dump_bl
 3. Web-исследование (docs, export FBX)
 4. **Случайная модель** → Cascadeur Inbox
 5. Запуск + монитор
-6. **Фокус мышью** (Windows, `VIU_LAB_MOUSE=1`)
+6. **Фокус мышью** — только в **away** и только Windows; курсор сразу возвращается на место
 7. Скрин UI
 8. Отчёт → **awaiting_rating** (+ Telegram в away)
 
@@ -93,11 +93,23 @@ VIU_LAB_VRAM_GB=6
 VIU_LAB_MONITOR=2
 VIU_LAB_INTERVAL_MIN=5
 VIU_LAB_MOUSE=1
+VIU_LAB_MOUSE_AWAY_ONLY=1
 VIU_LAB_MODELS_INBOX=U:\Anabarra\Library\Lab\Models\Inbox
 VIU_CASCADEUR_EXE=C:\Program Files\Cascadeur\Cascadeur.exe
 ```
 
 `OLLAMA_MAX_VRAM` подсказывается при lab-шагах с web/LLM.
+
+## Мышь — не отбирает
+
+Lab **не захватывает** курсор (нет hook, нет блокировки ввода).
+
+- Шаг «мышь» **только в режиме «меня нет»** (`VIU_LAB_MOUSE_AWAY_ONLY=1` по умолчанию).
+- Пока ты **дома** — lab вообще не трогает мышь.
+- В away: один клик в центр Cascadeur → **сразу** курсор возвращается туда, где был.
+- На `awaiting_rating` lab idle — мышь полностью твоя.
+
+Отключить совсем: `VIU_LAB_MOUSE=0`.
 
 ## LLM для лаборатории
 

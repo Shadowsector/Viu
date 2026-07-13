@@ -3,6 +3,8 @@
 from pathlib import Path
 
 from viu.config import Config
+from viu.lab.models_inbox import (
+    _grade,
     _score_rig,
     build_models_summary,
     copy_random_model_to_cascadeur_inbox,
@@ -71,11 +73,6 @@ def test_list_model_files(tmp_path):
 
 def test_copy_random_uses_seed_when_empty(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path)
-    monkeypatch.setattr(
-        "viu.lab.models_inbox.seed_inbox_sample_fbx",
-        lambda _c: (True, "seed ok", tmp_path / "seed.fbx"),
-        raising=False,
-    )
     from viu.integrations.cascadeur import launch as launch_mod
 
     monkeypatch.setattr(
@@ -89,12 +86,26 @@ def test_copy_random_uses_seed_when_empty(tmp_path, monkeypatch):
 
 
 def test_mouse_disabled_on_linux():
-    from viu.integrations.input.mouse import click_screen, lab_mouse_enabled
+    from viu.integrations.input.mouse import click_screen, lab_mouse_allowed, lab_mouse_enabled
 
     assert not lab_mouse_enabled()
+    assert not lab_mouse_allowed()
     ok, msg = click_screen(100, 100)
     assert not ok
     assert "Windows" in msg or "Мышь" in msg
+
+
+def test_mouse_allowed_only_when_away(tmp_path, monkeypatch):
+    from viu.integrations.input.mouse import lab_mouse_allowed
+
+    cfg = _cfg(tmp_path)
+    monkeypatch.setenv("VIU_LAB_MOUSE", "1")
+    monkeypatch.setattr("viu.integrations.input.mouse.sys.platform", "win32")
+    monkeypatch.setattr("viu.presence.is_away", lambda _c: False)
+    assert not lab_mouse_allowed(cfg)
+
+    monkeypatch.setattr("viu.presence.is_away", lambda _c: True)
+    assert lab_mouse_allowed(cfg)
 
 
 def test_notify_lab_step_only_when_away(tmp_path, monkeypatch):

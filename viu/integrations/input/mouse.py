@@ -1,14 +1,17 @@
 """Эмуляция мыши для лаборатории (Windows SendInput).
 
-На Linux/macOS — заглушка (Capture/launch без кликов).
-Включение: VIU_LAB_MOUSE=1 (по умолчанию на win32).
+Один краткий клик для фокуса Cascadeur — без захвата курсора.
+Позиция курсора сохраняется и восстанавливается сразу после клика.
+
+По умолчанию мышь lab **только в режиме «меня нет»** (VIU_LAB_MOUSE_AWAY_ONLY=1).
+На Linux/macOS — заглушка.
 """
 
 from __future__ import annotations
 
 import os
 import sys
-from typing import Tuple
+from typing import Optional, Tuple
 
 
 def lab_mouse_enabled(config=None) -> bool:
@@ -27,11 +30,64 @@ def lab_mouse_enabled(config=None) -> bool:
     return sys.platform == "win32"
 
 
-def click_screen(x: int, y: int, *, button: str = "left") -> Tuple[bool, str]:
-    """Клик в экранных координатах."""
-    if not lab_mouse_enabled():
-        return False, "Мышь: только Windows (VIU_LAB_MOUSE=1)"
+def lab_mouse_away_only(config=None) -> bool:
+    """True — не трогать мышь, пока Ден «дома»."""
+    raw = os.environ.get("VIU_LAB_MOUSE_AWAY_ONLY", "1")
+    if raw.strip().lower() in ("0", "false", "no", "off"):
+        return False
+    if config is not None:
+        try:
+            from ...runtime_settings import get
 
+            val = get(config, "lab_mouse_away_only", None)
+            if val is not None and str(val).strip().lower() in ("0", "false", "no", "off"):
+                return False
+        except Exception:
+            pass
+    return True
+
+
+def lab_mouse_allowed(config=None) -> bool:
+    """Можно ли lab сейчас трогать мышь."""
+    if not lab_mouse_enabled(config):
+        return False
+    if lab_mouse_away_only(config) and config is not None:
+        from ...presence import is_away
+
+        return is_away(config)
+    if lab_mouse_away_only(config) and config is None:
+        return False
+    return True
+
+
+def _cursor_pos() -> Optional[Tuple[int, int]]:
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    pt = wintypes.POINT()
+    if not ctypes.windll.user32.GetCursorPos(ctypes.byref(pt)):
+        return None
+    return int(pt.x), int(pt.y)
+
+
+def _set_cursor_pos(x: int, y: int) -> bool:
+    if sys.platform != "win32":
+        return False
+    import ctypes
+
+    return bool(ctypes.windll.user32.SetCursorPos(int(x), int(y)))
+
+
+def click_screen(
+    x: int,
+    y: int,
+    *,
+    button: str = "left",
+    restore_cursor: bool = True,
+) -> Tuple[bool, str]:
+    """Клик в экранных координатах; по умолчанию возвращает курсор на место."""
     if sys.platform != "win32":
         return False, "Мышь: не Windows"
 
@@ -39,7 +95,8 @@ def click_screen(x: int, y: int, *, button: str = "left") -> Tuple[bool, str]:
     from ctypes import wintypes
 
     user32 = ctypes.windll.user32
-    # Абсолютные координаты 0..65535
+    saved = _cursor_pos() if restore_cursor else None
+
     sw = user32.GetSystemMetrics(0)
     sh = user32.GetSystemMetrics(1)
     ax = int(x * 65535 / max(sw - 1, 1))
@@ -85,16 +142,19 @@ def click_screen(x: int, y: int, *, button: str = "left") -> Tuple[bool, str]:
         else:
             _send(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_ABSOLUTE)
             _send(MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE)
-        return True, f"Клик ({x}, {y})"
+        suffix = ""
+        if saved is not None:
+            if _set_cursor_pos(saved[0], saved[1]):
+                suffix = f"; курсор возвращён ({saved[0]}, {saved[1]})"
+        return True, f"Клик ({x}, {y}){suffix}"
     except OSError as exc:
+        if saved is not None:
+            _set_cursor_pos(saved[0], saved[1])
         return False, str(exc)
 
 
 def focus_window_center(hwnd: int) -> Tuple[bool, str]:
-    """Активировать окно и кликнуть в центр (фокус для Cascadeur UI)."""
-    if not lab_mouse_enabled():
-        return True, "Мышь: пропуск (VIU_LAB_MOUSE=0 или не Windows)"
-
+    """Активировать окно и кликнуть в центр; курсор Дена восстанавливается."""
     if sys.platform != "win32":
         return True, "Мышь: пропуск (не Windows)"
 
@@ -109,7 +169,7 @@ def focus_window_center(hwnd: int) -> Tuple[bool, str]:
     user32.SetForegroundWindow(hwnd)
     cx = (rect.left + rect.right) // 2
     cy = (rect.top + rect.bottom) // 2
-    ok, msg = click_screen(cx, cy)
+    ok, msg = click_screen(cx, cy, restore_cursor=True)
     if ok:
-        return True, f"Фокус окна + клик в центр ({cx}, {cy})"
+        return True, f"Фокус окна + клик в центр ({cx}, {cy}). {msg}"
     return ok, msg
