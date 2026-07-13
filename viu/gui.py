@@ -474,6 +474,8 @@ class ViuGUI:
         if text.lower() in ("exit", "quit", "выход", "пока"):
             self.root.destroy()
             return
+        if self._try_direct_tool_command(text):
+            return
         from .integrations.telegram.router import route_user_message
 
         mode = route_user_message(text, waiting_for_user=self._telegram_waiting_reply)
@@ -957,6 +959,26 @@ class ViuGUI:
         ok, msg = self._telegram.test_connection()
         tag = "tool" if ok else "err"
         self._append("Вью", msg, tag=tag)
+
+    def _try_direct_tool_command(self, text: str) -> bool:
+        """lab_start reset=1 и др. — сразу инструмент, без «размышляет»."""
+        import re
+
+        raw = (text or "").strip()
+        m = re.match(
+            r"^(lab_(?:start|step|status|rate))(?:\s+(.+))?$",
+            raw,
+            re.IGNORECASE,
+        )
+        if not m:
+            return False
+        name = m.group(1).lower()
+        args: dict = {"topic": "cascadeur"}
+        tail = (m.group(2) or "").strip()
+        for key, val in re.findall(r"(\w+)=([\w.+-]+)", tail):
+            args[key.lower()] = val
+        self._run_tool(name, args, label=raw)
+        return True
 
     def _run_tool(self, name: str, args: dict, label: str = "", *, echo_user: bool = True) -> None:
         title = label or name

@@ -42,33 +42,75 @@ try:
         except Exception:
             pass
 
+    scene = bpy.context.scene
+    view_layer = bpy.context.view_layer
+
+    def _unhide_lc(lc):
+        try:
+            lc.exclude = False
+            lc.hide_viewport = False
+        except Exception:
+            pass
+        try:
+            lc.collection.hide_viewport = False
+        except Exception:
+            pass
+        for ch in lc.children:
+            _unhide_lc(ch)
+
+    _unhide_lc(view_layer.layer_collection)
+
+    skipped = []
+    for obj in list(bpy.data.objects):
+        if obj.type not in ("MESH", "ARMATURE"):
+            continue
+        if getattr(obj, "library", None):
+            continue
+        if obj.name in view_layer.objects:
+            continue
+        try:
+            scene.collection.objects.link(obj)
+        except RuntimeError:
+            pass
+
     bpy.ops.object.select_all(action="DESELECT")
     active_arm = None
     selected = []
-    for obj in bpy.data.objects:
+    for obj in list(view_layer.objects):
         if obj.type not in ("MESH", "ARMATURE"):
             continue
         try:
             if obj.hide_viewport or obj.hide_get():
-                continue
+                obj.hide_set(False)
+                obj.hide_viewport = False
         except Exception:
             pass
-        obj.select_set(True)
+        try:
+            obj.select_set(True)
+        except RuntimeError as exc:
+            skipped.append(f"{{obj.name}}: {{exc}}")
+            continue
         selected.append(obj.name)
         if obj.type == "ARMATURE" and active_arm is None:
             active_arm = obj
 
     if active_arm is None:
-        for obj in bpy.data.objects:
+        for obj in list(view_layer.objects):
             if obj.type == "ARMATURE":
+                try:
+                    obj.select_set(True)
+                except RuntimeError:
+                    continue
                 active_arm = obj
-                obj.select_set(True)
                 if obj.name not in selected:
                     selected.append(obj.name)
                 break
 
     if not selected:
-        raise RuntimeError("Нет MESH/ARMATURE для экспорта (сцена пуста или всё скрыто).")
+        raise RuntimeError(
+            "Нет MESH/ARMATURE для экспорта. "
+            + (f"Пропуск: {{skipped[:5]}}" if skipped else "Сцена пуста или всё скрыто.")
+        )
 
     if active_arm:
         bpy.context.view_layer.objects.active = active_arm
@@ -90,6 +132,7 @@ try:
         "ok": True,
         "output": out_path,
         "selected": selected,
+        "skipped": skipped,
         "hidden_widgets": hidden,
     }})
 except Exception as exc:

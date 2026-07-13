@@ -46,9 +46,10 @@ def test_export_command_includes_blend():
     assert "--" in cmd
 
 
-def test_export_script_has_wgt_hide():
-    assert "WGT" in EXPORT_SCRIPT
-    assert "export_scene.fbx" in EXPORT_SCRIPT
+def test_export_script_links_view_layer():
+    assert "view_layer" in EXPORT_SCRIPT
+    assert "scene.collection.objects.link" in EXPORT_SCRIPT
+    assert "select_set" in EXPORT_SCRIPT
 
 
 def test_export_shanya_mock_runner(tmp_path):
