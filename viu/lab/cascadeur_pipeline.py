@@ -8,10 +8,12 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 from ..config import Config
 from ..integrations.cascadeur import cascadeur_status
-from ..integrations.cascadeur.launch import ensure_cascadeur_running, seed_inbox_sample_fbx
-from ..integrations.screen.capture import capture_window_png, default_shot_path
+from ..integrations.cascadeur.launch import ensure_cascadeur_running
+from ..integrations.screen.capture import capture_window_png, find_hwnd
 from ..tools.web import WebSearchTool
 from .controller import lab_controller
+from .models_inbox import build_models_summary, copy_random_model_to_cascadeur_inbox
+from .notify import notify_lab_awaiting_rating, notify_lab_step
 from .paths import apply_lab_vram_env, artifacts_dir, journal_path, lab_monitor_index, task_path
 from .session import LabSession, append_journal, save_session
 
@@ -30,11 +32,13 @@ CASCADEUR_TASK_MD = """# Задание лаборатории: Cascadeur
 ## Пайплайн (каждая сессия)
 
 1. **Статус** — Inbox/Export, exe, что лежит в папках.
-2. **Исследование** — web: официальные docs, rig retarget, export FBX.
-3. **Inbox** — если пусто, положи sample FBX из Animations/.
-4. **Запуск** — открыть Cascadeur, окно на монитор `VIU_LAB_MONITOR` (по умолчанию 3-й).
-5. **Скрин** — зафиксировать UI после паузы (Ден может смотреть на 3-м мониторе).
-6. **Отчёт** — journal + запрос оценки по критериям (техника, изобретательность, …).
+2. **Модели** — скан `Library/Lab/Models/Inbox`, rig-check в Blender, сводка `models_summary.md`.
+3. **Исследование** — web: официальные docs, rig retarget, export FBX.
+4. **Inbox** — **случайная** модель из Lab Inbox → FBX в Cascadeur Inbox (или sample, если пусто).
+5. **Запуск** — открыть Cascadeur, окно на монитор `VIU_LAB_MONITOR` (по умолчанию 3-й).
+6. **Мышь** — фокус окна кликом в центр (`VIU_LAB_MOUSE=1`, Windows).
+7. **Скрин** — зафиксировать UI после паузы (Ден может смотреть на 3-м мониторе).
+8. **Отчёт** — journal + запрос оценки; в **автономном режиме** — кратко в Telegram.
 
 ## Ограничения
 
@@ -67,6 +71,29 @@ def _check_abort(session: LabSession) -> Optional[StepResult]:
         lab_controller.acknowledge_abort()
         return False, "Пауза: приоритет оператора (кнопка / обновление).", None
     return None
+
+
+STEP_LABELS = [
+    "Статус Cascadeur",
+    "Скан моделей + rig-check",
+    "Web-исследование",
+    "Случайная модель → Inbox",
+    "Запуск Cascadeur",
+    "Фокус мышью",
+    "Скрин UI",
+    "Отчёт",
+]
+
+
+def step_models_scan(config: Config, session: LabSession) -> StepResult:
+    aborted = _check_abort(session)
+    if aborted:
+        return aborted
+    ok, msg, art = build_models_summary(config, topic=session.topic)
+    append_journal(config, session.topic, f"### Модели (rig-check)\n\n{msg}")
+    if art:
+        session.artifacts.append(art)
+    return ok, msg, art
 
 
 def step_status(config: Config, session: LabSession) -> StepResult:
@@ -116,8 +143,8 @@ def step_inbox(config: Config, session: LabSession) -> StepResult:
     aborted = _check_abort(session)
     if aborted:
         return aborted
-    ok, msg, path = seed_inbox_sample_fbx(config)
-    append_journal(config, session.topic, f"### Inbox\n\n{msg}")
+    ok, msg, path = copy_random_model_to_cascadeur_inbox(config, topic=session.topic)
+    append_journal(config, session.topic, f"### Inbox (случайная модель)\n\n{msg}")
     art = str(path) if path else None
     if art:
         session.artifacts.append(art)
@@ -131,6 +158,28 @@ def step_launch(config: Config, session: LabSession) -> StepResult:
     mon = lab_monitor_index(config)
     ok, msg = ensure_cascadeur_running(config, monitor_index=mon)
     append_journal(config, session.topic, f"### Запуск Cascadeur (монитор {mon + 1})\n\n{msg}")
+    return ok, msg, None
+
+
+def step_mouse_focus(config: Config, session: LabSession) -> StepResult:
+    aborted = _check_abort(session)
+    if aborted:
+        return aborted
+    from ..integrations.input.mouse import focus_window_center, lab_mouse_enabled
+
+    if not lab_mouse_enabled(config):
+        msg = "Мышь: пропуск (VIU_LAB_MOUSE=0 или не Windows)."
+        append_journal(config, session.topic, f"### Мышь\n\n{msg}")
+        return True, msg, None
+
+    hwnd = find_hwnd("Cascadeur") or find_hwnd("cascadeur")
+    if not hwnd:
+        msg = "Окно Cascadeur не найдено — клик пропущен."
+        append_journal(config, session.topic, f"### Мышь\n\n{msg}")
+        return True, msg, None
+
+    ok, msg = focus_window_center(hwnd)
+    append_journal(config, session.topic, f"### Мышь\n\n{msg}")
     return ok, msg, None
 
 
@@ -172,14 +221,17 @@ def step_report(config: Config, session: LabSession) -> StepResult:
     session.last_report = report
     session.status = "awaiting_rating"
     append_journal(config, session.topic, f"### Отчёт\n\n{report[:2000]}")
+    notify_lab_awaiting_rating(config, report[:800])
     return True, report, None
 
 
 STEPS: list[Callable[[Config, LabSession], StepResult]] = [
     step_status,
+    step_models_scan,
     step_research,
     step_inbox,
     step_launch,
+    step_mouse_focus,
     step_capture,
     step_report,
 ]
@@ -202,9 +254,12 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
         return True, "Все шаги выполнены."
 
     fn = STEPS[session.step]
+    step_idx = session.step + 1
+    label = STEP_LABELS[session.step] if session.step < len(STEP_LABELS) else f"шаг {step_idx}"
     ok, msg, _art = fn(config, session)
     session.step += 1
     session.steps_total = len(STEPS)
+    notify_lab_step(config, step_idx, label, msg)
     if session.status == "paused":
         save_session(config, session)
         return False, msg

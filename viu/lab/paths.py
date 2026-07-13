@@ -39,6 +39,37 @@ def artifacts_dir(config: Config, topic: str) -> Path:
     return p
 
 
+def models_inbox_dir(config: Config) -> Path:
+    """Входящие модели для lab: rig-check и случайные прогоны в Cascadeur."""
+    import os
+
+    from ..anabarra_layout import library_root
+
+    env = os.environ.get("VIU_LAB_MODELS_INBOX", "").strip()
+    if env:
+        p = Path(env).expanduser()
+    else:
+        p = library_root(config) / "Lab" / "Models" / "Inbox"
+    p.mkdir(parents=True, exist_ok=True)
+    readme = p / "README.txt"
+    if not readme.is_file():
+        readme.write_text(
+            "Папка входящих моделей для лаборатории Вью.\n"
+            "Положи сюда .blend или .fbx персонажей.\n"
+            "Вью проверит кости в Blender и попробует случайно в Cascadeur.\n",
+            encoding="utf-8",
+        )
+    return p
+
+
+def models_summary_md(config: Config, topic: str) -> Path:
+    return artifacts_dir(config, topic) / "models_summary.md"
+
+
+def models_summary_json(config: Config, topic: str) -> Path:
+    return artifacts_dir(config, topic) / "models_summary.json"
+
+
 def _runtime_get(config: Config, key: str, default: str) -> str:
     try:
         from ..runtime_settings import get

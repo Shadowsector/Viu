@@ -15,6 +15,7 @@ from .config import Config
 
 LIBRARY_SUBDIRS: tuple[str, ...] = (
     "Blender",
+    "Lab/Models/Inbox",
     "Props/fbx",
     "Props/obj",
     "Props/glb",

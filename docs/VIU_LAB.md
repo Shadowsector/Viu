@@ -1,4 +1,4 @@
-# Лаборатория Вью (Lab v1)
+# Лаборатория Вью (Lab v1 + v2)
 
 Два режима в одном окне:
 
@@ -13,22 +13,56 @@
 
 1. Запускает `Cascadeur.exe` (если закрыт)
 2. Переносит окно на **3-й монитор** (`VIU_LAB_MONITOR=2`, нумерация с 0)
-3. Кладёт sample FBX в `Library/Cascadeur/Inbox`
-4. Делает **скрин окна** → `lab/cascadeur/artifacts/`
-5. Пишет **journal.md** и просит **оценку**
+3. Сканирует **Lab Models Inbox**, проверяет кости в Blender
+4. Кладёт **случайную** модель (FBX) в `Library/Cascadeur/Inbox`
+5. Опционально **кликает** в окно Cascadeur (фокус UI)
+6. Делает **скрин окна** → `lab/cascadeur/artifacts/`
+7. Пишет **journal.md** и просит **оценку** (в away — кратко в **Telegram**)
 
-Ден может смотреть на правый монитор, пока Вью «трудится».
+## Папка входящих моделей
 
-## Пайплайн (6 шагов)
+```
+U:\Anabarra\Library\Lab\Models\Inbox\
+  hero.blend
+  npc.fbx
+  README.txt
+```
+
+Или свой путь: `VIU_LAB_MODELS_INBOX=...`
+
+Lab для каждого `.blend` запускает Blender headless (`dump_blend_info` + `rig_check`-логика),
+для `.fbx` — помечает «maybe» без rig-check.
+
+Сводка:
+
+```
+.viu/lab/cascadeur/artifacts/models_summary.md
+.viu/lab/cascadeur/artifacts/models_summary.json
+```
+
+Колонка **Каскадёр**: good (≥70) / maybe / poor — по совместимости скелета с Humanoid.
+
+## Пайплайн (8 шагов)
 
 1. Статус (Inbox/Export/exe)
-2. Web-исследование (docs, export FBX)
-3. Sample FBX в Inbox
-4. Запуск + монитор
-5. Скрин UI
-6. Отчёт → **awaiting_rating**
+2. **Скан моделей + rig-check**
+3. Web-исследование (docs, export FBX)
+4. **Случайная модель** → Cascadeur Inbox
+5. Запуск + монитор
+6. **Фокус мышью** (Windows, `VIU_LAB_MOUSE=1`)
+7. Скрин UI
+8. Отчёт → **awaiting_rating** (+ Telegram в away)
 
 Прерывание: любая **кнопка GUI** или **«Обновить Вью»** → `paused`, journal сохранён.
+
+## Автономный режим + Telegram
+
+«Меня нет» → lab делает **+1 шаг** каждые `VIU_LAB_INTERVAL_MIN` минут.
+
+После каждого шага — **краткий** отчёт в бот (`🧪 Lab — шаг N`).
+После итерации — «итерация готова», Ден удалённо смотрит и ставит оценку на ПК.
+
+Нужны: `VIU_TELEGRAM_TOKEN`, chat привязан через `/start`.
 
 ## Оценки (1–5)
 
@@ -49,7 +83,7 @@ U:\Viu\.viu\lab\cascadeur\
   TASK.md       ← задание (не трогать без причины)
   session.json  ← шаг, статус, артефакты
   journal.md    ← ход мыслей
-  artifacts\    ← PNG скрины
+  artifacts\    ← PNG, models_summary.*
 ```
 
 ## Настройки
@@ -58,18 +92,29 @@ U:\Viu\.viu\lab\cascadeur\
 VIU_LAB_VRAM_GB=6
 VIU_LAB_MONITOR=2
 VIU_LAB_INTERVAL_MIN=5
+VIU_LAB_MOUSE=1
+VIU_LAB_MODELS_INBOX=U:\Anabarra\Library\Lab\Models\Inbox
 VIU_CASCADEUR_EXE=C:\Program Files\Cascadeur\Cascadeur.exe
 ```
 
 `OLLAMA_MAX_VRAM` подсказывается при lab-шагах с web/LLM.
+
+## LLM для лаборатории
+
+| Задача | Модель |
+|--------|--------|
+| Кнопки / пайплайн | **без LLM** (скрипты) |
+| Web-конспект, rig-summary текст | **gpt-4o-mini** или **gpt-4o** (OpenAI в GUI) |
+| Локально при лимите VRAM | **qwen2.5:14b** / **llama3.1:8b** (Ollama) |
+| Vision по скринам | только по запросу; не параллельно с Cascadeur |
+
+Не грузить тяжёлую local + Cascadeur + Unity одновременно на 6 GB VRAM.
 
 ## Кнопки / инструменты
 
 - **Лаборатория: Cascadeur** — `lab_start` + первый шаг
 - **Оценить лабораторию** — форма оценок
 - `lab_step`, `lab_status`, `lab_rate` — для чата/агента
-
-В **автономном режиме** (меня нет) lab делает **+1 шаг** каждые `VIU_LAB_INTERVAL_MIN` минут, если не занят оператор.
 
 ## Отложено: NSFW / фанфик-референсы
 

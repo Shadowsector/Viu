@@ -23,7 +23,7 @@ class LabSession:
     topic: str
     status: str = "idle"  # idle | running | paused | awaiting_rating | completed
     step: int = 0
-    steps_total: int = 6
+    steps_total: int = 8
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     last_report: str = ""
