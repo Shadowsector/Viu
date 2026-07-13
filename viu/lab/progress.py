@@ -18,7 +18,11 @@ def format_lab_progress(session: LabSession, msg: str, *, continued: bool = Fals
     elif session.last_fail_step >= 0:
         n = session.last_fail_step + 1
         label = STEP_LABELS[session.last_fail_step]
-        head = f"Lab «{session.topic}» — шаг {n}/{total} «{label}» — не пройден"
+        cnt = session.step_fail_counts.get(str(session.last_fail_step), 0)
+        extra = f" ({cnt}×)" if cnt else ""
+        head = f"Lab «{session.topic}» — ЗАСТРЯЛА шаг {n}/{total} «{label}»{extra}"
+        if cnt >= 2:
+            head += " → следующий клик = RECOVER"
     elif session.step <= 0:
         n = 1
         label = STEP_LABELS[0]

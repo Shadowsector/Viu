@@ -1259,7 +1259,7 @@ class ViuGUI:
     def _lab_start_action(self, *, reset: bool = False) -> None:
         from .lab.cascadeur_pipeline import CASCADEUR_TOPIC
 
-        args: dict = {"topic": CASCADEUR_TOPIC}
+        args: dict = {"topic": CASCADEUR_TOPIC, "run_all": "1"}
         if reset:
             args["reset"] = "1"
         self._run_tool("lab_start", args, label="Лаборатория: Cascadeur", echo_user=True)

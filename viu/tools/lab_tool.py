@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ..lab.cascadeur_pipeline import CASCADEUR_TOPIC, ensure_task_file, run_one_step, run_until_done
+from ..lab.cascadeur_pipeline import CASCADEUR_TOPIC, ensure_task_file
 from ..lab.models_inbox import inbox_models_newer_than_session
+from ..lab.prepare import run_lab_prepared
 from ..lab.progress import format_lab_progress
 from ..lab.ratings import average_score, validate_ratings
-from ..lab.session import LabSession, load_session, new_session, save_session
+from ..lab.session import load_session, save_session
 from .base import AgentContext, Tool, ToolResult
 
 
@@ -34,41 +35,25 @@ class LabStartTool(Tool):
         run_all = _run_all_flag(args)
         if topic == CASCADEUR_TOPIC:
             ensure_task_file(ctx.config)
-        session = None if reset else load_session(ctx.config, topic)
-        continued = False
-        auto_reset_note = ""
-        if session is not None and not reset:
-            if session.status == "awaiting_rating":
+
+        if not reset:
+            session = load_session(ctx.config, topic)
+            if session and session.status == "awaiting_rating":
                 return ToolResult(
                     True,
-                    "Жду оценку — «Оценить лабораторию» в Редко.\n"
+                    "Жду оценку — «Оценить лабораторию».\n"
                     "Новая итерация: lab_start reset=1",
                 )
-            if session.status == "completed":
-                return ToolResult(
-                    True,
-                    "Итерация завершена.\n"
-                    "Новая: lab_start reset=1",
-                )
-            if inbox_models_newer_than_session(ctx.config, session):
+            if session and inbox_models_newer_than_session(ctx.config, session):
                 reset = True
-                auto_reset_note = "Новые .blend/.fbx в Inbox — новая итерация с шага 1.\n"
-            else:
-                continued = session.step > 0
-        if session is None or reset:
-            session = new_session(topic)
-            continued = False
-        else:
-            session.status = "running"
-        save_session(ctx.config, session)
-        if run_all:
-            ok, msg = run_until_done(ctx.config, session)
-        else:
-            ok, msg = run_one_step(ctx.config, session)
-        session = load_session(ctx.config, topic) or session
-        body = format_lab_progress(session, msg, continued=continued and not auto_reset_note)
-        if auto_reset_note:
-            body = auto_reset_note + body
+
+        ok, msg, session = run_lab_prepared(
+            ctx.config, topic, force_reset=reset, run_all=run_all,
+        )
+        if session is None:
+            return ToolResult(False, msg)
+        continued = session.step > 0 and not reset and "Обновление Viu" not in msg
+        body = format_lab_progress(session, msg, continued=continued)
         if run_all:
             body = "Lab: полный цикл (автономно).\n" + body
         return ToolResult(ok, body)
@@ -84,11 +69,12 @@ class LabStepTool(Tool):
         session = load_session(ctx.config, topic)
         if session is None:
             return ToolResult(False, f"Нет сессии lab/{topic}. Сначала lab_start.")
-        if _run_all_flag(args):
-            ok, msg = run_until_done(ctx.config, session)
-        else:
-            ok, msg = run_one_step(ctx.config, session)
-        session = load_session(ctx.config, topic) or session
+        if session.status == "awaiting_rating":
+            return ToolResult(True, "Жду оценку — «Оценить лабораторию».")
+        ok, msg, session = run_lab_prepared(
+            ctx.config, topic, force_reset=False, run_all=_run_all_flag(args),
+        )
+        session = session or load_session(ctx.config, topic)
         prefix = "Lab: полный цикл.\n" if _run_all_flag(args) else ""
         return ToolResult(ok, prefix + format_lab_progress(session, msg))
 
@@ -102,18 +88,7 @@ class LabRunAllTool(Tool):
         args = dict(args)
         args["run_all"] = "1"
         reset = str(args.get("reset", "0")).lower() in ("1", "true", "yes")
-        if reset:
-            return LabStartTool().run(args, ctx)
-        topic = str(args.get("topic") or CASCADEUR_TOPIC).strip().lower()
-        session = load_session(ctx.config, topic)
-        if session is None:
-            args["reset"] = "1"
-            return LabStartTool().run(args, ctx)
-        session.status = "running"
-        save_session(ctx.config, session)
-        ok, msg = run_until_done(ctx.config, session)
-        session = load_session(ctx.config, topic) or session
-        return ToolResult(ok, "Lab: весь цикл.\n" + format_lab_progress(session, msg))
+        return LabStartTool().run(args, ctx)
 
 
 class LabStatusTool(Tool):

@@ -36,6 +36,10 @@ class LabSession:
     import_ok: bool = False
     import_auto: bool = False
     last_fail_step: int = -1
+    last_fail_msg: str = ""
+    step_fail_counts: Dict[str, int] = field(default_factory=dict)
+    viu_build_stamp: str = ""
+    recoveries: int = 0
 
     def touch(self) -> None:
         self.updated_at = _now()

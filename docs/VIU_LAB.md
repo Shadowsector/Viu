@@ -32,7 +32,8 @@ U:\Anabarra\Library\Lab\Models\Inbox\    ← rig-check + сводка models_sum
 Нужен `VIU_BLENDER_EXE` (Steam-Blender ищется автоматически).
 
 Новые файлы в inbox после начала сессии → **авто reset** с шага 1.
-Продолжение с середины: кнопка «Лаборатория» без новых файлов. С нуля: `lab_start reset=1`.
+**Обновление Viu** (другой git SHA / версия) → **авто reset** с шага 1 — не нужно вручную `reset=1`.
+Продолжение с середины: кнопка «Лаборатория» без новых файлов и без обновления. С нуля: `lab_start reset=1`.
 
 Сводка:
 
@@ -52,14 +53,15 @@ U:\Anabarra\Library\Lab\Models\Inbox\    ← rig-check + сводка models_sum
 5. Запуск + монитор
 6. **Import FBX** — команда `Viu.Lab Import` (Python) + `pending_import.json`
 7. **Фокус мышью** — только в **away** и только Windows; курсор сразу возвращается на место
-8. Скрин UI
+8. **Скрин UI** — HWND по PID `cascadeur.exe` (не по заголовку «Cascadeur») + **vision** (Ollama VL): WELCOME / MODEL_OK / EMPTY_SCENE
 9. Отчёт → **awaiting_rating** (+ Telegram в away)
 
-**Inbox / launch / import / capture** — при ошибке шаг **не сдвигается**. При затыке — Telegram + очередь вопросов (away).
+**Inbox / launch / import / capture** — при ошибке шаг **не сдвигается**. После **2 неудач** на одном шаге следующий клик «Лаборатория» — не слепой повтор, а **RECOVER**: `cascadeur_status`, список окон, web, vision по последнему PNG, запись в journal + Telegram (away). При 4× — auto-reset с шага 1; при capture без окна — откат к шагу «Запуск».
 
 ### Весь цикл одной кнопкой
 
-- GUI: **«Lab: весь цикл»** или чат: `lab_start run_all=1` / `lab_run_all`
+- GUI: **«Лаборатория: Cascadeur»** и **«Lab: весь цикл»** — оба с `run_all=1` (полный цикл до отчёта или затыка)
+- Чат: `lab_start run_all=1` / `lab_run_all`
 - В away lab по таймеру гоняет **весь оставшийся цикл**, не по одному шагу.
 
 Прерывание: кнопки **экспорт/оверлей/…** (не lab) или **«Обновить Вью»** → `paused`.
@@ -133,14 +135,14 @@ Lab **не захватывает** курсор (нет hook, нет блоки
 | Кнопки / пайплайн | **без LLM** (скрипты) |
 | Web-конспект, rig-summary текст | **gpt-4o-mini** или **gpt-4o** (OpenAI в GUI) |
 | Локально при лимите VRAM | **qwen2.5:14b** / **llama3.1:8b** (Ollama) |
-| Vision по скринам | только по запросу; не параллельно с Cascadeur |
+| Vision по скринам Cascadeur | **llava** / **qwen2-vl** (Ollama) — шаг 8, recover |
 
 Не грузить тяжёлую local + Cascadeur + Unity одновременно на 6 GB VRAM.
 
 ## Кнопки / инструменты
 
-- **Лаборатория: Cascadeur** — `lab_start` + один шаг
-- **Lab: весь цикл** — `lab_run_all` / `lab_start run_all=1`
+- **Лаборатория: Cascadeur** — `lab_start run_all=1` (полный цикл; после обновления Viu — с шага 1)
+- **Lab: весь цикл** — то же + опционально `reset=1`
 - **Оценить лабораторию** — форма оценок
 - `lab_step`, `lab_status`, `lab_rate` — для чата/агента
 

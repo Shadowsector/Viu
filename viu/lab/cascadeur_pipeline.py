@@ -11,7 +11,6 @@ from ..config import Config
 from ..integrations.cascadeur import cascadeur_status
 from ..integrations.cascadeur.launch import ensure_cascadeur_running
 from ..integrations.cascadeur.window import find_cascadeur_hwnd
-from ..integrations.screen.capture import capture_window_png
 from ..tools.web import search_web
 from .controller import lab_controller
 from .models_inbox import build_models_summary, copy_random_model_to_cascadeur_inbox
@@ -252,19 +251,29 @@ def step_capture(config: Config, session: LabSession) -> StepResult:
     aborted = _check_abort(session)
     if aborted:
         return aborted
-    if not session.launch_ok:
+    from ..integrations.cascadeur.capture import capture_and_verify_cascadeur
+    from ..integrations.cascadeur.window import find_cascadeur_hwnd
+    from ..integrations.apps.process import app_running
+
+    if not session.launch_ok and not app_running("cascadeur"):
         msg = "Пропуск скрина: Cascadeur не запущен (шаг 5 не пройден)."
         append_journal(config, session.topic, f"### Скрин\n\n{msg}")
         return False, msg, None
+
     import time
 
-    time.sleep(2.5)
+    session.launch_ok = session.launch_ok or find_cascadeur_hwnd() is not None
+    time.sleep(1.5)
     shot = artifacts_dir(config, session.topic) / f"cascadeur_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-    hwnd = find_cascadeur_hwnd()
-    if hwnd:
-        ok, msg = capture_window_png(shot, hwnd=hwnd)
-    else:
-        ok, msg = capture_window_png(shot, title_substr="Cascadeur")
+    mon = lab_monitor_index(config)
+    ok, msg, meta = capture_and_verify_cascadeur(
+        config,
+        shot,
+        monitor_index=mon,
+        require_model=bool(session.import_ok),
+    )
+    if meta.get("verdict") == "MODEL_OK":
+        session.import_ok = True
     append_journal(config, session.topic, f"### Скрин\n\n{msg}")
     if ok:
         _append_artifact(session, str(shot))
@@ -367,7 +376,16 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
 
     if not ok and session.step in BLOCK_ON_FAIL:
         session.last_fail_step = session.step
-        tail = "\n\n⏸ Шаг не пройден — следующий не начинаю. «Лаборатория» повторит этот шаг."
+        session.last_fail_msg = msg[:2000]
+        key = str(session.step)
+        session.step_fail_counts[key] = session.step_fail_counts.get(key, 0) + 1
+        n = session.step_fail_counts[key]
+        tail = (
+            f"\n\n⏸ Шаг не пройден ({n}×). "
+            "Следующая «Лаборатория»: recover (диагностика + web + vision), не слепой повтор."
+        )
+        if n >= 2:
+            tail += " Уже 2+ — нажми «Lab: весь цикл» или run_all для recover."
         save_session(config, session)
         notify_lab_stuck(config, session, msg, step_label=label)
         return True, msg + tail
