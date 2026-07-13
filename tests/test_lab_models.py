@@ -71,6 +71,36 @@ def test_list_model_files(tmp_path):
     assert len(files) == 2
 
 
+def test_prepare_converts_blend_in_cascadeur_inbox(tmp_path, monkeypatch):
+    from viu.integrations.cascadeur.paths import cascadeur_inbox
+    from viu.lab.models_inbox import prepare_cascadeur_inbox
+
+    cfg = _cfg(tmp_path)
+    import os
+
+    lib = tmp_path / "lib"
+    os.environ["VIU_LIBRARY_ROOT"] = str(lib)
+    cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu", library_root=str(lib)).ensure_dirs()
+
+    blend = cascadeur_inbox(cfg) / "hero.blend"
+    blend.write_bytes(b"fake")
+
+    monkeypatch.setattr(
+        "viu.lab.models_inbox._blender_exe",
+        lambda _c: r"C:\Blender\blender.exe",
+    )
+    monkeypatch.setattr(
+        "viu.lab.models_inbox.export_shanya_fbx",
+        lambda blend_file, output_fbx, **kw: Path(output_fbx).write_bytes(b"fbx") or Path(output_fbx),
+    )
+
+    ok, msg, path = prepare_cascadeur_inbox(cfg)
+    assert ok
+    assert path is not None
+    assert path.suffix.lower() == ".fbx"
+    assert "Конвернул" in msg or "hero" in msg.lower()
+
+
 def test_copy_random_uses_seed_when_empty(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path)
     from viu.integrations.cascadeur import launch as launch_mod

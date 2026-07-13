@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from ..lab.cascadeur_pipeline import CASCADEUR_TOPIC, ensure_task_file, run_one_step
+from ..lab.models_inbox import inbox_models_newer_than_session
+from ..lab.progress import format_lab_progress
 from ..lab.ratings import average_score, validate_ratings
 from ..lab.session import LabSession, load_session, new_session, save_session
 from .base import AgentContext, Tool, ToolResult
@@ -27,6 +29,8 @@ class LabStartTool(Tool):
         if topic == CASCADEUR_TOPIC:
             ensure_task_file(ctx.config)
         session = None if reset else load_session(ctx.config, topic)
+        continued = False
+        auto_reset_note = ""
         if session is not None and not reset:
             if session.status == "awaiting_rating":
                 return ToolResult(
@@ -38,19 +42,25 @@ class LabStartTool(Tool):
                 return ToolResult(
                     True,
                     "Итерация завершена.\n"
-                    "Новая: нажми с reset или lab_start reset=1",
+                    "Новая: lab_start reset=1",
                 )
+            if inbox_models_newer_than_session(ctx.config, session):
+                reset = True
+                auto_reset_note = "Новые .blend/.fbx в Inbox — новая итерация с шага 1.\n"
+            else:
+                continued = session.step > 0
         if session is None or reset:
             session = new_session(topic)
+            continued = False
         else:
             session.status = "running"
         save_session(ctx.config, session)
         ok, msg = run_one_step(ctx.config, session)
         session = load_session(ctx.config, topic) or session
-        cur = min(session.step + 1, session.steps_total) if session.step < session.steps_total else session.steps_total
-        if session.last_fail_step >= 0:
-            cur = session.last_fail_step + 1
-        return ToolResult(ok, f"Lab «{topic}» шаг {cur}/{session.steps_total}\n{msg}")
+        body = format_lab_progress(session, msg, continued=continued and not auto_reset_note)
+        if auto_reset_note:
+            body = auto_reset_note + body
+        return ToolResult(ok, body)
 
 
 class LabStepTool(Tool):
@@ -65,10 +75,7 @@ class LabStepTool(Tool):
             return ToolResult(False, f"Нет сессии lab/{topic}. Сначала lab_start.")
         ok, msg = run_one_step(ctx.config, session)
         session = load_session(ctx.config, topic) or session
-        return ToolResult(
-            ok,
-            f"[{session.status}] шаг {session.step}/{session.steps_total}\n{msg}",
-        )
+        return ToolResult(ok, format_lab_progress(session, msg))
 
 
 class LabStatusTool(Tool):

@@ -21,17 +21,18 @@
 
 ## Папка входящих моделей
 
+Можно класть **.blend / .fbx** в любую из папок:
+
 ```
-U:\Anabarra\Library\Lab\Models\Inbox\
-  hero.blend
-  npc.fbx
-  README.txt
+U:\Anabarra\Library\Cascadeur\Inbox\     ← Den клал сюда; lab конвертирует .blend → .fbx
+U:\Anabarra\Library\Lab\Models\Inbox\    ← rig-check + сводка models_summary.md
 ```
 
-Или свой путь: `VIU_LAB_MODELS_INBOX=...`
+На шаге **Inbox (4/8)**: если в Cascadeur Inbox уже `.blend` — экспорт FBX **на месте** через Blender.
+Нужен `VIU_BLENDER_EXE` (Steam-Blender ищется автоматически).
 
-Lab для каждого `.blend` запускает Blender headless (`dump_blend_info` + `rig_check`-логика),
-для `.fbx` — помечает «maybe» без rig-check.
+Новые файлы в inbox после начала сессии → **авто reset** с шага 1.
+Продолжение с середины: кнопка «Лаборатория» без новых файлов. С нуля: `lab_start reset=1`.
 
 Сводка:
 

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..config import Config
+from ..integrations.blender.exe import resolve_blender_exe
 from ..integrations.blender.headless import dump_blend_info
 from ..integrations.blender.export_shanya import export_shanya_fbx
 from ..integrations.cascadeur.paths import cascadeur_inbox
@@ -86,7 +87,7 @@ def _score_rig(bones: List[str], armature: Optional[str]) -> ModelRigEntry:
 def _analyze_blend(config: Config, path: Path) -> ModelRigEntry:
     entry = ModelRigEntry(path=str(path), name=path.name, kind="blend")
     try:
-        scene = dump_blend_info(str(path), blender_exe=config.blender_exe)
+        scene = dump_blend_info(str(path), blender_exe=_blender_exe(config))
     except (FileNotFoundError, RuntimeError, ValueError, OSError) as exc:
         entry.notes = f"Blender: {exc}"
         entry.cascadeur_score = 0
@@ -124,12 +125,44 @@ def _analyze_fbx(path: Path) -> ModelRigEntry:
     )
 
 
+def _blender_exe(config: Config) -> str:
+    return str(resolve_blender_exe(config))
+
+
+def _model_dirs(config: Config) -> tuple[Path, Path]:
+    return models_inbox_dir(config), cascadeur_inbox(config)
+
+
+def iter_all_model_paths(config: Config) -> List[Path]:
+    """Все .blend/.fbx: Lab/Models/Inbox и Library/Cascadeur/Inbox."""
+    paths: set[Path] = set()
+    for folder in _model_dirs(config):
+        for ext in ("*.blend", "*.fbx"):
+            paths.update(folder.glob(ext))
+    return sorted({p.resolve() for p in paths}, key=lambda p: p.name.lower())
+
+
 def list_model_files(config: Config) -> List[Path]:
-    inbox = models_inbox_dir(config)
-    files: List[Path] = []
-    for ext in ("*.blend", "*.fbx"):
-        files.extend(inbox.glob(ext))
-    return sorted({p.resolve() for p in files}, key=lambda p: p.name.lower())
+    return iter_all_model_paths(config)
+
+
+def inbox_models_newer_than_session(config: Config, session) -> bool:
+    """True — в inbox появились модели после старта текущей сессии."""
+    from datetime import datetime, timezone
+
+    try:
+        since = datetime.fromisoformat(session.created_at.replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return False
+    if session.step <= 0:
+        return False
+    for path in iter_all_model_paths(config):
+        try:
+            if path.stat().st_mtime > since + 1.0:
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def scan_models_inbox(config: Config) -> List[ModelRigEntry]:
@@ -200,8 +233,9 @@ def build_models_summary(config: Config, *, topic: str = "cascadeur") -> Tuple[b
 
     if not entries:
         msg = (
-            f"Inbox пуст: `{inbox}`\n"
-            "Положи сюда .blend или .fbx персонажей — Вью проверит кости и составит сводку."
+            f"Inbox пуст.\n"
+            f"• `{inbox}` или `{cascadeur_inbox(config)}` — положи .blend или .fbx\n"
+            "Вью конвертирует .blend → FBX для Cascadeur."
         )
         return True, msg, str(json_path)
 
@@ -216,16 +250,82 @@ def build_models_summary(config: Config, *, topic: str = "cascadeur") -> Tuple[b
     return True, msg, str(json_path)
 
 
-def _model_to_fbx(config: Config, model: Path, cache_dir: Path) -> Tuple[bool, str, Optional[Path]]:
+def _model_to_fbx(
+    config: Config,
+    model: Path,
+    cache_dir: Path | None = None,
+    *,
+    output: Path | None = None,
+) -> Tuple[bool, str, Optional[Path]]:
     if model.suffix.lower() == ".fbx":
         return True, model.name, model
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    out = cache_dir / f"{model.stem}_lab.fbx"
     try:
-        export_shanya_fbx(str(model), str(out), blender_exe=config.blender_exe)
+        exe = _blender_exe(config)
+    except FileNotFoundError as exc:
+        return False, str(exc), None
+    if output is not None:
+        out = output
+    elif cache_dir is not None:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        out = cache_dir / f"{model.stem}_lab.fbx"
+    else:
+        out = model.with_suffix(".fbx")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        export_shanya_fbx(str(model), str(out), blender_exe=exe)
         return True, f"Экспорт FBX: {out.name}", out
     except (FileNotFoundError, RuntimeError, OSError) as exc:
         return False, f"Экспорт FBX не удался: {exc}", None
+
+
+def prepare_cascadeur_inbox(
+    config: Config,
+    *,
+    topic: str = "cascadeur",
+) -> Tuple[bool, str, Optional[Path]]:
+    """Cascadeur Inbox: FBX готов, .blend → FBX, иначе модель из Lab Inbox."""
+    inbox = cascadeur_inbox(config)
+    fbxs = sorted(inbox.glob("*.fbx"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if fbxs:
+        return True, f"Inbox FBX: {fbxs[0].name}", fbxs[0]
+
+    blends = sorted(inbox.glob("*.blend"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if blends:
+        pick = blends[0] if len(blends) == 1 else random.choice(blends)
+        out = inbox / f"{pick.stem}.fbx"
+        ok, msg, fbx = _model_to_fbx(config, pick, output=out)
+        if ok and fbx:
+            return True, f"Конвернул в Inbox: {pick.name} → {fbx.name}", fbx
+        return False, msg, None
+
+    lab_dir = models_inbox_dir(config)
+    lab_files: List[Path] = []
+    for ext in ("*.blend", "*.fbx"):
+        lab_files.extend(lab_dir.glob(ext))
+    lab_files = sorted({p.resolve() for p in lab_files}, key=lambda p: p.name.lower())
+
+    if lab_files:
+        pick = random.choice(lab_files)
+        cache = artifacts_dir(config, topic) / "fbx_cache"
+        ok, msg, fbx = _model_to_fbx(config, pick, cache)
+        if not ok or fbx is None:
+            return False, msg, None
+        dst = inbox / f"lab_{fbx.name}"
+        try:
+            shutil.copy2(fbx, dst)
+        except OSError as exc:
+            return False, str(exc), None
+        grade = ""
+        if pick.suffix.lower() == ".blend":
+            for entry in scan_models_inbox(config):
+                if Path(entry.path).resolve() == pick.resolve():
+                    grade = f" (rig: {entry.cascadeur_score}/100, {entry.cascadeur_grade})"
+                    break
+        return True, f"Из Lab Inbox: {pick.name} → {dst.name}{grade}", dst
+
+    from ..integrations.cascadeur.launch import seed_inbox_sample_fbx
+
+    return seed_inbox_sample_fbx(config)
 
 
 def copy_random_model_to_cascadeur_inbox(
@@ -233,31 +333,5 @@ def copy_random_model_to_cascadeur_inbox(
     *,
     topic: str = "cascadeur",
 ) -> Tuple[bool, str, Optional[Path]]:
-    """Случайная модель из Lab Inbox → Cascadeur Inbox (FBX)."""
-    files = list_model_files(config)
-    if not files:
-        from ..integrations.cascadeur.launch import seed_inbox_sample_fbx
-
-        return seed_inbox_sample_fbx(config)
-
-    pick = random.choice(files)
-    cache = artifacts_dir(config, topic) / "fbx_cache"
-    ok, msg, fbx = _model_to_fbx(config, pick, cache)
-    if not ok or fbx is None:
-        return False, msg, None
-
-    inbox = cascadeur_inbox(config)
-    dst = inbox / f"lab_{fbx.name}"
-    try:
-        shutil.copy2(fbx, dst)
-    except OSError as exc:
-        return False, str(exc), None
-
-    grade = ""
-    if pick.suffix.lower() == ".blend":
-        for entry in scan_models_inbox(config):
-            if Path(entry.path).resolve() == pick.resolve():
-                grade = f" (оценка rig: {entry.cascadeur_score}/100, {entry.cascadeur_grade})"
-                break
-
-    return True, f"Случайная модель → Inbox: {pick.name} → {dst.name}{grade}", dst
+    """Случайная модель → Cascadeur Inbox (FBX). См. prepare_cascadeur_inbox."""
+    return prepare_cascadeur_inbox(config, topic=topic)

@@ -9,9 +9,18 @@ from ...config import Config
 
 
 def cascadeur_inbox(config: Config) -> Path:
-    """Входящие FBX для правки в Cascadeur."""
+    """Входящие для Cascadeur: .fbx или .blend (lab конвертирует в FBX)."""
     root = library_root(config) / "Cascadeur" / "Inbox"
     root.mkdir(parents=True, exist_ok=True)
+    readme = root / "README.txt"
+    if not readme.is_file():
+        readme.write_text(
+            "Cascadeur Inbox.\n"
+            "Положи .fbx — сразу в Cascadeur.\n"
+            "Положи .blend — Вью сконвертирует в FBX на шаге lab «Inbox».\n"
+            "Rig-check и сводка: Library/Lab/Models/Inbox (или сюда тоже можно).\n",
+            encoding="utf-8",
+        )
     return root
 
 
