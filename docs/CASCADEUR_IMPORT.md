@@ -1,69 +1,67 @@
 # Import FBX в Cascadeur — пошагово
 
-Для лаборатории Вью и ручной работы Дена. Официальные docs:
-[Import FBX/DAE](https://cascadeur.com/help/getting_started/import_fbxdae),
-[Import from Blender](https://cascadeur.com/help/getting_started/import_from_blender),
-[Python Commands](https://cascadeur.com/help/tools/animation_tools/python_scripting_in_cascadeur).
+Для лаборатории Вью и ручной работы Дена.
 
-## Почему welcome screen и нет модели
+## Проверенный ручной путь (Den, Menkara ✓)
 
-1. **Welcome** — нет открытой **сцены** (scene tab). Import идёт в текущую сцену.
-2. **Reload scripts «ничего не сделал»** — скрипт лежал не там (`scripts/python/user` вместо `resources/scripts/python/commands`), либо нажали **Reload commands** (он **не** подхватывает новые файлы).
-3. **Без Vision** Вью не знает координаты кнопок UI — только Python-команда, File→Import или ассоциация `.fbx`.
+1. **Фокус** — Cascadeur активное окно (клик по 3-му монитору, если нужно).
+2. **New scene** — убрать welcome / создать вкладку сцены.
+3. **File → Import → Fbx/Dae**
+4. Диалог **FBX/DAE IMPORT**:
+   - **Presets:** **Scene**
+   - **Import mode:** **Add new**
+   - **INCLUDE:** Animations ✓, Objects ✓, Blendshapes ✓
+   - **Open first take:** ✓ (как на скрине)
+5. Кнопка **Import** →  
+   `U:\Anabarra\Library\Cascadeur\Inbox\lab_Menkara_v1_lab.fbx`
+6. **Rig Mode Helper** — «Enter rig mode to rig the imported model?» → **No**  
+   (для lab достаточно просмотра; rig — отдельный шаг позже)
+7. Outliner: `Menkara_Body`, `Armor`, `00_Menkara`, … — модель на месте.
 
-## Куда класть Python-команды
+## Почему Reload scripts «ничего не сделал»
+
+Reload scripts **не показывает сообщение** — он молча обновляет меню.
+
+Частые причины, почему кажется, что ничего не произошло:
+
+| Причина | Что делать |
+|---------|------------|
+| Ищешь пункт не там | Команда в **подменю**: **Commands → Viu → LabImport** (точка в имени = submenu) |
+| Нажали Reload **commands** | Нужен **Reload scripts** — только он подхватывает **новые** `.py` |
+| Скрипт не в той папке | `U:\Cascadeur\App\Cascadeur\resources\scripts\python\commands\` |
+| Ошибка в `.py` | **Window → Event log** — там traceback |
+| Первый deploy | Иногда нужен **перезапуск Cascadeur** |
+
+Проверка: `cascadeur_status` в чате Вью.
+
+## Python Console (обход Commands menu)
+
+Если Reload scripts не помогает:
+
+1. Lab создаёт  
+   `U:\Viu\.viu\lab\cascadeur\artifacts\viu_lab_import_console.py`
+2. Cascadeur: **Window → Python console**
+3. **Load** → выбрать этот файл → **Execute**
+4. В Event log: `Viu lab import OK: ...`
+
+## Куда класть command-скрипт
 
 ```
 U:\Cascadeur\App\Cascadeur\resources\scripts\python\commands\
+  viu_lab_import.py
+  viu_lab_pending.json
 ```
 
-Файлы: `viu_lab_import.py`, `viu_lab_pending.json`.
+`command_name()` → `"Viu.LabImport"` → пункт **Viu → LabImport**.
 
-Проверка: `cascadeur_status` в чате Вью — блок **Commands**.
+## Автоматизация без Vision
 
-После первого deploy:
+Вью **не тыкает** по UI вслепую. Варианты:
 
-1. **Commands → Reload scripts** (именно scripts!)
-2. В меню Commands должен появиться **Viu.Lab Import**
-3. Если нет — **перезапуск Cascadeur**
+- Python API: `FbxLoader.import_scene()` (console/command)
+- File → Import вручную (проверено)
+- **Vision позже** — только проверка скрина (welcome vs модель), не поиск кнопок
 
-`VIU_CASCADEUR_SCRIPTS=` — только если у тебя кастомный `ScriptsDir` в `settings.ini`.
+## Следующий шаг
 
-## Ручной импорт (UI) — Blender FBX → Cascadeur
-
-Персонаж из Blender (Menkara и т.п.):
-
-1. **Фокус** — Cascadeur активное окно (у тебя: клик по 3-му монитору).
-2. **New scene** — если welcome / нет вкладки сцены.
-3. **File → Import → Fbx/Dae**
-4. В диалоге Import:
-   - **Preset:** **Model** (скелет + mesh из FBX) или **Scene** (вся сцена)
-   - **Import mode:** **Add new**
-   - **Meshes:** включено
-   - **Animation:** по желанию (для T-pose/static можно выкл.)
-   - **Fbx up axis:** **Y** (как у Blender export)
-5. **Import** → выбрать  
-   `U:\Anabarra\Library\Cascadeur\Inbox\lab_Menkara_v1_lab.fbx`
-6. Проверить Outliner — armature + mesh.
-
-### Частые проблемы (из docs)
-
-| Симптом | Что проверить |
-|---------|----------------|
-| Модель огромная/крошечная | Scale в Blender (Unit Scale 0.01), Apply transforms |
-| Нет скелета | Preset Model/Scene, не Animation |
-| Welcome не уходит | New scene вручную |
-| Текстуры | Отдельно, после import mesh |
-
-## Автоматизация Вью (lab шаг 6)
-
-1. Deploy `viu_lab_import.py` в `.../commands/`
-2. `viu_lab_pending.json` с путём FBX
-3. Фокус окна Cascadeur (`SetForegroundWindow`, без мыши когда ты дома)
-4. Команда **Viu.Lab Import** создаёт **New scene** если нужно и вызывает `FbxLoader.import_scene()`
-
-Vision понадобится позже, чтобы **проверить** скрин (welcome vs модель в viewport) — не для кликов по кнопкам.
-
-## Следующий шаг пайплайна
-
-Export из Cascadeur → `U:\Anabarra\Animations` → «Обновить аниматор» в Unity.
+Export → `U:\Anabarra\Animations` → «Обновить аниматор» в Unity.

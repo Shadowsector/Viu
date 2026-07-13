@@ -30,7 +30,7 @@ def test_deploy_import_command(tmp_path):
     assert script.is_file()
     assert script.name == COMMAND_FILENAME
     text = script.read_text(encoding="utf-8")
-    assert "Viu.Lab Import" in text
+    assert "Viu.LabImport" in text
     assert "import_scene" in text
     assert "create_application_scene" in text or "New scene" in text
 
@@ -45,6 +45,20 @@ def test_discover_commands_dir(tmp_path):
 
     dirs = discover_commands_dirs(cfg)
     assert any("commands" in d.as_posix() for d in dirs)
+
+
+def test_write_console_import_script(tmp_path):
+    cfg = _cfg(tmp_path)
+    fbx = tmp_path / "model.fbx"
+    fbx.write_text("x", encoding="utf-8")
+    from viu.integrations.cascadeur.import_fbx import write_console_import_script
+
+    ok, msg, art = write_console_import_script(cfg, fbx)
+    assert ok
+    assert art.is_file()
+    text = art.read_text(encoding="utf-8")
+    assert "import_scene" in text
+    assert "model.fbx" in text.replace("\\", "/")
 
 
 def test_write_pending_import(tmp_path):

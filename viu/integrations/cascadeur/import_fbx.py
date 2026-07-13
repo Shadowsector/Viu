@@ -15,6 +15,7 @@ from ...integrations.cascadeur.paths import cascadeur_inbox
 from .exe import resolve_cascadeur_exe
 
 COMMAND_FILENAME = "viu_lab_import.py"
+CONSOLE_FILENAME = "viu_lab_import_console.py"
 PENDING_FILENAME = "viu_lab_pending.json"
 
 # Официальный путь: [Install]\resources\scripts\python\commands\
@@ -30,7 +31,7 @@ import csc
 
 
 def command_name():
-    return "Viu.Lab Import"
+    return "Viu.LabImport"
 
 
 def _ensure_scene(app):
@@ -79,6 +80,37 @@ def run(scene):
     # FbxLoader.import_scene ≈ UI preset «Scene» (скелет + mesh из Blender FBX).
     fbx_loader.import_scene(fbx_norm)
     scene.info(f"Imported (Scene): {os.path.basename(fbx_norm)}")
+'''
+
+CONSOLE_IMPORT_TEMPLATE = '''"""Viu Lab — импорт FBX через Python Console (Window → Python console → Load → Execute)."""
+import csc
+
+FBX_PATH = r"{fbx_path}"
+
+
+def _ensure_scene(app):
+    sm = app.get_scene_manager()
+    current = sm.current_scene()
+    if current is not None:
+        return current
+    try:
+        app.get_action_manager().call_action("Application.New scene")
+    except Exception:
+        pass
+    current = sm.current_scene()
+    if current is not None:
+        return current
+    return sm.create_application_scene()
+
+
+app = csc.app.get_application()
+scene_tab = _ensure_scene(app)
+if scene_tab is None:
+    raise RuntimeError("No scene tab — create New scene first")
+path = FBX_PATH.replace("\\\\", "/")
+loader = app.get_tools_manager().get_tool("FbxSceneLoader").get_fbx_loader(scene_tab)
+loader.import_scene(path)
+print("Viu lab import OK:", path)
 '''
 
 
@@ -185,8 +217,11 @@ def scripts_status_text(config: Config) -> str:
     else:
         lines.append("Папки commands не найдены — проверь установку Cascadeur.")
     lines.append(
-        "После deploy: Commands → **Reload scripts** (не Reload commands!) → **Viu.Lab Import**.\n"
-        "Если пункта нет — перезапуск Cascadeur."
+        "После deploy:\n"
+        "  1. Commands → **Reload scripts** (не Reload commands!)\n"
+        "  2. Ищи **Commands → Viu → LabImport** (подменю Viu, не верхний уровень)\n"
+        "  3. Если нет — **перезапуск Cascadeur** или Python Console (см. artifacts/viu_lab_import_console.py)\n"
+        "  4. Ошибки загрузки скрипта — **Window → Event log**"
     )
     deployed = primary / COMMAND_FILENAME
     if deployed.is_file():
@@ -204,6 +239,28 @@ def latest_inbox_fbx(config: Config) -> Optional[Path]:
     inbox = cascadeur_inbox(config)
     fbx_files = sorted(inbox.glob("*.fbx"), key=lambda p: p.stat().st_mtime, reverse=True)
     return fbx_files[0] if fbx_files else None
+
+
+def write_console_import_script(
+    config: Config,
+    fbx_path: Path,
+    *,
+    topic: str = "cascadeur",
+) -> Tuple[bool, str, Path]:
+    """Скрипт для Window → Python console → Load → Execute (обходит Commands menu)."""
+    art = config.data_dir / "lab" / topic / "artifacts" / CONSOLE_FILENAME
+    art.parent.mkdir(parents=True, exist_ok=True)
+    body = CONSOLE_IMPORT_TEMPLATE.format(fbx_path=str(fbx_path.resolve()))
+    try:
+        art.write_text(body, encoding="utf-8")
+    except OSError as exc:
+        return False, str(exc), art
+    return (
+        True,
+        f"Console script: {art}\n"
+        "Cascadeur: Window → Python console → Load → Execute.",
+        art,
+    )
 
 
 def deploy_import_command(config: Config) -> Tuple[bool, str, Path]:
@@ -224,6 +281,19 @@ def deploy_import_command(config: Config) -> Tuple[bool, str, Path]:
             written.append(str(target))
         except OSError as exc:
             errors.append(f"{target}: {exc}")
+    # Legacy path (старые прогоны lab) — на случай кастомного ScriptsDir
+    for scripts in targets:
+        if "user" not in scripts.as_posix().lower():
+            continue
+        target = scripts / COMMAND_FILENAME
+        if str(target) in written:
+            continue
+        try:
+            scripts.mkdir(parents=True, exist_ok=True)
+            target.write_text(IMPORT_COMMAND_SOURCE, encoding="utf-8")
+            written.append(str(target) + " (legacy user/)")
+        except OSError:
+            pass
     if not written:
         target = primary / COMMAND_FILENAME
         try:
@@ -325,17 +395,26 @@ def trigger_fbx_import(
     if not ok_pending:
         return False, pending_msg, False
 
+    ok_console, console_msg, _console_path = write_console_import_script(config, fbx, topic=topic)
     diag = scripts_status_text(config)
     opened_ok, open_msg = _try_open_fbx(fbx, config)
-    lines = [deploy_msg, pending_msg, diag]
+    lines = [deploy_msg, pending_msg]
+    if ok_console:
+        lines.append(console_msg)
+    lines.append(diag)
     manual = (
-        "\n--- Ручной импорт (если команда не сработала) ---\n"
-        "1. Cascadeur на активном мониторе (фокус окна).\n"
-        "2. **New scene** (если welcome / нет вкладки сцены).\n"
+        "\n--- Ручной импорт (проверенный путь) ---\n"
+        "1. Фокус Cascadeur (активное окно / 3-й монитор).\n"
+        "2. **New scene** (если welcome).\n"
         "3. **File → Import → Fbx/Dae**.\n"
-        "4. Preset **Model** или **Scene**; Import mode **Add new**; Meshes ✓.\n"
+        "4. Preset **Scene**; Import mode **Add new**; INCLUDE: Animations, Objects, Blendshapes; **Open first take**.\n"
         f"5. Import → `{fbx}`\n"
-        "Или: Commands → **Reload scripts** → **Viu.Lab Import**."
+        "6. **Rig Mode Helper** → **No** (для lab; rig позже).\n"
+        "\n--- Python Console (если Commands не видит скрипт) ---\n"
+        "Window → Python console → Load → "
+        f"`.viu/lab/cascadeur/artifacts/{CONSOLE_FILENAME}` → Execute.\n"
+        "\n--- Commands menu ---\n"
+        "Reload scripts → **Commands → Viu → LabImport** (подменю Viu!)."
     )
     if opened_ok:
         lines.append(open_msg)
