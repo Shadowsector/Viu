@@ -521,6 +521,7 @@ class ViuGUI:
             self._run_next_step()
             return
         if action.tool == "__lab_start__":
+            self._set_busy(True)
             self._lab_start_action()
             return
         if action.tool == "__lab_rate__":
@@ -957,10 +958,12 @@ class ViuGUI:
         tag = "tool" if ok else "err"
         self._append("Вью", msg, tag=tag)
 
-    def _run_tool(self, name: str, args: dict, label: str = "") -> None:
+    def _run_tool(self, name: str, args: dict, label: str = "", *, echo_user: bool = True) -> None:
         title = label or name
-        self._append("ты", f"[{title}]")
-        self._set_busy(True)
+        if echo_user:
+            self._append("ты", f"[{title}]")
+        if not self._busy:
+            self._set_busy(True)
         threading.Thread(
             target=self._tool_worker,
             args=(name, args, title),
@@ -1224,11 +1227,10 @@ class ViuGUI:
     def _lab_start_action(self, *, reset: bool = False) -> None:
         from .lab.cascadeur_pipeline import CASCADEUR_TOPIC
 
-        self._append("ты", "[Лаборатория: Cascadeur]")
         args: dict = {"topic": CASCADEUR_TOPIC}
         if reset:
             args["reset"] = "1"
-        self._run_tool("lab_start", args, label="Лаборатория: Cascadeur")
+        self._run_tool("lab_start", args, label="Лаборатория: Cascadeur", echo_user=True)
 
     def _maybe_prompt_lab_rating(self) -> None:
         from .lab.cascadeur_pipeline import CASCADEUR_TOPIC

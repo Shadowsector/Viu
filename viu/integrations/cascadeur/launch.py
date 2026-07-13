@@ -12,6 +12,7 @@ from ...config import Config
 from ..apps.process import app_running, restart_app
 from ..screen.capture import find_hwnd
 from ..screen.monitor import move_hwnd_to_monitor
+from .window import find_cascadeur_hwnd
 from .paths import cascadeur_inbox
 
 
@@ -25,10 +26,7 @@ def ensure_cascadeur_running(config: Config, *, monitor_index: int = 2) -> Tuple
     else:
         msg = "Cascadeur уже запущен."
 
-    hwnd = find_hwnd("Cascadeur")
-    if not hwnd:
-        # часть сборок — другое имя окна
-        hwnd = find_hwnd("cascadeur")
+    hwnd = find_cascadeur_hwnd()
     if not hwnd:
         return True, msg + " Окно Cascadeur не найдено для переноса — открой вручную на 3-м мониторе."
 

@@ -27,16 +27,30 @@ class LabStartTool(Tool):
         if topic == CASCADEUR_TOPIC:
             ensure_task_file(ctx.config)
         session = None if reset else load_session(ctx.config, topic)
+        if session is not None and not reset:
+            if session.status == "awaiting_rating":
+                return ToolResult(
+                    True,
+                    "Жду оценку — «Оценить лабораторию» в Редко.\n"
+                    "Новая итерация: lab_start reset=1",
+                )
+            if session.status == "completed":
+                return ToolResult(
+                    True,
+                    "Итерация завершена.\n"
+                    "Новая: нажми с reset или lab_start reset=1",
+                )
         if session is None or reset:
             session = new_session(topic)
         else:
-            if session.status in ("completed", "idle"):
-                session = new_session(topic)
-            else:
-                session.status = "running"
+            session.status = "running"
         save_session(ctx.config, session)
         ok, msg = run_one_step(ctx.config, session)
-        return ToolResult(ok, f"Lab «{topic}» шаг {session.step}/{session.steps_total}\n{msg}")
+        session = load_session(ctx.config, topic) or session
+        cur = min(session.step + 1, session.steps_total) if session.step < session.steps_total else session.steps_total
+        if session.last_fail_step >= 0:
+            cur = session.last_fail_step + 1
+        return ToolResult(ok, f"Lab «{topic}» шаг {cur}/{session.steps_total}\n{msg}")
 
 
 class LabStepTool(Tool):

@@ -9,7 +9,8 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from ..config import Config
 from ..integrations.cascadeur import cascadeur_status
 from ..integrations.cascadeur.launch import ensure_cascadeur_running
-from ..integrations.screen.capture import capture_window_png, find_hwnd
+from ..integrations.cascadeur.window import find_cascadeur_hwnd
+from ..integrations.screen.capture import capture_window_png
 from ..tools.web import WebSearchTool
 from .controller import lab_controller
 from .models_inbox import build_models_summary, copy_random_model_to_cascadeur_inbox
@@ -123,7 +124,7 @@ def step_research(config: Config, session: LabSession) -> StepResult:
         ctx = AgentContext(
             config=config,
             memory=MemoryStore(config.data_dir / "memory.json"),
-            planner=Planner(),
+            planner=Planner(config.data_dir / "lab_plan.json"),
             registry=ToolRegistry(),
         )
         res = WebSearchTool().run(
@@ -144,6 +145,15 @@ def step_inbox(config: Config, session: LabSession) -> StepResult:
     if aborted:
         return aborted
     ok, msg, path = copy_random_model_to_cascadeur_inbox(config, topic=session.topic)
+    if not ok:
+        from ..integrations.cascadeur.paths import cascadeur_inbox
+
+        existing = sorted(cascadeur_inbox(config).glob("*.fbx"))
+        if existing:
+            ok = True
+            msg = f"{msg}\nВ Inbox уже есть: {existing[0].name} — продолжаю."
+            path = existing[0]
+    session.inbox_ok = ok
     append_journal(config, session.topic, f"### Inbox (случайная модель)\n\n{msg}")
     art = str(path) if path else None
     if art:
@@ -157,6 +167,10 @@ def step_launch(config: Config, session: LabSession) -> StepResult:
         return aborted
     mon = lab_monitor_index(config)
     ok, msg = ensure_cascadeur_running(config, monitor_index=mon)
+    session.launch_ok = ok and find_cascadeur_hwnd() is not None
+    if ok and not session.launch_ok:
+        ok = False
+        msg = msg + "\nПроцесс есть, но окно Cascadeur не найдено — повтори шаг."
     append_journal(config, session.topic, f"### Запуск Cascadeur (монитор {mon + 1})\n\n{msg}")
     return ok, msg, None
 
@@ -175,7 +189,7 @@ def step_mouse_focus(config: Config, session: LabSession) -> StepResult:
         append_journal(config, session.topic, f"### Мышь\n\n{msg}")
         return True, msg, None
 
-    hwnd = find_hwnd("Cascadeur") or find_hwnd("cascadeur")
+    hwnd = find_cascadeur_hwnd()
     if not hwnd:
         msg = "Окно Cascadeur не найдено — клик пропущен."
         append_journal(config, session.topic, f"### Мышь\n\n{msg}")
@@ -190,11 +204,19 @@ def step_capture(config: Config, session: LabSession) -> StepResult:
     aborted = _check_abort(session)
     if aborted:
         return aborted
+    if not session.launch_ok:
+        msg = "Пропуск скрина: Cascadeur не запущен (шаг 5 не пройден)."
+        append_journal(config, session.topic, f"### Скрин\n\n{msg}")
+        return False, msg, None
     import time
 
     time.sleep(2.5)
     shot = artifacts_dir(config, session.topic) / f"cascadeur_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-    ok, msg = capture_window_png(shot, title_substr="Cascadeur")
+    hwnd = find_cascadeur_hwnd()
+    if hwnd:
+        ok, msg = capture_window_png(shot, hwnd=hwnd)
+    else:
+        ok, msg = capture_window_png(shot, title_substr="Cascadeur")
     append_journal(config, session.topic, f"### Скрин\n\n{msg}")
     if ok:
         session.artifacts.append(str(shot))
@@ -239,6 +261,23 @@ STEPS: list[Callable[[Config, LabSession], StepResult]] = [
     step_report,
 ]
 
+# Не переходить к следующему шагу, пока этот не удался (0-based индекс).
+BLOCK_ON_FAIL = frozenset({3, 4, 6})  # inbox, launch, capture
+
+
+def _gate_before_step(config: Config, session: LabSession) -> Optional[Tuple[bool, str]]:
+    """Если Cascadeur не поднят — откат к шагу запуска, не скрин/мышь."""
+    if session.step in (5, 6) and not session.launch_ok:
+        session.step = 4
+        save_session(config, session)
+        msg = (
+            "Cascadeur не запущен — шаг «Запуск» (5) не пройден.\n"
+            "Следующее нажатие «Лаборатория» повторит запуск."
+        )
+        append_journal(config, session.topic, f"### Возврат к запуску\n\n{msg}")
+        return True, msg
+    return None
+
 
 def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
     """Выполнить ровно один шаг pipeline. Возвращает (ok, human message)."""
@@ -256,6 +295,10 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
         save_session(config, session)
         return True, "Все шаги выполнены."
 
+    gated = _gate_before_step(config, session)
+    if gated is not None:
+        return gated
+
     fn = STEPS[session.step]
     step_idx = session.step + 1
     label = STEP_LABELS[session.step] if session.step < len(STEP_LABELS) else f"шаг {step_idx}"
@@ -264,6 +307,14 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
     if session.status == "paused":
         save_session(config, session)
         return True, msg
+
+    if not ok and session.step in BLOCK_ON_FAIL:
+        session.last_fail_step = session.step
+        tail = "\n\n⏸ Шаг не пройден — следующий не начинаю. «Лаборатория» повторит этот шаг."
+        save_session(config, session)
+        return True, msg + tail
+
+    session.last_fail_step = -1
     session.step += 1
     notify_lab_step(config, step_idx, label, msg)
     if session.step >= len(STEPS) or session.status == "awaiting_rating":

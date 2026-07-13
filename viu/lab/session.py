@@ -31,6 +31,9 @@ class LabSession:
     artifacts: List[str] = field(default_factory=list)
     ratings: Optional[Dict[str, int]] = None
     rating_notes: str = ""
+    launch_ok: bool = False
+    inbox_ok: bool = False
+    last_fail_step: int = -1
 
     def touch(self) -> None:
         self.updated_at = _now()

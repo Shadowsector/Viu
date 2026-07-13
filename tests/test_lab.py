@@ -81,6 +81,41 @@ def test_cascadeur_task_file(tmp_path):
     assert "Cascadeur" in path.read_text(encoding="utf-8")
 
 
+def test_run_one_step_blocks_after_launch_fail(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr(
+        "viu.lab.cascadeur_pipeline.ensure_cascadeur_running",
+        lambda *_a, **_k: (False, "launch fail"),
+    )
+    monkeypatch.setattr(
+        "viu.lab.cascadeur_pipeline.find_cascadeur_hwnd",
+        lambda: None,
+    )
+    s = new_session(CASCADEUR_TOPIC)
+    s.step = 4
+    save_session(cfg, s)
+    ok, msg = run_one_step(cfg, s)
+    assert ok
+    assert "не пройден" in msg.lower() or "⏸" in msg
+    loaded = load_session(cfg, CASCADEUR_TOPIC)
+    assert loaded is not None
+    assert loaded.step == 4
+    assert loaded.last_fail_step == 4
+
+
+def test_run_one_step_rewinds_capture_without_launch(tmp_path):
+    cfg = _cfg(tmp_path)
+    s = new_session(CASCADEUR_TOPIC)
+    s.step = 6
+    s.launch_ok = False
+    save_session(cfg, s)
+    ok, msg = run_one_step(cfg, s)
+    assert ok
+    loaded = load_session(cfg, CASCADEUR_TOPIC)
+    assert loaded is not None
+    assert loaded.step == 4
+
+
 def test_run_one_step_status(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path)
     monkeypatch.setattr(
