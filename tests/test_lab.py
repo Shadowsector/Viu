@@ -137,6 +137,37 @@ def test_run_until_done_stops_on_fail(tmp_path, monkeypatch):
     assert loaded.step == 4
 
 
+def test_journal_tail_strips_schema():
+    from viu.lab.cascadeur_pipeline import _journal_tail_for_report
+
+    raw = "### Web\n\nExport FBX {\"@context\":\"schema.org\"} breadcrumb\n\n### Скрин\n\nOK png"
+    tail = _journal_tail_for_report(raw)
+    assert "schema.org" not in tail or "Export FBX" in tail
+    assert "### Скрин" in tail
+
+
+def test_run_until_done_step_labels(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    calls = {"n": 0}
+
+    def fake_step(_c, session):
+        calls["n"] += 1
+        session.step += 1
+        if session.step >= 9:
+            session.status = "awaiting_rating"
+        save_session(cfg, session)
+        return True, f"msg-{calls['n']}", None
+
+    monkeypatch.setattr("viu.lab.cascadeur_pipeline.STEPS", [fake_step] * 9)
+    monkeypatch.setattr("viu.lab.cascadeur_pipeline.STEP_LABELS", [f"L{i}" for i in range(9)])
+    s = new_session(CASCADEUR_TOPIC)
+    save_session(cfg, s)
+    ok, msg = run_until_done(cfg, s, max_steps=3)
+    assert ok
+    assert "шаг 1/9" in msg
+    assert "«L0»" in msg
+
+
 def test_step_labels_nine_steps():
     from viu.lab.cascadeur_pipeline import STEP_LABELS, STEPS
 

@@ -13,7 +13,9 @@ def format_lab_progress(session: LabSession, msg: str, *, continued: bool = Fals
     if continued:
         prefix = "Продолжаю итерацию (не с нуля).\n"
 
-    if session.last_fail_step >= 0:
+    if session.status == "awaiting_rating":
+        head = f"Lab «{session.topic}» — итерация завершена, жду оценку"
+    elif session.last_fail_step >= 0:
         n = session.last_fail_step + 1
         label = STEP_LABELS[session.last_fail_step]
         head = f"Lab «{session.topic}» — шаг {n}/{total} «{label}» — не пройден"

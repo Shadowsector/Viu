@@ -34,10 +34,17 @@ class LabSession:
     launch_ok: bool = False
     inbox_ok: bool = False
     import_ok: bool = False
+    import_auto: bool = False
     last_fail_step: int = -1
 
     def touch(self) -> None:
         self.updated_at = _now()
+
+    def append_artifact(self, path: str | None) -> None:
+        if not path:
+            return
+        if path not in self.artifacts:
+            self.artifacts.append(path)
 
     def to_dict(self) -> dict:
         return asdict(self)

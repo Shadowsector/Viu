@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
@@ -68,6 +69,35 @@ def ensure_task_file(config: Config) -> Path:
 StepResult = Tuple[bool, str, Optional[str]]
 
 
+def _append_artifact(session: LabSession, art: Optional[str]) -> None:
+    session.append_artifact(art)
+
+
+def _journal_tail_for_report(text: str, *, max_chars: int = 1200) -> str:
+    """Последние блоки journal без мусора из web-fetch (JSON-LD и т.п.)."""
+    blocks: list[str] = []
+    for m in re.finditer(r"### ([^\n]+)\n\n(.*?)(?=\n### |\Z)", text, re.DOTALL):
+        title = m.group(1).strip()
+        body = m.group(2).strip()
+        if "schema.org" in body or "@type" in body and len(body) > 400:
+            body = re.sub(r"\{[^{}]*schema\.org[^{}]*\}", "", body)
+            body = _WS_RE.sub(" ", body).strip()[:400]
+        if title.lower() == "web":
+            body = body[:450]
+        else:
+            body = body[:550]
+        if body:
+            blocks.append(f"### {title}\n{body}")
+    if not blocks:
+        clean = re.sub(r"\{[^{}]*schema\.org[^{}]*\}", "", text)
+        return clean.strip()[-max_chars:]
+    joined = "\n\n".join(blocks[-6:])
+    return joined[-max_chars:]
+
+
+_WS_RE = re.compile(r"\s+")
+
+
 def _check_abort(session: LabSession) -> Optional[StepResult]:
     if lab_controller.should_abort_step():
         session.status = "paused"
@@ -97,7 +127,7 @@ def step_models_scan(config: Config, session: LabSession) -> StepResult:
     ok, msg, art = build_models_summary(config, topic=session.topic)
     append_journal(config, session.topic, f"### Модели (rig-check)\n\n{msg}")
     if art:
-        session.artifacts.append(art)
+        _append_artifact(session, art)
     return ok, msg, art
 
 
@@ -123,7 +153,10 @@ def step_research(config: Config, session: LabSession) -> StepResult:
         query = "Cascadeur export FBX to Unity workflow retarget import"
         hits = search_web(query, max_results=5)
         body = "\n".join(f"- {h}" for h in hits) if hits else "Ничего не найдено по запросу."
-        append_journal(config, session.topic, f"### Web\n\n{body}")
+        if "schema.org" in body:
+            body = re.sub(r"\{[^{}]*schema\.org[^{}]*\}", "", body)
+            body = _WS_RE.sub(" ", body).strip()
+        append_journal(config, session.topic, f"### Web\n\n{body[:2000]}")
         return True, body[:800], None
     except Exception as exc:  # noqa: BLE001
         msg = f"Web: {exc}"
@@ -148,7 +181,7 @@ def step_inbox(config: Config, session: LabSession) -> StepResult:
     append_journal(config, session.topic, f"### Inbox (случайная модель)\n\n{msg}")
     art = str(path) if path else None
     if art:
-        session.artifacts.append(art)
+        _append_artifact(session, art)
     return ok, msg, art
 
 
@@ -177,14 +210,15 @@ def step_import_fbx(config: Config, session: LabSession) -> StepResult:
 
     from ..integrations.cascadeur.import_fbx import latest_inbox_fbx, trigger_fbx_import
 
+    import time
+
     fbx = latest_inbox_fbx(config)
-    ok, msg = trigger_fbx_import(config, fbx, topic=session.topic)
+    ok, msg, opened = trigger_fbx_import(config, fbx, topic=session.topic)
     session.import_ok = ok
+    session.import_auto = opened
+    time.sleep(2.0 if opened else 0.5)
     append_journal(config, session.topic, f"### Import FBX\n\n{msg}")
-    art = str(fbx) if fbx else None
-    if art and ok:
-        session.artifacts.append(art)
-    return ok, msg, art
+    return ok, msg, None
 
 
 def step_mouse_focus(config: Config, session: LabSession) -> StepResult:
@@ -231,7 +265,7 @@ def step_capture(config: Config, session: LabSession) -> StepResult:
         ok, msg = capture_window_png(shot, title_substr="Cascadeur")
     append_journal(config, session.topic, f"### Скрин\n\n{msg}")
     if ok:
-        session.artifacts.append(str(shot))
+        _append_artifact(session, str(shot))
     return ok, msg, str(shot) if ok else None
 
 
@@ -243,17 +277,25 @@ def step_report(config: Config, session: LabSession) -> StepResult:
     tail = ""
     if jpath.is_file():
         try:
-            tail = jpath.read_text(encoding="utf-8", errors="replace")[-4000:]
+            raw = jpath.read_text(encoding="utf-8", errors="replace")
+            tail = _journal_tail_for_report(raw)
         except OSError:
             pass
     arts = "\n".join(f"- {a}" for a in session.artifacts[-8:])
+    import_hint = ""
+    if session.import_ok and not session.import_auto:
+        import_hint = (
+            "\n⚠ FBX не открыт автоматически (нет ассоциации .fbx). "
+            "На скрине может быть welcome — Commands → Reload scripts → **Viu.Lab Import**.\n"
+        )
     report = (
         "Лаборатория Cascadeur — итерация завершена.\n\n"
-        f"Артефакты:\n{arts or '(нет)'}\n\n"
+        f"Артефакты:\n{arts or '(нет)'}\n"
+        f"{import_hint}\n"
         "Жду оценки: техника, изобретательность, старание, полезность, ясность (1–5).\n\n"
         f"Journal: {jpath}\n\n"
         "--- хвост journal ---\n"
-        f"{tail[-1500:]}"
+        f"{tail}"
     )
     session.last_report = report
     session.status = "awaiting_rating"
@@ -362,12 +404,15 @@ def run_until_done(
             lines.append(f"Статус: {session.status}")
             break
 
+        before_step = session.step
         ok, msg = run_one_step(config, session)
         steps_run += 1
         session = load_session(config, topic) or session
-        n = min(session.step, session.steps_total)
-        label = STEP_LABELS[min(n, len(STEP_LABELS) - 1)] if n < len(STEP_LABELS) else "…"
-        lines.append(f"[{steps_run}] шаг {n}/{session.steps_total} «{label}»: {msg[:500]}")
+        idx = min(before_step, len(STEP_LABELS) - 1)
+        label = STEP_LABELS[idx]
+        lines.append(
+            f"[{steps_run}] шаг {before_step + 1}/{session.steps_total} «{label}»: {msg[:500]}"
+        )
 
         if session.status == "paused":
             lines.append("Пауза — приоритет оператора.")

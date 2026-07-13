@@ -18,13 +18,22 @@ from .paths import cascadeur_inbox
 
 def ensure_cascadeur_running(config: Config, *, monitor_index: int = 2) -> Tuple[bool, str]:
     """Запустить Cascadeur если нет; сдвинуть на monitor_index (0-based)."""
+    started = False
     if not app_running("cascadeur"):
         ok, msg = restart_app("cascadeur", config)
         if not ok:
             return False, msg
-        time.sleep(4.0)
+        started = True
     else:
         msg = "Cascadeur уже запущен."
+
+    if started:
+        deadline = time.time() + 15.0
+        while time.time() < deadline:
+            if find_cascadeur_hwnd():
+                break
+            time.sleep(0.5)
+        time.sleep(2.0)
 
     hwnd = find_cascadeur_hwnd()
     if not hwnd:

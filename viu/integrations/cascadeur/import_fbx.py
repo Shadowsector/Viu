@@ -114,7 +114,7 @@ def write_pending_import(config: Config, fbx_path: Path, *, topic: str = "cascad
     return True, f"pending: {lab_pending.name} + {scripts_pending.name}"
 
 
-def _try_open_fbx(fbx_path: Path) -> Tuple[bool, str]:
+def _try_open_fbx(fbx_path: Path, config: Config | None = None) -> Tuple[bool, str]:
     if sys.platform != "win32":
         return False, "startfile только Windows"
     try:
@@ -122,24 +122,59 @@ def _try_open_fbx(fbx_path: Path) -> Tuple[bool, str]:
         time.sleep(2.0)
         return True, f"os.startfile({fbx_path.name})"
     except OSError as exc:
-        return False, str(exc)
+        if config is None:
+            return False, str(exc)
+        return _try_open_fbx_via_cascadeur(config, fbx_path, prior_error=str(exc))
 
 
-def trigger_fbx_import(config: Config, fbx_path: Optional[Path] = None, *, topic: str = "cascadeur") -> Tuple[bool, str]:
-    """Deploy команды, записать pending, попробовать открыть FBX."""
+def _try_open_fbx_via_cascadeur(config: Config, fbx_path: Path, *, prior_error: str = "") -> Tuple[bool, str]:
+    """Открыть FBX через cascadeur.exe (если .fbx не ассоциирован с приложением)."""
+    if sys.platform != "win32":
+        return False, prior_error or "не Windows"
+    try:
+        exe = resolve_cascadeur_exe(config)
+    except FileNotFoundError as exc:
+        return False, prior_error or str(exc)
+
+    import ctypes
+
+    rc = ctypes.windll.shell32.ShellExecuteW(
+        None,
+        "open",
+        str(exe),
+        str(fbx_path),
+        None,
+        1,
+    )
+    if rc <= 32:
+        hint = prior_error or f"ShellExecute код {rc}"
+        return False, f"{hint}; FBX не ассоциирован с Cascadeur — Commands → Viu.Lab Import"
+
+    time.sleep(3.0)
+    note = f" (ранее: {prior_error})" if prior_error else ""
+    return True, f"ShellExecute({exe.name}, {fbx_path.name}){note}"
+
+
+def trigger_fbx_import(
+    config: Config,
+    fbx_path: Optional[Path] = None,
+    *,
+    topic: str = "cascadeur",
+) -> Tuple[bool, str, bool]:
+    """Deploy команды, записать pending, попробовать открыть FBX. Третье значение — opened автоматически."""
     fbx = fbx_path or latest_inbox_fbx(config)
     if fbx is None or not fbx.is_file():
-        return False, "Нет FBX в Cascadeur Inbox — сначала шаг Inbox."
+        return False, "Нет FBX в Cascadeur Inbox — сначала шаг Inbox.", False
 
     ok_deploy, deploy_msg, _script = deploy_import_command(config)
     if not ok_deploy:
-        return False, deploy_msg
+        return False, deploy_msg, False
 
     ok_pending, pending_msg = write_pending_import(config, fbx, topic=topic)
     if not ok_pending:
-        return False, pending_msg
+        return False, pending_msg, False
 
-    opened_ok, open_msg = _try_open_fbx(fbx)
+    opened_ok, open_msg = _try_open_fbx(fbx, config)
     lines = [deploy_msg, pending_msg]
     if opened_ok:
         lines.append(open_msg)
@@ -147,11 +182,11 @@ def trigger_fbx_import(config: Config, fbx_path: Optional[Path] = None, *, topic
             "Если открылся диалог Import — подтверди вручную. "
             "Или Commands → Reload scripts → **Viu.Lab Import**."
         )
-        return True, "\n".join(lines)
+        return True, "\n".join(lines), True
 
     lines.append(
-        f"startfile: {open_msg}\n"
+        f"Авто-открытие FBX: {open_msg}\n"
         "В Cascadeur: **Commands → Reload scripts → Viu.Lab Import** "
         "(или File → Import → Fbx/Dae, Mode=Scene)."
     )
-    return True, "\n".join(lines)
+    return True, "\n".join(lines), False

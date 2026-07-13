@@ -43,6 +43,7 @@ def test_write_pending_import(tmp_path):
 
 def test_trigger_fbx_import_no_fbx(tmp_path):
     cfg = _cfg(tmp_path)
-    ok, msg = trigger_fbx_import(cfg)
+    ok, msg, opened = trigger_fbx_import(cfg)
     assert not ok
+    assert not opened
     assert "Inbox" in msg
