@@ -1247,7 +1247,8 @@ class ViuGUI:
                 self._lab_start_action()
             return
         if session.status == "awaiting_rating":
-            self._maybe_prompt_lab_rating()
+            if not auto:
+                self._lab_start_action()
             return
         if session.status in ("completed", "idle"):
             if auto:

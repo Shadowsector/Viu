@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 from ..lab.cascadeur_pipeline import CASCADEUR_TOPIC, ensure_task_file
 from ..lab.models_inbox import inbox_models_newer_than_session
+from ..lab.manual_verify import resume_for_manual_verify
 from ..lab.prepare import run_lab_prepared
 from ..lab.progress import format_lab_progress
 from ..lab.ratings import average_score, validate_ratings
@@ -17,33 +18,63 @@ def _run_all_flag(args: Dict[str, Any]) -> bool:
     return str(args.get("run_all", "0")).lower() in ("1", "true", "yes")
 
 
+def _verify_flag(args: Dict[str, Any]) -> bool:
+    return str(args.get("verify", "0")).lower() in ("1", "true", "yes")
+
+
 class LabStartTool(Tool):
     name = "lab_start"
     description = (
         "Начать или возобновить лабораторную сессию. topic=cascadeur — "
-        "пайплайн FBX/Cascadeur/скрины/отчёт. run_all=1 — весь цикл без пауз между шагами."
+        "пайплайн FBX/Cascadeur/скрины/отчёт. run_all=1 — весь цикл без пауз между шагами. "
+        "verify=1 — после ручного import: скрин + vision + отчёт (без оценки и без reset)."
     )
     parameters = {
         "topic": "cascadeur (по умолчанию)",
         "reset": "1 = новая сессия",
         "run_all": "1 = выполнить все шаги до отчёта/затыка",
+        "verify": "1 = проверить ручной import (скрин + vision)",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         topic = str(args.get("topic") or CASCADEUR_TOPIC).strip().lower()
         reset = str(args.get("reset", "0")).lower() in ("1", "true", "yes")
         run_all = _run_all_flag(args)
+        verify = _verify_flag(args)
         if topic == CASCADEUR_TOPIC:
             ensure_task_file(ctx.config)
 
+        session = None if reset else load_session(ctx.config, topic)
+
+        if (
+            not reset
+            and session
+            and session.status == "awaiting_rating"
+            and (verify or run_all)
+        ):
+            resume_for_manual_verify(ctx.config, session)
+            session = load_session(ctx.config, topic)
+            from ..lab.cascadeur_pipeline import run_until_done
+
+            ok, msg = run_until_done(ctx.config, session)
+            session = load_session(ctx.config, topic) or session
+            prefix = (
+                "Ручной import — проверяю viewport (скрин + vision, без полного цикла).\n"
+            )
+            body = prefix + format_lab_progress(session, msg)
+            if run_all:
+                body = "Lab: проверка ручного import.\n" + body
+            return ToolResult(ok, body)
+
+        if not reset and session and session.status == "awaiting_rating":
+            return ToolResult(
+                True,
+                "Жду оценку — «Оценить лабораторию».\n"
+                "Или «Лаборатория» / lab_start verify=1 — проверить ручной import без reset.",
+            )
+
         if not reset:
             session = load_session(ctx.config, topic)
-            if session and session.status == "awaiting_rating":
-                return ToolResult(
-                    True,
-                    "Жду оценку — «Оценить лабораторию».\n"
-                    "Новая итерация: lab_start reset=1",
-                )
             if session and inbox_models_newer_than_session(ctx.config, session):
                 reset = True
 
@@ -70,6 +101,15 @@ class LabStepTool(Tool):
         if session is None:
             return ToolResult(False, f"Нет сессии lab/{topic}. Сначала lab_start.")
         if session.status == "awaiting_rating":
+            if _run_all_flag(args) or _verify_flag(args):
+                resume_for_manual_verify(ctx.config, session)
+                session = load_session(ctx.config, topic)
+                from ..lab.cascadeur_pipeline import run_until_done
+
+                ok, msg = run_until_done(ctx.config, session)
+                session = load_session(ctx.config, topic) or session
+                prefix = "Lab: проверка ручного import.\n"
+                return ToolResult(ok, prefix + format_lab_progress(session, msg))
             return ToolResult(True, "Жду оценку — «Оценить лабораторию».")
         ok, msg, session = run_lab_prepared(
             ctx.config, topic, force_reset=False, run_all=_run_all_flag(args),
