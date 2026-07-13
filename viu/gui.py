@@ -65,6 +65,7 @@ class ViuGUI:
         self._last_via_telegram = False
         self._heartbeat_job: str | None = None
         self._heartbeat_notify = False
+        self._lab_job: str | None = None
         self._chat_history: deque[str] = deque(maxlen=16)
         self._llm_turns: deque[dict[str, str]] = deque(maxlen=14)
         self._boot_sha = read_local_sha(package_root())
@@ -98,6 +99,7 @@ class ViuGUI:
         self._start_telegram()
         self._schedule_heartbeat()
         self._schedule_cursor_inbox()
+        self._schedule_lab()
         try:
             from .vision import ensure_vision
 
@@ -196,6 +198,7 @@ class ViuGUI:
                 "Автономный режим: inbox/оверлей сама; вопросы копятся в «Очередь вопросов».",
                 tag="sys",
             )
+            self.root.after(2000, lambda: self._lab_tick(auto=True))
 
     def _show_decision_queue(self) -> None:
         from .decision_queue import render_open
@@ -482,6 +485,9 @@ class ViuGUI:
     def _on_action(self, action: GuiAction) -> None:
         if self._busy:
             return
+        from .lab.controller import lab_controller
+
+        lab_controller.request_operator_priority(f"кнопка: {action.label}")
         if action.tool == "__clear__":
             self._clear_output()
             return
@@ -508,6 +514,12 @@ class ViuGUI:
             return
         if action.tool == "__next_step__":
             self._run_next_step()
+            return
+        if action.tool == "__lab_start__":
+            self._lab_start_action()
+            return
+        if action.tool == "__lab_rate__":
+            self._open_lab_rating()
             return
         if action.tool == "__rescan_catalog__":
             self._open_prop_catalog()
@@ -816,6 +828,9 @@ class ViuGUI:
         self._run_bg(work, done)
 
     def _update_viu_full(self) -> None:
+        from .lab.controller import lab_controller
+
+        lab_controller.request_operator_priority("обновление Viu")
         self._append("ты", "[Обновить Вью]")
         self._set_busy(True)
 
@@ -1075,7 +1090,11 @@ class ViuGUI:
                 elif kind == "tool":
                     self._append("Вью", text, tag="tool")
                     self._set_busy(False)
+                    from .lab.controller import lab_controller
+
+                    lab_controller.clear_operator_priority()
                     self._refresh_action_visibility()
+                    self._maybe_prompt_lab_rating()
                     if text.startswith("[") and "ОШИБКА" in text:
                         self._telegram_notify_error(text)
                 elif kind == "final":
@@ -1148,6 +1167,81 @@ class ViuGUI:
         self._last_via_telegram = True
         self._heartbeat_notify = True
         self._run_agent_reflect("", heartbeat=True)
+
+    def _schedule_lab(self) -> None:
+        from .lab.paths import lab_interval_min
+
+        minutes = lab_interval_min(self.agent.config)
+        if self._lab_job is not None:
+            try:
+                self.root.after_cancel(self._lab_job)
+            except tk.TclError:
+                pass
+            self._lab_job = None
+        if minutes <= 0:
+            return
+
+        def tick() -> None:
+            self._lab_tick(auto=True)
+            self._lab_job = self.root.after(minutes * 60_000, tick)
+
+        self._lab_job = self.root.after(minutes * 60_000, tick)
+
+    def _lab_tick(self, *, auto: bool = False) -> None:
+        if self._busy:
+            return
+        from .presence import is_away
+
+        if auto and not is_away(self.agent.config):
+            return
+        from .lab.cascadeur_pipeline import CASCADEUR_TOPIC
+        from .lab.session import load_session
+
+        session = load_session(self.agent.config, CASCADEUR_TOPIC)
+        if session is None:
+            if not auto:
+                self._lab_start_action()
+            return
+        if session.status == "awaiting_rating":
+            self._maybe_prompt_lab_rating()
+            return
+        if session.status in ("completed", "idle"):
+            if auto:
+                return
+            self._lab_start_action(reset=True)
+            return
+        self._run_tool("lab_step", {"topic": CASCADEUR_TOPIC}, label="Lab: шаг")
+
+    def _lab_start_action(self, *, reset: bool = False) -> None:
+        from .lab.cascadeur_pipeline import CASCADEUR_TOPIC
+
+        self._append("ты", "[Лаборатория: Cascadeur]")
+        args: dict = {"topic": CASCADEUR_TOPIC}
+        if reset:
+            args["reset"] = "1"
+        self._run_tool("lab_start", args, label="Лаборатория: Cascadeur")
+
+    def _maybe_prompt_lab_rating(self) -> None:
+        from .lab.cascadeur_pipeline import CASCADEUR_TOPIC
+        from .lab.session import load_session
+
+        session = load_session(self.agent.config, CASCADEUR_TOPIC)
+        if session is None or session.status != "awaiting_rating":
+            return
+        self._append(
+            "система",
+            "Lab готова к оценке — «Оценить лабораторию» в Редко.",
+            tag="sys",
+        )
+
+    def _open_lab_rating(self) -> None:
+        from .lab.review_gui import open_lab_rating_review
+
+        def done(ok: bool, msg: str) -> None:
+            tag = "tool" if ok else "sys"
+            self._append("Вью", msg, tag=tag)
+
+        open_lab_rating_review(self.root, self.agent.config, "cascadeur", on_finished=done)
 
     def _schedule_cursor_inbox(self) -> None:
         """Раз в несколько минут — забрать задачи Cursor с GitHub и выполнить без Дена."""

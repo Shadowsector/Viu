@@ -96,6 +96,20 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="После новых Idle/Walk — пересобрать контроллер.",
     ),
     GuiAction(
+        "lab_cascadeur",
+        "Лаборатория: Cascadeur",
+        "Редко",
+        tool="__lab_start__",
+        hint="Фон: Inbox, запуск на 3-м мониторе, скрин, journal. Прерывается кнопками.",
+    ),
+    GuiAction(
+        "lab_rate",
+        "Оценить лабораторию",
+        "Редко",
+        tool="__lab_rate__",
+        hint="После отчёта lab — оценки 1–5 по пяти критериям.",
+    ),
+    GuiAction(
         "export_unity_asset",
         "Переэкспорт сарая в Unity",
         "Редко",

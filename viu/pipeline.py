@@ -269,6 +269,8 @@ _ACTION_VISIBILITY: dict[str, frozenset[str]] = {
     "overlay_depth_far": frozenset({"playtest"}),
     "overlay_depth_close": frozenset({"playtest"}),
     "cascadeur_status": frozenset({"idle", "playtest", "asset_done", "anim_review", "anim_inbox"}),
+    "lab_cascadeur": frozenset({"idle", "playtest", "asset_done", "export", "anim_review", "anim_inbox"}),
+    "lab_rate": frozenset({"idle", "playtest", "asset_done", "export", "anim_review", "anim_inbox"}),
 }
 
 

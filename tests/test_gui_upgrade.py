@@ -17,7 +17,7 @@ def test_gui_actions_grouped():
     assert "Редко" in grouped
     assert ACTION_GROUPS == ["Главное", "Редко"]
     # Минимум кнопок — не стена из 30 пунктов
-    assert len(GUI_ACTIONS) <= 14
+    assert len(GUI_ACTIONS) <= 18
     assert any(a.action_id == "next_step" and a.tool == "__next_step__" for a in GUI_ACTIONS)
     assert any(a.action_id == "unity_overlay" and a.tool == "unity_overlay" for a in GUI_ACTIONS)
     assert any(a.tool == "__update_viu__" for a in GUI_ACTIONS)

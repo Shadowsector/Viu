@@ -26,4 +26,4 @@ VIU_CASCADEUR_EXE=C:\Program Files\Cascadeur\Cascadeur.exe
 3. Export → `U:\Anabarra\Animations`
 4. Вью: **Обновить аниматор** (Unity закрыт)
 
-Авто-запуск Cascadeur из Вью — позже; сейчас пути и статус.
+Авто-запуск Cascadeur из Вью — **лаборатория** (см. [VIU_LAB.md](./VIU_LAB.md)): окно на 3-м мониторе, скрины, journal, оценки.
