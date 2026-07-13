@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ...config import Config
 from .exe import resolve_cascadeur_exe
+from .import_fbx import scripts_status_text
 from .paths import cascadeur_export, cascadeur_inbox
 
 
@@ -28,6 +29,8 @@ def cascadeur_status(config: Config) -> tuple[bool, str]:
     lines.append(f"  FBX: {len(inbox_fbx)}" + (f" — {inbox_fbx[0].name}" if inbox_fbx else ""))
     lines.append(f"• Export → Unity staging: {export}")
     lines.append(f"  FBX: {len(export_fbx)}")
+    lines.append("")
+    lines.append(scripts_status_text(config))
 
     lines.append(
         "\nWorkflow: Mixamo/Blender FBX → Library/Cascadeur/Inbox → "

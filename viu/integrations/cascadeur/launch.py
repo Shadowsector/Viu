@@ -12,7 +12,7 @@ from ...config import Config
 from ..apps.process import app_running, restart_app
 from ..screen.capture import find_hwnd
 from ..screen.monitor import move_hwnd_to_monitor
-from .window import find_cascadeur_hwnd
+from .window import find_cascadeur_hwnd, focus_cascadeur_window
 from .paths import cascadeur_inbox
 
 
@@ -40,7 +40,10 @@ def ensure_cascadeur_running(config: Config, *, monitor_index: int = 2) -> Tuple
         return True, msg + " Окно Cascadeur не найдено для переноса — открой вручную на 3-м мониторе."
 
     moved_ok, move_msg = move_hwnd_to_monitor(hwnd, monitor_index)
+    focus_ok, focus_msg = focus_cascadeur_window()
     parts = [msg, move_msg]
+    if focus_ok:
+        parts.append(f"Фокус: {focus_msg}")
     return moved_ok or app_running("cascadeur"), " ".join(p for p in parts if p)
 
 

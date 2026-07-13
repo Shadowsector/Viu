@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from typing import Optional
+from typing import Optional, Tuple
 
 from ..apps.process import app_pids
 from ..screen.capture import find_hwnd, list_windows
@@ -49,3 +49,18 @@ def find_cascadeur_hwnd() -> Optional[int]:
             best = (area, int(hwnd))
 
     return best[1] if best else None
+
+
+def focus_cascadeur_window() -> Tuple[bool, str]:
+    """Поставить Cascadeur на передний план (без клика мышью)."""
+    if sys.platform != "win32":
+        return False, "не Windows"
+    hwnd = find_cascadeur_hwnd()
+    if not hwnd:
+        return False, "окно Cascadeur не найдено"
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    ok = bool(user32.SetForegroundWindow(hwnd))
+    return ok, f"фокус HWND {hwnd}" if ok else "SetForegroundWindow не удался"

@@ -209,9 +209,11 @@ def step_import_fbx(config: Config, session: LabSession) -> StepResult:
         return False, msg, None
 
     from ..integrations.cascadeur.import_fbx import latest_inbox_fbx, trigger_fbx_import
+    from ..integrations.cascadeur.window import focus_cascadeur_window
 
     import time
 
+    focus_cascadeur_window()
     fbx = latest_inbox_fbx(config)
     ok, msg, opened = trigger_fbx_import(config, fbx, topic=session.topic)
     session.import_ok = ok

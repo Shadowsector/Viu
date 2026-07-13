@@ -1,5 +1,6 @@
 """Тесты импорта FBX в Cascadeur."""
 
+import os
 from pathlib import Path
 
 from viu.config import Config
@@ -21,13 +22,29 @@ def _cfg(tmp_path: Path) -> Config:
 
 def test_deploy_import_command(tmp_path):
     cfg = _cfg(tmp_path)
+    commands = tmp_path / "Cascadeur" / "resources" / "scripts" / "python" / "commands"
+    commands.mkdir(parents=True)
+    os.environ["VIU_CASCADEUR_SCRIPTS"] = str(commands)
     ok, msg, script = deploy_import_command(cfg)
     assert ok
     assert script.is_file()
     assert script.name == COMMAND_FILENAME
     text = script.read_text(encoding="utf-8")
     assert "Viu.Lab Import" in text
-    assert "import_fbx_scene" in text
+    assert "import_scene" in text
+    assert "create_application_scene" in text or "New scene" in text
+
+
+def test_discover_commands_dir(tmp_path):
+    cfg = _cfg(tmp_path)
+    commands = tmp_path / "resources" / "scripts" / "python" / "commands"
+    commands.mkdir(parents=True)
+    (commands / "sample.py").write_text("# x", encoding="utf-8")
+    os.environ["VIU_CASCADEUR_SCRIPTS"] = str(commands)
+    from viu.integrations.cascadeur.import_fbx import discover_commands_dirs
+
+    dirs = discover_commands_dirs(cfg)
+    assert any("commands" in d.as_posix() for d in dirs)
 
 
 def test_write_pending_import(tmp_path):
