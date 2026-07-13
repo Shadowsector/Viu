@@ -260,12 +260,12 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
     step_idx = session.step + 1
     label = STEP_LABELS[session.step] if session.step < len(STEP_LABELS) else f"шаг {step_idx}"
     ok, msg, _art = fn(config, session)
-    session.step += 1
     session.steps_total = len(STEPS)
-    notify_lab_step(config, step_idx, label, msg)
     if session.status == "paused":
         save_session(config, session)
-        return False, msg
+        return True, msg
+    session.step += 1
+    notify_lab_step(config, step_idx, label, msg)
     if session.step >= len(STEPS) or session.status == "awaiting_rating":
         pass
     else:

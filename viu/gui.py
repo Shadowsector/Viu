@@ -485,9 +485,14 @@ class ViuGUI:
     def _on_action(self, action: GuiAction) -> None:
         if self._busy:
             return
-        from .lab.controller import lab_controller
+        from .lab.controller import action_interrupts_lab, lab_controller
 
-        lab_controller.request_operator_priority(f"кнопка: {action.label}")
+        if action_interrupts_lab(action.tool):
+            lab_controller.request_operator_priority(f"кнопка: {action.label}")
+        elif action.tool in {"__lab_start__", "__lab_rate__"} or (
+            action.tool and action.tool.startswith("lab_")
+        ):
+            lab_controller.clear_operator_priority()
         if action.tool == "__clear__":
             self._clear_output()
             return
@@ -964,6 +969,10 @@ class ViuGUI:
 
     def _tool_worker(self, name: str, args: dict, title: str) -> None:
         try:
+            from .lab.controller import LAB_TOOL_NAMES, lab_controller
+
+            if name in LAB_TOOL_NAMES:
+                lab_controller.clear_operator_priority()
             tool = self.agent.registry.get(name)
             if tool is None:
                 self._queue.put(("error", f"Инструмент {name!r} не найден."))

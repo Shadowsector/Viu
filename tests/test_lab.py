@@ -41,6 +41,12 @@ def test_ratings_validate():
 
 
 def test_lab_controller_pause():
+    from viu.lab.controller import action_interrupts_lab, lab_controller
+
+    assert not action_interrupts_lab("__lab_start__")
+    assert not action_interrupts_lab("lab_step")
+    assert action_interrupts_lab("unity_overlay")
+
     lab_controller.clear_operator_priority()
     lab_controller.request_operator_priority("test")
     assert lab_controller.is_paused()
@@ -48,6 +54,24 @@ def test_lab_controller_pause():
     lab_controller.acknowledge_abort()
     lab_controller.clear_operator_priority()
     assert not lab_controller.is_paused()
+
+
+def test_run_one_step_pause_does_not_advance_step(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr(
+        "viu.lab.cascadeur_pipeline.cascadeur_status",
+        lambda _c: (True, "mock status"),
+    )
+    s = new_session(CASCADEUR_TOPIC)
+    save_session(cfg, s)
+    lab_controller.request_operator_priority("test")
+    ok, msg = run_one_step(cfg, s)
+    assert ok
+    assert "пауза" in msg.lower() or "Пауза" in msg
+    loaded = load_session(cfg, CASCADEUR_TOPIC)
+    assert loaded is not None
+    assert loaded.step == 0
+    lab_controller.clear_operator_priority()
 
 
 def test_cascadeur_task_file(tmp_path):

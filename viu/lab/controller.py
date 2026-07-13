@@ -4,6 +4,20 @@ from __future__ import annotations
 
 import threading
 
+# Кнопки и инструменты lab не должны сами себя прерывать.
+LAB_GUI_HOOKS = frozenset({"__lab_start__", "__lab_rate__"})
+LAB_TOOL_NAMES = frozenset({"lab_start", "lab_step", "lab_status", "lab_rate"})
+NO_LAB_INTERRUPT = LAB_GUI_HOOKS | frozenset({"__presence_toggle__"})
+
+
+def action_interrupts_lab(tool: str | None) -> bool:
+    """True — фоновая lab должна уступить (экспорт, оверлей, …)."""
+    if not tool:
+        return True
+    if tool in NO_LAB_INTERRUPT or tool in LAB_TOOL_NAMES:
+        return False
+    return True
+
 
 class LabController:
     """Кооперативная пауза: оператор (кнопки GUI) важнее фоновой лаборатории."""
