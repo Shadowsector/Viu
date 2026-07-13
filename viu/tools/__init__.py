@@ -58,7 +58,7 @@ from .cursor_inbox_tool import CursorInboxCompleteTool, CursorInboxPullTool
 from .overlay_playtest_tool import OverlayPlaytestTool
 from .building_cascadeur_tool import BuildingWorkflowTool, CascadeurStatusTool
 from .export_asset_tool import ExportUnityAssetTool
-from .lab_tool import LabRateTool, LabStartTool, LabStatusTool, LabStepTool
+from .lab_tool import LabRateTool, LabRunAllTool, LabStartTool, LabStatusTool, LabStepTool
 from .animation_catalog_tool import (
     AcceptAnimationInboxTool,
     AnimationCatalogMatchTool,
@@ -135,6 +135,7 @@ def build_default_registry() -> ToolRegistry:
         CascadeurStatusTool(),
         LabStartTool(),
         LabStepTool(),
+        LabRunAllTool(),
         LabStatusTool(),
         LabRateTool(),
         ExportUnityAssetTool(),

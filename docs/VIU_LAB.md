@@ -43,26 +43,35 @@ U:\Anabarra\Library\Lab\Models\Inbox\    ← rig-check + сводка models_sum
 
 Колонка **Каскадёр**: good (≥70) / maybe / poor — по совместимости скелета с Humanoid.
 
-## Пайплайн (8 шагов)
+## Пайплайн (9 шагов)
 
 1. Статус (Inbox/Export/exe)
 2. **Скан моделей + rig-check**
-3. Web-исследование (docs, export FBX)
+3. Web-исследование (docs, export FBX) — DDG API + HTML fallback + cascadeur.com
 4. **Случайная модель** → Cascadeur Inbox
 5. Запуск + монитор
-6. **Фокус мышью** — только в **away** и только Windows; курсор сразу возвращается на место
-7. Скрин UI
-8. Отчёт → **awaiting_rating** (+ Telegram в away)
+6. **Import FBX** — команда `Viu.Lab Import` (Python) + `pending_import.json`
+7. **Фокус мышью** — только в **away** и только Windows; курсор сразу возвращается на место
+8. Скрин UI
+9. Отчёт → **awaiting_rating** (+ Telegram в away)
 
-Прерывание: кнопки **экспорт/оверлей/…** (не lab) или **«Обновить Вью»** → `paused`.  
-**Inbox / launch / capture** — при ошибке шаг **не сдвигается**, скрин и отчёт не начинаются.  
-Повтор: та же кнопка «Лаборатория». Новая итерация: `lab_start reset=1` (не с шага 1 автоматически после оценки).
+**Inbox / launch / import / capture** — при ошибке шаг **не сдвигается**. При затыке — Telegram + очередь вопросов (away).
+
+### Весь цикл одной кнопкой
+
+- GUI: **«Lab: весь цикл»** или чат: `lab_start run_all=1` / `lab_run_all`
+- В away lab по таймеру гоняет **весь оставшийся цикл**, не по одному шагу.
+
+Прерывание: кнопки **экспорт/оверлей/…** (не lab) или **«Обновить Вью»** → `paused`.
 
 ## Автономный режим + Telegram
 
-«Меня нет» → lab делает **+1 шаг** каждые `VIU_LAB_INTERVAL_MIN` минут.
+«Меня нет» → lab делает **весь цикл** (или продолжение) каждые `VIU_LAB_INTERVAL_MIN` минут.
 
-После каждого шага — **краткий** отчёт в бот (`🧪 Lab — шаг N`).
+Вью **решает сама**; спрашивает Дена только при **затыке** (шаг не прошёл) или в **итоговом отчёте**.
+При затыке — кратко в Telegram + вопрос в **очередь решений**.
+
+После каждого шага — **краткий** отчёт в бот (`🧪 Lab — шаг N`) только в away.
 После итерации — «итерация готова», Ден удалённо смотрит и ставит оценку на ПК.
 
 Нужны: `VIU_TELEGRAM_TOKEN`, chat привязан через `/start`.
@@ -99,6 +108,7 @@ VIU_LAB_MOUSE=1
 VIU_LAB_MOUSE_AWAY_ONLY=1
 VIU_LAB_MODELS_INBOX=U:\Anabarra\Library\Lab\Models\Inbox
 VIU_CASCADEUR_EXE=U:\Cascadeur\App\Cascadeur\cascadeur.exe
+VIU_CASCADEUR_SCRIPTS=   # опционально: папка user-команд (Commands)
 ```
 
 `OLLAMA_MAX_VRAM` подсказывается при lab-шагах с web/LLM.
@@ -129,7 +139,8 @@ Lab **не захватывает** курсор (нет hook, нет блоки
 
 ## Кнопки / инструменты
 
-- **Лаборатория: Cascadeur** — `lab_start` + первый шаг
+- **Лаборатория: Cascadeur** — `lab_start` + один шаг
+- **Lab: весь цикл** — `lab_run_all` / `lab_start run_all=1`
 - **Оценить лабораторию** — форма оценок
 - `lab_step`, `lab_status`, `lab_rate` — для чата/агента
 

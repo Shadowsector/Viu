@@ -491,7 +491,7 @@ class ViuGUI:
 
         if action_interrupts_lab(action.tool):
             lab_controller.request_operator_priority(f"кнопка: {action.label}")
-        elif action.tool in {"__lab_start__", "__lab_rate__"} or (
+        elif action.tool in {"__lab_start__", "__lab_run_all__", "__lab_rate__"} or (
             action.tool and action.tool.startswith("lab_")
         ):
             lab_controller.clear_operator_priority()
@@ -525,6 +525,10 @@ class ViuGUI:
         if action.tool == "__lab_start__":
             self._set_busy(True)
             self._lab_start_action()
+            return
+        if action.tool == "__lab_run_all__":
+            self._set_busy(True)
+            self._lab_run_all_action()
             return
         if action.tool == "__lab_rate__":
             self._open_lab_rating()
@@ -1233,7 +1237,13 @@ class ViuGUI:
 
         session = load_session(self.agent.config, CASCADEUR_TOPIC)
         if session is None:
-            if not auto:
+            if auto:
+                self._run_tool(
+                    "lab_run_all",
+                    {"topic": CASCADEUR_TOPIC, "reset": "1"},
+                    label="Lab: весь цикл (auto)",
+                )
+            else:
                 self._lab_start_action()
             return
         if session.status == "awaiting_rating":
@@ -1244,7 +1254,7 @@ class ViuGUI:
                 return
             self._lab_start_action(reset=True)
             return
-        self._run_tool("lab_step", {"topic": CASCADEUR_TOPIC}, label="Lab: шаг")
+        self._run_tool("lab_step", {"topic": CASCADEUR_TOPIC, "run_all": "1"}, label="Lab: весь цикл")
 
     def _lab_start_action(self, *, reset: bool = False) -> None:
         from .lab.cascadeur_pipeline import CASCADEUR_TOPIC
@@ -1253,6 +1263,14 @@ class ViuGUI:
         if reset:
             args["reset"] = "1"
         self._run_tool("lab_start", args, label="Лаборатория: Cascadeur", echo_user=True)
+
+    def _lab_run_all_action(self, *, reset: bool = False) -> None:
+        from .lab.cascadeur_pipeline import CASCADEUR_TOPIC
+
+        args: dict = {"topic": CASCADEUR_TOPIC, "run_all": "1"}
+        if reset:
+            args["reset"] = "1"
+        self._run_tool("lab_run_all", args, label="Lab: весь цикл", echo_user=True)
 
     def _maybe_prompt_lab_rating(self) -> None:
         from .lab.cascadeur_pipeline import CASCADEUR_TOPIC

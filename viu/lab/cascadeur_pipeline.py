@@ -11,12 +11,12 @@ from ..integrations.cascadeur import cascadeur_status
 from ..integrations.cascadeur.launch import ensure_cascadeur_running
 from ..integrations.cascadeur.window import find_cascadeur_hwnd
 from ..integrations.screen.capture import capture_window_png
-from ..tools.web import WebSearchTool
+from ..tools.web import search_web
 from .controller import lab_controller
 from .models_inbox import build_models_summary, copy_random_model_to_cascadeur_inbox
-from .notify import notify_lab_awaiting_rating, notify_lab_step
+from .notify import notify_lab_awaiting_rating, notify_lab_step, notify_lab_stuck
 from .paths import apply_lab_vram_env, artifacts_dir, journal_path, lab_monitor_index, task_path
-from .session import LabSession, append_journal, save_session
+from .session import LabSession, append_journal, load_session, save_session
 
 CASCADEUR_TOPIC = "cascadeur"
 
@@ -37,9 +37,12 @@ CASCADEUR_TASK_MD = """# Задание лаборатории: Cascadeur
 3. **Исследование** — web: официальные docs, rig retarget, export FBX.
 4. **Inbox** — **случайная** модель из Lab Inbox → FBX в Cascadeur Inbox (или sample, если пусто).
 5. **Запуск** — открыть Cascadeur, окно на монитор `VIU_LAB_MONITOR` (по умолчанию 3-й).
-6. **Мышь** — фокус окна кликом в центр (`VIU_LAB_MOUSE=1`, Windows).
-7. **Скрин** — зафиксировать UI после паузы (Ден может смотреть на 3-м мониторе).
-8. **Отчёт** — journal + запрос оценки; в **автономном режиме** — кратко в Telegram.
+6. **Import FBX** — Python-команда `Viu.Lab Import` + pending JSON (или File → Import).
+7. **Мышь** — фокус окна кликом в центр (`VIU_LAB_MOUSE=1`, Windows).
+8. **Скрин** — зафиксировать UI после паузы (Ден может смотреть на 3-м мониторе).
+9. **Отчёт** — journal + запрос оценки; в **автономном режиме** — кратко в Telegram.
+
+Решай сама. Спроси Дена только если застряла (шаг не прошёл) или в итоговом отчёте.
 
 ## Ограничения
 
@@ -80,6 +83,7 @@ STEP_LABELS = [
     "Web-исследование",
     "Случайная модель → Inbox",
     "Запуск Cascadeur",
+    "Import FBX в Cascadeur",
     "Фокус мышью",
     "Скрин UI",
     "Отчёт",
@@ -116,24 +120,11 @@ def step_research(config: Config, session: LabSession) -> StepResult:
         append_journal(config, session.topic, msg)
         return True, msg, None
     try:
-        from ..tools.base import AgentContext
-        from ..memory import MemoryStore
-        from ..planning import Planner
-        from ..tools import ToolRegistry
-
-        ctx = AgentContext(
-            config=config,
-            memory=MemoryStore(config.data_dir / "memory.json"),
-            planner=Planner(config.data_dir / "lab_plan.json"),
-            registry=ToolRegistry(),
-        )
-        res = WebSearchTool().run(
-            {"query": "Cascadeur export FBX to Unity workflow retarget", "max_results": 4},
-            ctx,
-        )
-        body = res.content[:3500]
+        query = "Cascadeur export FBX to Unity workflow retarget import"
+        hits = search_web(query, max_results=5)
+        body = "\n".join(f"- {h}" for h in hits) if hits else "Ничего не найдено по запросу."
         append_journal(config, session.topic, f"### Web\n\n{body}")
-        return res.ok, body[:800], None
+        return True, body[:800], None
     except Exception as exc:  # noqa: BLE001
         msg = f"Web: {exc}"
         append_journal(config, session.topic, msg)
@@ -173,6 +164,27 @@ def step_launch(config: Config, session: LabSession) -> StepResult:
         msg = msg + "\nПроцесс есть, но окно Cascadeur не найдено — повтори шаг."
     append_journal(config, session.topic, f"### Запуск Cascadeur (монитор {mon + 1})\n\n{msg}")
     return ok, msg, None
+
+
+def step_import_fbx(config: Config, session: LabSession) -> StepResult:
+    aborted = _check_abort(session)
+    if aborted:
+        return aborted
+    if not session.launch_ok:
+        msg = "Пропуск import: Cascadeur не запущен (шаг 5 не пройден)."
+        append_journal(config, session.topic, f"### Import FBX\n\n{msg}")
+        return False, msg, None
+
+    from ..integrations.cascadeur.import_fbx import latest_inbox_fbx, trigger_fbx_import
+
+    fbx = latest_inbox_fbx(config)
+    ok, msg = trigger_fbx_import(config, fbx, topic=session.topic)
+    session.import_ok = ok
+    append_journal(config, session.topic, f"### Import FBX\n\n{msg}")
+    art = str(fbx) if fbx else None
+    if art and ok:
+        session.artifacts.append(art)
+    return ok, msg, art
 
 
 def step_mouse_focus(config: Config, session: LabSession) -> StepResult:
@@ -256,18 +268,19 @@ STEPS: list[Callable[[Config, LabSession], StepResult]] = [
     step_research,
     step_inbox,
     step_launch,
+    step_import_fbx,
     step_mouse_focus,
     step_capture,
     step_report,
 ]
 
 # Не переходить к следующему шагу, пока этот не удался (0-based индекс).
-BLOCK_ON_FAIL = frozenset({3, 4, 6})  # inbox, launch, capture
+BLOCK_ON_FAIL = frozenset({3, 4, 5, 7})  # inbox, launch, import, capture
 
 
 def _gate_before_step(config: Config, session: LabSession) -> Optional[Tuple[bool, str]]:
     """Если Cascadeur не поднят — откат к шагу запуска, не скрин/мышь."""
-    if session.step in (5, 6) and not session.launch_ok:
+    if session.step in (5, 6, 7) and not session.launch_ok:
         session.step = 4
         save_session(config, session)
         msg = (
@@ -312,6 +325,7 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
         session.last_fail_step = session.step
         tail = "\n\n⏸ Шаг не пройден — следующий не начинаю. «Лаборатория» повторит этот шаг."
         save_session(config, session)
+        notify_lab_stuck(config, session, msg, step_label=label)
         return True, msg + tail
 
     session.last_fail_step = -1
@@ -323,3 +337,45 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
         session.status = "running"
     save_session(config, session)
     return ok, msg
+
+
+def run_until_done(
+    config: Config,
+    session: LabSession,
+    *,
+    max_steps: int = 24,
+) -> Tuple[bool, str]:
+    """Выполнить шаги до awaiting_rating, паузы или блокировки (автономный цикл)."""
+    lines: list[str] = []
+    steps_run = 0
+    topic = session.topic
+
+    while steps_run < max_steps:
+        session = load_session(config, topic) or session
+        if session.status == "awaiting_rating":
+            lines.append("Итерация завершена — жду оценку.")
+            break
+        if session.status == "completed":
+            lines.append("Сессия завершена.")
+            break
+        if session.status not in ("running", "paused"):
+            lines.append(f"Статус: {session.status}")
+            break
+
+        ok, msg = run_one_step(config, session)
+        steps_run += 1
+        session = load_session(config, topic) or session
+        n = min(session.step, session.steps_total)
+        label = STEP_LABELS[min(n, len(STEP_LABELS) - 1)] if n < len(STEP_LABELS) else "…"
+        lines.append(f"[{steps_run}] шаг {n}/{session.steps_total} «{label}»: {msg[:500]}")
+
+        if session.status == "paused":
+            lines.append("Пауза — приоритет оператора.")
+            break
+        if session.last_fail_step >= 0:
+            break
+
+    summary = "\n\n".join(lines[-6:]) if lines else "Нет шагов."
+    if steps_run >= max_steps:
+        summary += f"\n\n(лимит {max_steps} шагов — продолжи lab_step run_all=1)"
+    return True, summary

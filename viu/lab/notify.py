@@ -52,3 +52,31 @@ def notify_lab_awaiting_rating(config: Config, report_preview: str) -> bool:
         "Или /status в боте."
     )
     return _send(config, body)
+
+
+def notify_lab_stuck(config: Config, session, msg: str, *, step_label: str = "") -> bool:
+    """Застряла на шаге — кратко в Telegram + очередь решений (только away)."""
+    if not is_away(config):
+        return False
+    label = step_label or f"шаг {getattr(session, 'step', 0) + 1}"
+    preview = (msg or "").strip()
+    if len(preview) > 450:
+        preview = preview[:447] + "…"
+    body = (
+        f"🧪 Lab — застряла: «{label}»\n\n"
+        f"{preview}\n\n"
+        "Решаю сама дальше не могу — посмотри journal или ответь в очереди вопросов."
+    )
+    sent = _send(config, body)
+    try:
+        from ..decision_queue import enqueue
+
+        enqueue(
+            config,
+            f"Lab Cascadeur застряла на «{label}». Как поступить: повторить, пропустить шаг или остановить?",
+            kind="pipeline",
+            context=preview[:600],
+        )
+    except Exception:
+        pass
+    return sent

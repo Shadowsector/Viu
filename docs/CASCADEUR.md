@@ -15,9 +15,15 @@
 
 ```env
 VIU_CASCADEUR_EXE=U:\Cascadeur\App\Cascadeur\cascadeur.exe
+VIU_CASCADEUR_SCRIPTS=   # опционально — папка Commands (user scripts)
 ```
 
 Авто-поиск без `.env`: `U:\Cascadeur\App\Cascadeur\cascadeur.exe`, затем `Program Files\Cascadeur\`.
+
+### Import FBX из lab
+
+Вью кладёт `viu_lab_import.py` в папку user-команд Cascadeur и пишет `viu_lab_pending.json` с путём FBX.
+В Cascadeur: **Commands → Reload scripts → Viu.Lab Import** (или File → Import после `os.startfile` на FBX).
 
 Проверка: в Telegram или чате — **cascadeur_status** (инструмент Вью).
 

@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from viu.config import Config
-from viu.lab.cascadeur_pipeline import CASCADEUR_TOPIC, ensure_task_file, run_one_step
+from viu.lab.cascadeur_pipeline import CASCADEUR_TOPIC, ensure_task_file, run_one_step, run_until_done
 from viu.lab.controller import lab_controller
 from viu.lab.ratings import average_score, validate_ratings
 from viu.lab.session import LabSession, load_session, new_session, save_session
@@ -106,7 +106,7 @@ def test_run_one_step_blocks_after_launch_fail(tmp_path, monkeypatch):
 def test_run_one_step_rewinds_capture_without_launch(tmp_path):
     cfg = _cfg(tmp_path)
     s = new_session(CASCADEUR_TOPIC)
-    s.step = 6
+    s.step = 7  # capture (0-based, 9 steps)
     s.launch_ok = False
     save_session(cfg, s)
     ok, msg = run_one_step(cfg, s)
@@ -114,6 +114,35 @@ def test_run_one_step_rewinds_capture_without_launch(tmp_path):
     loaded = load_session(cfg, CASCADEUR_TOPIC)
     assert loaded is not None
     assert loaded.step == 4
+
+
+def test_run_until_done_stops_on_fail(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr(
+        "viu.lab.cascadeur_pipeline.ensure_cascadeur_running",
+        lambda *_a, **_k: (False, "launch fail"),
+    )
+    monkeypatch.setattr(
+        "viu.lab.cascadeur_pipeline.find_cascadeur_hwnd",
+        lambda: None,
+    )
+    s = new_session(CASCADEUR_TOPIC)
+    s.step = 4
+    save_session(cfg, s)
+    ok, msg = run_until_done(cfg, s, max_steps=5)
+    assert ok
+    loaded = load_session(cfg, CASCADEUR_TOPIC)
+    assert loaded is not None
+    assert loaded.last_fail_step == 4
+    assert loaded.step == 4
+
+
+def test_step_labels_nine_steps():
+    from viu.lab.cascadeur_pipeline import STEP_LABELS, STEPS
+
+    assert len(STEPS) == 9
+    assert len(STEP_LABELS) == 9
+    assert "Import FBX" in STEP_LABELS[5]
 
 
 def test_run_one_step_status(tmp_path, monkeypatch):

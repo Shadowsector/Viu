@@ -100,7 +100,14 @@ GUI_ACTIONS: List[GuiAction] = [
         "Лаборатория: Cascadeur",
         "Редко",
         tool="__lab_start__",
-        hint="Фон: Inbox, запуск на 3-м мониторе, скрин, journal. Прерывается кнопками.",
+        hint="Один шаг lab. Прерывается кнопками экспорт/оверлей.",
+    ),
+    GuiAction(
+        "lab_cascadeur_all",
+        "Lab: весь цикл",
+        "Редко",
+        tool="__lab_run_all__",
+        hint="Все 9 шагов до отчёта или затыка. В away — автономно по таймеру.",
     ),
     GuiAction(
         "lab_rate",
