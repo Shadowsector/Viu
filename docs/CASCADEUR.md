@@ -11,11 +11,13 @@
 
 ## Настройка
 
-В `U:\Viu\.env`:
+В `U:\Viu\.env` (опционально — если exe лежит в стандартном месте, Вью найдёт сама):
 
 ```env
-VIU_CASCADEUR_EXE=C:\Program Files\Cascadeur\Cascadeur.exe
+VIU_CASCADEUR_EXE=U:\Cascadeur\App\Cascadeur\cascadeur.exe
 ```
+
+Авто-поиск без `.env`: `U:\Cascadeur\App\Cascadeur\cascadeur.exe`, затем `Program Files\Cascadeur\`.
 
 Проверка: в Telegram или чате — **cascadeur_status** (инструмент Вью).
 

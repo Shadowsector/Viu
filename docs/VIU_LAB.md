@@ -95,7 +95,7 @@ VIU_LAB_INTERVAL_MIN=5
 VIU_LAB_MOUSE=1
 VIU_LAB_MOUSE_AWAY_ONLY=1
 VIU_LAB_MODELS_INBOX=U:\Anabarra\Library\Lab\Models\Inbox
-VIU_CASCADEUR_EXE=C:\Program Files\Cascadeur\Cascadeur.exe
+VIU_CASCADEUR_EXE=U:\Cascadeur\App\Cascadeur\cascadeur.exe
 ```
 
 `OLLAMA_MAX_VRAM` подсказывается при lab-шагах с web/LLM.
@@ -108,6 +108,8 @@ Lab **не захватывает** курсор (нет hook, нет блоки
 - Пока ты **дома** — lab вообще не трогает мышь.
 - В away: один клик в центр Cascadeur → **сразу** курсор возвращается туда, где был.
 - На `awaiting_rating` lab idle — мышь полностью твоя.
+
+**Vision не нужен** для этого шага: координаты берутся из окна (`GetWindowRect`), не из LLM и не из скрина. «Умные» клики по кнопкам UI — позже, с vision-моделью по запросу.
 
 Отключить совсем: `VIU_LAB_MOUSE=0`.
 

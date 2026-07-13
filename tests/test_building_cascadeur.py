@@ -32,7 +32,34 @@ def test_cascadeur_status_no_exe(tmp_path, monkeypatch):
     cfg.ensure_dirs()
     monkeypatch.setenv("VIU_LIBRARY_ROOT", str(tmp_path / "lib"))
     monkeypatch.delenv("VIU_CASCADEUR_EXE", raising=False)
+    monkeypatch.setattr(
+        "viu.integrations.cascadeur.exe.discover_cascadeur_exe",
+        lambda: None,
+    )
     ok, text = cascadeur_status(cfg)
     assert not ok
     assert "Cascadeur" in text
     assert (tmp_path / "lib" / "Cascadeur" / "Inbox").is_dir()
+
+
+def test_discover_cascadeur_exe_u_drive(tmp_path, monkeypatch):
+    from viu.integrations.cascadeur.exe import discover_cascadeur_exe, resolve_cascadeur_exe
+
+    fake = tmp_path / "Cascadeur" / "App" / "Cascadeur" / "cascadeur.exe"
+    fake.parent.mkdir(parents=True)
+    fake.write_bytes(b"MZ")
+
+    def fake_candidates():
+        yield fake
+
+    monkeypatch.setattr(
+        "viu.integrations.cascadeur.exe._candidate_paths",
+        fake_candidates,
+    )
+    assert discover_cascadeur_exe() == fake.resolve()
+
+    from viu.config import Config
+
+    cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu")
+    monkeypatch.delenv("VIU_CASCADEUR_EXE", raising=False)
+    assert resolve_cascadeur_exe(cfg) == fake.resolve()
