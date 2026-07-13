@@ -117,6 +117,7 @@ def test_build_dump_command():
     cmd = build_dump_command("blender", "/x/y.blend", "/tmp/s.py")
     assert cmd[0] == "blender"
     assert "--background" in cmd and "--python" in cmd
+    assert "--factory-startup" in cmd
     assert "/x/y.blend" in cmd
 
 
@@ -124,7 +125,8 @@ def test_parse_dump_output():
     from viu.integrations.blender.headless import _MARK_BEGIN, _MARK_END
 
     payload = {"objects": [{"name": "A"}]}
-    out = f"шум\n{_MARK_BEGIN}{json.dumps(payload)}{_MARK_END}\nещё шум"
+    wrapped = {"ok": True, "scene": payload}
+    out = f"шум\n{_MARK_BEGIN}{json.dumps(wrapped)}{_MARK_END}\nещё шум"
     assert parse_dump_output(out) == payload
 
 
@@ -135,10 +137,11 @@ def test_dump_blend_info_with_mock_runner(tmp_path):
     blend.write_text("")  # достаточно, чтобы файл существовал
 
     payload = {"objects": [{"name": "Шаня", "type": "MESH", "shape_keys": ["улыбка"]}]}
+    wrapped = {"ok": True, "scene": payload}
 
     class _Proc:
         returncode = 0
-        stdout = f"{_MARK_BEGIN}{json.dumps(payload, ensure_ascii=False)}{_MARK_END}"
+        stdout = f"{_MARK_BEGIN}{json.dumps(wrapped, ensure_ascii=False)}{_MARK_END}"
         stderr = ""
 
     def fake_runner(cmd, **kwargs):

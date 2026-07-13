@@ -42,6 +42,7 @@ def test_export_command_includes_blend():
     cmd = build_export_command("blender", "a.blend", "script.py", "out.fbx")
     assert "a.blend" in cmd
     assert "out.fbx" in cmd
+    assert "--factory-startup" in cmd
     assert "--" in cmd
 
 
@@ -56,9 +57,11 @@ def test_export_shanya_mock_runner(tmp_path):
     out = tmp_path / "Shanya.fbx"
 
     def fake_runner(cmd, **kwargs):
+        out.write_bytes(b"FBX")
         return subprocess.CompletedProcess(
-            args=cmd, returncode=0,
-            stdout=f"<<<VIU_EXPORT_OK>>>{out}<<<VIU_EXPORT_END>>>",
+            args=cmd,
+            returncode=0,
+            stdout='<<<VIU_EXPORT_JSON_BEGIN>>>{"ok":true,"output":"x"}<<<VIU_EXPORT_JSON_END>>>',
             stderr="",
         )
 

@@ -275,7 +275,7 @@ def _model_to_fbx(
         export_shanya_fbx(str(model), str(out), blender_exe=exe)
         return True, f"Экспорт FBX: {out.name}", out
     except (FileNotFoundError, RuntimeError, OSError) as exc:
-        return False, f"Экспорт FBX не удался: {exc}", None
+        return False, f"Экспорт FBX: {exc}", None
 
 
 def prepare_cascadeur_inbox(

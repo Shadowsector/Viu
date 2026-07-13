@@ -28,7 +28,7 @@ U:\Anabarra\Library\Cascadeur\Inbox\     ← Den клал сюда; lab конв
 U:\Anabarra\Library\Lab\Models\Inbox\    ← rig-check + сводка models_summary.md
 ```
 
-На шаге **Inbox (4/8)**: если в Cascadeur Inbox уже `.blend` — экспорт FBX **на месте** через Blender.
+На шаге **Inbox (4/8)**: если в Cascadeur Inbox уже `.blend` — экспорт FBX **на месте** через Blender (`--factory-startup`, без DAZ/Viu Bridge — окно не «мигает» с аддонами).
 Нужен `VIU_BLENDER_EXE` (Steam-Blender ищется автоматически).
 
 Новые файлы в inbox после начала сессии → **авто reset** с шага 1.

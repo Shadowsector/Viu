@@ -1,67 +1,104 @@
-"""Экспорт Shanya_Erisa FBX для Unity — без WGT-виджетов."""
+"""Экспорт персонажа FBX для Unity / Cascadeur — без WGT, без user addons."""
 
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
+import traceback
 from pathlib import Path
-from typing import Callable, List
+from typing import Any, Callable, Dict, List
 
-_MARK_BEGIN = "<<<VIU_EXPORT_OK>>>"
-_MARK_END = "<<<VIU_EXPORT_END>>>"
+_MARK_BEGIN = "<<<VIU_EXPORT_JSON_BEGIN>>>"
+_MARK_END = "<<<VIU_EXPORT_JSON_END>>>"
 
+# --factory-startup: не грузить DAZ Importer / Viu Bridge (Den: Blender «мигнул и quit»).
 EXPORT_SCRIPT = f'''
-import bpy
-import sys
+import bpy, json, sys, traceback
 
-argv = sys.argv
-if "--" not in argv:
-    raise SystemExit("Нужен путь выхода после --")
-out_path = argv[argv.index("--") + 1]
+def emit(payload):
+    print("{_MARK_BEGIN}" + json.dumps(payload, ensure_ascii=False) + "{_MARK_END}")
 
-hidden = 0
-for obj in bpy.data.objects:
-    name = obj.name
-    if name.startswith("WGT") or name in ("Circle", "Sphere"):
-        obj.hide_set(True)
+try:
+    argv = sys.argv
+    if "--" not in argv:
+        raise RuntimeError("Нужен путь выхода после --")
+    out_path = argv[argv.index("--") + 1]
+
+    hidden = 0
+    for obj in bpy.data.objects:
+        name = obj.name
+        if name.startswith("WGT") or name in ("Circle", "Sphere"):
+            try:
+                obj.hide_set(True)
+                obj.hide_viewport = True
+            except Exception:
+                pass
+            hidden += 1
+
+    for col in bpy.data.collections:
         try:
-            obj.hide_viewport = True
+            col.hide_viewport = False
         except Exception:
             pass
-        hidden += 1
 
-bpy.ops.object.select_all(action='DESELECT')
-active_arm = None
-for obj in bpy.data.objects:
-    if obj.type not in ('MESH', 'ARMATURE'):
-        continue
-    if obj.hide_viewport or obj.hide_get():
-        continue
-    obj.select_set(True)
-    if obj.type == 'ARMATURE':
-        active_arm = obj
-
-if active_arm is None:
+    bpy.ops.object.select_all(action="DESELECT")
+    active_arm = None
+    selected = []
     for obj in bpy.data.objects:
-        if obj.type == 'ARMATURE':
+        if obj.type not in ("MESH", "ARMATURE"):
+            continue
+        try:
+            if obj.hide_viewport or obj.hide_get():
+                continue
+        except Exception:
+            pass
+        obj.select_set(True)
+        selected.append(obj.name)
+        if obj.type == "ARMATURE" and active_arm is None:
             active_arm = obj
-            obj.select_set(True)
-            break
 
-if active_arm:
-    bpy.context.view_layer.objects.active = active_arm
+    if active_arm is None:
+        for obj in bpy.data.objects:
+            if obj.type == "ARMATURE":
+                active_arm = obj
+                obj.select_set(True)
+                if obj.name not in selected:
+                    selected.append(obj.name)
+                break
 
-bpy.ops.export_scene.fbx(
-    filepath=out_path,
-    use_selection=True,
-    object_types={{'ARMATURE', 'MESH'}},
-    bake_anim=False,
-    add_leaf_bones=False,
-    mesh_smooth_type='FACE',
-)
+    if not selected:
+        raise RuntimeError("Нет MESH/ARMATURE для экспорта (сцена пуста или всё скрыто).")
 
-print("{_MARK_BEGIN}" + out_path + "{_MARK_END}")
-print(f"[Viu] FBX export: {{out_path}}, hidden widgets: {{hidden}}")
+    if active_arm:
+        bpy.context.view_layer.objects.active = active_arm
+    else:
+        bpy.context.view_layer.objects.active = bpy.data.objects[selected[0]]
+
+    bpy.ops.export_scene.fbx(
+        filepath=out_path,
+        use_selection=True,
+        object_types={{"ARMATURE", "MESH"}},
+        use_mesh_modifiers=True,
+        bake_anim=False,
+        add_leaf_bones=False,
+        mesh_smooth_type="FACE",
+        apply_scale_options="FBX_SCALE_ALL",
+    )
+
+    emit({{
+        "ok": True,
+        "output": out_path,
+        "selected": selected,
+        "hidden_widgets": hidden,
+    }})
+except Exception as exc:
+    emit({{
+        "ok": False,
+        "error": str(exc),
+        "traceback": traceback.format_exc()[-2000:],
+    }})
+    raise SystemExit(2)
 '''
 
 
@@ -69,19 +106,40 @@ def build_export_command(blender_exe: str, blend_file: str, script_path: str, ou
     return [
         blender_exe,
         "--background",
+        "--factory-startup",
         blend_file,
         "--python",
         script_path,
+        "--python-exit-code",
+        "2",
         "--",
         output_fbx,
     ]
+
+
+def _tail(text: str, limit: int = 2000) -> str:
+    text = (text or "").strip()
+    return text[-limit:] if len(text) > limit else text
+
+
+def parse_export_output(stdout: str) -> Dict[str, Any]:
+    start = stdout.find(_MARK_BEGIN)
+    end = stdout.find(_MARK_END)
+    if start == -1 or end == -1:
+        raise RuntimeError(f"Маркер экспорта не найден.\n{_tail(stdout)}")
+    data = json.loads(stdout[start + len(_MARK_BEGIN) : end])
+    if not data.get("ok", True):
+        err = data.get("error", "unknown")
+        tb = data.get("traceback", "")
+        raise RuntimeError(f"Blender export: {err}\n{tb}")
+    return data
 
 
 def export_shanya_fbx(
     blend_file: str,
     output_fbx: str | None = None,
     blender_exe: str = "blender",
-    timeout: float = 180.0,
+    timeout: float = 300.0,
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
 ) -> Path:
     blend = Path(blend_file).resolve()
@@ -98,12 +156,14 @@ def export_shanya_fbx(
     try:
         cmd = build_export_command(blender_exe, str(blend), script_path, str(out))
         proc = runner(cmd, capture_output=True, text=True, timeout=timeout)
-        if proc.returncode != 0:
+        combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        if proc.returncode != 0 and _MARK_BEGIN not in proc.stdout:
             raise RuntimeError(
-                f"Blender export code {proc.returncode}\nstderr:\n{proc.stderr}\nstdout:\n{proc.stdout}"
+                f"Blender завершился с кодом {proc.returncode}.\n{_tail(combined)}"
             )
-        if _MARK_BEGIN not in proc.stdout:
-            raise RuntimeError(f"Маркер экспорта не найден.\n{proc.stdout[-2000:]}")
+        parse_export_output(proc.stdout or combined)
+        if not out.is_file():
+            raise RuntimeError(f"FBX не создан: {out}\n{_tail(combined)}")
         return out
     finally:
         try:
