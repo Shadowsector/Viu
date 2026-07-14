@@ -1,4 +1,4 @@
-"""Инструменты ComfyUI: статус, прогон workflow, пути."""
+"""Инструменты ComfyUI: статус, ensure, прогон, MoCap-пакет."""
 
 from __future__ import annotations
 
@@ -18,6 +18,10 @@ from ..integrations.comfy import (
     resolve_comfy_root,
     write_install_readme,
 )
+from ..integrations.comfy.generate import run_triple_angles
+from ..integrations.comfy.model_pref import PREFERRED_FAMILY, probe_models
+from ..integrations.comfy.process import ensure_comfy_running
+from ..integrations.comfy.workflows import ensure_workflow_templates
 from .base import AgentContext, Tool, ToolResult
 
 
@@ -29,56 +33,74 @@ def _client(ctx: AgentContext) -> ComfyClient:
 class ComfyStatusTool(Tool):
     name = "comfy_status"
     description = (
-        "Статус ComfyUI: сервер :8188, корень установки, workflows, папки Refs/ComfyOut."
+        "Статус ComfyUI: сервер :8188, корень U:\\Viu\\ComfyUI, Wan-модели, workflows."
     )
     parameters = {}
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         write_install_readme(ctx.config)
+        ensure_workflow_templates(ctx.config)
         root = resolve_comfy_root(ctx.config)
+        probe = probe_models(ctx.config)
         lines = [
             f"URL: {getattr(ctx.config, 'comfy_url', 'http://127.0.0.1:8188')}",
-            f"Root: {root or '(не найден — VIU_COMFY_ROOT или U:\\ComfyUI)'}",
+            f"Root: {root or '(не найден — жду U:\\Viu\\ComfyUI)'}",
+            f"Model family: {PREFERRED_FAMILY}",
+            f"T2V ready: {probe.ready_t2v} | I2V ready: {probe.ready_i2v}",
             f"Workflows: {comfy_workflows_dir(ctx.config)}",
-            f"Refs (для Cascadeur): {comfy_refs_dir(ctx.config)}",
+            f"Refs (Cascadeur): {comfy_refs_dir(ctx.config)}",
             f"ComfyOut: {comfy_out_dir(ctx.config)}",
         ]
+        for n in probe.notes:
+            lines.append(f"  • {n}")
         wfs = list_workflows(ctx.config)
         if wfs:
             lines.append("Workflow files:")
             lines.extend(f"  • {p.name}" for p in wfs)
         else:
-            lines.append("Workflow files: (пусто — нужен default.json API Format)")
+            lines.append("Workflow files: (пусто)")
 
         ok, msg = _client(ctx).ping()
         lines.append(msg)
         if not ok:
-            lines.append(
-                "\nЗапусти ComfyUI (обычно python main.py --listen), "
-                "потом снова comfy_status."
-            )
+            lines.append("Запуск: comfy_ensure или lab_start topic=comfy.")
             lines.append("Гайд: docs/COMFY_SETUP.md")
-        # Статус-инструмент всегда ok: offline — это информация, не сбой тула.
         return ToolResult(True, "\n".join(lines))
+
+
+class ComfyEnsureTool(Tool):
+    name = "comfy_ensure"
+    description = (
+        "Запустить ComfyUI из U:\\Viu\\ComfyUI если API молчит, дождаться :8188."
+    )
+    parameters = {"wait": "секунд ожидания API (по умолчанию 90)"}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        try:
+            wait = float(args.get("wait") or 90)
+        except (TypeError, ValueError):
+            wait = 90.0
+        ensure_workflow_templates(ctx.config)
+        ok, msg = ensure_comfy_running(ctx.config, wait_seconds=wait)
+        return ToolResult(ok, msg)
 
 
 class ComfyRunTool(Tool):
     name = "comfy_run"
     description = (
-        "Прогнать ComfyUI workflow (API JSON). prompt= текст для CLIPTextEncode. "
-        "workflow=default или имя файла в .viu/comfy/workflows/. "
-        "Результат копируется в Lab/Refs."
+        "Прогнать ComfyUI workflow (API JSON). prompt= текст. "
+        "workflow=t2v|i2v|default. Результат → Lab/Refs."
     )
     parameters = {
-        "prompt": "текст действия / сцены (подставится в CLIPTextEncode)",
-        "workflow": "default или имя .json",
+        "prompt": "текст действия / сцены",
+        "workflow": "t2v | i2v | default",
         "timeout": "секунд ожидания (по умолчанию 600)",
-        "slug": "имя выходного файла без расширения (опционально)",
+        "slug": "имя выходного файла без расширения",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         prompt = str(args.get("prompt") or "").strip()
-        workflow_name = str(args.get("workflow") or "default").strip()
+        workflow_name = str(args.get("workflow") or "t2v").strip()
         slug = str(args.get("slug") or "comfy_out").strip() or "comfy_out"
         try:
             timeout = float(args.get("timeout") or 600)
@@ -96,7 +118,7 @@ class ComfyRunTool(Tool):
         client = _client(ctx)
         ok, ping = client.ping()
         if not ok:
-            return ToolResult(False, ping + "\nСначала запусти ComfyUI.")
+            return ToolResult(False, ping + "\nСначала comfy_ensure.")
 
         try:
             prompt_id = client.queue_prompt(wf)
@@ -109,7 +131,7 @@ class ComfyRunTool(Tool):
             return ToolResult(
                 False,
                 f"prompt_id={prompt_id} завершён, но outputs пусты.\n"
-                "Проверь, что в workflow есть SaveImage / SaveVideo / VHS_VideoCombine.",
+                "Проверь SaveImage / SaveVideo / VHS_VideoCombine в workflow.",
             )
 
         refs = comfy_refs_dir(ctx.config)
@@ -140,8 +162,58 @@ class ComfyRunTool(Tool):
             "Файлы → Lab/Refs:",
         ]
         lines.extend(f"  • {p}" for p in saved)
-        lines.append(
-            "Дальше: Cascadeur File→Import→Reference video (mp4) "
-            "или MoCap с image (когда подключим auto)."
-        )
         return ToolResult(True, "\n".join(lines))
+
+
+class ComfyMocapTool(Tool):
+    name = "comfy_mocap"
+    description = (
+        "Пакет под Cascadeur MoCap: lab topic=comfy — черновик промпта в Telegram, "
+        "после «ок» — 3 видео (сбоку / ¾ / анфас) в Lab/Refs. action= действие."
+    )
+    parameters = {
+        "action": "действие (sit down, wave, walk in place, …)",
+        "reset": "1 = новая сессия",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from .lab_tool import LabStartTool
+
+        action = str(args.get("action") or "").strip()
+        if not action:
+            return ToolResult(False, "Нужен action= (что делает персонаж).")
+        return LabStartTool().run(
+            {
+                "topic": "comfy",
+                "run_all": "1",
+                "reset": args.get("reset", "1"),
+                "action": action,
+            },
+            ctx,
+        )
+
+
+class ComfyTripleTool(Tool):
+    name = "comfy_triple"
+    description = (
+        "Сразу 3 ракурса без Telegram (если промпт уже согласован). action= текст."
+    )
+    parameters = {
+        "action": "действие / описание motion",
+        "slug": "префикс имени файлов",
+        "timeout": "секунд на один угол (900)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        action = str(args.get("action") or "").strip()
+        if not action:
+            return ToolResult(False, "Нужен action=.")
+        slug = str(args.get("slug") or "mocap").strip()
+        try:
+            timeout = float(args.get("timeout") or 900)
+        except (TypeError, ValueError):
+            timeout = 900.0
+        ok, msg, _ = run_triple_angles(
+            ctx.config, action=action, slug=slug, timeout_each=timeout
+        )
+        return ToolResult(ok, msg)

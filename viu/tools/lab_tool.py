@@ -25,15 +25,18 @@ def _verify_flag(args: Dict[str, Any]) -> bool:
 class LabStartTool(Tool):
     name = "lab_start"
     description = (
-        "Начать или возобновить лабораторную сессию. topic=cascadeur — "
-        "пайплайн FBX/Cascadeur/скрины/отчёт. run_all=1 — весь цикл без пауз между шагами. "
-        "verify=1 — после ручного import: скрин + vision + отчёт (без оценки и без reset)."
+        "Начать или возобновить лабораторную сессию. "
+        "topic=cascadeur — FBX/Cascadeur. topic=comfy — Wan video → Lab/Refs "
+        "(промпт в Telegram, 3 ракурса). "
+        "run_all=1 — весь цикл. action= для comfy (действие в кадре). "
+        "verify=1 — после ручного import Cascadeur."
     )
     parameters = {
-        "topic": "cascadeur (по умолчанию)",
+        "topic": "cascadeur | comfy",
         "reset": "1 = новая сессия",
         "run_all": "1 = выполнить все шаги до отчёта/затыка",
         "verify": "1 = проверить ручной import (скрин + vision)",
+        "action": "для comfy: действие персонажа (sit down, walk, …)",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
@@ -41,8 +44,13 @@ class LabStartTool(Tool):
         reset = str(args.get("reset", "0")).lower() in ("1", "true", "yes")
         run_all = _run_all_flag(args)
         verify = _verify_flag(args)
+        action = str(args.get("action") or "").strip()
         if topic == CASCADEUR_TOPIC:
             ensure_task_file(ctx.config)
+        if topic == "comfy":
+            from ..lab.comfy_pipeline import ensure_task_file as ensure_comfy_task
+
+            ensure_comfy_task(ctx.config, action=action)
 
         session = None if reset else load_session(ctx.config, topic)
 
@@ -51,6 +59,7 @@ class LabStartTool(Tool):
             and session
             and session.status == "awaiting_rating"
             and (verify or run_all)
+            and topic == CASCADEUR_TOPIC
         ):
             resume_for_manual_verify(ctx.config, session)
             session = load_session(ctx.config, topic)
@@ -73,13 +82,23 @@ class LabStartTool(Tool):
                 "Или «Лаборатория» / lab_start verify=1 — проверить ручной import без reset.",
             )
 
-        if not reset:
+        if not reset and session and session.status == "awaiting_prompt":
+            return ToolResult(
+                True,
+                "Жду одобрение Comfy-промпта в Telegram (ок / правки: … / стоп).",
+            )
+
+        if not reset and topic == CASCADEUR_TOPIC:
             session = load_session(ctx.config, topic)
             if session and inbox_models_newer_than_session(ctx.config, session):
                 reset = True
 
         ok, msg, session = run_lab_prepared(
-            ctx.config, topic, force_reset=reset, run_all=run_all,
+            ctx.config,
+            topic,
+            force_reset=reset,
+            run_all=run_all,
+            action=action,
         )
         if session is None:
             return ToolResult(False, msg)
@@ -93,15 +112,22 @@ class LabStartTool(Tool):
 class LabStepTool(Tool):
     name = "lab_step"
     description = "Выполнить следующий шаг активной лабораторной сессии. run_all=1 — до конца."
-    parameters = {"topic": "cascadeur (по умолчанию)", "run_all": "1 = весь оставшийся цикл"}
+    parameters = {"topic": "cascadeur | comfy", "run_all": "1 = весь оставшийся цикл"}
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         topic = str(args.get("topic") or CASCADEUR_TOPIC).strip().lower()
         session = load_session(ctx.config, topic)
         if session is None:
             return ToolResult(False, f"Нет сессии lab/{topic}. Сначала lab_start.")
+        if session.status == "awaiting_prompt":
+            return ToolResult(
+                True,
+                "Жду одобрение Comfy-промпта в Telegram (ок / правки: … / стоп).",
+            )
         if session.status == "awaiting_rating":
             if _run_all_flag(args) or _verify_flag(args):
+                if topic != CASCADEUR_TOPIC:
+                    return ToolResult(True, "Жду оценку — «Оценить лабораторию».")
                 resume_for_manual_verify(ctx.config, session)
                 session = load_session(ctx.config, topic)
                 from ..lab.cascadeur_pipeline import run_until_done
@@ -122,19 +148,22 @@ class LabStepTool(Tool):
 class LabRunAllTool(Tool):
     name = "lab_run_all"
     description = "Выполнить все оставшиеся шаги lab до отчёта, паузы или затыка."
-    parameters = {"topic": "cascadeur (по умолчанию)", "reset": "1 = новая сессия с нуля"}
+    parameters = {
+        "topic": "cascadeur | comfy",
+        "reset": "1 = новая сессия с нуля",
+        "action": "для comfy: действие в кадре",
+    }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         args = dict(args)
         args["run_all"] = "1"
-        reset = str(args.get("reset", "0")).lower() in ("1", "true", "yes")
         return LabStartTool().run(args, ctx)
 
 
 class LabStatusTool(Tool):
     name = "lab_status"
-    description = "Статус лаборатории: шаг, journal, артефакты, ожидание оценки."
-    parameters = {"topic": "cascadeur (по умолчанию)"}
+    description = "Статус лаборатории: шаг, journal, артефакты, ожидание оценки/промпта."
+    parameters = {"topic": "cascadeur | comfy"}
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         topic = str(args.get("topic") or CASCADEUR_TOPIC).strip().lower()
@@ -148,9 +177,19 @@ class LabStatusTool(Tool):
         ]
         if session.pause_reason:
             lines.append(f"pause: {session.pause_reason}")
+        if session.meta:
+            action = session.meta.get("action") or session.meta.get("approved_action")
+            if action:
+                lines.append(f"action: {action}")
         if session.artifacts:
             lines.append("artifacts:")
             lines.extend(f"  • {a}" for a in session.artifacts[-6:])
+        if session.status == "awaiting_prompt":
+            lines.append("")
+            lines.append("Жду Telegram: ок / правки: … / стоп")
+            draft = (session.meta or {}).get("draft")
+            if draft:
+                lines.append(str(draft)[:800])
         if session.status == "awaiting_rating":
             lines.append("")
             lines.append(session.last_report[:1200] if session.last_report else "(нет отчёта)")

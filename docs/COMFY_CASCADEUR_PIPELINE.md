@@ -71,11 +71,12 @@ stable camera, no text, no blur, clear limbs, [ACTION], loopable motion
 | Этап | Что | Зависит |
 |------|-----|---------|
 | 0 | Эталон Шаня + QRT в Cascadeur | сейчас |
-| 1 | Путь к Comfy + API (`comfy_status`) | **готово** — см. [COMFY_SETUP.md](./COMFY_SETUP.md) |
-| 2 | `comfy_run` workflow + prompt → `Lab/Refs/*` | **готово** (нужен твой `default.json` API Format) |
+| 1 | Путь `U:\Viu\ComfyUI` + автозапуск API | **готово** |
+| 2 | Wan 2.1 T2V/I2V + `comfy_run` / triple | **готово** (нужен API workflow JSON один раз) |
+| 2b | Промпт → Telegram → 3 ракурса | **готово** (`lab topic=comfy` / `comfy_mocap`) |
 | 3 | `cascadeur_import_reference` + MoCap assist | Python / pending |
 | 4 | `cascadeur_export_clip` → Animations + catalog | |
-| 5 | Last-frame → next seed image | |
+| 5 | Last-frame → next seed image | частично (папка seeds) |
 | 6 | Transition graph в catalog + runtime | |
 | 7 | NSFW queue (отдельный флаг) | |
 
@@ -84,11 +85,16 @@ VRAM: Comfy **или** Cascadeur **или** Unity — не вместе на 6�
 ### Инструменты сейчас
 
 ```
-comfy_status          → ping :8188, пути, список workflows
-comfy_run prompt=…    → API workflow → Lab/ComfyOut + Lab/Refs
+comfy_status / comfy_ensure
+comfy_mocap action=…     → Telegram approve → 3× Lab/Refs
+comfy_triple action=…    → 3 ракурса без Telegram
+lab_start topic=comfy
 ```
 
-Env: `VIU_COMFY_URL`, `VIU_COMFY_ROOT`. Workflows: `.viu/comfy/workflows/*.json`.
+Ракурсы на каждый промпт: **side / three_quarter / front**.
+
+Env: `VIU_COMFY_URL`, `VIU_COMFY_ROOT=U:/Viu/ComfyUI`.  
+Workflows: `.viu/comfy/workflows/t2v.json`, `i2v.json`.
 
 Пути:
 

@@ -36,6 +36,8 @@ def test_registry_has_comfy_tools():
     names = build_default_registry().names()
     assert "comfy_status" in names
     assert "comfy_run" in names
+    assert "comfy_ensure" in names
+    assert "comfy_mocap" in names
 
 
 def test_paths_and_readme(tmp_path, monkeypatch):
@@ -92,18 +94,15 @@ def test_comfy_status_offline(tmp_path, monkeypatch):
 def test_comfy_run_downloads(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     d = comfy_workflows_dir(cfg)
-    (d / "default.json").write_text(
-        json.dumps(
-            {
-                "1": {
-                    "class_type": "CLIPTextEncode",
-                    "inputs": {"text": "x"},
-                },
-                "2": {"class_type": "SaveImage", "inputs": {}},
-            }
-        ),
-        encoding="utf-8",
-    )
+    api_wf = {
+        "1": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "x"},
+        },
+        "2": {"class_type": "SaveImage", "inputs": {}},
+    }
+    (d / "t2v.json").write_text(json.dumps(api_wf), encoding="utf-8")
+    (d / "default.json").write_text(json.dumps(api_wf), encoding="utf-8")
     ctx = AgentContext(
         config=cfg,
         memory=MagicMock(),
@@ -126,7 +125,9 @@ def test_comfy_run_downloads(tmp_path, monkeypatch):
         patch.object(ComfyClient, "collect_output_files", return_value=fake_files),
         patch.object(ComfyClient, "download_view", fake_download),
     ):
-        res = ComfyRunTool().run({"prompt": "sit idle", "slug": "test_sit"}, ctx)
+        res = ComfyRunTool().run(
+            {"prompt": "sit idle", "slug": "test_sit", "workflow": "t2v"}, ctx
+        )
     assert res.ok, res.content
     assert "prompt_id=pid-1" in res.content
     refs = list(comfy_refs_dir(cfg).glob("test_sit_*"))

@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from ...config import Config
-from ...anabarra_layout import library_root
+from ...anabarra_layout import library_root, viu_install_root
 
 
 def comfy_refs_dir(config: Config) -> Path:
@@ -36,14 +36,26 @@ def comfy_workflows_dir(config: Config) -> Path:
     return p
 
 
+def comfy_seed_frames_dir(config: Config) -> Path:
+    """Last-frame PNG для следующей i2v-генерации."""
+    p = library_root(config) / "Lab" / "Refs" / "seeds"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def resolve_comfy_root(config: Config) -> Path | None:
-    """Каталог установки ComfyUI, если найден."""
+    """Каталог установки ComfyUI. Предпочтение: U:\\Viu\\ComfyUI."""
     env = (getattr(config, "comfy_root", None) or os.environ.get("VIU_COMFY_ROOT", "")).strip()
     candidates: list[Path] = []
     if env:
         candidates.append(Path(env).expanduser())
+    try:
+        candidates.append(viu_install_root(config) / "ComfyUI")
+    except OSError:
+        pass
     candidates.extend(
         [
+            Path("U:/Viu/ComfyUI"),
             Path("U:/ComfyUI"),
             Path("U:/Apps/ComfyUI"),
             Path.home() / "ComfyUI",
@@ -51,12 +63,18 @@ def resolve_comfy_root(config: Config) -> Path | None:
             Path("C:/ComfyUI"),
         ]
     )
+    seen: set[str] = set()
     for p in candidates:
+        key = str(p).lower()
+        if key in seen:
+            continue
+        seen.add(key)
         try:
-            if (p / "main.py").is_file() or (p / "ComfyUI" / "main.py").is_file():
-                if (p / "ComfyUI" / "main.py").is_file():
-                    return (p / "ComfyUI").resolve()
+            if (p / "main.py").is_file():
                 return p.resolve()
+            nested = p / "ComfyUI"
+            if (nested / "main.py").is_file():
+                return nested.resolve()
         except OSError:
             continue
     return None

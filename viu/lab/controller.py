@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 
 # Кнопки и инструменты lab не должны сами себя прерывать.
-LAB_GUI_HOOKS = frozenset({"__lab_start__", "__lab_run_all__", "__lab_rate__"})
+LAB_GUI_HOOKS = frozenset({"__lab_start__", "__lab_run_all__", "__lab_rate__", "__lab_comfy__"})
 LAB_TOOL_NAMES = frozenset({"lab_start", "lab_step", "lab_status", "lab_rate", "lab_run_all"})
 NO_LAB_INTERRUPT = LAB_GUI_HOOKS | frozenset({"__presence_toggle__"})
 

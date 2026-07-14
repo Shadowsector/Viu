@@ -111,6 +111,13 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Один шаг lab. Прерывается кнопками экспорт/оверлей.",
     ),
     GuiAction(
+        "lab_comfy",
+        "Лаборатория: Comfy MoCap",
+        "Редко",
+        tool="__lab_comfy__",
+        hint="Wan 2.1 → промпт в Telegram → 3 ракурса в Lab/Refs.",
+    ),
+    GuiAction(
         "lab_cascadeur_all",
         "Lab: весь цикл",
         "Редко",

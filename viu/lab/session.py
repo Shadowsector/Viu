@@ -43,6 +43,8 @@ class LabSession:
     step_fail_counts: Dict[str, int] = field(default_factory=dict)
     viu_build_stamp: str = ""
     recoveries: int = 0
+    # Произвольные поля топика (comfy: prompt, angles, …).
+    meta: Dict[str, Any] = field(default_factory=dict)
 
     def touch(self) -> None:
         self.updated_at = _now()

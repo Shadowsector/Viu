@@ -492,7 +492,7 @@ class ViuGUI:
 
         if action_interrupts_lab(action.tool):
             lab_controller.request_operator_priority(f"кнопка: {action.label}")
-        elif action.tool in {"__lab_start__", "__lab_run_all__", "__lab_rate__"} or (
+        elif action.tool in {"__lab_start__", "__lab_run_all__", "__lab_rate__", "__lab_comfy__"} or (
             action.tool and action.tool.startswith("lab_")
         ):
             lab_controller.clear_operator_priority()
@@ -526,6 +526,9 @@ class ViuGUI:
         if action.tool == "__lab_start__":
             self._set_busy(True)
             self._lab_start_action()
+            return
+        if action.tool == "__lab_comfy__":
+            self._lab_comfy_action()
             return
         if action.tool == "__lab_run_all__":
             self._set_busy(True)
@@ -933,6 +936,34 @@ class ViuGUI:
 
         self._append("ты", f"[Telegram] {text}")
         self._record_llm_turn("user", text)
+
+        try:
+            from .integrations.comfy.approval import try_handle_comfy_telegram
+            from .lab.comfy_pipeline import COMFY_TOPIC
+            from .lab.session import load_session
+
+            handled, msg = try_handle_comfy_telegram(self.agent.config, text)
+            if handled:
+                self._telegram_waiting_reply = False
+                self._append("Вью", msg, tag="tool")
+                if self._telegram is not None:
+                    self._telegram.notify_chat(msg[:1200])
+                session = load_session(self.agent.config, COMFY_TOPIC)
+                if (
+                    session
+                    and session.status == "running"
+                    and session.meta.get("approved")
+                    and not self._busy
+                ):
+                    self._run_tool(
+                        "lab_step",
+                        {"topic": COMFY_TOPIC, "run_all": "1"},
+                        label="Comfy: 3 ракурса",
+                    )
+                return
+        except Exception:  # noqa: BLE001
+            pass
+
         if self._busy:
             self._append(
                 "система",
@@ -1257,6 +1288,29 @@ class ViuGUI:
         if reset:
             args["reset"] = "1"
         self._run_tool("lab_start", args, label="Лаборатория: Cascadeur", echo_user=True)
+
+    def _lab_comfy_action(self) -> None:
+        from tkinter import simpledialog
+
+        from .lab.comfy_pipeline import COMFY_TOPIC, read_action_from_task
+
+        default = read_action_from_task(self.agent.config)
+        action = simpledialog.askstring(
+            "Comfy MoCap",
+            "Действие персонажа (промпт уйдёт в Telegram на одобрение):",
+            initialvalue=default,
+            parent=self.root,
+        )
+        if not action or not action.strip():
+            self._append("система", "Comfy: отменено — нет действия.", tag="sys")
+            return
+        self._set_busy(True)
+        self._run_tool(
+            "lab_start",
+            {"topic": COMFY_TOPIC, "run_all": "1", "reset": "1", "action": action.strip()},
+            label="Лаборатория: Comfy MoCap",
+            echo_user=True,
+        )
 
     def _lab_run_all_action(self, *, reset: bool = False) -> None:
         from .lab.cascadeur_pipeline import CASCADEUR_TOPIC

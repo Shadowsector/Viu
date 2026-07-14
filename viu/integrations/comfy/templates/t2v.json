@@ -1,0 +1,33 @@
+{
+  "_viu_stub": true,
+  "_viu_note": "Replace with ComfyUI Save (API Format) of official Wan 2.1 T2V workflow. Keep at least one CLIPTextEncode for positive prompt and a KSampler seed input.",
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "PLACEHOLDER_POSITIVE",
+      "clip": ["11", 0]
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "negative, blur, crowd",
+      "clip": ["11", 0]
+    }
+  },
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 42,
+      "steps": 20,
+      "cfg": 5,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": ["11", 0],
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "latent_image": ["11", 0]
+    }
+  }
+}
