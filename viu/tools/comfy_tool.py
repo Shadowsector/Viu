@@ -108,15 +108,16 @@ class ComfyInstallTool(Tool):
 class ComfyEnsureTool(Tool):
     name = "comfy_ensure"
     description = (
-        "Если Comfy нет — установить в U:\\Viu\\ComfyUI; затем запустить API :8188."
+        "Если Comfy нет — установить в U:\\Viu\\ComfyUI; затем запустить API :8188 "
+        "(лог: .viu/logs/comfy_launch.log)."
     )
-    parameters = {"wait": "секунд ожидания API (по умолчанию 90)"}
+    parameters = {"wait": "секунд ожидания API (по умолчанию 180)"}
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         try:
-            wait = float(args.get("wait") or 90)
+            wait = float(args.get("wait") or 180)
         except (TypeError, ValueError):
-            wait = 90.0
+            wait = 180.0
         ensure_workflow_templates(ctx.config, overwrite_stubs=True)
         ok, msg = ensure_comfy_running(ctx.config, wait_seconds=wait, auto_install=True)
         return ToolResult(ok, msg)

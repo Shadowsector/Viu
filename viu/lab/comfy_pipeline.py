@@ -122,8 +122,8 @@ def step_ensure_comfy(config: Config, session: LabSession) -> StepResult:
         session.status = "paused"
         session.pause_reason = "operator"
         return True, "Пауза lab (оператор).", None
-    # Если нет установки — Вью сама ставит в U:\Viu\ComfyUI + Wan workflows/модели.
-    ok, msg = ensure_comfy_running(config, auto_install=True)
+    # Если нет установки — Вью сама ставит; если есть — только запуск + лог.
+    ok, msg = ensure_comfy_running(config, auto_install=True, wait_seconds=180.0)
     append_journal(config, COMFY_TOPIC, f"### Comfy online\n\n{msg}")
     if not ok:
         return False, msg, None
@@ -316,11 +316,14 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
         key = str(session.step)
         session.step_fail_counts[key] = session.step_fail_counts.get(key, 0) + 1
         save_session(config, session)
-        hint = (
-            "\n\n⏸ Comfy не встала — повторю comfy_install (stash+clone) при следующем запуске."
-            if session.step == 0
-            else "\n\n⏸ Генерация не прошла — поправлю workflow/модели и повторю."
-        )
+        if session.step == 0:
+            hint = (
+                "\n\n⏸ Comfy не ответила на :8188. "
+                "Не клонирую заново — смотри `.viu/logs/comfy_launch.log` "
+                "или снова `comfy_ensure`."
+            )
+        else:
+            hint = "\n\n⏸ Генерация не прошла — поправлю workflow/модели и повторю."
         return True, msg + hint
 
     session.last_fail_step = -1

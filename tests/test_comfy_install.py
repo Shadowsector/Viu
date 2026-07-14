@@ -143,6 +143,35 @@ def test_unittest_main_not_comfy(tmp_path):
     assert not looks_like_comfy_root(fake)
 
 
+def test_wait_api_detects_dead_process(tmp_path):
+    from viu.integrations.comfy.client import ComfyClient
+    from viu.integrations.comfy.process import wait_comfy_api
+
+    log = tmp_path / "comfy_launch.log"
+    log.write_text("ImportError: torch\n", encoding="utf-8")
+
+    class Dead:
+        def poll(self):
+            return 1
+
+        @property
+        def returncode(self):
+            return 1
+
+        @property
+        def pid(self):
+            return 42
+
+    ok, msg = wait_comfy_api(
+        ComfyClient(base_url="http://127.0.0.1:9"),
+        proc=Dead(),  # type: ignore[arg-type]
+        log_path=log,
+        wait_seconds=5,
+    )
+    assert not ok
+    assert "завершился" in msg.lower() or "torch" in msg.lower()
+
+
 def test_download_workflows_convert(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     ui = {
