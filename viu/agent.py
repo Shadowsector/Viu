@@ -402,15 +402,34 @@ class Agent:
             return self._run_reflect_heartbeat(on_step, temp=temp, notes=notes)
 
         user_text = task.strip()
+        story = None
+        try:
+            from .story_memory import ensure_logs_ingested, get_story_memory
+
+            ensure_logs_ingested(self.config)
+            story = get_story_memory(self.config)
+            story_ctx = story.format_context(user_text)
+            if story_ctx:
+                notes = (notes + "\n\n" + story_ctx).strip() if notes else story_ctx
+        except OSError:
+            story = None
+
+        # history: GUI + долгая память
+        hist = list(history or [])
+        if len(hist) < 4 and story is not None:
+            long_hist = story.as_chat_history(limit=16)
+            if long_hist:
+                hist = long_hist
+
         self._log(f"REFLECT: {user_text[:160]}")
 
         system = REFLECT_SYSTEM
         if notes:
-            system += "\n\n--- Заметки (фон, не зачитывать списком) ---\n" + notes
+            system += "\n\n--- Заметки и память сюжета ---\n" + notes
 
         messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
-        if history:
-            messages.extend(history[-16:])
+        if hist:
+            messages.extend(hist[-16:])
         messages.append({"role": "user", "content": user_text})
 
         for _ in range(3):
@@ -420,7 +439,7 @@ class Agent:
             if parsed and "final" in parsed and "action" not in parsed:
                 text = str(parsed["final"]).strip()
                 thought = str(parsed.get("thought") or parsed.get("inner") or "").strip()
-                issues = reflect_reply_issues(text, has_history=bool(history))
+                issues = reflect_reply_issues(text, has_history=bool(hist))
                 if issues:
                     messages.append({"role": "assistant", "content": raw})
                     messages.append(
@@ -429,7 +448,7 @@ class Agent:
                             "content": "Плохой тон: "
                             + ", ".join(issues)
                             + ". Перепиши final тепло и по-русски: без мата, чернухи и слоганов. "
-                            "Как близкий человек Дена. JSON: thought+final.",
+                            "Как близкий человек Дена. Учти память сюжета. JSON: thought+final.",
                         }
                     )
                     continue
@@ -442,6 +461,22 @@ class Agent:
                 result.steps.append(step)
                 if on_step:
                     on_step(step)
+                # всегда в сюжетную память; vision — если похоже на сюжет
+                try:
+                    from .story_memory import get_story_memory
+
+                    get_story_memory(self.config).add_exchange(
+                        user_text,
+                        text,
+                        source="chat",
+                        tags=["story"] if looks_like_story_chat(user_text) else [],
+                    )
+                    self.memory.add(
+                        f"Ден: {user_text[:200]} | Вью: {text[:200]}",
+                        tags=["dialog", "story"] if looks_like_story_chat(user_text) else ["dialog"],
+                    )
+                except OSError:
+                    pass
                 if looks_like_story_chat(user_text):
                     try:
                         from .vision import append_vision

@@ -67,6 +67,20 @@ def build_reflect_notes(config: Config) -> str:
         pass
 
     try:
+        from .story_memory import get_story_memory
+
+        # краткий хвост — полный RAG собирает run_reflect
+        tail = get_story_memory(config).recent(limit=4)
+        if tail:
+            bits = []
+            for b in tail:
+                who = "Ден" if b.role == "user" else "Вью"
+                bits.append(f"{who}: {b.text[:80]}")
+            parts.append("Сюжет (хвост): " + " | ".join(bits))
+    except OSError:
+        pass
+
+    try:
         from .vision import read_vision_creative
 
         creative = read_vision_creative(config, max_chars=1800).strip()

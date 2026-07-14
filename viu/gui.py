@@ -72,6 +72,17 @@ class ViuGUI:
         self._boot_sha = running_sha(package_root())
         self._geometry_save_job: str | None = None
 
+        # Долгая сюжетная память → в RAM-историю чата
+        try:
+            from .story_memory import ensure_logs_ingested, get_story_memory
+
+            n, msg = ensure_logs_ingested(self.agent.config)
+            for turn in get_story_memory(self.agent.config).as_chat_history(limit=16):
+                self._llm_turns.append(turn)
+            self._story_ingest_msg = msg if n else ""
+        except OSError:
+            self._story_ingest_msg = ""
+
         stamp = time.strftime("%Y%m%d_%H%M%S")
         self.log_path = self.agent.config.data_dir / "logs" / f"chat_{stamp}.txt"
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,6 +95,8 @@ class ViuGUI:
 
         self._build_ui()
         self._append("система", f"{version_label()}. Модель: {self.agent.llm.name}.")
+        if getattr(self, "_story_ingest_msg", ""):
+            self._append("система", self._story_ingest_msg, tag="sys")
         if removed:
             self._append(
                 "система",
