@@ -1,68 +1,54 @@
 # Вью — автоматизация игры и анимаций (зафиксировано)
 
-**Дата:** 2026-07-14  
-**Контекст:** после CascadeurReady batch, lab SUCCESS на Menkara, оценка 4.2.
+**Дата:** 2026-07-14 (обновлено: пайплайн Den Comfy→Cascadeur)
 
 ---
 
 ## Принцип
 
-Вью — **конвейер и QA**, не «кнопконажиматель UI Cascadeur».  
-Cascadeur — **цех анимации** (руками + Python).  
-ComfyUI — **фабрика референсов** (поза/видео), не готовый FBX humanoid.
+Вью — **конвейер и продюсер анимаций**.  
+Cascadeur — цех (MoCap + правка).  
+ComfyUI — фабрика видео-референсов.  
+Mixamo — быстрые клипы «прямо сейчас».
+
+Главный целевой контур (идея Den):  
+**[`COMFY_CASCADEUR_PIPELINE.md`](./COMFY_CASCADEUR_PIPELINE.md)**  
+Comfy (промпт) → чёткое MP4 → Cascadeur MoCap → FBX + имя → catalog + **граф переходов** (sit→stand_up→idle, без телепортов). NSFW — в той же очереди.
 
 ```
-модель → CascadeurReady FBX ✓
-       → Cascadeur (Den / MoCap / QRT)
-       → Animations\ → unity_sync ✓
-Comfy  → Lab/Refs → MoCap / vision QA
-Mixamo → Inbox → catalog → Animator ✓
+Mixamo (быстро) ──► Inbox ──► Animator
+Comfy video ──► Lab/Refs ──► Cascadeur MoCap ──► Animations\ ──► catalog + graph
 ```
 
 ---
 
-## Порядок работ (не прыгать)
+## Порядок работ
 
-| # | Задача | Статус |
-|---|--------|--------|
-| 1 | **Wave 1 Mixamo** — закрыть missing в каталоге | ← сейчас |
-| 2 | **Эталон Шаня** — чистый Walk (не Run-as-Walk) + QRT | очередь |
-| 3 | **Lab export** FBX → `Animations\` | очередь |
-| 4 | **`comfy_pose` / Comfy HTTP** → `Lab/Refs` | очередь |
-| 5 | **Lab MoCap assist** (референс + timeline) | позже |
-| 6 | **Affordance → clip** (дерево без climb → предложить) | позже |
-| 7 | Video-Comfy + NSFW Phase 3 | позже |
+| # | Задача | Док |
+|---|--------|-----|
+| 1 | Wave 1 Mixamo (sit/walk/…) | [SHANYA_ANIMATIONS.md](./SHANYA_ANIMATIONS.md) |
+| 2 | **Стопы Walk** (не скорость) | [WALK_FEET_FIX.md](./WALK_FEET_FIX.md) |
+| 3 | Сарай по шагам | [BARN_EDIT_STEPS.md](./BARN_EDIT_STEPS.md) |
+| 4 | Эталон Шаня в Cascadeur + QRT | CASCADEUR.md |
+| 5 | Lab export FBX | очередь |
+| 6 | Comfy install + `comfy_run` | COMFY_CASCADEUR_PIPELINE.md |
+| 7 | MoCap script + last-frame chain | то же |
+| 8 | Граф переходов в catalog | то же |
 
 ---
 
 ## Что не автоматизировать
 
-- Полный auto-QRT на весь Inbox (битые blend остаются)
-- Vision-клики по UI Cascadeur
-- Генерация locomotion целиком в AI
-- «Единый скелет» на зверей в Cascadeur
-
----
-
-## ComfyUI (когда подключим)
-
-| Выход | Куда |
-|-------|------|
-| Картинка позы | Cascadeur MoCap from image |
-| Короткое видео | Reference video → MoCap |
-| Концепт prop/локации | Inbox → prop pipeline |
-
-VRAM: **не** параллельно с Cascadeur + Unity (очередь как у lab, ~6 GB).
-
-Путь референсов (план): `U:\Anabarra\Library\Lab\Refs\`
+- Vision-клики по UI Cascadeur  
+- Единый скелет на всех зверей  
+- Генерация без графа переходов (будет телепорт sit→walk)
 
 ---
 
 ## Связанные доки
 
-- [SHANYA_ANIMATIONS.md](./SHANYA_ANIMATIONS.md) — каталог, Wave, **починка Walk**
-- [BARN_LIVELINESS.md](./BARN_LIVELINESS.md) — сарай, камера, жизнь дома
-- [CASCADEUR.md](./CASCADEUR.md) — FBX / CascadeurReady
-- [VIU_LAB.md](./VIU_LAB.md) — lab pipeline
-- [VISION.md](./VISION.md) — долгосрочное видение
-- [VIU_ROADMAP_2026.md](./VIU_ROADMAP_2026.md) — фазы
+- [COMFY_CASCADEUR_PIPELINE.md](./COMFY_CASCADEUR_PIPELINE.md) — **твой** пайплайн  
+- [WALK_FEET_FIX.md](./WALK_FEET_FIX.md) — подворот стоп  
+- [BARN_EDIT_STEPS.md](./BARN_EDIT_STEPS.md) — сарай клик за кликом  
+- [BARN_LIVELINESS.md](./BARN_LIVELINESS.md) — критерии «живо»  
+- [VIU_LAB.md](./VIU_LAB.md), [VISION.md](./VISION.md)

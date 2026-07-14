@@ -74,10 +74,10 @@ GUI «Ещё — игра»: три кнопки + «полный playtest».
 Порядок (см. [VIU_AUTOMATION_2026.md](./VIU_AUTOMATION_2026.md)):
 
 1. **Wave 1 Mixamo** — закрыть missing каталога (sit, sleep, climb…)
-2. **Настоящий Walk** для Шани (не Run-as-Walk) — [SHANYA_ANIMATIONS.md](./SHANYA_ANIMATIONS.md)
-3. **Сарай** — камера Instance + props — [BARN_LIVELINESS.md](./BARN_LIVELINESS.md)
-4. Lab export Cascadeur → `Animations\`
-5. ComfyUI → референсы поз (`Lab/Refs`)
+2. **Стопы Walk** — [WALK_FEET_FIX.md](./WALK_FEET_FIX.md) (не скорость)
+3. **Сарай** — [BARN_EDIT_STEPS.md](./BARN_EDIT_STEPS.md)
+4. **Comfy → Cascadeur** — [COMFY_CASCADEUR_PIPELINE.md](./COMFY_CASCADEUR_PIPELINE.md) (+ граф переходов)
+5. Lab export Cascadeur → `Animations\`
 6. Автоматический retarget (поверх `rig_check` / Humanoid)
 7. Blender Bridge — команды в открытый Blender
 8. Affordance → «нужен клип» в Telegram

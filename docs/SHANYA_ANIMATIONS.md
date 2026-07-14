@@ -134,22 +134,26 @@
 
 ### Почему ноги «заплетаются» на ходьбе
 
-Чаще всего **в слоте Walk крутится Run** (или клип с чужим скелетом), а персонаж едет с `walkSpeed`, не совпадающим с длиной шага:
+Это **не скорость** — стопы подворачиваются из‑за Humanoid retarget / кривого Walk-клипа.
 
-1. Стопы скользят / перекрещиваются (retarget + неверный stride).
-2. Avatar: **Create From This Model** на клипе, не Copy From Erisa на Mixamo (`OVERLAY_BASELINE` запрет #3–4).
-3. `applyRootMotion = false` — ок; движение задаёт код — stride клипа должен быть «на месте» или In Place.
+**Чёткая инструкция:** [`WALK_FEET_FIX.md`](./WALK_FEET_FIX.md) (диагностика Avatar → Mixamo Female Walk → Configure стоп → Cascadeur).
 
-**Как поправить (сделай так):**
+Кратко: нужен настоящий **Female Walk** (`Shanya_Walk.fbx`), Avatar модели с зелёными Foot/Toes, клипы только **Create From This Model**.
 
-1. Mixamo → **Female Walk** / **Walking** → Without Skin, In Place если есть.
-2. Имя: `Shanya_Walk.fbx` → `U:\Viu\Inbox\` → **«Принять анимацию»**.
-3. Scope: **Девушки-biped (Шаня + NPC)**.
-4. `viu_clips.json` уже предпочитает `Shanya_Walk.fbx` над Run.
-5. **Обновить аниматор** → Rebuild overlay.
-6. Если всё ещё криво: в Cascadeur на эталоне Шани — правка одной ноги на контакте с «полом», export → Animations.
+---
 
-Viu с rev после 2026-07-14: если в контроллере только Run-клип, `animator.speed` и скорость перемещения **притормаживаются** (~0.55), чтобы меньше «заплетать».
+## Jump — на месте или спрыгнуть?
+
+**Оба**, разные клипы:
+
+| slug | Что | Когда |
+|------|-----|--------|
+| `jump` | Прыжок **на месте** / вверх (In Place) | Перепрыгнуть низкое, игривость, старт с земли |
+| `fall` | Падение / приземление | Сорвалась, прыжок с высоты, failed land |
+| позже `jump_off` | Спрыгнуть **с** уступа (опционально) | Крыша сарая, ветка — отдельный клип, когда понадобится |
+
+Для Wave 1 качай **Jump** (In Place) + **Falling Idle** / Hard Landing.  
+Спрыгивание с сарая = `jump` с края + `fall`, либо позже отдельный клип в Cascadeur/Comfy.
 
 ---
 
