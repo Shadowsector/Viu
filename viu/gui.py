@@ -492,7 +492,13 @@ class ViuGUI:
 
         if action_interrupts_lab(action.tool):
             lab_controller.request_operator_priority(f"кнопка: {action.label}")
-        elif action.tool in {"__lab_start__", "__lab_run_all__", "__lab_rate__", "__lab_comfy__"} or (
+        elif action.tool in {
+            "__lab_start__",
+            "__lab_run_all__",
+            "__lab_rate__",
+            "__lab_comfy__",
+            "__comfy_clips__",
+        } or (
             action.tool and action.tool.startswith("lab_")
         ):
             lab_controller.clear_operator_priority()
@@ -536,6 +542,9 @@ class ViuGUI:
             return
         if action.tool == "__lab_rate__":
             self._open_lab_rating()
+            return
+        if action.tool == "__comfy_clips__":
+            self._open_comfy_clip_review()
             return
         if action.tool == "__rescan_catalog__":
             self._open_prop_catalog()
@@ -952,13 +961,17 @@ class ViuGUI:
                 if (
                     session
                     and session.status == "running"
-                    and session.meta.get("approved")
+                    and (
+                        session.meta.get("approved")
+                        or session.meta.get("clip_kept_id")
+                        or session.meta.get("clip_rejected_all")
+                    )
                     and not self._busy
                 ):
                     self._run_tool(
                         "lab_step",
                         {"topic": COMFY_TOPIC, "run_all": "1"},
-                        label="Comfy: 3 ракурса",
+                        label="Comfy: продолжаю lab",
                     )
                 return
         except Exception:  # noqa: BLE001
@@ -1334,13 +1347,44 @@ class ViuGUI:
         )
 
     def _open_lab_rating(self) -> None:
+        from .lab.comfy_pipeline import COMFY_TOPIC
+        from .lab.cascadeur_pipeline import CASCADEUR_TOPIC
         from .lab.review_gui import open_lab_rating_review
+        from .lab.session import load_session
+
+        topic = CASCADEUR_TOPIC
+        comfy = load_session(self.agent.config, COMFY_TOPIC)
+        if comfy is not None and comfy.status == "awaiting_rating":
+            topic = COMFY_TOPIC
 
         def done(ok: bool, msg: str) -> None:
             tag = "tool" if ok else "sys"
             self._append("Вью", msg, tag=tag)
 
-        open_lab_rating_review(self.root, self.agent.config, "cascadeur", on_finished=done)
+        open_lab_rating_review(self.root, self.agent.config, topic, on_finished=done)
+
+    def _open_comfy_clip_review(self) -> None:
+        from .integrations.comfy.clip_review_gui import open_comfy_clip_review
+        from .lab.comfy_pipeline import COMFY_TOPIC
+        from .lab.session import load_session
+
+        def done(ok: bool, msg: str) -> None:
+            self._append("Вью", msg, tag="tool" if ok else "sys")
+            session = load_session(self.agent.config, COMFY_TOPIC)
+            if (
+                ok
+                and session
+                and session.status == "running"
+                and not self._busy
+            ):
+                self._run_tool(
+                    "lab_step",
+                    {"topic": COMFY_TOPIC, "run_all": "1"},
+                    label="Comfy: отчёт после выбора",
+                    echo_user=False,
+                )
+
+        open_comfy_clip_review(self.root, self.agent.config, on_finished=done)
 
     def _schedule_cursor_inbox(self) -> None:
         """Раз в несколько минут — забрать задачи Cursor с GitHub и выполнить без Дена."""

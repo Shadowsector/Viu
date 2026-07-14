@@ -53,7 +53,7 @@ def run_single_angle(
     wf = inject_text_prompt(wf, prompt)
     wf = inject_negative_prompt(wf, negative)
     wf = inject_seed(wf, _seed_for(action, angle.id))
-    wf = prepare_mocap_workflow(wf)
+    wf = prepare_mocap_workflow(wf, action=action)
 
     client = _client(config)
     ok, ping = client.ping()

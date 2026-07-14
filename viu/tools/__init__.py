@@ -62,6 +62,7 @@ from .building_cascadeur_tool import BuildingWorkflowTool, CascadeurStatusTool
 from .export_asset_tool import ExportUnityAssetTool
 from .lab_tool import LabRateTool, LabRunAllTool, LabStartTool, LabStatusTool, LabStepTool
 from .comfy_tool import (
+    ComfyClipPickTool,
     ComfyEnsureTool,
     ComfyInstallTool,
     ComfyMocapTool,
@@ -154,6 +155,7 @@ def build_default_registry() -> ToolRegistry:
         ComfyRunTool(),
         ComfyMocapTool(),
         ComfyTripleTool(),
+        ComfyClipPickTool(),
         ExportUnityAssetTool(),
         AcceptAnimationInboxTool(),
         AnimationCatalogShowTool(),

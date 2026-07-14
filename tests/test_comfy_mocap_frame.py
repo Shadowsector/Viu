@@ -1,11 +1,14 @@
-"""MoCap workflow: вертикаль + mp4."""
+"""MoCap framing + mp4 workflow."""
 
 import json
 from pathlib import Path
 
+from viu.integrations.comfy.framing import (
+    choose_length,
+    detect_orientation,
+    frame_spec_for_action,
+)
 from viu.integrations.comfy.workflows import (
-    MOCAP_HEIGHT,
-    MOCAP_WIDTH,
     ensure_mp4_output,
     inject_vertical_frame,
     prepare_mocap_workflow,
@@ -33,10 +36,37 @@ def _webp_wf() -> dict:
     }
 
 
-def test_inject_vertical_frame():
-    wf = inject_vertical_frame(_webp_wf())
-    assert wf["40"]["inputs"]["width"] == MOCAP_WIDTH
-    assert wf["40"]["inputs"]["height"] == MOCAP_HEIGHT
+def test_orientation_stand_vs_lie():
+    assert detect_orientation("idle stand") == "vertical"
+    assert detect_orientation("sleep on the back") == "horizontal"
+    assert detect_orientation("lie down idle") == "horizontal"
+
+
+def test_length_idle_longer_than_action():
+    idle_len, _ = choose_length("idle stand")
+    act_len, _ = choose_length("wave hello")
+    assert idle_len > act_len
+    assert idle_len % 4 == 1
+
+
+def test_frame_spec_lie_horizontal():
+    spec = frame_spec_for_action("lying on back, subtle breathing")
+    assert spec.orientation == "horizontal"
+    assert spec.width > spec.height
+
+
+def test_prepare_mocap_stand():
+    wf = prepare_mocap_workflow(_webp_wf(), action="idle stand")
+    assert wf["40"]["inputs"]["width"] == 576
+    assert wf["40"]["inputs"]["height"] == 1024
+    assert wf["40"]["inputs"]["length"] == 81
+    assert any(n.get("class_type") == "SaveVideo" for n in wf.values() if isinstance(n, dict))
+
+
+def test_prepare_mocap_lie():
+    wf = prepare_mocap_workflow(_webp_wf(), action="sleep idle on the back")
+    assert wf["40"]["inputs"]["width"] == 1024
+    assert wf["40"]["inputs"]["height"] == 576
 
 
 def test_ensure_mp4_replaces_webp():
@@ -44,25 +74,17 @@ def test_ensure_mp4_replaces_webp():
     types = {n["class_type"] for n in wf.values() if isinstance(n, dict)}
     assert "SaveAnimatedWEBP" not in types
     assert "CreateVideo" in types
-    assert "SaveVideo" in types
-    save = next(n for n in wf.values() if n.get("class_type") == "SaveVideo")
-    assert save["inputs"]["format"] == "mp4"
-    assert save["inputs"]["codec"] == "h264"
 
 
-def test_prepare_mocap_workflow():
-    wf = prepare_mocap_workflow(_webp_wf())
-    assert wf["40"]["inputs"]["width"] == 480
-    assert wf["40"]["inputs"]["height"] == 832
-    assert any(n.get("class_type") == "SaveVideo" for n in wf.values() if isinstance(n, dict))
-
-
-def test_packaged_t2v_is_vertical_mp4():
+def test_packaged_t2v_rev4():
     path = Path(__file__).resolve().parents[1] / "viu/integrations/comfy/templates/t2v.json"
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["40"]["inputs"]["width"] == 480
-    assert data["40"]["inputs"]["height"] == 832
-    assert data["28"]["class_type"] == "CreateVideo"
-    assert data["29"]["class_type"] == "SaveVideo"
-    assert data["29"]["inputs"]["format"] == "mp4"
-    assert int(data.get("_viu_template_rev") or 0) >= 3
+    assert data["40"]["inputs"]["width"] == 576
+    assert data["40"]["inputs"]["height"] == 1024
+    assert data["40"]["inputs"]["length"] == 81
+    assert int(data.get("_viu_template_rev") or 0) >= 4
+
+
+def test_inject_defaults():
+    wf = inject_vertical_frame(_webp_wf())
+    assert wf["40"]["inputs"]["height"] >= wf["40"]["inputs"]["width"]

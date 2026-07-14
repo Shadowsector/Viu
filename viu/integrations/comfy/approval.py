@@ -71,12 +71,30 @@ def try_handle_comfy_telegram(
     config: Config,
     text: str,
 ) -> Tuple[bool, str]:
-    """Если lab/comfy ждёт промпт — обработать ответ. (handled, message)."""
-    from ...lab.comfy_pipeline import COMFY_TOPIC, apply_prompt_decision
+    """Если lab/comfy ждёт промпт или выбор клипа — обработать ответ."""
+    from ...lab.comfy_pipeline import (
+        COMFY_TOPIC,
+        apply_clip_pick_decision,
+        apply_prompt_decision,
+    )
     from ...lab.session import load_session
+    from .clip_review import parse_clip_pick_reply
 
     session = load_session(config, COMFY_TOPIC)
-    if session is None or session.status != "awaiting_prompt":
+    if session is None:
+        return False, ""
+
+    if session.status == "awaiting_clip_pick":
+        parsed = parse_clip_pick_reply(text)
+        if parsed is None:
+            return True, (
+                "Не поняла выбор клипа.\n"
+                "Напиши: лучший: front | лучший: side 5 | отклонить все"
+            )
+        decision, payload = parsed
+        return True, apply_clip_pick_decision(config, session, decision, payload)
+
+    if session.status != "awaiting_prompt":
         return False, ""
     action = str((session.meta or {}).get("action") or "").strip()
     decision, payload = parse_approval_reply(text, current_action=action)

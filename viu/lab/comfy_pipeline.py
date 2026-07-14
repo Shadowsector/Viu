@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 from ..config import Config
 from ..integrations.comfy.approval import send_prompt_for_approval
@@ -32,6 +32,7 @@ STEP_LABELS = [
     "Черновик промпта",
     "Одобрение Telegram",
     "3 ракурса",
+    "Выбор лучшего клипа",
     "Отчёт",
 ]
 
@@ -41,9 +42,11 @@ def ensure_task_file(config: Config, *, action: str = "") -> Path:
     if not path.is_file() or action.strip():
         body = (
             "# Lab Comfy → Cascadeur MoCap\n\n"
-            "Вью сама: ComfyUI (U:\\Viu\\ComfyUI) → Wan 2.1 → 3 ракурса → Lab/Refs.\n"
+            "Вью сама: ComfyUI → Wan 2.1 → 3 ракурса → ты выбираешь лучший → "
+            "kept/ + last-frame seed.\n"
             "Промпт — на одобрение в Telegram.\n\n"
-            f"## action\n\n{(action or 'idle stand, subtle breathing').strip()}\n"
+            f"## action\n\n"
+            f"{(action or 'idle stand, subtle breathing').strip()}\n"
         )
         path.write_text(body, encoding="utf-8")
     return path
@@ -242,19 +245,115 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
     append_journal(config, COMFY_TOPIC, f"### 3 ракурса\n\n{msg}")
     if not ok:
         return False, msg, None
+
+    from ..integrations.comfy.clip_review import (
+        format_candidates_message,
+        register_triple_batch,
+    )
+
+    clips = register_triple_batch(config, action=action, results=results)
+    session.meta["clip_batch_id"] = str(results.get("slug") or "")
+    session.meta["clip_candidate_ids"] = [c.id for c in clips]
+    pick_msg = format_candidates_message(clips)
+    append_journal(config, COMFY_TOPIC, f"### Выбор клипа\n\n{pick_msg}")
+    return True, msg + "\n\n" + pick_msg, None
+
+
+def step_await_clip_pick(config: Config, session: LabSession) -> StepResult:
+    """Пауза: Ден выбирает лучший из 3 ракурсов."""
+    if session.meta.get("clip_kept_id"):
+        return True, f"Клип уже выбран: {session.meta.get('clip_kept_id')}.", None
+    from ..integrations.comfy.clip_review import ComfyClipStore, clip_review_path, format_candidates_message
+
+    batch = str(session.meta.get("clip_batch_id") or "")
+    store = ComfyClipStore(clip_review_path(config)).load()
+    cands = store.by_batch(batch) if batch else store.pending_candidates()
+    cands = [c for c in cands if c.status == "candidate"]
+    if not cands:
+        # нечего выбирать — пропускаем
+        return True, "Нет кандидатов — пропускаю выбор.", None
+    session.status = "awaiting_clip_pick"
+    save_session(config, session)
+    msg = format_candidates_message(cands)
+    try:
+        from ..integrations.telegram import settings as tg_settings
+        from ..integrations.telegram.client import TelegramClient
+
+        if tg_settings.enabled(config):
+            token = tg_settings.token(config)
+            chat_id = tg_settings.chat_id(config)
+            if token and chat_id:
+                TelegramClient(token).send_message(
+                    chat_id, "🎞 Comfy: выбери лучший клип\n\n" + msg[:1500]
+                )
+    except Exception:
+        pass
     return True, msg, None
+
+
+def apply_clip_pick_decision(
+    config: Config,
+    session: LabSession,
+    decision: str,
+    payload: Dict[str, Any],
+) -> str:
+    """После выбора клипа: keep/reject_all → продолжить lab."""
+    from ..integrations.comfy.clip_review import keep_best_by_angle, reject_batch
+
+    batch = str(session.meta.get("clip_batch_id") or "")
+    if decision == "reject_all":
+        ok, msg = reject_batch(config, batch)
+        session.meta["clip_rejected_all"] = True
+        session.status = "running"
+        if session.step < 6:
+            session.step = 6
+        save_session(config, session)
+        append_journal(config, COMFY_TOPIC, f"### Клипы отклонены\n\n{msg}")
+        return msg + "\nМожно снова comfy_mocap с другим промптом."
+
+    angle = str(payload.get("angle") or "front")
+    score = int(payload.get("score") or 4)
+    notes = str(payload.get("notes") or "")
+    ok, msg, clip = keep_best_by_angle(
+        config,
+        batch,
+        angle,
+        score=score,
+        notes=notes,
+        catalog_slug=str(session.meta.get("catalog_slug") or ""),
+        enters_from=list(session.meta.get("enters_from") or []),
+        exits_to=list(session.meta.get("exits_to") or []),
+    )
+    if not ok or clip is None:
+        return msg
+    session.meta["clip_kept_id"] = clip.id
+    session.meta["clip_kept_path"] = clip.path
+    session.meta["clip_seed_frame"] = clip.seed_frame
+    session.append_artifact(clip.path)
+    if clip.seed_frame:
+        session.append_artifact(clip.seed_frame)
+    session.status = "running"
+    if session.step < 6:
+        session.step = 6
+    save_session(config, session)
+    append_journal(config, COMFY_TOPIC, f"### Клип выбран\n\n{msg}")
+    return msg + "\nДальше — отчёт lab."
 
 
 def step_report(config: Config, session: LabSession) -> StepResult:
     action = session.meta.get("approved_action") or session.meta.get("action")
-    files = session.artifacts[-9:]
+    kept = session.meta.get("clip_kept_path")
+    seed = session.meta.get("clip_seed_frame")
+    files = session.artifacts[-12:]
     report = (
         f"Comfy MoCap итерация id={session.id}\n"
         f"action: {action}\n"
         f"model: {PREFERRED_FAMILY}\n"
+        f"kept: {kept or '— (не выбран)'}\n"
+        f"seed last-frame: {seed or '—'}\n"
         f"файлы ({len(files)}):\n"
         + "\n".join(f"  • {f}" for f in files)
-        + "\n\nДальше: Cascadeur MoCap по mp4 из Lab/Refs — сравним какой ракурс лучше читается."
+        + "\n\nДальше: Cascadeur MoCap по kept mp4; next clip можно стартовать с seed PNG (I2V)."
     )
     session.last_report = report
     session.status = "awaiting_rating"
@@ -269,6 +368,7 @@ STEPS: list[Callable[[Config, LabSession], StepResult]] = [
     step_draft_prompt,
     step_request_approval,
     step_generate_triple,
+    step_await_clip_pick,
     step_report,
 ]
 
@@ -276,6 +376,11 @@ STEPS: list[Callable[[Config, LabSession], StepResult]] = [
 def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
     if session.status == "awaiting_prompt":
         return True, "Жду одобрение промпта в Telegram (ок / правки: … / стоп)."
+    if session.status == "awaiting_clip_pick":
+        return True, (
+            "Жду выбор клипа: `лучший: front` / `лучший: side 5` / `отклонить все` "
+            "или кнопка «Оценить клипы Comfy»."
+        )
     if session.status == "awaiting_rating":
         return True, "Жду оценку — «Оценить лабораторию»."
     if session.status not in ("running", "paused"):
@@ -295,12 +400,16 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
     label = STEP_LABELS[session.step]
     ok, msg, _art = fn(config, session)
 
-    # После request_approval статус awaiting_prompt — не инкрементим step за пределы;
-    # step остаётся на generate (следующий), approval step считается пройденным.
     if session.status == "awaiting_prompt":
-        # Переходим указатель на шаг генерации, но ждём
-        if session.step == 3:  # approval step index
+        if session.step == 3:
             session.step = 4
+        session.steps_total = len(STEPS)
+        save_session(config, session)
+        notify_lab_step(config, step_idx, label, msg)
+        return True, msg
+
+    if session.status == "awaiting_clip_pick":
+        # указатель на шаг выбора уже текущий; ждём ответа
         session.steps_total = len(STEPS)
         save_session(config, session)
         notify_lab_step(config, step_idx, label, msg)
@@ -310,7 +419,7 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
         save_session(config, session)
         return True, msg
 
-    if not ok and session.step in (0, 4):  # ensure / generate
+    if not ok and session.step in (0, 4):
         session.last_fail_step = session.step
         session.last_fail_msg = msg[:2000]
         key = str(session.step)
@@ -330,7 +439,7 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
     session.step += 1
     session.steps_total = len(STEPS)
     notify_lab_step(config, step_idx, label, msg)
-    if session.status != "awaiting_rating":
+    if session.status not in ("awaiting_rating", "awaiting_clip_pick"):
         session.status = "running"
     save_session(config, session)
     return ok, msg
@@ -346,9 +455,16 @@ def run_until_done(
     steps_run = 0
     while steps_run < max_steps:
         session = load_session(config, COMFY_TOPIC) or session
-        if session.status in ("awaiting_prompt", "awaiting_rating", "completed"):
+        if session.status in (
+            "awaiting_prompt",
+            "awaiting_clip_pick",
+            "awaiting_rating",
+            "completed",
+        ):
             if session.status == "awaiting_prompt":
                 lines.append("Жду одобрение промпта в Telegram.")
+            elif session.status == "awaiting_clip_pick":
+                lines.append("Жду выбор лучшего клипа.")
             elif session.status == "awaiting_rating":
                 lines.append("Итерация готова — жду оценку.")
             else:
@@ -365,7 +481,6 @@ def run_until_done(
         lines.append(f"[{steps_run}] «{label}»: {msg[:500]}")
         if not ok:
             break
-        # Если остались на том же step без awaiting — защита от цикла
         if session.step == before and session.status == "running":
             break
     return True, "\n".join(lines) if lines else "Нет шагов."

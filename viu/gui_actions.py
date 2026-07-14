@@ -115,7 +115,14 @@ GUI_ACTIONS: List[GuiAction] = [
         "Лаборатория: Comfy MoCap",
         "Редко",
         tool="__lab_comfy__",
-        hint="Wan 2.1 → промпт в Telegram → 3 ракурса в Lab/Refs.",
+        hint="Wan 2.1 → Telegram → 3 ракурса → выбор лучшего → kept/ + seed.",
+    ),
+    GuiAction(
+        "comfy_clips",
+        "Оценить клипы Comfy",
+        "Редко",
+        tool="__comfy_clips__",
+        hint="Выбрать лучший из 3 ракурсов, сохранить last-frame для следующей анимации.",
     ),
     GuiAction(
         "lab_cascadeur_all",

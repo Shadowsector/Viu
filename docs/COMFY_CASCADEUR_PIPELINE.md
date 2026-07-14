@@ -60,11 +60,15 @@ idle ◄──► walk ◄──► run
 Промпт-шаблон Вью (актуально):
 
 ```
-simple tanned young woman, full body filling vertical frame,
-pure white studio background, locked camera, [ACTION],
-+ 3 ракурса (side / ¾ / front)
-→ MP4 480×832 @ 24 fps (CreateVideo + SaveVideo)
+simple tanned young woman, soft frontal light, pure white studio,
+full body filling frame, [ACTION + micro-motions for idle],
++ 3 ракурса → MP4
+стоячие: 576×1024 vertical | лежачие: 1024×576 horizontal
+длина: idle ~81 кадр (~3.4с @24fps), жест ~49, переход ~65
 ```
+
+После генерации: выбор лучшего → `Lab/Refs/kept/` + last-frame `Lab/Refs/seeds/`  
++ `enters_from` / `exits_to` в `animation_catalog.json` и `.viu/comfy_clips.json`.
 
 ---
 
@@ -76,10 +80,11 @@ pure white studio background, locked camera, [ACTION],
 | 1 | Путь `U:\Viu\ComfyUI` + автозапуск API | **готово** |
 | 2 | Wan 2.1 T2V/I2V + `comfy_run` / triple | **готово** (нужен API workflow JSON один раз) |
 | 2b | Промпт → Telegram → 3 ракурса | **готово** (`lab topic=comfy` / `comfy_mocap`) |
+| 2c | Выбор лучшего + last-frame seed + граф | **готово** (`comfy_clip_pick` / «Оценить клипы Comfy») |
 | 3 | `cascadeur_import_reference` + MoCap assist | Python / pending |
 | 4 | `cascadeur_export_clip` → Animations + catalog | |
-| 5 | Last-frame → next seed image | частично (папка seeds) |
-| 6 | Transition graph в catalog + runtime | |
+| 5 | Last-frame → next seed image (I2V) | seed PNG пишется; I2V queue — next |
+| 6 | Transition graph в catalog + runtime | **поля enters_from/exits_to в catalog** |
 | 7 | NSFW queue (отдельный флаг) | |
 
 VRAM: Comfy **или** Cascadeur **или** Unity — не вместе на 6–12 GB (очередь lab).
@@ -101,10 +106,13 @@ Workflows: `.viu/comfy/workflows/t2v.json`, `i2v.json`.
 Пути:
 
 ```
-U:\Anabarra\Library\Lab\Refs\          ← mp4 + last frame png
+U:\Anabarra\Library\Lab\Refs\          ← сырые кандидаты mp4
+U:\Anabarra\Library\Lab\Refs\kept\     ← выбранные для MoCap
+U:\Anabarra\Library\Lab\Refs\rejected\ ← отклонённые ракурсы
+U:\Anabarra\Library\Lab\Refs\seeds\    ← last-frame PNG → следующий клип
 U:\Anabarra\Library\Lab\ComfyOut\      ← сырой выход Comfy
+U:\Viu\.viu\comfy_clips.json           ← оценки и связи
 U:\Anabarra\Animations\                ← финальные FBX
-U:\Viu\.viu\lab\cascadeur\journal.md   ← что сгенерила и зачем
 ```
 
 ---

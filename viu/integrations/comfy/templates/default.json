@@ -79,9 +79,9 @@
   "40": {
     "class_type": "EmptyHunyuanLatentVideo",
     "inputs": {
-      "width": 480,
-      "height": 832,
-      "length": 33,
+      "width": 576,
+      "height": 1024,
+      "length": 81,
       "batch_size": 1
     },
     "_meta": {
@@ -155,5 +155,5 @@
     }
   },
   "_viu_source": "comfyanonymous/ComfyUI_examples wan (UI→API by Viu)",
-  "_viu_template_rev": 3
+  "_viu_template_rev": 4
 }

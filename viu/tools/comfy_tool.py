@@ -255,3 +255,84 @@ class ComfyTripleTool(Tool):
             ctx.config, action=action, slug=slug, timeout_each=timeout
         )
         return ToolResult(ok, msg)
+
+
+class ComfyClipPickTool(Tool):
+    name = "comfy_clip_pick"
+    description = (
+        "Выбрать лучший Comfy-клип после тройки ракурсов. "
+        "angle=front|side|three_quarter, score=1..5, "
+        "catalog_slug=, enters_from=a,b exits_to=c,d. "
+        "reject=1 — отклонить весь batch. "
+        "Или в чате/Telegram: «лучший: front 5»."
+    )
+    parameters = {
+        "angle": "front | side | three_quarter",
+        "score": "1–5",
+        "catalog_slug": "slug в animation_catalog",
+        "enters_from": "через запятую",
+        "exits_to": "через запятую",
+        "notes": "заметки",
+        "reject": "1 = отклонить все кандидаты batch",
+        "batch": "id batch (по умолчанию из lab session)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.clip_review import keep_best_by_angle, reject_batch
+        from ..lab.comfy_pipeline import COMFY_TOPIC, apply_clip_pick_decision
+        from ..lab.session import load_session
+
+        session = load_session(ctx.config, COMFY_TOPIC)
+        batch = str(args.get("batch") or "").strip()
+        if not batch and session is not None:
+            batch = str(session.meta.get("clip_batch_id") or "")
+        if not batch:
+            return ToolResult(False, "Нет batch — сначала comfy_mocap / lab comfy.")
+
+        if str(args.get("reject") or "").strip() in ("1", "true", "yes"):
+            if session is not None and session.status == "awaiting_clip_pick":
+                return ToolResult(True, apply_clip_pick_decision(ctx.config, session, "reject_all", {}))
+            ok, msg = reject_batch(ctx.config, batch)
+            return ToolResult(ok, msg)
+
+        angle = str(args.get("angle") or "").strip()
+        if not angle:
+            return ToolResult(False, "Нужен angle=front|side|three_quarter")
+        try:
+            score = int(args.get("score") or 4)
+        except (TypeError, ValueError):
+            score = 4
+
+        def _csv(key: str) -> list:
+            return [p.strip() for p in str(args.get(key) or "").split(",") if p.strip()]
+
+        if session is not None and session.status == "awaiting_clip_pick":
+            session.meta["catalog_slug"] = str(args.get("catalog_slug") or "")
+            session.meta["enters_from"] = _csv("enters_from")
+            session.meta["exits_to"] = _csv("exits_to")
+            from ..lab.session import save_session
+
+            save_session(ctx.config, session)
+            msg = apply_clip_pick_decision(
+                ctx.config,
+                session,
+                "keep",
+                {
+                    "angle": angle,
+                    "score": score,
+                    "notes": str(args.get("notes") or ""),
+                },
+            )
+            return ToolResult(True, msg)
+
+        ok, msg, _ = keep_best_by_angle(
+            ctx.config,
+            batch,
+            angle,
+            score=score,
+            notes=str(args.get("notes") or ""),
+            catalog_slug=str(args.get("catalog_slug") or ""),
+            enters_from=_csv("enters_from"),
+            exits_to=_csv("exits_to"),
+        )
+        return ToolResult(ok, msg)

@@ -13,25 +13,24 @@ class CameraAngle:
     prompt_en: str
 
 
-# Три вида — вертикальный кадр, фигура на весь рост.
 DEFAULT_ANGLES: Tuple[CameraAngle, ...] = (
     CameraAngle(
         "side",
         "сбоку",
-        "vertical portrait framing, side view, camera on the character's left, "
-        "full body fills the frame head to toe, profile silhouette clear",
+        "side view, camera on the character's left, "
+        "full body visible head to toe, profile silhouette clear, limbs readable",
     ),
     CameraAngle(
         "three_quarter",
         "три четверти",
-        "vertical portrait framing, three-quarter view, camera 45 degrees off front, "
-        "full body fills the frame head to toe, limbs unoccluded",
+        "three-quarter view, camera 45 degrees off front, "
+        "full body visible head to toe, limbs unoccluded",
     ),
     CameraAngle(
         "front",
         "анфас",
-        "vertical portrait framing, front view, camera facing the character, "
-        "full body fills the frame head to toe, symmetric stance readable",
+        "front view, camera facing the character, "
+        "full body visible head to toe, face and torso evenly lit, symmetric stance readable",
     ),
 )
 

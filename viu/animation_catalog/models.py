@@ -104,6 +104,12 @@ class AnimationWish:
     scope: str = DEFAULT_SCOPE
     reviewed: bool = False
     id: str = ""
+    # Граф переходов + Comfy-референс (MoCap)
+    enters_from: List[str] = field(default_factory=list)
+    exits_to: List[str] = field(default_factory=list)
+    ref_video: str = ""
+    seed_frame: str = ""
+    comfy_score: int = 0
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -132,6 +138,11 @@ class AnimationWish:
             notes=str(d.get("notes") or ""),
             scope=normalize_scope(str(d.get("scope") or DEFAULT_SCOPE)),
             reviewed=bool(d.get("reviewed", False)),
+            enters_from=list(d.get("enters_from") or []),
+            exits_to=list(d.get("exits_to") or []),
+            ref_video=str(d.get("ref_video") or ""),
+            seed_frame=str(d.get("seed_frame") or ""),
+            comfy_score=int(d.get("comfy_score") or 0),
         )
 
     def render_block(self) -> str:
@@ -143,6 +154,14 @@ class AnimationWish:
             f"**Как выглядит:** {self.looks_like}",
             f"**Зачем:** {self.purpose}",
         ]
+        if self.enters_from or self.exits_to:
+            lines.append(
+                f"**Граф:** {self.enters_from or '—'} → `{self.slug}` → {self.exits_to or '—'}"
+            )
+        if self.ref_video:
+            lines.append(f"**Comfy ref:** {self.ref_video} (score {self.comfy_score}/5)")
+        if self.seed_frame:
+            lines.append(f"**Seed (last frame):** {self.seed_frame}")
         if self.mixamo_hints:
             lines.append(f"**Mixamo:** {', '.join(self.mixamo_hints)}")
         if self.clip_file:

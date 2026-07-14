@@ -11,12 +11,12 @@ from .paths import comfy_workflows_dir
 
 _TEMPLATES = Path(__file__).resolve().parent / "templates"
 
-# Вертикальный кадр под Cascadeur MoCap (кратно 16 для Wan).
-MOCAP_WIDTH = 480
-MOCAP_HEIGHT = 832
-MOCAP_LENGTH = 33
+# Дефолты (перекрываются framing.frame_spec_for_action при генерации).
+MOCAP_WIDTH = 576
+MOCAP_HEIGHT = 1024
+MOCAP_LENGTH = 81
 MOCAP_FPS = 24.0
-_TEMPLATE_REV = 3
+_TEMPLATE_REV = 4
 
 _LATENT_SIZE_NODES = (
     "EmptyHunyuanLatentVideo",
@@ -271,10 +271,19 @@ def ensure_mp4_output(
     return wf
 
 
-def prepare_mocap_workflow(workflow: Dict[str, Any]) -> Dict[str, Any]:
-    """Вертикальный кадр + mp4 — поверх любого t2v/i2v на диске Дена."""
-    wf = inject_vertical_frame(workflow)
-    return ensure_mp4_output(wf)
+def prepare_mocap_workflow(
+    workflow: Dict[str, Any],
+    *,
+    action: str = "",
+) -> Dict[str, Any]:
+    """Кадр/длина по действию (стоя≠лёжа) + mp4 — поверх любого t2v на диске."""
+    from .framing import frame_spec_for_action
+
+    spec = frame_spec_for_action(action)
+    wf = inject_vertical_frame(
+        workflow, width=spec.width, height=spec.height, length=spec.length
+    )
+    return ensure_mp4_output(wf, fps=spec.fps)
 
 
 def workflow_is_stub(path: Path) -> bool:
@@ -329,8 +338,8 @@ def write_install_readme(config) -> Path:
         "\n"
         "t2v.json / i2v.json / default.json — Wan 2.1 "
         "(официальные примеры, UI→API конвертит Вью).\n"
-        f"MoCap: вертикаль {MOCAP_WIDTH}×{MOCAP_HEIGHT}, MP4 {int(MOCAP_FPS)} fps "
-        f"(template rev {_TEMPLATE_REV}).\n"
+        f"MoCap: кадр по позе (стоя 576×1024 / лёжа 1024×576), MP4 {int(MOCAP_FPS)} fps, "
+        f"длина 4n+1 (idle≈81), template rev {_TEMPLATE_REV}.\n"
         "Обновление: comfy_install / lab topic=comfy / авто при comfy_triple.\n"
         "Доки: docs/COMFY_SETUP.md\n",
         encoding="utf-8",

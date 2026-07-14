@@ -40,6 +40,7 @@ def test_registry_comfy_tools():
     assert "comfy_ensure" in names
     assert "comfy_mocap" in names
     assert "comfy_triple" in names
+    assert "comfy_clip_pick" in names
 
 
 def test_resolve_prefers_viu_comfyui(tmp_path, monkeypatch):
@@ -84,7 +85,7 @@ def test_mocap_angles_in_prompt():
     assert "sit down" in p
     assert "tanned" in p
     assert "white" in p.lower()
-    assert "vertical" in p.lower() or "fills the frame" in p
+    assert "frontal" in p.lower() or "fill light" in p.lower() or "fills the frame" in p
 
 
 def test_comfy_lab_awaits_telegram(tmp_path, monkeypatch):
@@ -92,7 +93,7 @@ def test_comfy_lab_awaits_telegram(tmp_path, monkeypatch):
     (tmp_path / "Viu").mkdir(parents=True, exist_ok=True)
     ensure_task_file(cfg, action="lean on window")
     session = new_session(COMFY_TOPIC)
-    session.steps_total = 6
+    session.steps_total = 7
     session.meta["action"] = "lean on window"
     save_session(cfg, session)
 
