@@ -15,19 +15,36 @@ from .paths import looks_like_comfy_root, resolve_comfy_root
 
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-# Стабильная связка под RTX 20/30/40 (у Дена 3060).
-# Не ставить «просто torch» с PyPI — 2.13+cpu новее cu-сборок и pip не даунгрейдит.
-_TORCH_CUDA_INDEX = "https://download.pytorch.org/whl/cu124"
-_TORCH_CUDA_PKGS = (
-    "torch==2.6.0+cu124",
-    "torchvision==0.21.0+cu124",
-    "torchaudio==2.6.0+cu124",
-)
-_TORCH_CUDA_INDEX_ALT = "https://download.pytorch.org/whl/cu121"
-_TORCH_CUDA_PKGS_ALT = (
-    "torch==2.5.1+cu121",
-    "torchvision==0.20.1+cu121",
-    "torchaudio==2.5.1+cu121",
+# Не ставить «просто torch» с PyPI — +cpu новее многих cu-сборок и pip не даунгрейдит.
+# cu124/cu121 — только до cp313. На Python 3.14 (у Дена) колёс нет → cu126/cu130.
+_WHL = "https://download.pytorch.org/whl"
+# (label, index_url, pkgs)
+_TORCH_CUDA_STACKS: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
+    (
+        "cu124/2.6",
+        f"{_WHL}/cu124",
+        ("torch==2.6.0+cu124", "torchvision==0.21.0+cu124", "torchaudio==2.6.0+cu124"),
+    ),
+    (
+        "cu121/2.5",
+        f"{_WHL}/cu121",
+        ("torch==2.5.1+cu121", "torchvision==0.20.1+cu121", "torchaudio==2.5.1+cu121"),
+    ),
+    (
+        "cu126/2.13",
+        f"{_WHL}/cu126",
+        ("torch==2.13.0+cu126", "torchvision==0.28.0+cu126", "torchaudio==2.11.0+cu126"),
+    ),
+    (
+        "cu130/2.13",
+        f"{_WHL}/cu130",
+        ("torch==2.13.0+cu130", "torchvision==0.28.0+cu130", "torchaudio==2.11.0+cu130"),
+    ),
+    (
+        "cu126/2.9",
+        f"{_WHL}/cu126",
+        ("torch==2.9.1+cu126", "torchvision==0.24.1+cu126", "torchaudio==2.9.1+cu126"),
+    ),
 )
 _TORCH_CPU_PKGS = ("torch", "torchvision", "torchaudio")
 
@@ -166,6 +183,39 @@ def _torch_info(py: Path, root: Path) -> Tuple[bool, str, bool]:
     return True, ver, cuda
 
 
+def _python_version(py: Path, root: Path) -> Tuple[int, int]:
+    ok, out = _run_py(
+        py,
+        "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')",
+        cwd=root,
+        timeout=30,
+    )
+    if not ok:
+        return (0, 0)
+    m = re.search(r"(\d+)\.(\d+)", out)
+    if not m:
+        return (0, 0)
+    return int(m.group(1)), int(m.group(2))
+
+
+def cuda_stacks_for_python(major: int, minor: int) -> List[Tuple[str, str, Tuple[str, ...]]]:
+    """Подобрать CUDA-стеки под версию Python (cp314 → без cu124)."""
+    if major == 0:
+        return list(_TORCH_CUDA_STACKS)
+    # cp314+: только cu126/cu130 (cu124/cu121 wheels = none)
+    if (major, minor) >= (3, 14):
+        return [s for s in _TORCH_CUDA_STACKS if s[0].startswith(("cu126", "cu130"))]
+    # cp313: cu124 2.6 есть; cu126 как запас
+    if (major, minor) >= (3, 13):
+        prefer = ("cu124/2.6", "cu126/2.13", "cu126/2.9", "cu130/2.13")
+        by_label = {s[0]: s for s in _TORCH_CUDA_STACKS}
+        return [by_label[k] for k in prefer if k in by_label]
+    # cp310–312: классика cu124 → cu121 → новые
+    prefer = ("cu124/2.6", "cu121/2.5", "cu126/2.13", "cu126/2.9")
+    by_label = {s[0]: s for s in _TORCH_CUDA_STACKS}
+    return [by_label[k] for k in prefer if k in by_label]
+
+
 def _pip_uninstall_torch(py: Path, *, cwd: Path) -> str:
     try:
         kwargs: dict = {
@@ -186,51 +236,44 @@ def _pip_uninstall_torch(py: Path, *, cwd: Path) -> str:
 
 
 def ensure_torch_for_comfy(root: Path, py: Path, *, force_reinstall: bool = False) -> Tuple[bool, str]:
-    """Поставить CUDA torch (cu124); если нет GPU — CPU. Снос старого +cpu обязателен."""
+    """CUDA torch под версию Python; иначе CPU. Снос +cpu обязателен."""
     want_cuda = nvidia_gpu_available()
     ok, ver, has_cuda = _torch_info(py, root)
     notes: List[str] = []
+    py_ver = _python_version(py, root)
+    py_label = f"{py_ver[0]}.{py_ver[1]}" if py_ver[0] else "?"
 
     if ok and want_cuda and has_cuda and not force_reinstall:
-        return True, f"python={py} torch={ver} CUDA=yes"
+        return True, f"python={py} ({py_label}) torch={ver} CUDA=yes"
     if ok and (not want_cuda) and not force_reinstall:
-        return True, f"python={py} torch={ver} (CPU, nvidia-smi нет)"
+        return True, f"python={py} ({py_label}) torch={ver} (CPU, nvidia-smi нет)"
 
     if ok and want_cuda and not has_cuda:
-        notes.append(f"Был {ver} без CUDA — сношу и ставлю cu124 (не даунгрейдится через --upgrade).")
+        notes.append(
+            f"Был {ver} без CUDA (Python {py_label}) — сношу и ставлю CUDA-сборку "
+            f"(pip --upgrade с +cpu не даунгрейдит)."
+        )
 
     notes.append(_pip_uninstall_torch(py, cwd=root) or "uninstall torch: ok")
 
     if want_cuda:
-        notes.append("pip install --force-reinstall torch==2.6.0+cu124 …")
-        ok_p, pip_out = _pip_install(
-            py,
-            [
-                "--no-cache-dir",
-                "--force-reinstall",
-                *_TORCH_CUDA_PKGS,
-                "--index-url",
-                _TORCH_CUDA_INDEX,
-            ],
-            cwd=root,
-        )
-        if not ok_p:
-            notes.append(f"cu124 не встал: {pip_out[-500:]}\nПробую cu121…")
-            _pip_uninstall_torch(py, cwd=root)
+        stacks = cuda_stacks_for_python(*py_ver)
+        ok_p = False
+        pip_out = ""
+        for label, index, pkgs in stacks:
+            notes.append(f"pip install --force-reinstall {pkgs[0]} ({label}, py{py_label})…")
             ok_p, pip_out = _pip_install(
                 py,
-                [
-                    "--no-cache-dir",
-                    "--force-reinstall",
-                    *_TORCH_CUDA_PKGS_ALT,
-                    "--index-url",
-                    _TORCH_CUDA_INDEX_ALT,
-                ],
+                ["--no-cache-dir", "--force-reinstall", *pkgs, "--index-url", index],
                 cwd=root,
             )
-        if not ok_p:
-            notes.append(f"cu121 тоже: {pip_out[-500:]}\nСтавлю CPU + Comfy --cpu.")
+            if ok_p:
+                notes.append(f"{label}: OK")
+                break
+            notes.append(f"{label} не встал: {pip_out[-400:]}")
             _pip_uninstall_torch(py, cwd=root)
+        if not ok_p:
+            notes.append("Все CUDA-индексы пусты для этой Python — ставлю CPU + Comfy --cpu.")
             ok_p, pip_out = _pip_install(
                 py,
                 ["--no-cache-dir", "--force-reinstall", "--upgrade", *_TORCH_CPU_PKGS],
@@ -251,19 +294,86 @@ def ensure_torch_for_comfy(root: Path, py: Path, *, force_reinstall: bool = Fals
     ok2, ver2, cuda2 = _torch_info(py, root)
     if not ok2:
         return False, "\n".join(notes) + f"\nПосле установки import torch: {ver2}"
-    # pip мог оставить +cpu, если index не сработал — ловим по версии
-    if want_cuda and ok2 and ("+cpu" in ver2.lower() or not cuda2):
+    if want_cuda and ("+cpu" in ver2.lower() or not cuda2):
+        hint = ""
+        if py_ver >= (3, 14):
+            hint = " (для 3.14 нужны колёса cu126/cu130; cu124 их не имеет)."
         notes.append(
-            f"torch={ver2} всё ещё без CUDA — Comfy буду запускать с --cpu "
-            "(медленнее, но работает). Проверь драйвер NVIDIA / CUDA 12.x."
+            f"torch={ver2} всё ещё без CUDA — Comfy с --cpu.{hint} "
+            "Проверь драйвер NVIDIA."
         )
     else:
-        notes.append(f"python={py} torch={ver2} CUDA={'yes' if cuda2 else 'no'}")
+        notes.append(f"python={py} ({py_label}) torch={ver2} CUDA={'yes' if cuda2 else 'no'}")
     return True, "\n".join(notes)
 
 
 def preflight_comfy_python(root: Path, py: Path) -> Tuple[bool, str]:
     return ensure_torch_for_comfy(root, py, force_reinstall=False)
+
+
+def _pids_on_port(port: int) -> List[int]:
+    pids: List[int] = []
+    if sys.platform == "win32":
+        try:
+            ps = (
+                f"(Get-NetTCPConnection -LocalPort {int(port)} -State Listen "
+                f"-ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess)"
+            )
+            kwargs: dict = {"capture_output": True, "text": True, "timeout": 30}
+            kwargs["creationflags"] = _CREATE_NO_WINDOW
+            proc = subprocess.run(  # noqa: S603
+                ["powershell", "-NoProfile", "-Command", ps],
+                **kwargs,
+            )
+            for line in (proc.stdout or "").splitlines():
+                line = line.strip()
+                if line.isdigit():
+                    pids.append(int(line))
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            pass
+        return sorted(set(pids))
+    try:
+        proc = subprocess.run(  # noqa: S603
+            ["lsof", "-ti", f":{int(port)}"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        for line in (proc.stdout or "").splitlines():
+            line = line.strip()
+            if line.isdigit():
+                pids.append(int(line))
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        pass
+    return sorted(set(pids))
+
+
+def stop_comfy_on_port(port: int) -> str:
+    """Остановить процесс, слушающий :port (перед рестартом с CUDA)."""
+    pids = _pids_on_port(port)
+    if not pids:
+        return f"на :{port} никто не слушает"
+    killed: List[str] = []
+    for pid in pids:
+        try:
+            if sys.platform == "win32":
+                subprocess.run(  # noqa: S603
+                    ["taskkill", "/PID", str(pid), "/F"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    creationflags=_CREATE_NO_WINDOW,
+                )
+            else:
+                import os
+                import signal
+
+                os.kill(pid, signal.SIGTERM)
+            killed.append(str(pid))
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+    time.sleep(1.5)
+    return f"остановила pid {', '.join(killed)} на :{port}" if killed else f":{port} — не убила"
 
 
 def _parse_port(url: str) -> int:
@@ -371,10 +481,9 @@ def ensure_comfy_running(
 ) -> Tuple[bool, str]:
     """Пинг API; если нет — установить при необходимости, CUDA torch, запуск, ждать."""
     url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
+    port = _parse_port(str(url))
     client = ComfyClient(base_url=str(url), timeout=5.0)
     ok, msg = client.ping()
-    if ok:
-        return True, msg
 
     root = resolve_comfy_root(config)
     if root is not None and not looks_like_comfy_root(root):
@@ -383,6 +492,44 @@ def ensure_comfy_running(
         except Exception:
             pass
         root = None
+
+    # Уже запущен на CPU при наличии GPU → поднять CUDA torch и перезапустить.
+    if ok and root is not None and nvidia_gpu_available():
+        py0 = _python_for_comfy(root)
+        _, ver0, has_cuda0 = _torch_info(py0, root)
+        if not has_cuda0:
+            parts_up: List[str] = [
+                f"Comfy уже на :{port}, но torch={ver0} без CUDA — чиню и перезапускаю…",
+                stop_comfy_on_port(port),
+            ]
+            ok_t, t_msg = ensure_torch_for_comfy(root, py0, force_reinstall=True)
+            parts_up.append(t_msg)
+            if not ok_t:
+                return False, "\n".join(parts_up)
+            _, _, has_cuda1 = _torch_info(py0, root)
+            extra0: List[str] = [] if has_cuda1 else ["--cpu"]
+            if extra0:
+                parts_up.append("CUDA всё ещё нет → снова --cpu")
+            log_path0 = _launch_log_path(config, root)
+            ok_l0, launch0, proc0 = launch_comfy_process(
+                config, root, py=py0, extra_args=extra0
+            )
+            parts_up.append(launch0)
+            if not ok_l0:
+                return False, "\n".join(parts_up)
+            ok_w0, wait0 = wait_comfy_api(
+                client, proc=proc0, log_path=log_path0, wait_seconds=wait_seconds
+            )
+            parts_up.append(wait0 if ok_w0 else wait0)
+            if ok_w0:
+                parts_up.append(
+                    f"ComfyUI OK ({'CUDA' if has_cuda1 else 'CPU'}) из {root}."
+                )
+                return True, "\n".join(parts_up)
+            return False, "\n".join(parts_up)
+        return True, f"{msg}\ntorch={ver0} CUDA=yes"
+    if ok:
+        return True, msg
 
     install_note = ""
     if root is None and auto_install:
@@ -425,6 +572,10 @@ def ensure_comfy_running(
         extra.append("--cpu")
         parts.append("torch без CUDA → запуск Comfy с --cpu")
 
+    # Порт может быть занят чужим/зомби-процессом
+    if _pids_on_port(port):
+        parts.append(stop_comfy_on_port(port))
+
     ok_l, launch_msg, proc = launch_comfy_process(config, root, py=py, extra_args=extra)
     parts.append(launch_msg)
     if not ok_l:
@@ -439,7 +590,7 @@ def ensure_comfy_running(
 
     parts.append(wait_msg)
 
-    # Авто-ремонт: CPU при наличии GPU → жёсткий cu124 + retry
+    # Авто-ремонт: CPU при наличии GPU → жёсткий CUDA stack + retry
     summary = extract_crash_summary(log_path).lower()
     should_fix_torch = (nvidia_gpu_available() and not has_cuda) or any(
         k in summary
@@ -452,7 +603,8 @@ def ensure_comfy_running(
         )
     )
     if should_fix_torch:
-        parts.append("Падение при старте — принудительно сношу torch и ставлю cu124…")
+        parts.append("Падение при старте — принудительно сношу torch и ставлю CUDA…")
+        stop_comfy_on_port(port)
         ok_t, t_msg = ensure_torch_for_comfy(root, py, force_reinstall=True)
         parts.append(t_msg)
         if ok_t:

@@ -41,13 +41,16 @@ I2V 14B — опционально: `comfy_install i2v=1` (десятки GB).
 
 ### Torch / CUDA (RTX)
 
-Если в логе `Torch not compiled with CUDA enabled` при `torch=…+cpu`:
+Если в логе `Torch not compiled with CUDA enabled` или `from versions: none` для cu124:
 
-1. Обнови Вью до свежего SHA (кнопка **«Обновить Вью»**, не `comfy_install`).
-2. Снова `comfy_ensure` — Вью **сносит** CPU-torch и ставит `torch==2.6.0+cu124`.
-3. Если CUDA всё равно нет — Comfy стартует с `--cpu` (медленно, но без падения).
+1. Обнови Вью (**«Обновить Вью»**), снова `comfy_ensure` (без `comfy_install`).
+2. Вью смотрит версию Python в `ComfyUI\\venv`:
+   - **3.10–3.13** → `torch` cu124 / cu121
+   - **3.14+** (часто системный Python) → `torch==2.13.0+cu126` (fallback cu130)
+3. Если Comfy уже крутится на CPU при наличии GPU — `comfy_ensure` сам остановит `:8188`, поставит CUDA torch и перезапустит.
+4. Лог: `U:\Viu\.viu\logs\comfy_launch.log`.
 
-Лог: `U:\Viu\.viu\logs\comfy_launch.log`.
+Wan на CPU крайне медленный — нужен CUDA torch.
 | `comfy_status` | диагностика |
 | `comfy_mocap` | lab: Telegram → 3 ракурса |
 
