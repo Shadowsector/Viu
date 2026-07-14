@@ -17,6 +17,8 @@ LIBRARY_SUBDIRS: tuple[str, ...] = (
     "Blender",
     "Lab/Models/Inbox",
     "Lab/Models/CascadeurReady",
+    "Lab/Refs",
+    "Lab/ComfyOut",
     "Props/fbx",
     "Props/obj",
     "Props/glb",

@@ -106,6 +106,7 @@ class ViuGUI:
             ensure_vision(self.agent.config)
         except OSError:
             pass
+        self._ensure_anim_barn_reminder()
         if stamp_changed_since(self._boot_sha):
             self._append(
                 "система",
@@ -1622,6 +1623,26 @@ class ViuGUI:
 
     # ---------- вывод ----------
 
+    def _ensure_anim_barn_reminder(self) -> None:
+        """Пока Ден на работе: через ~10 сообщений напомнить про анимации и сарай."""
+        try:
+            from .reminders import list_pending, schedule
+
+            if any(i.get("tag") == "anim_barn" for i in list_pending(self.agent.config)):
+                return
+            ok, msg = schedule(
+                self.agent.config,
+                "Дома: скачай анимации Mixamo (Female Walk и др.) и поправь сарай "
+                "(docs/WALK_FEET_FIX.md, docs/BARN_EDIT_STEPS.md). "
+                "Пока ты был на работе — ComfyUI уже встраивается во Вью.",
+                after_user_messages=10,
+                tag="anim_barn",
+            )
+            if ok:
+                self._append("система", msg, tag="sys")
+        except OSError:
+            pass
+
     def _append(self, who: str, text: str, tag: str | None = None) -> None:
         tag = tag or {"ты": "you", "Вью": "viu", "ошибка": "err", "система": "sys"}.get(
             who, "step"
@@ -1633,6 +1654,19 @@ class ViuGUI:
             self._chat_history.append(f"{who}: {text[:400]}")
         if who == "Вью":
             self._record_llm_turn("assistant", text)
+        if who == "ты":
+            try:
+                from .reminders import on_user_message
+
+                for remind in on_user_message(self.agent.config):
+                    self.output.insert(
+                        "end",
+                        f"система: ⏰ Напоминание: {remind}\n",
+                        "sys",
+                    )
+                    self.output.see("end")
+            except OSError:
+                pass
         try:
             with self.log_path.open("a", encoding="utf-8") as f:
                 f.write(f"{time.strftime('%H:%M:%S')} {line}")

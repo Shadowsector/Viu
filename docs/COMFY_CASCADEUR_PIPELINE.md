@@ -71,8 +71,8 @@ stable camera, no text, no blur, clear limbs, [ACTION], loopable motion
 | Этап | Что | Зависит |
 |------|-----|---------|
 | 0 | Эталон Шаня + QRT в Cascadeur | сейчас |
-| 1 | `comfy_install` / путь к Comfy + API | |
-| 2 | `comfy_run` workflow_id + prompt → `Lab/Refs/*.mp4` | |
+| 1 | Путь к Comfy + API (`comfy_status`) | **готово** — см. [COMFY_SETUP.md](./COMFY_SETUP.md) |
+| 2 | `comfy_run` workflow + prompt → `Lab/Refs/*` | **готово** (нужен твой `default.json` API Format) |
 | 3 | `cascadeur_import_reference` + MoCap assist | Python / pending |
 | 4 | `cascadeur_export_clip` → Animations + catalog | |
 | 5 | Last-frame → next seed image | |
@@ -80,6 +80,15 @@ stable camera, no text, no blur, clear limbs, [ACTION], loopable motion
 | 7 | NSFW queue (отдельный флаг) | |
 
 VRAM: Comfy **или** Cascadeur **или** Unity — не вместе на 6–12 GB (очередь lab).
+
+### Инструменты сейчас
+
+```
+comfy_status          → ping :8188, пути, список workflows
+comfy_run prompt=…    → API workflow → Lab/ComfyOut + Lab/Refs
+```
+
+Env: `VIU_COMFY_URL`, `VIU_COMFY_ROOT`. Workflows: `.viu/comfy/workflows/*.json`.
 
 Пути:
 

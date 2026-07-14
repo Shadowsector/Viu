@@ -75,6 +75,12 @@ class Config:
     # Cascadeur — правка FBX-анимаций (Windows).
     cascadeur_exe: str = field(default_factory=lambda: _env("VIU_CASCADEUR_EXE", ""))
 
+    # ComfyUI — локальный API (обычно http://127.0.0.1:8188).
+    comfy_url: str = field(
+        default_factory=lambda: _env("VIU_COMFY_URL", "http://127.0.0.1:8188")
+    )
+    comfy_root: str = field(default_factory=lambda: _env("VIU_COMFY_ROOT", ""))
+
     # Unity-проект Анабарра (корень с Assets/).
     unity_project: str = field(default_factory=lambda: _env("VIU_UNITY_PROJECT", ""))
 
@@ -135,6 +141,7 @@ class Config:
             f"max_steps={self.max_steps}\n"
             f"allow_shell={self.allow_shell} allow_network={self.allow_network}\n"
             f"blender_exe={self.blender_exe} blender={self.blender_host}:{self.blender_port}\n"
+            f"comfy_url={self.comfy_url} comfy_root={self.comfy_root or '(авто)'}\n"
             f"unity_project={self.unity_project or '(не задан)'}\n"
             f"unity_exe={self.unity_exe or '(авто Hub)'}"
         )
