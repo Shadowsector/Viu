@@ -5,6 +5,8 @@ from .ask_tool import AskUserTool
 from .base import AgentContext, Tool, ToolRegistry, ToolResult
 from .blender_tool import (
     BlenderCommandTool,
+    BlenderExportCascadeurBatchTool,
+    BlenderExportCascadeurTool,
     BlenderExportShanyaTool,
     BlenderInfoTool,
     BlenderScanTool,
@@ -153,6 +155,8 @@ def build_default_registry() -> ToolRegistry:
         BlenderInfoTool(),
         BlenderCommandTool(),
         BlenderScanTool(),
+        BlenderExportCascadeurTool(),
+        BlenderExportCascadeurBatchTool(),
         BlenderExportShanyaTool(),
         BlenderScreenshotTool(),
         RigStandardTool(),

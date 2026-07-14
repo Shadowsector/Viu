@@ -62,6 +62,29 @@ def models_inbox_dir(config: Config) -> Path:
     return p
 
 
+def cascadeur_ready_dir(config: Config) -> Path:
+    """Чистые FBX для Cascadeur (batch export из Blender)."""
+    import os
+
+    from ..anabarra_layout import library_root
+
+    env = os.environ.get("VIU_CASCADEUR_READY", "").strip()
+    if env:
+        p = Path(env).expanduser()
+    else:
+        p = library_root(config) / "Lab" / "Models" / "CascadeurReady"
+    p.mkdir(parents=True, exist_ok=True)
+    readme = p / "README.txt"
+    if not readme.is_file():
+        readme.write_text(
+            "FBX для Cascadeur — batch export из Viu (без WGT/widget, deform bones).\n"
+            "Команда: blender_export_cascadeur_batch\n"
+            "Import в Cascadeur: File → Import → Scene preset.\n",
+            encoding="utf-8",
+        )
+    return p
+
+
 def models_summary_md(config: Config, topic: str) -> Path:
     return artifacts_dir(config, topic) / "models_summary.md"
 

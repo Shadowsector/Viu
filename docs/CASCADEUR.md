@@ -7,6 +7,7 @@
 | Папка | Назначение |
 |-------|------------|
 | `U:\Anabarra\Library\Cascadeur\Inbox\` | FBX положить сюда → открыть в Cascadeur |
+| `U:\Anabarra\Library\Lab\Models\CascadeurReady\` | **Чистые FBX** после batch export из Blender |
 | `U:\Anabarra\Animations\` | Export из Cascadeur → «Обновить аниматор» в Unity |
 
 ## Настройка
@@ -36,9 +37,11 @@ U:\Cascadeur\App\Cascadeur\resources\scripts\python\commands\
 
 ## Workflow
 
-1. Mixamo / Blender → FBX в `Library/Cascadeur/Inbox`
-2. Правка в Cascadeur (Den)
-3. Export → `U:\Anabarra\Animations`
-4. Вью: **Обновить аниматор** (Unity закрыт)
+1. `.blend` в `Lab/Models/Inbox` (или Cascadeur Inbox)
+2. **Batch export:** чат `blender_export_cascadeur_batch` → `CascadeurReady/*_cascadeur.fbx` (без WGT, deform bones)
+3. Import в Cascadeur (Scene preset) — lab берёт FBX из CascadeurReady
+4. Правка в Cascadeur (Den)
+5. Export → `U:\Anabarra\Animations`
+6. Вью: **Обновить аниматор** (Unity закрыт)
 
 Авто-запуск Cascadeur из Вью — **лаборатория** (см. [VIU_LAB.md](./VIU_LAB.md)): окно на 3-м мониторе, скрины, journal, оценки.

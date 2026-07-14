@@ -13,11 +13,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from ..config import Config
 from ..integrations.blender.exe import resolve_blender_exe
 from ..integrations.blender.headless import dump_blend_info
-from ..integrations.blender.export_shanya import export_shanya_fbx
+from ..integrations.blender.export_cascadeur import export_cascadeur_fbx
 from ..integrations.cascadeur.paths import cascadeur_inbox
 from ..integrations.rig import analyze_skeleton, is_complex_rig, map_to_humanoid
 from ..tools import rig_tool as rt
-from .paths import artifacts_dir, models_inbox_dir, models_summary_json, models_summary_md
+from .paths import artifacts_dir, cascadeur_ready_dir, models_inbox_dir, models_summary_json, models_summary_md
 
 
 @dataclass
@@ -272,8 +272,8 @@ def _model_to_fbx(
         out = model.with_suffix(".fbx")
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
-        export_shanya_fbx(str(model), str(out), blender_exe=exe)
-        return True, f"Экспорт FBX: {out.name}", out
+        path, _meta = export_cascadeur_fbx(str(model), str(out), blender_exe=exe)
+        return True, f"Экспорт Cascadeur FBX: {path.name}", path
     except (FileNotFoundError, RuntimeError, OSError) as exc:
         return False, f"Экспорт FBX: {exc}", None
 
@@ -297,6 +297,17 @@ def prepare_cascadeur_inbox(
         if ok and fbx:
             return True, f"Конвернул в Inbox: {pick.name} → {fbx.name}", fbx
         return False, msg, None
+
+    ready_dir = cascadeur_ready_dir(config)
+    ready_fbx = sorted(ready_dir.glob("*_cascadeur.fbx"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if ready_fbx:
+        pick = random.choice(ready_fbx) if len(ready_fbx) > 1 else ready_fbx[0]
+        dst = inbox / pick.name
+        try:
+            shutil.copy2(pick, dst)
+        except OSError as exc:
+            return False, str(exc), None
+        return True, f"Из CascadeurReady: {pick.name} → Inbox", dst
 
     lab_dir = models_inbox_dir(config)
     lab_files: List[Path] = []

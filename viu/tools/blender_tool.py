@@ -116,6 +116,59 @@ class BlenderScanTool(Tool):
         return ToolResult(True, "Сводка по папке:\n" + "\n".join(lines))
 
 
+class BlenderExportCascadeurTool(Tool):
+    name = "blender_export_cascadeur"
+    description = (
+        "Экспорт одного .blend для Cascadeur: без WGT/widget-мешей, только deform bones, "
+        "суффикс _cascadeur.fbx"
+    )
+    parameters = {
+        "blend_file": "путь к .blend",
+        "output_fbx": "куда сохранить (опционально)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.blender.export_cascadeur import export_cascadeur_fbx
+
+        blend = args.get("blend_file", "")
+        if not blend:
+            return ToolResult(False, "Не указан blend_file")
+        out = args.get("output_fbx")
+        try:
+            path, meta = export_cascadeur_fbx(blend, out, blender_exe=ctx.config.blender_exe)
+        except (FileNotFoundError, RuntimeError, OSError) as exc:
+            return ToolResult(False, str(exc))
+        return ToolResult(
+            True,
+            f"Cascadeur FBX: {path}\n"
+            f"deform_bones={meta.get('deform_bones')}, "
+            f"widgets_hidden={meta.get('hidden_widgets')}, "
+            f"selected={meta.get('selected')}",
+        )
+
+
+class BlenderExportCascadeurBatchTool(Tool):
+    name = "blender_export_cascadeur_batch"
+    description = (
+        "Пакетный экспорт всех .blend/.fbx из Lab Inbox и Cascadeur Inbox "
+        "→ Library/Lab/Models/CascadeurReady/*_cascadeur.fbx"
+    )
+    parameters = {
+        "force": "1 = пересобрать даже если FBX свежее",
+        "topic": "cascadeur (manifest в lab artifacts)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.blender.export_cascadeur import batch_export_cascadeur_models
+
+        force = str(args.get("force", "0")).lower() in ("1", "true", "yes")
+        topic = str(args.get("topic") or "cascadeur").strip().lower()
+        ok, msg, manifest = batch_export_cascadeur_models(
+            ctx.config, topic=topic, force=force,
+        )
+        return ToolResult(ok, msg + f"\n\nManifest: {manifest}")
+
+
 class BlenderExportShanyaTool(Tool):
     name = "blender_export_shanya"
     description=(

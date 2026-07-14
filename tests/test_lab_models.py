@@ -89,10 +89,12 @@ def test_prepare_converts_blend_in_cascadeur_inbox(tmp_path, monkeypatch):
         "viu.lab.models_inbox._blender_exe",
         lambda _c: r"C:\Blender\blender.exe",
     )
-    monkeypatch.setattr(
-        "viu.lab.models_inbox.export_shanya_fbx",
-        lambda blend_file, output_fbx, **kw: Path(output_fbx).write_bytes(b"fbx") or Path(output_fbx),
-    )
+    def _fake_export(blend_file, output_fbx, **kw):
+        p = Path(output_fbx)
+        p.write_bytes(b"fbx")
+        return p, {}
+
+    monkeypatch.setattr("viu.lab.models_inbox.export_cascadeur_fbx", _fake_export)
 
     ok, msg, path = prepare_cascadeur_inbox(cfg)
     assert ok
