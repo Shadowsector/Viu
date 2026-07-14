@@ -202,10 +202,16 @@ def ensure_torch_for_comfy(root: Path, py: Path, *, force_reinstall: bool = Fals
     notes.append(_pip_uninstall_torch(py, cwd=root) or "uninstall torch: ok")
 
     if want_cuda:
-        notes.append("pip install torch==2.6.0+cu124 …")
+        notes.append("pip install --force-reinstall torch==2.6.0+cu124 …")
         ok_p, pip_out = _pip_install(
             py,
-            ["--no-cache-dir", *_TORCH_CUDA_PKGS, "--index-url", _TORCH_CUDA_INDEX],
+            [
+                "--no-cache-dir",
+                "--force-reinstall",
+                *_TORCH_CUDA_PKGS,
+                "--index-url",
+                _TORCH_CUDA_INDEX,
+            ],
             cwd=root,
         )
         if not ok_p:
@@ -213,21 +219,31 @@ def ensure_torch_for_comfy(root: Path, py: Path, *, force_reinstall: bool = Fals
             _pip_uninstall_torch(py, cwd=root)
             ok_p, pip_out = _pip_install(
                 py,
-                ["--no-cache-dir", *_TORCH_CUDA_PKGS_ALT, "--index-url", _TORCH_CUDA_INDEX_ALT],
+                [
+                    "--no-cache-dir",
+                    "--force-reinstall",
+                    *_TORCH_CUDA_PKGS_ALT,
+                    "--index-url",
+                    _TORCH_CUDA_INDEX_ALT,
+                ],
                 cwd=root,
             )
         if not ok_p:
             notes.append(f"cu121 тоже: {pip_out[-500:]}\nСтавлю CPU + Comfy --cpu.")
             _pip_uninstall_torch(py, cwd=root)
             ok_p, pip_out = _pip_install(
-                py, ["--no-cache-dir", "--upgrade", *_TORCH_CPU_PKGS], cwd=root
+                py,
+                ["--no-cache-dir", "--force-reinstall", "--upgrade", *_TORCH_CPU_PKGS],
+                cwd=root,
             )
             if not ok_p:
                 return False, "\n".join(notes) + f"\nCPU: {pip_out}"
     else:
         notes.append("nvidia-smi нет — CPU torch")
         ok_p, pip_out = _pip_install(
-            py, ["--no-cache-dir", "--upgrade", *_TORCH_CPU_PKGS], cwd=root
+            py,
+            ["--no-cache-dir", "--force-reinstall", "--upgrade", *_TORCH_CPU_PKGS],
+            cwd=root,
         )
         if not ok_p:
             return False, "\n".join(notes) + f"\n{pip_out}"
@@ -235,10 +251,11 @@ def ensure_torch_for_comfy(root: Path, py: Path, *, force_reinstall: bool = Fals
     ok2, ver2, cuda2 = _torch_info(py, root)
     if not ok2:
         return False, "\n".join(notes) + f"\nПосле установки import torch: {ver2}"
-    if want_cuda and not cuda2:
+    # pip мог оставить +cpu, если index не сработал — ловим по версии
+    if want_cuda and ok2 and ("+cpu" in ver2.lower() or not cuda2):
         notes.append(
             f"torch={ver2} всё ещё без CUDA — Comfy буду запускать с --cpu "
-            "(медленнее, но работает). Проверь драйвер NVIDIA."
+            "(медленнее, но работает). Проверь драйвер NVIDIA / CUDA 12.x."
         )
     else:
         notes.append(f"python={py} torch={ver2} CUDA={'yes' if cuda2 else 'no'}")

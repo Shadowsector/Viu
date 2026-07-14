@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass
@@ -29,6 +30,11 @@ def github_headers() -> dict:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
+
+
+def _quote_ref(ref: str) -> str:
+    """Ветки вида cursor/foo — percent-encode для GitHub API/URL."""
+    return urllib.parse.quote(ref, safe="")
 
 
 @dataclass
@@ -138,6 +144,22 @@ def write_install_stamp(root: Path, branch: str, note: str = "zip", sha: str = "
     stamp.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def write_package_sha(root: Path, sha: str) -> None:
+    """Зашить SHA в поставку — версия кода, а не только метка .viu/stamp."""
+    path = root / "viu" / "package_sha.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(sha.strip() + "\n", encoding="utf-8")
+
+
+def read_package_sha(root: Optional[Path] = None) -> str:
+    """SHA из viu/package_sha.txt — что реально лежит в файлах."""
+    path = (root or package_root()) / "viu" / "package_sha.txt"
+    if not path.is_file():
+        return ""
+    line = path.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+    return line[0].strip() if line else ""
+
+
 def read_local_sha(root: Optional[Path] = None) -> str:
     stamp = _stamp_path(root or package_root())
     if not stamp.is_file():
@@ -148,9 +170,15 @@ def read_local_sha(root: Optional[Path] = None) -> str:
     return ""
 
 
+def running_sha(root: Optional[Path] = None) -> str:
+    """Версия работающего кода: package_sha → stamp → ''."""
+    base = root or package_root()
+    return read_package_sha(base) or read_local_sha(base)
+
+
 def stamp_changed_since(start_sha: str, root: Optional[Path] = None) -> bool:
     """На диске другая метка версии — процессу нужен relaunch (zip/bootstrap)."""
-    current = read_local_sha(root)
+    current = running_sha(root)
     return bool(start_sha and current and start_sha != current)
 
 
@@ -160,9 +188,8 @@ def remote_sha_github(
 ) -> str:
     """SHA последнего коммита ветки через GitHub API (без git)."""
     import json
-    import urllib.request
 
-    url = f"https://api.github.com/repos/{repo}/commits/{branch}"
+    url = f"https://api.github.com/repos/{repo}/commits/{_quote_ref(branch)}"
     req = urllib.request.Request(url, headers=github_headers())
     with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
         data = json.loads(resp.read().decode("utf-8"))
@@ -208,7 +235,7 @@ def _run_git(
 def current_commit(repo: Optional[Path] = None) -> str:
     root = repo or usable_git_root()
     if root is None:
-        sha = read_local_sha(package_root())
+        sha = running_sha(package_root())
         if sha:
             return sha[:12]
         stamp = _stamp_path(package_root())
@@ -218,7 +245,11 @@ def current_commit(repo: Optional[Path] = None) -> str:
                 return f"zip:{lines[1][:20]}"
         return "без git"
     code, out = _run_git(["rev-parse", "--short", "HEAD"], root)
-    return out if code == 0 else "unknown"
+    if code == 0 and out:
+        return out
+    # git сломан — всё равно показать package_sha
+    sha = running_sha(package_root())
+    return sha[:12] if sha else "unknown"
 
 
 def install_package(root: Optional[Path] = None) -> Tuple[bool, str]:
@@ -253,7 +284,7 @@ def check_for_update(
     if root is None:
         try:
             remote = remote_sha_github(branch=branch)
-            local = read_local_sha(package_root())
+            local = running_sha(package_root())
             if local and local == remote:
                 return UpdateResult(
                     ok=True,
@@ -261,13 +292,18 @@ def check_for_update(
                     has_updates=False,
                     local_ref=local[:12],
                     remote_ref=remote[:12],
-                    message="Уже последняя версия (GitHub).",
+                    message=f"Уже последняя версия (GitHub) {local[:12]}.",
                 )
-            msg = "Доступно обновление с GitHub."
             if local:
-                msg = f"Доступно обновление ({local[:7]} → {remote[:7]})."
+                msg = (
+                    f"Доступно обновление ({local[:12]} → {remote[:12]}). "
+                    "Нажми «Обновить Вью» или перезапусти — подтяну сама."
+                )
             else:
-                msg = "Нужна установка/обновление с GitHub (авто при запуске или get_viu.bat)."
+                msg = (
+                    f"Нужна установка/обновление с GitHub (remote={remote[:12]}). "
+                    "Авто при запуске или кнопка «Обновить Вью»."
+                )
             return UpdateResult(
                 ok=True,
                 checked=True,
@@ -314,7 +350,7 @@ def check_for_update(
             behind=0,
             local_ref=short_local,
             remote_ref=short_remote,
-            message="Уже последняя версия.",
+            message=f"Уже последняя версия ({short_local}).",
         )
 
     return UpdateResult(
@@ -390,7 +426,8 @@ def download_zip_update(
     target: Optional[Path] = None,
 ) -> UpdateResult:
     dest = target or package_root()
-    url = f"https://github.com/{repo}/archive/refs/heads/{branch}.zip"
+    q = _quote_ref(branch)
+    url = f"https://github.com/{repo}/archive/refs/heads/{q}.zip"
     try:
         req = urllib.request.Request(url, headers=github_headers())
         with urllib.request.urlopen(req, timeout=180) as resp:  # noqa: S310
@@ -398,7 +435,7 @@ def download_zip_update(
     except urllib.error.HTTPError as exc:
         if exc.code != 404:
             return UpdateResult(ok=False, message=f"Не скачать zip: {exc}")
-        api_url = f"https://api.github.com/repos/{repo}/zipball/{branch}"
+        api_url = f"https://api.github.com/repos/{repo}/zipball/{q}"
         try:
             req2 = urllib.request.Request(api_url, headers=github_headers())
             with urllib.request.urlopen(req2, timeout=180) as resp:  # noqa: S310
@@ -438,15 +475,17 @@ def download_zip_update(
     except (OSError, RuntimeError):
         sha = ""
     write_install_stamp(dest, branch, note="zip", sha=sha)
+    if sha:
+        write_package_sha(dest, sha)
     cleanup_obsolete(dest)
     return UpdateResult(
         ok=True,
         checked=True,
         updated=True,
         has_updates=False,
-        local_ref=f"zip:{branch}",
-        remote_ref=branch,
-        message=f"Скачан архив {branch}. Перезапусти Viu.",
+        local_ref=sha[:12] if sha else f"zip:{branch}",
+        remote_ref=sha[:12] if sha else branch,
+        message=f"Скачан архив {branch} ({sha[:12] if sha else '?'}). Перезапусти Viu.",
         used_zip=True,
     )
 
@@ -478,8 +517,8 @@ def auto_update_on_start(
         return status
     try:
         remote = remote_sha_github(branch=branch)
-        local = read_local_sha(package_root())
-        if local == remote:
+        local = running_sha(package_root())
+        if local and local == remote:
             return status
     except (OSError, RuntimeError):
         pass

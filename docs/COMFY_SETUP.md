@@ -38,6 +38,16 @@ I2V 14B — опционально: `comfy_install i2v=1` (десятки GB).
 |------|-----|
 | `comfy_install` | clone + workflows + модели |
 | `comfy_ensure` | install при необходимости + старт `:8188` |
+
+### Torch / CUDA (RTX)
+
+Если в логе `Torch not compiled with CUDA enabled` при `torch=…+cpu`:
+
+1. Обнови Вью до свежего SHA (кнопка **«Обновить Вью»**, не `comfy_install`).
+2. Снова `comfy_ensure` — Вью **сносит** CPU-torch и ставит `torch==2.6.0+cu124`.
+3. Если CUDA всё равно нет — Comfy стартует с `--cpu` (медленно, но без падения).
+
+Лог: `U:\Viu\.viu\logs\comfy_launch.log`.
 | `comfy_status` | диагностика |
 | `comfy_mocap` | lab: Telegram → 3 ракурса |
 

@@ -23,7 +23,7 @@ def test_check_for_update_no_git(tmp_path, monkeypatch):
         "remote_sha_github",
         lambda repo=updater.DEFAULT_REPO, branch=updater.DEFAULT_BRANCH: "abc123remote",
     )
-    monkeypatch.setattr(updater, "read_local_sha", lambda root=None: "")
+    monkeypatch.setattr(updater, "running_sha", lambda root=None: "")
     result = check_for_update()
     assert result.checked
     assert result.has_updates
@@ -39,7 +39,7 @@ def test_check_for_update_broken_git_falls_back_to_github(tmp_path, monkeypatch)
         "remote_sha_github",
         lambda repo=updater.DEFAULT_REPO, branch=updater.DEFAULT_BRANCH: "abc123remote",
     )
-    monkeypatch.setattr(updater, "read_local_sha", lambda root=None: "")
+    monkeypatch.setattr(updater, "running_sha", lambda root=None: "")
 
     def fake_run_git(args, cwd, timeout=120.0, retries=1):
         if args[:2] == ["remote", "get-url"]:
@@ -56,6 +56,25 @@ def test_check_for_update_broken_git_falls_back_to_github(tmp_path, monkeypatch)
     assert result.has_updates
 
 
+def test_check_for_update_uses_package_sha_over_stamp(tmp_path, monkeypatch):
+    """Код на диске (package_sha) важнее stamp — иначе ложное «уже последняя»."""
+    from viu import updater
+
+    monkeypatch.setattr(updater, "find_git_root", lambda start=None: None)
+    monkeypatch.setattr(updater, "package_root", lambda: tmp_path)
+    write_install_stamp(tmp_path, "cursor/viu-agent-core-65c2", sha="deadbeef" * 5)
+    (tmp_path / "viu").mkdir()
+    (tmp_path / "viu" / "package_sha.txt").write_text("cafebabe" * 5 + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        updater,
+        "remote_sha_github",
+        lambda repo=updater.DEFAULT_REPO, branch=updater.DEFAULT_BRANCH: "deadbeef" * 5,
+    )
+    result = check_for_update()
+    assert result.has_updates
+    assert "cafebabe" in result.local_ref
+
+
 def test_install_stamp(tmp_path):
     write_install_stamp(tmp_path, "cursor/test-branch", note="zip")
     stamp = tmp_path / ".viu" / "installed_version.txt"
@@ -66,7 +85,7 @@ def test_install_stamp(tmp_path):
 def test_version_label_zip(tmp_path, monkeypatch):
     from viu import updater
 
-    write_install_stamp(tmp_path, "cursor/viu-agent-core-65c2")
+    write_install_stamp(tmp_path, "cursor/viu-agent-core-65c2", sha="abcd1234abcd")
     monkeypatch.setattr(updater, "find_git_root", lambda start=None: None)
 
     def fake_root():
@@ -74,7 +93,7 @@ def test_version_label_zip(tmp_path, monkeypatch):
 
     monkeypatch.setattr(updater, "package_root", fake_root)
     ref = updater.current_commit()
-    assert "zip" in ref or "viu-agent" in ref
+    assert "abcd1234" in ref or "zip" in ref or "viu-agent" in ref
 
 
 def test_cleanup_obsolete(tmp_path):

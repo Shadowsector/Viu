@@ -37,7 +37,7 @@ from .updater import (
     find_git_root,
     install_package,
     package_root,
-    read_local_sha,
+    running_sha,
     stamp_changed_since,
     usable_git_root,
     update_viu_full,
@@ -68,7 +68,7 @@ class ViuGUI:
         self._lab_job: str | None = None
         self._chat_history: deque[str] = deque(maxlen=16)
         self._llm_turns: deque[dict[str, str]] = deque(maxlen=14)
-        self._boot_sha = read_local_sha(package_root())
+        self._boot_sha = running_sha(package_root())
         self._geometry_save_job: str | None = None
 
         stamp = time.strftime("%Y%m%d_%H%M%S")
