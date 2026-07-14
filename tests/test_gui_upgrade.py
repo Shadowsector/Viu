@@ -23,6 +23,9 @@ def test_gui_actions_grouped():
     assert any(a.tool == "__update_viu__" for a in GUI_ACTIONS)
     assert any(a.action_id == "unity_apply" and a.is_chain for a in GUI_ACTIONS)
     assert any(a.action_id == "lab_comfy" and a.tool == "__lab_comfy__" for a in GUI_ACTIONS)
+    assert any(a.action_id == "decision_queue" and a.tool == "__decision_queue__" for a in GUI_ACTIONS)
+    # Presence — сверху окна, не в сайдбаре
+    assert not any(a.action_id == "presence_toggle" for a in GUI_ACTIONS)
     assert all("диска U" not in a.label for a in GUI_ACTIONS)
     # Убрали Cascadeur / apps restart / три шага overlay из главного UI
     ids = {a.action_id for a in GUI_ACTIONS}

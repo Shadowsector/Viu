@@ -170,17 +170,35 @@ class ViuGUI:
         self.root.destroy()
 
     def _build_top_status(self) -> None:
-        """Строка статуса как у Mia: Ollama, Unity, версия."""
+        """Верхняя полоса: статус + переключатель Дома (зелёный) / Нет дома (красный)."""
         bar = ttk.Frame(self.root)
         bar.pack(fill="x", padx=8, pady=(6, 0))
+
         self.top_status_var = tk.StringVar(value="…")
         ttk.Label(bar, textvariable=self.top_status_var, font=("Segoe UI", 9)).pack(
             side="left", anchor="w"
         )
 
+        right = ttk.Frame(bar)
+        right.pack(side="right", anchor="e")
+        ttk.Label(right, text="Ты:", font=("Segoe UI", 9)).pack(side="left", padx=(0, 6))
+        self._presence_btn = tk.Button(
+            right,
+            text="● Дома",
+            font=("Segoe UI", 10, "bold"),
+            relief="raised",
+            bd=2,
+            padx=12,
+            pady=2,
+            cursor="hand2",
+            command=self._toggle_presence,
+        )
+        self._presence_btn.pack(side="left")
+        self._refresh_presence_button()
+
     def _toggle_presence(self) -> None:
         from .decision_queue import flush_prompt_for_home
-        from .presence import is_away, presence_label, toggle_presence
+        from .presence import presence_label, toggle_presence
 
         mode = toggle_presence(self.agent.config)
         label = presence_label(self.agent.config)
@@ -196,7 +214,8 @@ class ViuGUI:
         else:
             self._append(
                 "система",
-                "Автономный режим: inbox/оверлей сама; вопросы копятся в «Очередь вопросов».",
+                "Автономный режим (нет дома): inbox, lab и Comfy сама; "
+                "вопросы копятся. Живой чат справа — когда дома.",
                 tag="sys",
             )
             self.root.after(2000, lambda: self._lab_tick(auto=True))
@@ -211,10 +230,29 @@ class ViuGUI:
         from .presence import is_away
 
         away = is_away(self.agent.config)
+        btn = getattr(self, "_presence_btn", None)
+        if btn is not None:
+            if away:
+                btn.config(
+                    text="● Нет дома",
+                    bg="#c62828",
+                    fg="#ffffff",
+                    activebackground="#b71c1c",
+                    activeforeground="#ffffff",
+                )
+            else:
+                btn.config(
+                    text="● Дома",
+                    bg="#2e7d32",
+                    fg="#ffffff",
+                    activebackground="#1b5e20",
+                    activeforeground="#ffffff",
+                )
+        # legacy sidebar button (если ещё есть)
         text = "Режим: меня нет (автономно)" if away else "Режим: я дома (с вопросами)"
-        for aid, btn in self._action_buttons:
+        for aid, b in self._action_buttons:
             if aid == "presence_toggle":
-                btn.config(text=text)
+                b.config(text=text)
                 break
 
     def _refresh_status(self) -> None:
@@ -258,8 +296,16 @@ class ViuGUI:
         frame.pack(side="left", fill="y", padx=(0, 0))
         frame.pack_propagate(False)
 
-        header = ttk.Label(frame, text="Действия", font=("Segoe UI", 11, "bold"))
+        header = ttk.Label(frame, text="Скрипты", font=("Segoe UI", 11, "bold"))
         header.pack(anchor="w", padx=10, pady=(10, 2))
+        ttk.Label(
+            frame,
+            text="Заскриптованные кнопки — без «мышления» чата.",
+            wraplength=240,
+            justify="left",
+            font=("Segoe UI", 8),
+            foreground="#888888",
+        ).pack(anchor="w", padx=10, pady=(0, 4))
         self._sidebar_stage_label = ttk.Label(
             frame,
             text="",
@@ -308,7 +354,7 @@ class ViuGUI:
 
         chat_hint = ttk.Label(
             frame,
-            text="Чат справа — свободная задача.\nEnter — отправить.",
+            text="Справа — живая Вью (чат).\nДома/Нет дома — сверху.",
             wraplength=240,
             justify="left",
             font=("Segoe UI", 9),
@@ -318,6 +364,20 @@ class ViuGUI:
     def _build_chat(self, parent: ttk.Frame) -> None:
         frame = ttk.Frame(parent)
         frame.pack(side="left", fill="both", expand=True)
+
+        chat_head = ttk.Frame(frame)
+        chat_head.pack(fill="x", padx=(4, 8), pady=(8, 0))
+        ttk.Label(
+            chat_head,
+            text="Живая Вью",
+            font=("Segoe UI", 11, "bold"),
+        ).pack(side="left")
+        ttk.Label(
+            chat_head,
+            text="свободный разговор · сюжет · идеи",
+            font=("Segoe UI", 8),
+            foreground="#888888",
+        ).pack(side="left", padx=(8, 0))
 
         self.output = scrolledtext.ScrolledText(
             frame,
@@ -329,7 +389,7 @@ class ViuGUI:
             padx=8,
             pady=8,
         )
-        self.output.pack(fill="both", expand=True, padx=(4, 8), pady=(8, 4))
+        self.output.pack(fill="both", expand=True, padx=(4, 8), pady=(4, 4))
         for tag, color in (
             ("you", "#4fc3f7"),
             ("viu", "#a5d6a7"),
@@ -353,8 +413,21 @@ class ViuGUI:
         self._bind_clipboard(self.entry)
         self.entry.focus_set()
 
-        self.send_btn = ttk.Button(bottom, text="Отправить", width=14, command=self._on_send)
-        self.send_btn.pack(side="right", fill="y", padx=(6, 0))
+        self.send_btn = tk.Button(
+            bottom,
+            text="Отправить",
+            width=12,
+            font=("Segoe UI", 10, "bold"),
+            bg="#1565c0",
+            fg="#ffffff",
+            activebackground="#0d47a1",
+            activeforeground="#ffffff",
+            relief="raised",
+            bd=2,
+            cursor="hand2",
+            command=self._on_send,
+        )
+        self.send_btn.pack(side="right", fill="y", padx=(8, 0))
 
     def _build_menu(self) -> None:
         menubar = tk.Menu(self.root)
@@ -571,6 +644,10 @@ class ViuGUI:
         self._busy = busy
         state = "disabled" if busy else "normal"
         self.send_btn.config(state=state, text="Думаю…" if busy else "Отправить")
+        try:
+            self.send_btn.config(bg="#546e7a" if busy else "#1565c0")
+        except tk.TclError:
+            pass
         for _aid, btn in self._action_buttons:
             btn.config(state=state)
         ver = version_label()
@@ -1270,7 +1347,55 @@ class ViuGUI:
         if auto and not is_away(self.agent.config):
             return
         from .lab.cascadeur_pipeline import CASCADEUR_TOPIC
+        from .lab.comfy_pipeline import COMFY_TOPIC
         from .lab.session import load_session
+
+        # Сначала дожать Comfy, если ждём/в процессе
+        comfy = load_session(self.agent.config, COMFY_TOPIC)
+        if comfy is not None and comfy.status in (
+            "running",
+            "paused",
+            "awaiting_prompt",
+            "awaiting_clip_pick",
+        ):
+            if comfy.status == "awaiting_prompt" and auto:
+                # away: авто-одобрение уже в pipeline; просто шагнуть
+                self._run_tool(
+                    "lab_step",
+                    {"topic": COMFY_TOPIC, "run_all": "1"},
+                    label="Lab Comfy (auto)",
+                )
+                return
+            if comfy.status == "awaiting_clip_pick" and auto:
+                # away: авто-выбор front
+                self._run_tool(
+                    "comfy_clip_pick",
+                    {"angle": "front", "score": "3", "notes": "auto away"},
+                    label="Comfy: авто-выбор клипа",
+                )
+                self._run_tool(
+                    "lab_step",
+                    {"topic": COMFY_TOPIC, "run_all": "1"},
+                    label="Lab Comfy (auto)",
+                )
+                return
+            if comfy.status in ("running", "paused"):
+                self._run_tool(
+                    "lab_step",
+                    {"topic": COMFY_TOPIC, "run_all": "1"},
+                    label="Lab Comfy (auto)",
+                )
+                return
+
+        # Периодически новая Comfy-съёмка (Вью сама выбирает кадр)
+        if auto and (comfy is None or comfy.status in ("completed", "idle", "awaiting_rating")):
+            # чередование: если cascadeur активен — сначала его; иначе comfy
+            cas = load_session(self.agent.config, CASCADEUR_TOPIC)
+            if cas is not None and cas.status in ("running", "paused"):
+                pass  # fall through to cascadeur
+            elif cas is None or cas.status in ("completed", "idle", "awaiting_rating"):
+                self._lab_comfy_action(auto=True)
+                return
 
         session = load_session(self.agent.config, CASCADEUR_TOPIC)
         if session is None:
@@ -1302,28 +1427,42 @@ class ViuGUI:
             args["reset"] = "1"
         self._run_tool("lab_start", args, label="Лаборатория: Cascadeur", echo_user=True)
 
-    def _lab_comfy_action(self) -> None:
-        from tkinter import simpledialog
+    def _lab_comfy_action(self, *, auto: bool = False) -> None:
+        """Вью сама выбирает кадр (каталог/граф). Без диалога idle stand."""
+        from .lab.comfy_director import invent_next_shot
+        from .lab.comfy_pipeline import COMFY_TOPIC
 
-        from .lab.comfy_pipeline import COMFY_TOPIC, read_action_from_task
-
-        default = read_action_from_task(self.agent.config)
-        action = simpledialog.askstring(
-            "Comfy MoCap",
-            "Действие персонажа (промпт уйдёт в Telegram на одобрение):",
-            initialvalue=default,
-            parent=self.root,
-        )
-        if not action or not action.strip():
-            self._append("система", "Comfy: отменено — нет действия.", tag="sys")
-            return
-        self._set_busy(True)
+        plan = invent_next_shot(self.agent.config)
+        self._append("Вью", plan.summary_ru(), tag="viu")
+        if not auto:
+            self._set_busy(True)
+        args = {
+            "topic": COMFY_TOPIC,
+            "run_all": "1",
+            "reset": "1",
+            "action": plan.action,
+        }
+        # прокинуть граф в session через meta после start — lab_start принимает action
         self._run_tool(
             "lab_start",
-            {"topic": COMFY_TOPIC, "run_all": "1", "reset": "1", "action": action.strip()},
+            args,
             label="Лаборатория: Comfy MoCap",
-            echo_user=True,
+            echo_user=not auto,
         )
+        # после старта дописать catalog_slug в сессию
+        def _patch_meta() -> None:
+            from .lab.session import load_session, save_session
+
+            sess = load_session(self.agent.config, COMFY_TOPIC)
+            if sess is None:
+                return
+            sess.meta["catalog_slug"] = plan.catalog_slug
+            sess.meta["enters_from"] = list(plan.enters_from)
+            sess.meta["exits_to"] = list(plan.exits_to)
+            sess.meta["shot_reason"] = plan.reason
+            save_session(self.agent.config, sess)
+
+        self.root.after(800, _patch_meta)
 
     def _lab_run_all_action(self, *, reset: bool = False) -> None:
         from .lab.cascadeur_pipeline import CASCADEUR_TOPIC

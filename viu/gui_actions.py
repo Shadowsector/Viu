@@ -50,18 +50,18 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Собрать и запустить Шаню на рабочем столе. Unity закроется на время сборки.",
     ),
     GuiAction(
-        "presence_toggle",
-        "Я дома / меня нет",
-        "Главное",
-        tool="__presence_toggle__",
-        hint="Дома — Вью спрашивает. Нет дома — работает сама.",
-    ),
-    GuiAction(
         "update_viu",
         "Обновить Вью",
         "Главное",
         tool="__update_viu__",
         hint="Скачать новую версию с GitHub.",
+    ),
+    GuiAction(
+        "decision_queue",
+        "Очередь вопросов",
+        "Главное",
+        tool="__decision_queue__",
+        hint="Что Вью отложила, пока тебя не было.",
     ),
     GuiAction(
         "send_logs",
@@ -115,7 +115,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Лаборатория: Comfy MoCap",
         "Редко",
         tool="__lab_comfy__",
-        hint="Wan 2.1 → Telegram → 3 ракурса → выбор лучшего → kept/ + seed.",
+        hint="Вью сама выбирает кадр из каталога → Telegram/авто → 3 ракурса → выбор.",
     ),
     GuiAction(
         "comfy_clips",
@@ -129,7 +129,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Lab: весь цикл",
         "Редко",
         tool="__lab_run_all__",
-        hint="Все 9 шагов до отчёта или затыка. В away — автономно по таймеру.",
+        hint="Все 9 шагов до отчёта. Нет дома — автономно по таймеру.",
     ),
     GuiAction(
         "lab_rate",

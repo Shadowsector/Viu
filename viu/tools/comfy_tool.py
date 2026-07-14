@@ -206,11 +206,11 @@ class ComfyRunTool(Tool):
 class ComfyMocapTool(Tool):
     name = "comfy_mocap"
     description = (
-        "Пакет под Cascadeur MoCap: lab topic=comfy — черновик промпта в Telegram, "
-        "после «ок» — 3 видео (сбоку / ¾ / анфас) в Lab/Refs. action= действие."
+        "Comfy MoCap lab: Вью сама выбирает кадр из каталога (action=auto), "
+        "или action= явное действие. Дома — Telegram; нет дома — авто-одобрение."
     )
     parameters = {
-        "action": "действие (sit down, wave, walk in place, …)",
+        "action": "действие или auto — Вью сама выберет из каталога",
         "reset": "1 = новая сессия",
     }
 
@@ -218,8 +218,13 @@ class ComfyMocapTool(Tool):
         from .lab_tool import LabStartTool
 
         action = str(args.get("action") or "").strip()
-        if not action:
-            return ToolResult(False, "Нужен action= (что делает персонаж).")
+        if not action or action.lower() in ("auto", "сам", "сама", "invent"):
+            from ..lab.comfy_director import invent_next_shot
+            from ..lab.comfy_pipeline import ensure_task_file
+
+            plan = invent_next_shot(ctx.config)
+            action = plan.action
+            ensure_task_file(ctx.config, action=action)
         return LabStartTool().run(
             {
                 "topic": "comfy",

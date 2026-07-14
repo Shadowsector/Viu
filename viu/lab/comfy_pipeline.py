@@ -40,13 +40,15 @@ STEP_LABELS = [
 def ensure_task_file(config: Config, *, action: str = "") -> Path:
     path = task_path(config, COMFY_TOPIC)
     if not path.is_file() or action.strip():
+        if not action.strip():
+            from .comfy_director import invent_next_action
+
+            action = invent_next_action(config)
         body = (
             "# Lab Comfy → Cascadeur MoCap\n\n"
-            "Вью сама: ComfyUI → Wan 2.1 → 3 ракурса → ты выбираешь лучший → "
-            "kept/ + last-frame seed.\n"
-            "Промпт — на одобрение в Telegram.\n\n"
-            f"## action\n\n"
-            f"{(action or 'idle stand, subtle breathing').strip()}\n"
+            "Вью сама выбирает действие из каталога анимаций (не idle stand по умолчанию).\n"
+            "Промпт — Telegram дома; в режиме «Нет дома» — сама одобряет.\n\n"
+            f"## action\n\n{action.strip()}\n"
         )
         path.write_text(body, encoding="utf-8")
     return path
@@ -55,19 +57,22 @@ def ensure_task_file(config: Config, *, action: str = "") -> Path:
 def read_action_from_task(config: Config) -> str:
     path = task_path(config, COMFY_TOPIC)
     if not path.is_file():
-        return "idle stand, subtle breathing"
+        from .comfy_director import invent_next_action
+
+        return invent_next_action(config)
     text = path.read_text(encoding="utf-8")
     if "## action" in text.lower():
         after = text.lower().split("## action", 1)[1]
         lines = [ln.strip() for ln in after.splitlines() if ln.strip() and not ln.strip().startswith("#")]
         if lines:
-            # recover original casing from file
             raw_after = text.split("## action", 1)[1] if "## action" in text else text.split("## Action", 1)[-1]
             for ln in raw_after.splitlines():
                 s = ln.strip()
                 if s and not s.startswith("#"):
                     return s
-    return "idle stand, subtle breathing"
+    from .comfy_director import invent_next_action
+
+    return invent_next_action(config)
 
 
 def _import_workflows_from_comfy_install(config: Config) -> List[str]:
@@ -180,13 +185,33 @@ def step_draft_prompt(config: Config, session: LabSession) -> StepResult:
 def step_request_approval(config: Config, session: LabSession) -> StepResult:
     action = str(session.meta.get("action") or read_action_from_task(config))
     draft = str(session.meta.get("draft") or draft_bundle(action))
+
+    # Нет дома — Вью сама одобряет и идёт снимать (автономия).
+    try:
+        from ..presence import is_away
+
+        away = is_away(config)
+    except Exception:
+        away = False
+    if away:
+        session.meta["approved"] = True
+        session.meta["approved_action"] = action
+        session.meta["auto_approved_away"] = True
+        session.status = "running"
+        # step не трогаем — run_one_step сделает 3→4 (generate)
+        save_session(config, session)
+        msg = (
+            f"Нет дома — сама одобрила съёмку «{action[:80]}».\n"
+            "Дальше 3 ракурса без ожидания Telegram."
+        )
+        append_journal(config, COMFY_TOPIC, f"### Авто-одобрение (away)\n\n{msg}\n\n{draft}")
+        return True, msg, None
+
     sent, msg = send_prompt_for_approval(config, action, draft)
     session.status = "awaiting_prompt"
     session.meta["approval_sent"] = sent
     save_session(config, session)
     append_journal(config, COMFY_TOPIC, f"### Одобрение\n\n{msg}\n\n{draft}")
-    # Пауза: не двигаем step в run_one_step пока status awaiting_prompt —
-    # step уже будет инкрементирован... need careful handling.
     return True, msg, None
 
 

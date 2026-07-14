@@ -93,12 +93,14 @@ VRAM: Comfy **или** Cascadeur **или** Unity — не вместе на 6�
 
 ```
 comfy_status / comfy_ensure
-comfy_mocap action=…     → Telegram approve → 3× Lab/Refs
+comfy_mocap action=auto  → режиссёр (catalog) выбирает кадр; home→Telegram, away→сама
+comfy_mocap action=…     → явный action; home→Telegram approve → 3× Lab/Refs
 comfy_triple action=…    → 3 ракурса без Telegram
 lab_start topic=comfy
 ```
 
-Ракурсы на каждый промпт: **side / three_quarter / front**.
+Ракурсы на каждый промпт: **side / three_quarter / front**.  
+Режиссёр (`viu/lab/comfy_director.py`): дыры wave 1 из `animation_catalog`, **не** idle по умолчанию.
 
 Env: `VIU_COMFY_URL`, `VIU_COMFY_ROOT=U:/Viu/ComfyUI`.  
 Workflows: `.viu/comfy/workflows/t2v.json`, `i2v.json`.
