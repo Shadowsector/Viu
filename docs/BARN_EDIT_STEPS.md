@@ -185,6 +185,29 @@
 
 ---
 
+## Шаг 7. В сцене «сарай номер два» (`Viu_Home_Old_Stables_2`)
+
+Экспорт кладёт FBX в папку **`Old_Stables`**, а сцена может всё ещё держать старый объект **`Viu_Home_Old_Stables_2`**.  
+«Починить текстуры» красит **то, что уже в сцене** — поэтому лог писал `home=Viu_Home_Old_Stables_2`. Это не «кривой экспорт».
+
+### Сейчас (без обновления Вью) — руками
+
+1. Hierarchy слева → кликни **`Viu_Home_Old_Stables_2`**.
+2. Клавиша **Delete** (или ПКМ → Delete). Шаню, камеру, `Viu_Anchors` **не** трогай.
+3. Внизу Project → поиск: `Old_Stables` → папка `Assets/Environment/Old_Stables/` → файл **`Old_Stables.fbx`**.
+4. Перетащи этот FBX в Hierarchy (в корень сцены, рядом с Шаней).
+5. Кликни новый объект → в Inspector сверху имя → переименуй в **`Viu_Home_Old_Stables`** (без `_2`).
+6. Меню **Viu → Overlay → Rebind All Materials**.
+7. **Ctrl+S**. В Hierarchy должно быть `Viu_Home_Old_Stables`, **без** `_2`.
+
+### После «Обновить Вью» — одна кнопка
+
+Меню Unity: **Viu → Overlay → Replace Home Building (from Environment)**  
+Сама удалит старые `Viu_Home_*`, поставит FBX из `Environment`, сделает Rebind.  
+**Bootstrap не нужен.**
+
+---
+
 ## Чего **не** делать
 
 - Не Bootstrap, если сцена уже с домом и Шаней.  

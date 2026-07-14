@@ -51,6 +51,13 @@ namespace Viu.Editor
         [MenuItem("Viu/Overlay/Rebind All Materials")]
         public static void RebindMenu() => RebindAllOverlayMaterials(ScenePath);
 
+        /// <summary>
+        /// Убрать старый Viu_Home_* (часто Old_Stables_2) и поставить FBX из Assets/Environment.
+        /// Не трогает Шаню, камеру, якоря. После экспорта сарая — этот пункт, не Bootstrap.
+        /// </summary>
+        [MenuItem("Viu/Overlay/Replace Home Building (from Environment)")]
+        public static void ReplaceHomeMenu() => ReplaceHomeBuilding(ScenePath);
+
         [MenuItem("Viu/Overlay/Prepare Overlay Scene")]
         public static void RunMenu() => BootstrapOverlayScene(ScenePath);
 
@@ -387,6 +394,46 @@ namespace Viu.Editor
             catch { /* ignore */ }
 
             Debug.Log("[Viu] Bake OK r53: " + body.Trim());
+        }
+
+        /// <summary>
+        /// Удалить все Viu_Home_* в сцене и поставить дом из лучшего FBX в Assets/Environment.
+        /// </summary>
+        public static void ReplaceHomeBuilding(string scenePath)
+        {
+            OpenSceneForOverlay(scenePath);
+            var removed = 0;
+            foreach (var go in UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None))
+            {
+                if (go == null || go.transform.parent != null)
+                    continue;
+                if (!go.name.StartsWith("Viu_Home_", StringComparison.Ordinal))
+                    continue;
+                Debug.Log("[Viu] Убираю старый дом из сцены: " + go.name);
+                UnityEngine.Object.DestroyImmediate(go);
+                removed++;
+            }
+
+            var home = EnsureHomeBuilding();
+            if (home == null)
+                throw new InvalidOperationException(
+                    "[Viu] Replace Home: нет FBX в Assets/Environment/. Сначала «Переэкспорт сарая».");
+
+            EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+            SaveActiveScene(scenePath);
+
+            RebindAllOverlayMaterials(scenePath);
+
+            Debug.Log(
+                "[Viu] Replace Home OK: removed=" + removed
+                + " now=" + home.name
+                + " — Bootstrap не нужен.");
+            EditorUtility.DisplayDialog(
+                "Viu — дом заменён",
+                "Убрала старых Viu_Home_*: " + removed + "\n"
+                + "Сейчас в сцене: " + home.name + "\n\n"
+                + "Bootstrap не нужен. Play → проверь фасад.",
+                "OK");
         }
 
         static void WipeMatFolder(string folder)
@@ -1793,7 +1840,13 @@ namespace Viu.Editor
                     }
                     catch { /* ignore */ }
                 }
-                if (slug.EndsWith("_2", StringComparison.OrdinalIgnoreCase)) score += 2;
+                if (slug.EndsWith("_2", StringComparison.OrdinalIgnoreCase)
+                    || slug.EndsWith("_1", StringComparison.OrdinalIgnoreCase))
+                    score -= 25; // старые дубликаты Inbox (Old_Stables_2) — не предпочитать
+                // «чистый» Old_Stables без суффикса
+                if (slug.Equals("Old_Stables", StringComparison.OrdinalIgnoreCase)
+                    || slug.Equals("Old Stables", StringComparison.OrdinalIgnoreCase))
+                    score += 20;
 
                 candidates.Add((score, path, meta));
             }
