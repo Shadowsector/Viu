@@ -63,7 +63,7 @@ def test_inject_text_prompt():
     assert out["2"]["inputs"]["text"] == "negative blur"
 
 
-def test_load_workflow_api_and_ui_reject(tmp_path, monkeypatch):
+def test_load_workflow_api_and_ui_convert(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     d = comfy_workflows_dir(cfg)
     (d / "default.json").write_text(
@@ -72,9 +72,23 @@ def test_load_workflow_api_and_ui_reject(tmp_path, monkeypatch):
     )
     assert "3" in load_workflow(cfg, "default")
 
-    (d / "ui.json").write_text(json.dumps({"nodes": [{"id": 1}]}), encoding="utf-8")
-    with pytest.raises(ValueError, match="API Format"):
-        load_workflow(cfg, "ui")
+    ui = {
+        "nodes": [
+            {
+                "id": 6,
+                "type": "CLIPTextEncode",
+                "mode": 0,
+                "inputs": [],
+                "widgets_values": ["hello"],
+                "title": "Positive",
+            }
+        ],
+        "links": [],
+    }
+    (d / "ui.json").write_text(json.dumps(ui), encoding="utf-8")
+    api = load_workflow(cfg, "ui")
+    assert api["6"]["class_type"] == "CLIPTextEncode"
+    assert api["6"]["inputs"]["text"] == "hello"
 
 
 def test_comfy_status_offline(tmp_path, monkeypatch):

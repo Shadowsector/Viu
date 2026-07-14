@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import time
@@ -35,8 +34,9 @@ def ensure_comfy_running(
     config: Config,
     *,
     wait_seconds: float = 90.0,
+    auto_install: bool = True,
 ) -> Tuple[bool, str]:
-    """Пинг API; если нет — запустить main.py --listen и дождаться."""
+    """Пинг API; если нет — (опционально) установить, запустить main.py, дождаться."""
     url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
     client = ComfyClient(base_url=str(url), timeout=5.0)
     ok, msg = client.ping()
@@ -44,10 +44,21 @@ def ensure_comfy_running(
         return True, msg
 
     root = resolve_comfy_root(config)
+    install_note = ""
+    if root is None and auto_install:
+        from .install import ensure_comfy_installed
+
+        ok_i, install_note = ensure_comfy_installed(
+            config, with_models=True, include_i2v=False, with_pip=True
+        )
+        root = resolve_comfy_root(config)
+        if not ok_i and root is None:
+            return False, install_note
+
     if root is None:
         return False, (
-            "ComfyUI не найден. Ожидаю установку в U:\\Viu\\ComfyUI "
-            "(или VIU_COMFY_ROOT)."
+            install_note
+            or "ComfyUI не найден. Запусти comfy_install — Вью поставит в U:\\Viu\\ComfyUI."
         )
     main_py = root / "main.py"
     if not main_py.is_file():
@@ -75,10 +86,16 @@ def ensure_comfy_running(
         time.sleep(2.0)
         ok, last = client.ping()
         if ok:
-            return True, f"ComfyUI запущена из {root}. {last}"
-    return False, (
+            parts = [f"ComfyUI запущена из {root}. {last}"]
+            if install_note:
+                parts.insert(0, install_note)
+            return True, "\n".join(parts)
+    parts = [
         f"Запустила ComfyUI ({root}), но API не ответил за {wait_seconds:.0f}s.\n{last}"
-    )
+    ]
+    if install_note:
+        parts.insert(0, install_note)
+    return False, "\n".join(parts)
 
 
 def comfy_python(config: Config) -> Optional[Path]:

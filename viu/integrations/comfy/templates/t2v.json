@@ -1,33 +1,147 @@
 {
-  "_viu_stub": true,
-  "_viu_note": "Replace with ComfyUI Save (API Format) of official Wan 2.1 T2V workflow. Keep at least one CLIPTextEncode for positive prompt and a KSampler seed input.",
-  "6": {
-    "class_type": "CLIPTextEncode",
+  "8": {
+    "class_type": "VAEDecode",
     "inputs": {
-      "text": "PLACEHOLDER_POSITIVE",
-      "clip": ["11", 0]
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAEDecode"
+    }
+  },
+  "39": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "_meta": {
+      "title": "VAELoader"
+    }
+  },
+  "28": {
+    "class_type": "SaveAnimatedWEBP",
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ],
+      "filename_prefix": "ComfyUI",
+      "fps": 16,
+      "lossless": false,
+      "quality": 90,
+      "method": "default"
+    },
+    "_meta": {
+      "title": "SaveAnimatedWEBP"
     }
   },
   "7": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "text": "negative, blur, crowd",
-      "clip": ["11", 0]
+      "clip": [
+        "38",
+        0
+      ],
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
+    },
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "38": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "CLIPLoader"
+    }
+  },
+  "40": {
+    "class_type": "EmptyHunyuanLatentVideo",
+    "inputs": {
+      "width": 832,
+      "height": 480,
+      "length": 33,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "EmptyHunyuanLatentVideo"
     }
   },
   "3": {
     "class_type": "KSampler",
     "inputs": {
-      "seed": 42,
-      "steps": 20,
-      "cfg": 5,
+      "model": [
+        "48",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "40",
+        0
+      ],
+      "seed": 82628696717253,
+      "steps": 30,
+      "cfg": 6,
       "sampler_name": "uni_pc",
       "scheduler": "simple",
-      "denoise": 1,
-      "model": ["11", 0],
-      "positive": ["6", 0],
-      "negative": ["7", 0],
-      "latent_image": ["11", 0]
+      "denoise": 1
+    },
+    "_meta": {
+      "title": "KSampler"
     }
-  }
+  },
+  "48": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": [
+        "37",
+        0
+      ],
+      "shift": 8
+    },
+    "_meta": {
+      "title": "ModelSamplingSD3"
+    }
+  },
+  "37": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "wan2.1_t2v_1.3B_fp16.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "UNETLoader"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "38",
+        0
+      ],
+      "text": "a fox moving quickly in a beautiful winter scenery nature trees mountains daytime tracking camera"
+    },
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "_viu_source": "comfyanonymous/ComfyUI_examples wan (UI→API by Viu)"
 }

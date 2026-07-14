@@ -63,6 +63,16 @@ def resolve_comfy_root(config: Config) -> Path | None:
             Path("C:/ComfyUI"),
         ]
     )
+    # Скан детей U:\Viu на main.py (если положили не в ComfyUI/)
+    try:
+        viu = viu_install_root(config)
+        if viu.is_dir():
+            for child in viu.iterdir():
+                if child.is_dir():
+                    candidates.append(child)
+    except OSError:
+        pass
+
     seen: set[str] = set()
     for p in candidates:
         key = str(p).lower()

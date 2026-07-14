@@ -68,10 +68,47 @@ class ComfyStatusTool(Tool):
         return ToolResult(True, "\n".join(lines))
 
 
+class ComfyInstallTool(Tool):
+    name = "comfy_install"
+    description = (
+        "Поставить/доустановить ComfyUI в U:\\Viu\\ComfyUI: git clone, "
+        "Wan 2.1 workflows (JSON с github), T2V-модели с HuggingFace, pip. "
+        "i2v=1 — ещё I2V 14B (~30GB). models=0 — только код+workflows."
+    )
+    parameters = {
+        "models": "1 = скачать T2V модели (по умолчанию 1)",
+        "i2v": "1 = ещё I2V+clip_vision (очень много места)",
+        "pip": "1 = pip install requirements (по умолчанию 1)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.install import ensure_comfy_installed
+
+        with_models = str(args.get("models", "1")).lower() in ("1", "true", "yes", "")
+        include_i2v = str(args.get("i2v", "0")).lower() in ("1", "true", "yes")
+        with_pip = str(args.get("pip", "1")).lower() in ("1", "true", "yes", "")
+        notes: list[str] = []
+
+        def progress(msg: str) -> None:
+            notes.append(msg)
+
+        ok, msg = ensure_comfy_installed(
+            ctx.config,
+            with_models=with_models,
+            include_i2v=include_i2v,
+            with_pip=with_pip,
+            progress=progress,
+        )
+        body = msg
+        if notes:
+            body = "Прогресс:\n" + "\n".join(f"  • {n}" for n in notes[-20:]) + "\n\n" + msg
+        return ToolResult(ok, body)
+
+
 class ComfyEnsureTool(Tool):
     name = "comfy_ensure"
     description = (
-        "Запустить ComfyUI из U:\\Viu\\ComfyUI если API молчит, дождаться :8188."
+        "Если Comfy нет — установить в U:\\Viu\\ComfyUI; затем запустить API :8188."
     )
     parameters = {"wait": "секунд ожидания API (по умолчанию 90)"}
 
@@ -80,8 +117,8 @@ class ComfyEnsureTool(Tool):
             wait = float(args.get("wait") or 90)
         except (TypeError, ValueError):
             wait = 90.0
-        ensure_workflow_templates(ctx.config)
-        ok, msg = ensure_comfy_running(ctx.config, wait_seconds=wait)
+        ensure_workflow_templates(ctx.config, overwrite_stubs=True)
+        ok, msg = ensure_comfy_running(ctx.config, wait_seconds=wait, auto_install=True)
         return ToolResult(ok, msg)
 
 

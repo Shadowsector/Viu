@@ -97,12 +97,19 @@ def _import_workflows_from_comfy_install(config: Config) -> List[str]:
 
                 data = json.loads(src.read_text(encoding="utf-8"))
                 if isinstance(data, dict) and "nodes" in data:
-                    continue  # UI format
-                shutil.copy2(src, target)
+                    from ..integrations.comfy.ui_to_api import ui_workflow_to_api
+
+                    data = ui_workflow_to_api(data)
+                    target.write_text(
+                        json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8",
+                    )
+                else:
+                    shutil.copy2(src, target)
                 if target_name == "t2v.json":
                     default = dest / "default.json"
                     if (not default.is_file()) or workflow_is_stub(default):
-                        shutil.copy2(src, default)
+                        shutil.copy2(target, default)
                 imported.append(f"{src.name} → {target_name}")
             except (OSError, json.JSONDecodeError, ValueError):
                 continue
@@ -115,11 +122,20 @@ def step_ensure_comfy(config: Config, session: LabSession) -> StepResult:
         session.status = "paused"
         session.pause_reason = "operator"
         return True, "Пауза lab (оператор).", None
-    ok, msg = ensure_comfy_running(config)
+    # Если нет установки — Вью сама ставит в U:\Viu\ComfyUI + Wan workflows/модели.
+    ok, msg = ensure_comfy_running(config, auto_install=True)
     append_journal(config, COMFY_TOPIC, f"### Comfy online\n\n{msg}")
     if not ok:
         return False, msg, None
-    ensure_workflow_templates(config)
+    ensure_workflow_templates(config, overwrite_stubs=True)
+    try:
+        from ..integrations.comfy.install import download_wan_workflows
+
+        ok_wf, wf_msg = download_wan_workflows(config)
+        if wf_msg:
+            msg += "\n" + wf_msg
+    except Exception as exc:  # noqa: BLE001
+        msg += f"\nworkflows: {exc}"
     imported = _import_workflows_from_comfy_install(config)
     if imported:
         msg += "\nИмпорт workflow: " + "; ".join(imported)
@@ -130,13 +146,22 @@ def step_models(config: Config, session: LabSession) -> StepResult:
     probe = probe_models(config)
     lines = [f"Модель: {PREFERRED_FAMILY}", f"root={probe.root}"]
     lines.extend(f"• {n}" for n in probe.notes)
+    if probe.root and not probe.ready_t2v:
+        try:
+            from ..integrations.comfy.install import download_wan_models
+
+            ok_m, m_msg = download_wan_models(probe.root, include_i2v=False)
+            lines.append("Докачка T2V:\n" + m_msg)
+            probe = probe_models(config)
+            lines.append(f"T2V ready после докачки: {probe.ready_t2v}")
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"докачка: {exc}")
     msg = "\n".join(lines)
     append_journal(config, COMFY_TOPIC, f"### Модели\n\n{msg}")
     session.meta["model_ready_t2v"] = probe.ready_t2v
     session.meta["model_ready_i2v"] = probe.ready_i2v
-    # Не блокируем жёстко — генерация всё равно проверит workflow.
     if not probe.ready_t2v:
-        return True, msg + "\n⚠ T2V ещё не готов — скачаю/доставлю модели отдельно, промпт можно одобрять.", None
+        return True, msg + "\n⚠ T2V ещё не готов — повтори lab или comfy_install.", None
     return True, msg, None
 
 

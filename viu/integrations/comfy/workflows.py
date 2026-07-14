@@ -52,43 +52,54 @@ def _unwrap_api_export(data: Any) -> Dict[str, Any]:
     if data.get("_viu_stub") is True:
         raise ValueError(
             "Это заглушка workflow (_viu_stub). "
-            "В ComfyUI открой Wan 2.1 T2V/I2V → Save (API Format) → "
-            "перезапиши t2v.json / i2v.json. Дальше Вью ведёт сама."
+            "Запусти comfy_install — Вью скачает Wan JSON сама."
         )
     if "prompt" in data and isinstance(data["prompt"], dict):
-        return data["prompt"]
+        return {k: v for k, v in data["prompt"].items() if not str(k).startswith("_")}
     if "nodes" in data and isinstance(data["nodes"], list):
-        raise ValueError(
-            "Это UI-workflow (nodes[]). Нужен Save → API Format "
-            "(плоский dict id→node)."
-        )
-    return data
+        from .ui_to_api import ui_workflow_to_api
+
+        return ui_workflow_to_api(data)
+    # убрать служебные ключи Вью
+    return {k: v for k, v in data.items() if not str(k).startswith("_")}
+
+
+def _is_negative_clip(node: dict) -> bool:
+    title = str((node.get("_meta") or {}).get("title") or "").lower()
+    if "negative" in title:
+        return True
+    text = str((node.get("inputs") or {}).get("text") or "").lower()
+    return "negative" in text
 
 
 def inject_text_prompt(workflow: Dict[str, Any], prompt: str) -> Dict[str, Any]:
-    """Подставить текст в первый CLIPTextEncode (positive) если есть."""
+    """Подставить текст в positive CLIPTextEncode."""
     prompt = (prompt or "").strip()
     if not prompt:
         return workflow
     wf = json.loads(json.dumps(workflow))
-    encoded = False
+    # 1) явный Positive в title
     for _nid, node in wf.items():
-        if not isinstance(node, dict):
+        if not isinstance(node, dict) or node.get("class_type") != "CLIPTextEncode":
             continue
-        if node.get("class_type") != "CLIPTextEncode":
-            continue
-        inputs = node.setdefault("inputs", {})
-        text = str(inputs.get("text") or "")
-        if "negative" in text.lower() and not encoded:
-            continue
-        inputs["text"] = prompt
-        encoded = True
-        break
-    if not encoded:
-        for _nid, node in wf.items():
-            if isinstance(node, dict) and node.get("class_type") == "CLIPTextEncode":
+        title = str((node.get("_meta") or {}).get("title") or "").lower()
+        if ("positive" in title or "prompt" in title) and "negative" not in title:
+            if not _is_negative_clip(node):
                 node.setdefault("inputs", {})["text"] = prompt
-                break
+                return wf
+    # 2) первый CLIP без Negative
+    for _nid, node in wf.items():
+        if not isinstance(node, dict) or node.get("class_type") != "CLIPTextEncode":
+            continue
+        if _is_negative_clip(node):
+            continue
+        node.setdefault("inputs", {})["text"] = prompt
+        return wf
+    # 3) fallback
+    for _nid, node in wf.items():
+        if isinstance(node, dict) and node.get("class_type") == "CLIPTextEncode":
+            node.setdefault("inputs", {})["text"] = prompt
+            break
     return wf
 
 
@@ -97,14 +108,17 @@ def inject_negative_prompt(workflow: Dict[str, Any], negative: str) -> Dict[str,
     if not negative:
         return workflow
     wf = json.loads(json.dumps(workflow))
+    for _nid, node in wf.items():
+        if isinstance(node, dict) and node.get("class_type") == "CLIPTextEncode" and _is_negative_clip(node):
+            node.setdefault("inputs", {})["text"] = negative
+            return wf
     clip_nodes = [
-        (nid, node)
-        for nid, node in wf.items()
+        node
+        for node in wf.values()
         if isinstance(node, dict) and node.get("class_type") == "CLIPTextEncode"
     ]
     if len(clip_nodes) >= 2:
-        _nid, node = clip_nodes[1]
-        node.setdefault("inputs", {})["text"] = negative
+        clip_nodes[1].setdefault("inputs", {})["text"] = negative
     return wf
 
 
@@ -133,18 +147,20 @@ def workflow_is_stub(path: Path) -> bool:
     return bool(isinstance(data, dict) and data.get("_viu_stub"))
 
 
-def ensure_workflow_templates(config) -> list[Path]:
-    """Скопировать шаблоны t2v/i2v/default если ещё нет файлов."""
+def ensure_workflow_templates(config, *, overwrite_stubs: bool = False) -> list[Path]:
+    """Скопировать шаблоны t2v/i2v/default из пакета Вью."""
     dest = comfy_workflows_dir(config)
     written: list[Path] = []
     for name in ("t2v.json", "i2v.json", "default.json"):
         target = dest / name
-        if target.is_file():
-            continue
         src = _TEMPLATES / name
-        if src.is_file():
-            shutil.copy2(src, target)
-            written.append(target)
+        if not src.is_file():
+            continue
+        if target.is_file():
+            if not overwrite_stubs or not workflow_is_stub(target):
+                continue
+        shutil.copy2(src, target)
+        written.append(target)
     write_install_readme(config)
     return written
 
@@ -152,14 +168,11 @@ def ensure_workflow_templates(config) -> list[Path]:
 def write_install_readme(config) -> Path:
     path = comfy_workflows_dir(config) / "README.txt"
     path.write_text(
-        "Workflows для Вью (API Format из ComfyUI).\n"
+        "Workflows для Вью (API Format).\n"
         "\n"
-        "t2v.json  — Wan 2.1 Text-to-Video (основной)\n"
-        "i2v.json  — Wan 2.1 Image-to-Video (last frame → next)\n"
-        "default.json — fallback (= t2v)\n"
-        "\n"
-        "Если файл с пометкой _viu_stub — один раз открой официальный Wan workflow\n"
-        "в ComfyUI → Save (API Format) → перезапиши файл. Дальше Вью не трогает UI.\n"
+        "t2v.json / i2v.json / default.json — Wan 2.1 "
+        "(официальные примеры, UI→API конвертит Вью).\n"
+        "Обновление: comfy_install / lab topic=comfy.\n"
         "Доки: docs/COMFY_SETUP.md\n",
         encoding="utf-8",
     )

@@ -61,7 +61,14 @@ from .overlay_playtest_tool import OverlayPlaytestTool
 from .building_cascadeur_tool import BuildingWorkflowTool, CascadeurStatusTool
 from .export_asset_tool import ExportUnityAssetTool
 from .lab_tool import LabRateTool, LabRunAllTool, LabStartTool, LabStatusTool, LabStepTool
-from .comfy_tool import ComfyEnsureTool, ComfyMocapTool, ComfyRunTool, ComfyStatusTool, ComfyTripleTool
+from .comfy_tool import (
+    ComfyEnsureTool,
+    ComfyInstallTool,
+    ComfyMocapTool,
+    ComfyRunTool,
+    ComfyStatusTool,
+    ComfyTripleTool,
+)
 from .animation_catalog_tool import (
     AcceptAnimationInboxTool,
     AnimationCatalogMatchTool,
@@ -142,6 +149,7 @@ def build_default_registry() -> ToolRegistry:
         LabStatusTool(),
         LabRateTool(),
         ComfyStatusTool(),
+        ComfyInstallTool(),
         ComfyEnsureTool(),
         ComfyRunTool(),
         ComfyMocapTool(),

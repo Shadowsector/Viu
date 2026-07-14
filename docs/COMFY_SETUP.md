@@ -1,36 +1,34 @@
 # ComfyUI во Вью
 
-Вью сама держит Comfy в `U:\Viu\ComfyUI`, пишет промпты под Cascadeur MoCap, шлёт тебе в Telegram на одобрение и после «ок» гоняет **3 ракурса** (сбоку / ¾ / анфас) в `Lab/Refs`.
+Вью **сама** ставит Comfy в `U:\Viu\ComfyUI`, качает Wan-workflows с GitHub и T2V-модели с HuggingFace.
 
 Пайплайн: [COMFY_CASCADEUR_PIPELINE.md](./COMFY_CASCADEUR_PIPELINE.md).
 
 ---
 
-## Модель
+## Что сделать Дена
 
-**Wan 2.1** (выбор Вью): лучший open T2V/I2V для явного full-body motion.
+Ничего. Если Lab пишет «ComfyUI не найден» — нажми снова **«Лаборатория: Comfy MoCap»** или в чате:
 
-| Роль | Файл (в `ComfyUI/models/…`) |
-|------|-----------------------------|
-| T2V (основной, ~VRAM) | `diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors` |
-| I2V (last frame → next) | `diffusion_models/wan2.1_i2v_480p_14B_fp16.safetensors` |
-| VAE | `vae/wan_2.1_vae.safetensors` |
-| Text | `text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors` |
-| CLIP Vision (I2V) | `clip_vision/clip_vision_h.safetensors` |
+```
+comfy_install
+```
+
+Вью:
+1. Сканирует `U:\Viu` и типичные пути
+2. `git clone` ComfyUI → `U:\Viu\ComfyUI`
+3. `pip install -r requirements.txt` (venv)
+4. Скачивает официальные Wan JSON (UI→API конвертит сама)
+5. Качает T2V 1.3B + VAE + umt5 (~9 GB)
+
+Потом снова lab — промпт уйдёт в Telegram.
 
 ---
 
-## Как пользоваться (Ден почти не трогает)
+## Модель
 
-1. Comfy лежит в `U:\Viu\ComfyUI`.
-2. Во Вью: кнопка **«Лаборатория: Comfy MoCap»** или `comfy_mocap action=sit down on chair`.
-3. Вью поднимает API (`comfy_ensure`), готовит промпт → **Telegram**.
-4. Ты: `ок` / `правки: …` / `стоп`.
-5. Вью генерит 3 mp4 → `U:\Anabarra\Library\Lab\Refs\`.
-
-Один раз (если ещё stub): в ComfyUI открой официальный Wan 2.1 T2V → **Save (API Format)** →  
-`U:\Viu\.viu\comfy\workflows\t2v.json` (и при желании `i2v.json`).  
-Если в `ComfyUI/user/.../workflows` уже есть wan*.json — Вью подхватит сама.
+**Wan 2.1** T2V `wan2.1_t2v_1.3B_fp16.safetensors`  
+I2V 14B — опционально: `comfy_install i2v=1` (десятки GB).
 
 ---
 
@@ -38,12 +36,10 @@
 
 | Tool | Что |
 |------|-----|
-| `comfy_status` | ping, путь, Wan ready, workflows |
-| `comfy_ensure` | запуск `main.py --listen` |
-| `comfy_mocap` | lab topic=comfy + Telegram + 3 ракурса |
-| `comfy_triple` | 3 ракурса сразу (без Telegram) |
-| `comfy_run` | один workflow |
-| `lab_start topic=comfy action=…` | то же через lab |
+| `comfy_install` | clone + workflows + модели |
+| `comfy_ensure` | install при необходимости + старт `:8188` |
+| `comfy_status` | диагностика |
+| `comfy_mocap` | lab: Telegram → 3 ракурса |
 
 ---
 
@@ -54,4 +50,4 @@
 | `VIU_COMFY_URL` | `http://127.0.0.1:8188` |
 | `VIU_COMFY_ROOT` | `U:/Viu/ComfyUI` |
 
-VRAM: не гоняй Comfy + Cascadeur + Unity одновременно.
+Нужны: `git`, интернет, место на `U:` (~10+ GB для T2V).
