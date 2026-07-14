@@ -68,7 +68,7 @@ class ViuGUI:
         self._heartbeat_notify = False
         self._lab_job: str | None = None
         self._chat_history: deque[str] = deque(maxlen=16)
-        self._llm_turns: deque[dict[str, str]] = deque(maxlen=14)
+        self._llm_turns: deque[dict[str, str]] = deque(maxlen=24)
         self._boot_sha = running_sha(package_root())
         self._geometry_save_job: str | None = None
 
@@ -1310,9 +1310,7 @@ class ViuGUI:
                     if text.startswith("[") and "ОШИБКА" in text:
                         self._telegram_notify_error(text)
                 elif kind == "final":
-                    if inner_thought and not self._last_via_telegram:
-                        preview = inner_thought[:280] + ("…" if len(inner_thought) > 280 else "")
-                        self._append("размышляет", preview, tag="step")
+                    # thought уже показан через kind=thinking — не дублировать
                     self._append("Вью", text, tag="viu")
                     self._set_llm_busy(False)
                     if waiting:

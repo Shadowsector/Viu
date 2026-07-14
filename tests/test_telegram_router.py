@@ -19,22 +19,24 @@ class MockLLM(LLMProvider):
         return self._response
 
 
-class TwoPhaseLLM(LLMProvider):
-    """Think → speak: по системному промпту."""
+class ReflectLLM(LLMProvider):
+    """Один проход thought+final."""
 
-    name = "two_phase"
+    name = "reflect"
 
-    def __init__(self, inner: str, final: str) -> None:
-        self._inner = inner
+    def __init__(self, thought: str, final: str) -> None:
+        self._thought = thought
         self._final = final
         self.calls = 0
+        self.last_messages = None
 
     def complete(self, messages, *, temperature=None):
         self.calls += 1
-        sys = messages[0]["content"] if messages else ""
-        if "внутренний монолог" in sys:
-            return json.dumps({"inner": self._inner}, ensure_ascii=False)
-        return json.dumps({"final": self._final}, ensure_ascii=False)
+        self.last_messages = messages
+        return json.dumps(
+            {"thought": self._thought, "final": self._final},
+            ensure_ascii=False,
+        )
 
 
 class RetrySpeakLLM(LLMProvider):
@@ -45,12 +47,12 @@ class RetrySpeakLLM(LLMProvider):
 
     def complete(self, messages, *, temperature=None):
         self.calls += 1
-        sys = messages[0]["content"] if messages else ""
-        if "внутренний монолог" in sys:
-            return '{"inner":"Думаю про companion и снежинку."}'
-        if self.calls == 2:
-            return '{"final":"Не стесняйся обращаться!"}'
-        return '{"final":"Ну смотри, companion у таскбара."}'
+        if self.calls == 1:
+            return '{"thought":"хм","final":"Не стесняйся спрашивать!"}'
+        return (
+            '{"thought":"конкретнее","final":'
+            '"Шаня у таскбара — companion с жаждой вылазок на снежинку."}'
+        )
 
 
 def test_greeting_is_reflect_not_work():
@@ -82,8 +84,8 @@ def test_extract_inner_json():
     assert extract_inner_json('```json\n{"inner":"ok"}\n```') == {"inner": "ok"}
 
 
-def test_run_reflect_two_phase_with_history(tmp_path):
-    llm = TwoPhaseLLM(
+def test_run_reflect_with_history(tmp_path):
+    llm = ReflectLLM(
         "Анабарра — Шаня у таскбара, снежинка, не walk sim.",
         "Ну, Анабарра — Шаня у таскбара, не walk simulator.",
     )
@@ -91,7 +93,10 @@ def test_run_reflect_two_phase_with_history(tmp_path):
         llm=llm,
         config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
     )
-    history = [{"role": "user", "content": "привет"}, {"role": "assistant", "content": "здорова"}]
+    history = [
+        {"role": "user", "content": "привет"},
+        {"role": "assistant", "content": "здорова"},
+    ]
     result = agent.run_reflect("в чём игра?", history=history)
     assert result.chat_only
     assert result.completed
@@ -99,7 +104,24 @@ def test_run_reflect_two_phase_with_history(tmp_path):
     assert "снежинка" in result.inner_thought
     assert not any(s.tool for s in result.steps)
     assert "стесняйся" not in result.final.lower()
-    assert llm.calls >= 2
+    assert llm.calls == 1
+    # история ушла в контекст
+    roles = [m["role"] for m in (llm.last_messages or [])]
+    assert roles.count("user") >= 2
+    assert "assistant" in roles
+
+
+def test_run_reflect_saves_story_to_vision(tmp_path):
+    llm = ReflectLLM(
+        "Шаня — кошка-доминанта у экрана.",
+        "Я вижу Шаню хищной и тёплой — ждёт вылазку на снежинку и ночь у Дена.",
+    )
+    cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
+    agent = Agent(llm=llm, config=cfg)
+    agent.run_reflect("Расскажи, что думаешь о Шане?")
+    text = read_vision(cfg)
+    assert "Диалог" in text
+    assert "Шане" in text or "Шаня" in text
 
 
 def test_reflect_reply_issues_formal_and_masculine():
@@ -108,6 +130,8 @@ def test_reflect_reply_issues_formal_and_masculine():
     issues = reflect_reply_issues("Здравствуйте! Рад, что проект получает новый толстик.")
     assert any("здравствуйте" in i for i in issues)
     assert any("мужской" in i for i in issues)
+    issues2 = reflect_reply_issues("Как я могу помочь, чтобы проект стал лучше?")
+    assert any("помочь" in i for i in issues2)
 
 
 def test_run_reflect_rejects_banned_phrase(tmp_path):
@@ -118,4 +142,4 @@ def test_run_reflect_rejects_banned_phrase(tmp_path):
     )
     result = agent.run_reflect("расскажи")
     assert "стесняйся" not in result.final.lower()
-    assert llm.calls >= 3
+    assert llm.calls >= 2

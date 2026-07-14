@@ -385,12 +385,10 @@ class Agent:
         history: Optional[List[Dict[str, str]]] = None,
         heartbeat: bool = False,
     ) -> RunResult:
-        """Два этапа: внутренний монолог → ответ Дену. Без инструментов."""
+        """Один проход чата: thought + final. Без инструментов."""
         from .prompts.reflect_mode import (
-            HEARTBEAT_SYSTEM,
-            HEARTBEAT_TASK,
-            REFLECT_SPEAK,
-            REFLECT_THINK,
+            REFLECT_SYSTEM,
+            looks_like_story_chat,
             reflect_reply_issues,
             reflect_temperature,
         )
@@ -406,85 +404,63 @@ class Agent:
         user_text = task.strip()
         self._log(f"REFLECT: {user_text[:160]}")
 
-        think_system = REFLECT_THINK
+        system = REFLECT_SYSTEM
         if notes:
-            think_system += "\n\n--- Заметки (фон, не шаблон) ---\n" + notes
+            system += "\n\n--- Заметки (фон, не зачитывать списком) ---\n" + notes
 
-        think_messages: List[Dict[str, str]] = [{"role": "system", "content": think_system}]
+        messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
         if history:
-            think_messages.extend(history[-14:])
-        think_messages.append({"role": "user", "content": user_text})
-
-        inner = ""
-        for _ in range(3):
-            raw = self.llm.complete(think_messages, temperature=temp)
-            parsed = extract_inner_json(raw)
-            if parsed and parsed.get("inner"):
-                inner = str(parsed["inner"]).strip()
-                break
-            think_messages.append({"role": "assistant", "content": raw or "{}"})
-            think_messages.append(
-                {
-                    "role": "user",
-                    "content": 'Нужен JSON: {"inner":"твой внутренний монолог…"} — одно поле.',
-                }
-            )
-
-        if not inner:
-            inner = "Надо ответить по-человечески, не как бот из FAQ."
-        result.inner_thought = inner
-        self._log(f"REFLECT_INNER: {inner[:220]}")
-        if on_step:
-            on_step(Step(kind="think", thought=inner))
-
-        speak_user = (
-            f"Мои мысли (не пересказывай дословно):\n{inner}\n\n"
-            f"Сообщение Дена:\n{user_text}"
-        )
-        if history:
-            speak_user = (
-                "Продолжение диалога — не здоровайся заново, не отфутболивай.\n\n" + speak_user
-            )
-        speak_messages: List[Dict[str, str]] = [
-            {"role": "system", "content": REFLECT_SPEAK},
-        ]
-        if history:
-            speak_messages.extend(history[-12:])
-        speak_messages.append({"role": "user", "content": speak_user})
+            messages.extend(history[-16:])
+        messages.append({"role": "user", "content": user_text})
 
         for _ in range(3):
-            raw = self.llm.complete(speak_messages, temperature=temp)
+            raw = self.llm.complete(messages, temperature=temp)
             parsed = extract_json(raw)
 
             if parsed and "final" in parsed and "action" not in parsed:
                 text = str(parsed["final"]).strip()
+                thought = str(parsed.get("thought") or parsed.get("inner") or "").strip()
                 issues = reflect_reply_issues(text, has_history=bool(history))
                 if issues:
-                    speak_messages.append({"role": "assistant", "content": raw})
-                    speak_messages.append(
+                    messages.append({"role": "assistant", "content": raw})
+                    messages.append(
                         {
                             "role": "user",
                             "content": "Плохой тон: "
                             + ", ".join(issues)
-                            + ". Перепиши final теплее, женским родом, без канцелярита — "
-                            "как продолжение мыслей, одно сообщение Дену.",
+                            + ". Перепиши final теплее и конкретнее по последнему вопросу Дена — "
+                            "без канцелярита и без «чем могу помочь». JSON: thought+final.",
                         }
                     )
                     continue
+                result.inner_thought = thought
                 result.final = text
                 result.completed = True
-                step = Step(kind="final", thought=inner, observation=result.final)
+                if thought and on_step:
+                    on_step(Step(kind="think", thought=thought))
+                step = Step(kind="final", thought=thought, observation=result.final)
                 result.steps.append(step)
                 if on_step:
                     on_step(step)
+                if looks_like_story_chat(user_text):
+                    try:
+                        from .vision import append_vision
+
+                        append_vision(
+                            self.config,
+                            "Диалог",
+                            f"**Ден:** {user_text[:500]}\n**Вью:** {text[:800]}",
+                        )
+                    except OSError:
+                        pass
                 return result
 
             if parsed and "action" in parsed:
-                speak_messages.append({"role": "assistant", "content": raw})
-                speak_messages.append(
+                messages.append({"role": "assistant", "content": raw})
+                messages.append(
                     {
                         "role": "user",
-                        "content": "Сейчас только разговор — без action. Ответь одним final JSON.",
+                        "content": "Сейчас только разговор — без action. Ответь JSON thought+final.",
                     }
                 )
                 continue
@@ -494,9 +470,12 @@ class Agent:
                 result.completed = True
                 return result
 
-            speak_messages.append({"role": "assistant", "content": raw or "{}"})
-            speak_messages.append(
-                {"role": "user", "content": 'Нужен JSON: {"final":"ответ Дену…"} — без action.'}
+            messages.append({"role": "assistant", "content": raw or "{}"})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": 'Нужен JSON: {"thought":"…","final":"ответ Дену…"} — без action.',
+                }
             )
 
         result.final = (
