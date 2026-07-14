@@ -55,7 +55,8 @@ class ViuGUI:
     def __init__(self) -> None:
         self.agent = Agent(config=Config())
         self._queue: queue.Queue = queue.Queue()
-        self._busy = False
+        self._tool_busy = False  # Comfy/lab/скрипт — GPU/файлы, не LLM
+        self._llm_busy = False  # агент думает — чат ждёт
         self._action_buttons: list[tuple[str, ttk.Button]] = []
         self._action_group_boxes: dict[str, ttk.LabelFrame] = {}
         self._sidebar_stage_label: ttk.Label | None = None
@@ -539,7 +540,10 @@ class ViuGUI:
         return "break"
 
     def _on_send(self) -> None:
-        if self._busy:
+        from .gui_busy import can_accept_chat
+
+        # Comfy/lab может крутиться — чат отвечает, пока LLM свободна.
+        if not can_accept_chat(llm_busy=self._llm_busy):
             return
         text = self.entry.get("1.0", "end-1c").strip()
         if not text:
@@ -559,7 +563,9 @@ class ViuGUI:
             self._run_agent_reflect(text)
 
     def _on_action(self, action: GuiAction) -> None:
-        if self._busy:
+        from .gui_busy import can_accept_scripts
+
+        if not can_accept_scripts(tool_busy=self._tool_busy, llm_busy=self._llm_busy):
             return
         from .lab.controller import action_interrupts_lab, lab_controller
 
@@ -603,14 +609,12 @@ class ViuGUI:
             self._run_next_step()
             return
         if action.tool == "__lab_start__":
-            self._set_busy(True)
             self._lab_start_action()
             return
         if action.tool == "__lab_comfy__":
             self._lab_comfy_action()
             return
         if action.tool == "__lab_run_all__":
-            self._set_busy(True)
             self._lab_run_all_action()
             return
         if action.tool == "__lab_rate__":
@@ -640,24 +644,56 @@ class ViuGUI:
         if action.prompt:
             self._run_agent_task(action.prompt)
 
+    def _set_tool_busy(self, busy: bool) -> None:
+        self._tool_busy = busy
+        self._refresh_busy_ui()
+
+    def _set_llm_busy(self, busy: bool) -> None:
+        self._llm_busy = busy
+        self._refresh_busy_ui()
+
     def _set_busy(self, busy: bool) -> None:
-        self._busy = busy
-        state = "disabled" if busy else "normal"
-        self.send_btn.config(state=state, text="Думаю…" if busy else "Отправить")
-        try:
-            self.send_btn.config(bg="#546e7a" if busy else "#1565c0")
-        except tk.TclError:
-            pass
+        """Совместимость: полная блокировка (и tool, и LLM)."""
+        self._tool_busy = busy
+        self._llm_busy = busy
+        self._refresh_busy_ui()
+
+    def _refresh_busy_ui(self) -> None:
+        from .gui_busy import busy_status_ru, can_accept_chat, can_accept_scripts
+
+        chat_ok = can_accept_chat(llm_busy=self._llm_busy)
+        scripts_ok = can_accept_scripts(
+            tool_busy=self._tool_busy, llm_busy=self._llm_busy
+        )
+        send = getattr(self, "send_btn", None)
+        if send is not None:
+            send.config(
+                state=("normal" if chat_ok else "disabled"),
+                text=("Отправить" if chat_ok else "Думаю…"),
+            )
+            try:
+                send.config(bg="#1565c0" if chat_ok else "#546e7a")
+            except tk.TclError:
+                pass
+        side_state = "normal" if scripts_ok else "disabled"
         for _aid, btn in self._action_buttons:
-            btn.config(state=state)
-        ver = version_label()
-        self.status.config(
-            text=("Вью думает…" if busy else f"{ver} | {self.agent.llm.name}")
+            btn.config(state=side_state)
+        status = getattr(self, "status", None)
+        if status is not None:
+            ver = version_label()
+            if self._llm_busy:
+                status.config(text="Вью думает…")
+            elif self._tool_busy:
+                status.config(text=f"{ver} | lab/Comfy… (чат свободен)")
+            else:
+                status.config(text=f"{ver} | {self.agent.llm.name}")
+        self._busy_label = busy_status_ru(
+            tool_busy=self._tool_busy, llm_busy=self._llm_busy
         )
 
     def _run_tool_chain(self, action: GuiAction) -> None:
         self._append("ты", f"[{action.label}]")
-        self._set_busy(True)
+        self._set_tool_busy(True)
         threading.Thread(target=self._chain_worker, args=(action,), daemon=True).start()
 
     def _chain_worker(self, action: GuiAction) -> None:
@@ -678,7 +714,7 @@ class ViuGUI:
             prefix = "OK" if all_ok else "ЧАСТИЧНО"
             self._queue.put(("tool", f"[{action.label}] {prefix}\n\n" + "\n\n".join(parts)))
         except Exception as exc:  # noqa: BLE001
-            self._queue.put(("error", f"{action.label}: {exc}"))
+            self._queue.put(("tool", f"[{action.label}] ОШИБКА\n{exc}"))
 
     def _add_animation(self) -> None:
         from tkinter import filedialog
@@ -694,7 +730,7 @@ class ViuGUI:
         if not path:
             return
         self._append("ты", f"[Импорт FBX] {Path(path).name}")
-        self._set_busy(True)
+        self._set_tool_busy(True)
 
         def work():
             from .integrations.unity.animation_scan import ANIMATIONS_REL
@@ -733,7 +769,7 @@ class ViuGUI:
             return "\n".join(lines)
 
         def done(result):
-            self._set_busy(False)
+            self._set_tool_busy(False)
             if isinstance(result, Exception):
                 self._append("ошибка", str(result), tag="err")
                 return
@@ -880,7 +916,7 @@ class ViuGUI:
 
     def _accept_animation(self) -> None:
         self._append("ты", "[Принять анимацию (Inbox)]")
-        self._set_busy(True)
+        self._set_tool_busy(True)
 
         def work():
             from .drop_router import accept_single_animation
@@ -888,7 +924,7 @@ class ViuGUI:
             return accept_single_animation(self.agent.config)
 
         def done(result) -> None:
-            self._set_busy(False)
+            self._set_tool_busy(False)
             if isinstance(result, Exception):
                 self._append("ошибка", str(result), tag="err")
                 return
@@ -902,7 +938,7 @@ class ViuGUI:
 
     def _collect_logs(self) -> None:
         self._append("ты", "[Отправить логи разработчику]")
-        self._set_busy(True)
+        self._set_tool_busy(True)
 
         def work():
             from .support import collect_support_bundle, upload_bundle_to_gist
@@ -912,7 +948,7 @@ class ViuGUI:
             return bundle, ok, msg
 
         def done(result):
-            self._set_busy(False)
+            self._set_tool_busy(False)
             if isinstance(result, Exception):
                 self._append("ошибка", str(result), tag="err")
                 return
@@ -992,7 +1028,7 @@ class ViuGUI:
             f"{version_label()}\n"
             f"Ollama: {'ok' if ollama_available() else 'нет'}\n"
             f"Unity: {unity}\n"
-            f"Занята: {'да' if self._busy else 'нет'}\n"
+            f"Занята: {getattr(self, '_busy_label', None) or ('да' if (self._tool_busy or self._llm_busy) else 'нет')}\n"
             f"Telegram chat: {cid or 'не привязан'} ({chat})\n"
             f"Ждём ответ: {'да' if self._telegram_waiting_reply else 'нет'}"
         )
@@ -1043,7 +1079,7 @@ class ViuGUI:
                         or session.meta.get("clip_kept_id")
                         or session.meta.get("clip_rejected_all")
                     )
-                    and not self._busy
+                    and not self._tool_busy
                 ):
                     self._run_tool(
                         "lab_step",
@@ -1054,10 +1090,13 @@ class ViuGUI:
         except Exception:  # noqa: BLE001
             pass
 
-        if self._busy:
+        from .gui_busy import can_accept_chat
+
+        # Lab/Comfy ≠ LLM: болтовня из Telegram идёт, пока модель не думает.
+        if not can_accept_chat(llm_busy=self._llm_busy):
             self._append(
                 "система",
-                "Вью сейчас занята — ответ из Telegram подождёт.",
+                "Вью сейчас думает — ответ из Telegram подождёт.",
                 tag="sys",
             )
             return
@@ -1102,8 +1141,7 @@ class ViuGUI:
         title = label or name
         if echo_user:
             self._append("ты", f"[{title}]")
-        if not self._busy:
-            self._set_busy(True)
+        self._set_tool_busy(True)
         threading.Thread(
             target=self._tool_worker,
             args=(name, args, title),
@@ -1124,12 +1162,12 @@ class ViuGUI:
             prefix = "OK" if result.ok else "ОШИБКА"
             self._queue.put(("tool", f"[{title}] {prefix}\n{result.content}"))
         except Exception as exc:  # noqa: BLE001
-            self._queue.put(("error", f"{title}: {exc}"))
+            self._queue.put(("tool", f"[{title}] ОШИБКА\n{exc}"))
 
     def _run_agent_task(self, task: str, *, via_telegram: bool = False) -> None:
         if not via_telegram:
             self._append("ты", task)
-        self._set_busy(True)
+        self._set_llm_busy(True)
         self._last_via_telegram = via_telegram
         threading.Thread(
             target=self._agent_worker,
@@ -1151,7 +1189,7 @@ class ViuGUI:
         if not via_telegram and not heartbeat:
             self._append("ты", task)
             self._record_llm_turn("user", task)
-        self._set_busy(True)
+        self._set_llm_busy(True)
         self._last_via_telegram = via_telegram or heartbeat
         if heartbeat:
             history: list[dict[str, str]] = []
@@ -1241,7 +1279,7 @@ class ViuGUI:
                     self._append("размышляет", text, tag="step")
                 elif kind == "tool":
                     self._append("Вью", text, tag="tool")
-                    self._set_busy(False)
+                    self._set_tool_busy(False)
                     from .lab.controller import lab_controller
 
                     lab_controller.clear_operator_priority()
@@ -1254,7 +1292,7 @@ class ViuGUI:
                         preview = inner_thought[:280] + ("…" if len(inner_thought) > 280 else "")
                         self._append("размышляет", preview, tag="step")
                     self._append("Вью", text, tag="viu")
-                    self._set_busy(False)
+                    self._set_llm_busy(False)
                     if waiting:
                         self._telegram_waiting_reply = True
                         self._telegram_notify_question(text)
@@ -1270,7 +1308,7 @@ class ViuGUI:
                         self._telegram_notify_chat(f"⚠️ Не всё вышло.\n\n{text}")
                 elif kind == "error":
                     self._append("ошибка", text, tag="err")
-                    self._set_busy(False)
+                    self._set_llm_busy(False)
                     self._telegram_notify_error(text)
                 elif kind == "telegram_reply":
                     self._handle_telegram_reply(text)
@@ -1300,7 +1338,11 @@ class ViuGUI:
             return
 
         def tick() -> None:
-            if not self._busy:
+            from .gui_busy import can_run_background_tick
+
+            if can_run_background_tick(
+                tool_busy=self._tool_busy, llm_busy=self._llm_busy
+            ):
                 self._run_heartbeat()
             self._heartbeat_job = self.root.after(minutes * 60_000, tick)
 
@@ -1340,7 +1382,11 @@ class ViuGUI:
         self._lab_job = self.root.after(minutes * 60_000, tick)
 
     def _lab_tick(self, *, auto: bool = False) -> None:
-        if self._busy:
+        from .gui_busy import can_run_background_tick
+
+        if not can_run_background_tick(
+            tool_busy=self._tool_busy, llm_busy=self._llm_busy
+        ):
             return
         from .presence import is_away
 
@@ -1435,7 +1481,7 @@ class ViuGUI:
         plan = invent_next_shot(self.agent.config)
         self._append("Вью", plan.summary_ru(), tag="viu")
         if not auto:
-            self._set_busy(True)
+            self._set_tool_busy(True)
         args = {
             "topic": COMFY_TOPIC,
             "run_all": "1",
@@ -1514,7 +1560,7 @@ class ViuGUI:
                 ok
                 and session
                 and session.status == "running"
-                and not self._busy
+                and not self._tool_busy
             ):
                 self._run_tool(
                     "lab_step",
@@ -1536,7 +1582,11 @@ class ViuGUI:
         self.root.after(180_000, tick)
 
     def _poll_cursor_inbox_once(self) -> None:
-        if self._busy:
+        from .gui_busy import can_run_background_tick
+
+        if not can_run_background_tick(
+            tool_busy=self._tool_busy, llm_busy=self._llm_busy
+        ):
             return
 
         def work():
@@ -1572,9 +1622,13 @@ class ViuGUI:
             return {"mode": "agent", "prompt": format_task_prompt(task), "task_id": tid, "inbox": data}
 
         def done(result) -> None:
+            from .gui_busy import can_run_background_tick
+
             if isinstance(result, Exception) or not result:
                 return
-            if self._busy:
+            if not can_run_background_tick(
+                tool_busy=self._tool_busy, llm_busy=self._llm_busy
+            ):
                 return
             if result.get("mode") == "direct":
                 self._run_direct_inbox_task(result["task"], result["inbox"])
@@ -1605,7 +1659,7 @@ class ViuGUI:
             f"📥 Cursor → `{tool_name}` (без Ollama, id={tid})",
             tag="sys",
         )
-        self._set_busy(True)
+        self._set_tool_busy(True)
 
         def work():
             # Уже claimed в poll — не claim повторно.
@@ -1660,7 +1714,7 @@ class ViuGUI:
             return status == "done", body
 
         def done(result) -> None:
-            self._set_busy(False)
+            self._set_tool_busy(False)
             if isinstance(result, Exception):
                 self._append("ошибка", str(result), tag="err")
                 self._telegram_notify_error(str(result))

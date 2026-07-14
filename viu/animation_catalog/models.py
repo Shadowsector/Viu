@@ -230,6 +230,8 @@ def _w(
     mixamo_hints: List[str],
     wave: int = 1,
     animator_state: str = "",
+    enters_from: Optional[List[str]] = None,
+    exits_to: Optional[List[str]] = None,
 ) -> AnimationWish:
     return AnimationWish(
         slug=slug,
@@ -241,6 +243,8 @@ def _w(
         mixamo_hints=mixamo_hints,
         wave=wave,
         animator_state=animator_state,
+        enters_from=list(enters_from or []),
+        exits_to=list(exits_to or []),
     )
 
 
@@ -257,6 +261,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         ["Idle", "Breathing Idle", "Idle Swaying"],
         wave=1,
         animator_state="Idle",
+        enters_from=["walk", "walk_back", "run", "stand_up", "get_up", "wave"],
+        exits_to=["walk", "walk_back", "run", "sit_down", "lie_down", "wave"],
     ),
     _w(
         "walk",
@@ -268,6 +274,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         ["Walking", "Walk Forward", "Female Walk", "Standard Walk"],
         wave=1,
         animator_state="Walk",
+        enters_from=["idle", "run", "walk_back"],
+        exits_to=["idle", "run", "walk_back"],
     ),
     _w(
         "walk_back",
@@ -279,6 +287,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         ["Walking Backward", "Female Walk Backward", "Backwards Walk"],
         wave=1,
         animator_state="WalkBack",
+        enters_from=["idle", "walk"],
+        exits_to=["idle", "walk"],
     ),
     _w(
         "run",
@@ -290,6 +300,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         ["Running", "Jog Forward"],
         wave=1,
         animator_state="Run",
+        enters_from=["idle", "walk"],
+        exits_to=["idle", "walk"],
     ),
     _w(
         "sneak",
@@ -322,6 +334,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         ["Sitting Down", "Sit Down"],
         wave=1,
         animator_state="SitDown",
+        enters_from=["idle"],
+        exits_to=["sit_idle"],
     ),
     _w(
         "stand_up",
@@ -333,6 +347,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         ["Stand Up", "Getting Up"],
         wave=1,
         animator_state="StandUp",
+        enters_from=["sit_idle"],
+        exits_to=["idle"],
     ),
     _w(
         "lie_down",
@@ -344,6 +360,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         ["Lying Down", "Lay Down"],
         wave=1,
         animator_state="LieDown",
+        enters_from=["idle"],
+        exits_to=["sleep_idle"],
     ),
     # --- rest ---
     _w(
@@ -356,6 +374,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         ["Sitting Idle", "Sitting"],
         wave=1,
         animator_state="Sit",
+        enters_from=["sit_down"],
+        exits_to=["stand_up"],
     ),
     _w(
         "sleep_idle",
@@ -367,6 +387,34 @@ DEFAULT_WISHES: List[AnimationWish] = [
         ["Sleeping Idle", "Sleep"],
         wave=1,
         animator_state="Sleep",
+        enters_from=["lie_down"],
+        exits_to=["get_up"],
+    ),
+    _w(
+        "get_up",
+        "transition",
+        "Встаёт с лежания",
+        "После sleep_idle / лежания на коврике — выход в стойку.",
+        "Отталкивается руками, садится и встаёт, или сразу в стойку.",
+        "Sleep → Idle; без этого телепорт из лежания.",
+        ["Getting Up", "Stand Up From Lying"],
+        wave=1,
+        animator_state="GetUp",
+        enters_from=["sleep_idle"],
+        exits_to=["idle"],
+    ),
+    _w(
+        "wave",
+        "social",
+        "Машет рукой",
+        "Приветствие у дома, зовёт Дена, эмоция «тут я».",
+        "Стоя, одна рука машет, ноги на месте.",
+        "Короткий one-shot из Idle.",
+        ["Waving", "Wave Hello"],
+        wave=1,
+        animator_state="Wave",
+        enters_from=["idle"],
+        exits_to=["idle"],
     ),
     _w(
         "yawn",

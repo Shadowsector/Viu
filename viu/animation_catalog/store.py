@@ -42,15 +42,25 @@ class AnimationCatalogStore:
         return self
 
     def seed_defaults(self) -> None:
-        self._items = {w.id: w for w in DEFAULT_WISHES}
+        # Копии, иначе мутация store затирает DEFAULT_WISHES.
+        self._items = {
+            w.id: AnimationWish.from_dict(w.to_dict()) for w in DEFAULT_WISHES
+        }
 
     def merge_defaults(self) -> int:
-        """Добавить новые DEFAULT_WISHES, не затирая статусы/файлы существующих."""
+        """Добавить новые DEFAULT_WISHES; дописать пустой граф переходов с defaults."""
         added = 0
         for w in DEFAULT_WISHES:
             if w.id not in self._items:
-                self._items[w.id] = w
+                self._items[w.id] = AnimationWish.from_dict(w.to_dict())
                 added += 1
+                continue
+            cur = self._items[w.id]
+            # Не затираем кастомный граф — только если поля пустые.
+            if not cur.enters_from and w.enters_from:
+                cur.enters_from = list(w.enters_from)
+            if not cur.exits_to and w.exits_to:
+                cur.exits_to = list(w.exits_to)
         return added
 
     def save(self) -> None:

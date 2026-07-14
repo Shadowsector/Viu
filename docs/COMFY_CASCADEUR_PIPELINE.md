@@ -42,7 +42,8 @@ idle ◄──► walk ◄──► run
 
 Это и есть «алгоритм, в каком порядке проигрывать».
 
-Данные: расширить `animation_catalog.json` полями `enters_from[]`, `exits_to[]` (план).
+Данные: `animation_catalog.json` поля `enters_from[]`, `exits_to[]`.  
+Режиссёр Comfy (`comfy_director`) смотрит дыры каталога и **приоритет transition**, у которых `enters_from` уже закрыты (есть ref/клип) — чтобы не снимать `stand_up` раньше `sit_idle`.
 
 ---
 
