@@ -125,13 +125,19 @@ def test_run_reflect_saves_story_to_vision(tmp_path):
 
 
 def test_reflect_reply_issues_formal_and_masculine():
-    from viu.prompts.reflect_mode import reflect_reply_issues
+    from viu.prompts.reflect_mode import reflect_reply_issues, reflect_temperature
 
     issues = reflect_reply_issues("Здравствуйте! Рад, что проект получает новый толстик.")
     assert any("здравствуйте" in i for i in issues)
     assert any("мужской" in i for i in issues)
     issues2 = reflect_reply_issues("Как я могу помочь, чтобы проект стал лучше?")
     assert any("помочь" in i for i in issues2)
+    issues3 = reflect_reply_issues(
+        "Вот такая замечательная комбинация! Это шоколад для игрока. Давай разбираться."
+    )
+    assert issues3
+    assert reflect_temperature(None) <= 0.9
+
 
 
 def test_run_reflect_rejects_banned_phrase(tmp_path):
