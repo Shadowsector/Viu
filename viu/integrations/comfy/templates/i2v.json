@@ -25,20 +25,16 @@
     }
   },
   "28": {
-    "class_type": "SaveAnimatedWEBP",
+    "class_type": "CreateVideo",
     "inputs": {
       "images": [
         "8",
         0
       ],
-      "filename_prefix": "ComfyUI",
-      "fps": 16,
-      "lossless": false,
-      "quality": 90,
-      "method": "default"
+      "fps": 24.0
     },
     "_meta": {
-      "title": "SaveAnimatedWEBP"
+      "title": "CreateVideo"
     }
   },
   "7": {
@@ -198,5 +194,21 @@
       "title": "ModelSamplingSD3"
     }
   },
-  "_viu_source": "comfyanonymous/ComfyUI_examples wan (UI→API by Viu)"
+  "_viu_source": "comfyanonymous/ComfyUI_examples wan (UI→API by Viu)",
+  "29": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "28",
+        0
+      ],
+      "filename_prefix": "viu_mocap",
+      "format": "mp4",
+      "codec": "h264"
+    },
+    "_meta": {
+      "title": "SaveVideo"
+    }
+  },
+  "_viu_template_rev": 3
 }

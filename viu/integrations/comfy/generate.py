@@ -19,6 +19,7 @@ from .workflows import (
     inject_seed,
     inject_text_prompt,
     load_workflow,
+    prepare_mocap_workflow,
 )
 
 
@@ -52,6 +53,7 @@ def run_single_angle(
     wf = inject_text_prompt(wf, prompt)
     wf = inject_negative_prompt(wf, negative)
     wf = inject_seed(wf, _seed_for(action, angle.id))
+    wf = prepare_mocap_workflow(wf)
 
     client = _client(config)
     ok, ping = client.ping()
@@ -72,6 +74,19 @@ def run_single_angle(
             "Проверь SaveVideo / VHS_VideoCombine в workflow.",
             [],
         )
+
+    # предпочесть mp4 (SaveVideo), не превью/лишние image
+    files = sorted(
+        files,
+        key=lambda m: (
+            0 if str(m.get("filename", "")).lower().endswith(".mp4") else 1,
+            0 if m.get("kind") == "videos" else 1,
+            m.get("filename") or "",
+        ),
+    )
+    # если есть хотя бы один mp4 — не тащить webp/png рядом
+    if any(str(m.get("filename", "")).lower().endswith(".mp4") for m in files):
+        files = [m for m in files if str(m.get("filename", "")).lower().endswith(".mp4")]
 
     refs = comfy_refs_dir(config)
     out_dir = comfy_out_dir(config)

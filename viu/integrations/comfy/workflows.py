@@ -11,6 +11,26 @@ from .paths import comfy_workflows_dir
 
 _TEMPLATES = Path(__file__).resolve().parent / "templates"
 
+# Вертикальный кадр под Cascadeur MoCap (кратно 16 для Wan).
+MOCAP_WIDTH = 480
+MOCAP_HEIGHT = 832
+MOCAP_LENGTH = 33
+MOCAP_FPS = 24.0
+_TEMPLATE_REV = 3
+
+_LATENT_SIZE_NODES = (
+    "EmptyHunyuanLatentVideo",
+    "WanImageToVideo",
+    "EmptyLatentImage",
+    "EmptyLatentAudio",
+)
+_OLD_SAVERS = (
+    "SaveAnimatedWEBP",
+    "SaveAnimatedPNG",
+    "SaveAnimatedGIF",
+    "VHS_VideoCombine",
+)
+
 
 def list_workflows(config) -> list[Path]:
     d = comfy_workflows_dir(config)
@@ -139,6 +159,124 @@ def inject_seed(workflow: Dict[str, Any], seed: int) -> Dict[str, Any]:
     return wf
 
 
+def inject_vertical_frame(
+    workflow: Dict[str, Any],
+    *,
+    width: int = MOCAP_WIDTH,
+    height: int = MOCAP_HEIGHT,
+    length: int = MOCAP_LENGTH,
+) -> Dict[str, Any]:
+    """Портрет 480×832 — фигура на весь кадр под Cascadeur."""
+    wf = json.loads(json.dumps(workflow))
+    for _nid, node in wf.items():
+        if not isinstance(node, dict):
+            continue
+        if node.get("class_type") not in _LATENT_SIZE_NODES:
+            continue
+        inputs = node.setdefault("inputs", {})
+        if "width" in inputs:
+            inputs["width"] = int(width)
+        if "height" in inputs:
+            inputs["height"] = int(height)
+        if "length" in inputs:
+            inputs["length"] = int(length)
+    return wf
+
+
+def _find_vae_decode_id(wf: Dict[str, Any]) -> Optional[str]:
+    for nid, node in wf.items():
+        if isinstance(node, dict) and node.get("class_type") == "VAEDecode":
+            return str(nid)
+    return None
+
+
+def _next_node_id(wf: Dict[str, Any], start: int = 900) -> str:
+    n = start
+    while str(n) in wf:
+        n += 1
+    return str(n)
+
+
+def ensure_mp4_output(
+    workflow: Dict[str, Any],
+    *,
+    fps: float = MOCAP_FPS,
+) -> Dict[str, Any]:
+    """Заменить WEBP/GIF-сейвер на CreateVideo → SaveVideo (mp4/h264)."""
+    wf = json.loads(json.dumps(workflow))
+
+    # Уже есть SaveVideo — только выставить mp4/h264/fps на CreateVideo
+    has_save = any(
+        isinstance(n, dict) and n.get("class_type") == "SaveVideo" for n in wf.values()
+    )
+    has_create = any(
+        isinstance(n, dict) and n.get("class_type") == "CreateVideo" for n in wf.values()
+    )
+    if has_save and has_create:
+        for node in wf.values():
+            if not isinstance(node, dict):
+                continue
+            if node.get("class_type") == "CreateVideo":
+                node.setdefault("inputs", {})["fps"] = float(fps)
+            if node.get("class_type") == "SaveVideo":
+                inp = node.setdefault("inputs", {})
+                inp["format"] = "mp4"
+                inp["codec"] = "h264"
+                inp.setdefault("filename_prefix", "viu_mocap")
+        # убрать старые анимированные сейверы, если остались рядом
+        for nid in list(wf.keys()):
+            node = wf[nid]
+            if isinstance(node, dict) and node.get("class_type") in _OLD_SAVERS:
+                del wf[nid]
+        return wf
+
+    decode_id = _find_vae_decode_id(wf)
+    images_ref: Optional[list] = None
+    if decode_id is not None:
+        images_ref = [decode_id, 0]
+
+    # Снять images с старого сейвера, затем удалить
+    for nid in list(wf.keys()):
+        node = wf[nid]
+        if not isinstance(node, dict):
+            continue
+        ct = node.get("class_type")
+        if ct in _OLD_SAVERS or ct == "SaveImage":
+            imgs = (node.get("inputs") or {}).get("images")
+            if images_ref is None and isinstance(imgs, list) and len(imgs) >= 2:
+                images_ref = imgs
+            if ct in _OLD_SAVERS:
+                del wf[nid]
+
+    if images_ref is None:
+        return wf
+
+    create_id = _next_node_id(wf, 900)
+    save_id = _next_node_id({**wf, create_id: {}}, 901)
+    wf[create_id] = {
+        "class_type": "CreateVideo",
+        "inputs": {"images": images_ref, "fps": float(fps)},
+        "_meta": {"title": "CreateVideo"},
+    }
+    wf[save_id] = {
+        "class_type": "SaveVideo",
+        "inputs": {
+            "video": [create_id, 0],
+            "filename_prefix": "viu_mocap",
+            "format": "mp4",
+            "codec": "h264",
+        },
+        "_meta": {"title": "SaveVideo"},
+    }
+    return wf
+
+
+def prepare_mocap_workflow(workflow: Dict[str, Any]) -> Dict[str, Any]:
+    """Вертикальный кадр + mp4 — поверх любого t2v/i2v на диске Дена."""
+    wf = inject_vertical_frame(workflow)
+    return ensure_mp4_output(wf)
+
+
 def workflow_is_stub(path: Path) -> bool:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -147,8 +285,21 @@ def workflow_is_stub(path: Path) -> bool:
     return bool(isinstance(data, dict) and data.get("_viu_stub"))
 
 
+def _template_rev(path: Path) -> int:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    if not isinstance(data, dict):
+        return 0
+    try:
+        return int(data.get("_viu_template_rev") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def ensure_workflow_templates(config, *, overwrite_stubs: bool = False) -> list[Path]:
-    """Скопировать шаблоны t2v/i2v/default из пакета Вью."""
+    """Скопировать шаблоны t2v/i2v/default; обновить если rev шаблона новее."""
     dest = comfy_workflows_dir(config)
     written: list[Path] = []
     for name in ("t2v.json", "i2v.json", "default.json"):
@@ -156,8 +307,14 @@ def ensure_workflow_templates(config, *, overwrite_stubs: bool = False) -> list[
         src = _TEMPLATES / name
         if not src.is_file():
             continue
+        src_rev = _template_rev(src)
         if target.is_file():
-            if not overwrite_stubs or not workflow_is_stub(target):
+            dst_rev = _template_rev(target)
+            if workflow_is_stub(target) and overwrite_stubs:
+                pass  # перезаписать stub
+            elif src_rev > dst_rev:
+                pass  # обновить устаревший
+            else:
                 continue
         shutil.copy2(src, target)
         written.append(target)
@@ -172,7 +329,9 @@ def write_install_readme(config) -> Path:
         "\n"
         "t2v.json / i2v.json / default.json — Wan 2.1 "
         "(официальные примеры, UI→API конвертит Вью).\n"
-        "Обновление: comfy_install / lab topic=comfy.\n"
+        f"MoCap: вертикаль {MOCAP_WIDTH}×{MOCAP_HEIGHT}, MP4 {int(MOCAP_FPS)} fps "
+        f"(template rev {_TEMPLATE_REV}).\n"
+        "Обновление: comfy_install / lab topic=comfy / авто при comfy_triple.\n"
         "Доки: docs/COMFY_SETUP.md\n",
         encoding="utf-8",
     )

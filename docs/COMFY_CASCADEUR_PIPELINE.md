@@ -57,11 +57,13 @@ idle ◄──► walk ◄──► run
 | FPS = таймлайну Cascadeur (24/30) | Произвольный FPS без сверки |
 | Короткие клипы 1–4 с на одно действие | Минута «кино» |
 
-Промпт-шаблон Вью (черновик):
+Промпт-шаблон Вью (актуально):
 
 ```
-full body, single female character, side or 3/4 view, plain background,
-stable camera, no text, no blur, clear limbs, [ACTION], loopable motion
+simple tanned young woman, full body filling vertical frame,
+pure white studio background, locked camera, [ACTION],
++ 3 ракурса (side / ¾ / front)
+→ MP4 480×832 @ 24 fps (CreateVideo + SaveVideo)
 ```
 
 ---

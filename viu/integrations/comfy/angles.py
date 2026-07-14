@@ -13,22 +13,25 @@ class CameraAngle:
     prompt_en: str
 
 
-# Три вида на один промпт — потом сравним, какой лучше ест Cascadeur MoCap.
+# Три вида — вертикальный кадр, фигура на весь рост.
 DEFAULT_ANGLES: Tuple[CameraAngle, ...] = (
     CameraAngle(
         "side",
         "сбоку",
-        "side view, camera on the character's left, full body visible, profile silhouette clear",
+        "vertical portrait framing, side view, camera on the character's left, "
+        "full body fills the frame head to toe, profile silhouette clear",
     ),
     CameraAngle(
         "three_quarter",
         "три четверти",
-        "three-quarter view, camera 45 degrees off front, full body visible, limbs unoccluded",
+        "vertical portrait framing, three-quarter view, camera 45 degrees off front, "
+        "full body fills the frame head to toe, limbs unoccluded",
     ),
     CameraAngle(
         "front",
         "анфас",
-        "front view, camera facing the character, full body visible, symmetric stance readable",
+        "vertical portrait framing, front view, camera facing the character, "
+        "full body fills the frame head to toe, symmetric stance readable",
     ),
 )
 

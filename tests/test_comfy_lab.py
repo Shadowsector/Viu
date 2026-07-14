@@ -82,6 +82,9 @@ def test_mocap_angles_in_prompt():
     p = mocap_prompt("sit down", angles[0])
     assert "side view" in p
     assert "sit down" in p
+    assert "tanned" in p
+    assert "white" in p.lower()
+    assert "vertical" in p.lower() or "fills the frame" in p
 
 
 def test_comfy_lab_awaits_telegram(tmp_path, monkeypatch):
