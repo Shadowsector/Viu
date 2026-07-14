@@ -136,6 +136,7 @@ def test_reflect_reply_issues_formal_and_masculine():
         "Вот такая замечательная комбинация! Это шоколад для игрока. Давай разбираться."
     )
     assert issues3
+    assert reflect_reply_issues("Бля, давай сделаем её шлюхой")
     assert reflect_temperature(None) <= 0.9
 
 
