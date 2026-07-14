@@ -68,52 +68,37 @@ def target_comfy_dir(config: Config) -> Path:
 
 
 def scan_comfy_candidates(config: Config) -> List[Path]:
-    """Найти все каталоги с ComfyUI рядом с Вью / типичные пути."""
+    """Найти установки ComfyUI только в безопасных местах (не весь C:\\)."""
     found: List[Path] = []
-    roots: List[Path] = []
+    candidates: List[Path] = []
     try:
-        roots.append(viu_install_root(config))
+        viu = viu_install_root(config)
+        candidates.append(viu / "ComfyUI")
+        if viu.is_dir():
+            for child in viu.iterdir():
+                if child.is_dir() and "comfy" in child.name.lower():
+                    candidates.append(child)
     except OSError:
         pass
-    roots.extend(
+    candidates.extend(
         [
-            Path("U:/Viu"),
-            Path("U:/"),
-            Path("C:/"),
-            Path.home(),
+            Path("U:/Viu/ComfyUI"),
+            Path("U:/ComfyUI"),
+            Path("U:/Apps/ComfyUI"),
+            Path.home() / "ComfyUI",
+            Path.home() / "Documents" / "ComfyUI",
+            Path("C:/ComfyUI"),
         ]
     )
     seen: set[str] = set()
-
-    def _add(p: Path) -> None:
-        key = str(p).lower()
+    for c in candidates:
+        key = str(c).lower()
         if key in seen:
-            return
-        seen.add(key)
-        found.append(p)
-
-    for root in roots:
-        try:
-            if not root.exists():
-                continue
-        except OSError:
             continue
-        candidates = [
-            root / "ComfyUI",
-            root / "Apps" / "ComfyUI",
-            root,
-        ]
-        try:
-            if root.name.lower() == "viu" and root.is_dir():
-                for child in root.iterdir():
-                    if child.is_dir():
-                        candidates.append(child)
-        except OSError:
-            pass
-        for c in candidates:
-            nested = find_comfy_main_under(c, max_depth=3)
-            if nested is not None:
-                _add(nested)
+        seen.add(key)
+        nested = find_comfy_main_under(c, max_depth=2)
+        if nested is not None:
+            found.append(nested)
     return found
 
 
@@ -407,15 +392,24 @@ def ensure_comfy_installed(
 
     if need_install:
         target = target_comfy_dir(config)
+        # не ставить в ложный путь (unittest и т.п.)
+        if not str(target).lower().endswith("comfyui") and "comfy" not in target.name.lower():
+            try:
+                target = viu_install_root(config) / "ComfyUI"
+            except OSError:
+                target = Path("U:/Viu/ComfyUI")
         if progress:
             progress(f"устанавливаю ComfyUI → {target}")
         ok, msg, root = clone_comfyui(target, progress=progress)
         lines.append(msg)
-        if not ok or root is None:
+        if not ok or root is None or not looks_like_comfy_root(root):
             return False, "\n".join(lines)
         dest = root
     else:
         lines.append(f"Использую: {dest}")
+
+    if not looks_like_comfy_root(Path(dest)):
+        return False, "\n".join(lines) + f"\nПуть не ComfyUI: {dest}"
 
     config.comfy_root = str(dest)
 

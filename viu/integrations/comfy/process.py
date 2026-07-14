@@ -10,7 +10,7 @@ from typing import Optional, Tuple
 
 from ...config import Config
 from .client import ComfyClient
-from .paths import resolve_comfy_root
+from .paths import resolve_comfy_root, looks_like_comfy_root
 
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _DETACHED = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
@@ -44,6 +44,14 @@ def ensure_comfy_running(
         return True, msg
 
     root = resolve_comfy_root(config)
+    # Защита: никогда не запускать чужой main.py (unittest и т.п.)
+    if root is not None and not looks_like_comfy_root(root):
+        try:
+            config.comfy_root = ""
+        except Exception:
+            pass
+        root = None
+
     install_note = ""
     if root is None and auto_install:
         from .install import ensure_comfy_installed
@@ -52,6 +60,8 @@ def ensure_comfy_running(
             config, with_models=True, include_i2v=False, with_pip=True
         )
         root = resolve_comfy_root(config)
+        if root is not None and not looks_like_comfy_root(root):
+            root = None
         if not ok_i and root is None:
             return False, install_note
 
@@ -60,10 +70,10 @@ def ensure_comfy_running(
             install_note
             or "ComfyUI не найден. Запусти comfy_install — Вью поставит в U:\\Viu\\ComfyUI."
         )
-    main_py = root / "main.py"
-    if not main_py.is_file():
-        return False, f"Нет main.py в {root}"
+    if not looks_like_comfy_root(root):
+        return False, f"Путь не похож на ComfyUI: {root}"
 
+    main_py = root / "main.py"
     py = _python_for_comfy(root)
     cmd = [str(py), str(main_py), "--listen", "127.0.0.1", "--port", "8188"]
     try:

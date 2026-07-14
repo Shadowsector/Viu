@@ -48,9 +48,24 @@ def test_resolve_prefers_viu_comfyui(tmp_path, monkeypatch):
     comfy = viu / "ComfyUI"
     comfy.mkdir(parents=True)
     (comfy / "main.py").write_text("# stub\n", encoding="utf-8")
+    (comfy / "folder_paths.py").write_text("# marker\n", encoding="utf-8")
     cfg = Config(root=viu, data_dir=viu / ".viu", comfy_root="")
     (viu / ".viu").mkdir(parents=True, exist_ok=True)
     assert resolve_comfy_root(cfg) == comfy.resolve()
+
+
+def test_rejects_unittest_main_as_comfy(tmp_path, monkeypatch):
+    """CPython Lib/unittest/main.py — НЕ ComfyUI."""
+    monkeypatch.delenv("VIU_COMFY_ROOT", raising=False)
+    fake = tmp_path / "Python314" / "Lib" / "unittest"
+    fake.mkdir(parents=True)
+    (fake / "main.py").write_text("# unittest\n", encoding="utf-8")
+    cfg = Config(root=tmp_path / "Viu", data_dir=tmp_path / ".viu", comfy_root=str(fake))
+    (tmp_path / "Viu").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".viu").mkdir(parents=True, exist_ok=True)
+    assert resolve_comfy_root(cfg) is None
+    # сбросили ложный comfy_root
+    assert cfg.comfy_root == ""
 
 
 def test_parse_approval():

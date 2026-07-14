@@ -10,6 +10,7 @@ from typing import Optional
 from ...config import Config
 from ...anabarra_layout import library_root, viu_install_root
 
+# Не заходим сюда при поиске Comfy (ложные main.py: unittest/main.py и т.п.).
 _SKIP_SCAN_DIRS = frozenset(
     {
         ".git",
@@ -23,7 +24,27 @@ _SKIP_SCAN_DIRS = frozenset(
         "node_modules",
         "python_embeded",
         "python_embedded",
+        "lib",
+        "site-packages",
+        "unittest",
+        "test",
+        "tests",
+        "dist-packages",
+        "windowsapps",
+        "$recycle.bin",
+        "system volume information",
     }
+)
+
+# Признаки настоящей установки ComfyUI (НЕ достаточно одного main.py —
+# у CPython есть Lib/unittest/main.py).
+_COMFY_MARKERS = (
+    "folder_paths.py",
+    "nodes.py",
+    "execution.py",
+    "server.py",
+    "cuda_malloc.py",
+    "latent_preview.py",
 )
 
 
@@ -62,20 +83,54 @@ def comfy_seed_frames_dir(config: Config) -> Path:
 
 
 def looks_like_comfy_root(path: Path) -> bool:
-    """Есть main.py (установка ComfyUI)."""
+    """Настоящий ComfyUI: main.py + хотя бы один маркер (не unittest/main.py)."""
     try:
-        return (path / "main.py").is_file()
+        if not path.is_dir() or not (path / "main.py").is_file():
+            return False
+    except OSError:
+        return False
+    # Явно отсечь стандартную библиотеку Python
+    parts = {p.lower() for p in path.parts}
+    if "unittest" in parts or "site-packages" in parts:
+        return False
+    if "lib" in parts and any(p.lower().startswith("python") for p in path.parts):
+        return False
+    try:
+        if (path / "comfy").is_dir():
+            return True
+        return any((path / name).exists() for name in _COMFY_MARKERS)
     except OSError:
         return False
 
 
-def find_comfy_main_under(root: Path, *, max_depth: int = 4) -> Optional[Path]:
-    """Искать ComfyUI внутри папки (вложенный ComfyUI/ComfyUI и т.п.)."""
+def find_comfy_main_under(root: Path, *, max_depth: int = 3) -> Optional[Path]:
+    """Искать ComfyUI внутри папки (вложенный ComfyUI/ComfyUI). Без обхода всего диска."""
     try:
         if not root.is_dir():
             return None
     except OSError:
         return None
+    # Не сканировать корни дисков целиком
+    try:
+        if root.resolve() == root.anchor or str(root).rstrip("\\/") in (
+            "C:",
+            "D:",
+            "U:",
+            "C:\\",
+            "D:\\",
+            "U:\\",
+            "/",
+        ):
+            # только прямые дети с именем ComfyUI
+            for child in root.iterdir():
+                if child.is_dir() and child.name.lower() == "comfyui":
+                    found = find_comfy_main_under(child, max_depth=2)
+                    if found is not None:
+                        return found
+            return None
+    except OSError:
+        return None
+
     if looks_like_comfy_root(root):
         return root.resolve()
     q: deque[tuple[Path, int]] = deque([(root, 0)])
@@ -123,11 +178,12 @@ def resolve_comfy_root(config: Config) -> Path | None:
             Path("C:/ComfyUI"),
         ]
     )
+    # Дети U:\Viu с именем *comfy* (не весь диск)
     try:
         viu = viu_install_root(config)
         if viu.is_dir():
             for child in viu.iterdir():
-                if child.is_dir():
+                if child.is_dir() and "comfy" in child.name.lower():
                     candidates.append(child)
     except OSError:
         pass
@@ -139,9 +195,18 @@ def resolve_comfy_root(config: Config) -> Path | None:
             continue
         seen.add(key)
         try:
-            nested = find_comfy_main_under(p, max_depth=3)
+            if looks_like_comfy_root(p):
+                return p.resolve()
+            nested = find_comfy_main_under(p, max_depth=2)
             if nested is not None:
                 return nested
         except OSError:
             continue
+
+    # Сбросить ложный comfy_root (например unittest после бага сканера)
+    if env and not looks_like_comfy_root(Path(env)):
+        try:
+            config.comfy_root = ""
+        except Exception:
+            pass
     return None

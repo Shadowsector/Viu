@@ -37,6 +37,7 @@ def test_target_and_scan(tmp_path, monkeypatch):
     comfy = tmp_path / "Viu" / "ComfyUI"
     comfy.mkdir(parents=True)
     (comfy / "main.py").write_text("print(1)\n", encoding="utf-8")
+    (comfy / "folder_paths.py").write_text("#\n", encoding="utf-8")
     found = scan_comfy_candidates(cfg)
     assert any(p == comfy.resolve() for p in found)
 
@@ -84,6 +85,7 @@ def test_clone_comfyui_mock(tmp_path, monkeypatch):
     def fake_run(cmd, **kwargs):
         dest.mkdir(parents=True, exist_ok=True)
         (dest / "main.py").write_text("# fake\n", encoding="utf-8")
+        (dest / "folder_paths.py").write_text("# m\n", encoding="utf-8")
         return True, "cloned"
 
     with patch("viu.integrations.comfy.install._run", side_effect=fake_run):
@@ -102,9 +104,9 @@ def test_clone_stashes_nonempty_without_main(tmp_path, monkeypatch):
     (dest / "random.txt").write_text("junk", encoding="utf-8")
 
     def fake_run(cmd, **kwargs):
-        # dest should be empty after stash
-        assert list(dest.iterdir()) == [] or not any(dest.iterdir())
+        assert not any(dest.iterdir())
         (dest / "main.py").write_text("# fake\n", encoding="utf-8")
+        (dest / "nodes.py").write_text("# m\n", encoding="utf-8")
         (dest / "models").mkdir(exist_ok=True)
         return True, "cloned"
 
@@ -114,7 +116,6 @@ def test_clone_stashes_nonempty_without_main(tmp_path, monkeypatch):
     assert root == dest.resolve()
     assert (dest / "main.py").is_file()
     assert "stash" in msg.lower() or "Старое" in msg
-    # models restored from stash
     assert (dest / "models" / "readme.txt").is_file()
     stashes = list(dest.parent.glob("ComfyUI_stash_*"))
     assert stashes
@@ -126,10 +127,20 @@ def test_find_nested_main(tmp_path, monkeypatch):
     nested = outer / "ComfyUI"
     nested.mkdir(parents=True)
     (nested / "main.py").write_text("#x\n", encoding="utf-8")
+    (nested / "execution.py").write_text("#m\n", encoding="utf-8")
     from viu.integrations.comfy.paths import find_comfy_main_under
 
     found = find_comfy_main_under(outer)
     assert found == nested.resolve()
+
+
+def test_unittest_main_not_comfy(tmp_path):
+    from viu.integrations.comfy.paths import looks_like_comfy_root
+
+    fake = tmp_path / "Lib" / "unittest"
+    fake.mkdir(parents=True)
+    (fake / "main.py").write_text("x", encoding="utf-8")
+    assert not looks_like_comfy_root(fake)
 
 
 def test_download_workflows_convert(tmp_path, monkeypatch):
