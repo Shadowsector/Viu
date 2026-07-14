@@ -310,13 +310,18 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
         save_session(config, session)
         return True, msg
 
-    if not ok and session.step == 4:  # generate
+    if not ok and session.step in (0, 4):  # ensure / generate
         session.last_fail_step = session.step
         session.last_fail_msg = msg[:2000]
         key = str(session.step)
         session.step_fail_counts[key] = session.step_fail_counts.get(key, 0) + 1
         save_session(config, session)
-        return True, msg + "\n\n⏸ Генерация не прошла — поправлю workflow/модели и повторю."
+        hint = (
+            "\n\n⏸ Comfy не встала — повторю comfy_install (stash+clone) при следующем запуске."
+            if session.step == 0
+            else "\n\n⏸ Генерация не прошла — поправлю workflow/модели и повторю."
+        )
+        return True, msg + hint
 
     session.last_fail_step = -1
     session.step += 1

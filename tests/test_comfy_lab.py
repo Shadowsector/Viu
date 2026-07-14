@@ -97,3 +97,14 @@ def test_comfy_lab_awaits_telegram(tmp_path, monkeypatch):
     assert loaded2.status == "running"
     assert loaded2.meta.get("approved") is True
     assert loaded2.step >= 4
+
+
+def test_format_lab_progress_comfy_labels():
+    from viu.lab.progress import format_lab_progress
+
+    s = new_session(COMFY_TOPIC)
+    s.steps_total = 6
+    s.step = 1
+    text = format_lab_progress(s, "ok")
+    assert "Comfy online" in text
+    assert "Cascadeur" not in text

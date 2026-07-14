@@ -51,3 +51,6 @@ I2V 14B — опционально: `comfy_install i2v=1` (десятки GB).
 | `VIU_COMFY_ROOT` | `U:/Viu/ComfyUI` |
 
 Нужны: `git`, интернет, место на `U:` (~10+ GB для T2V).
+
+Если `U:\Viu\ComfyUI` уже занята чем-то без `main.py`, Вью сама прячет содержимое
+в `U:\Viu\ComfyUI_stash_<время>`, клонирует Comfy туда и возвращает папку `models` обратно.

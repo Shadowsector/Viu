@@ -82,14 +82,54 @@ def test_clone_comfyui_mock(tmp_path, monkeypatch):
     dest = target_comfy_dir(cfg)
 
     def fake_run(cmd, **kwargs):
-        dest.mkdir(parents=True)
+        dest.mkdir(parents=True, exist_ok=True)
         (dest / "main.py").write_text("# fake\n", encoding="utf-8")
         return True, "cloned"
 
     with patch("viu.integrations.comfy.install._run", side_effect=fake_run):
-        ok, msg = clone_comfyui(dest)
+        ok, msg, root = clone_comfyui(dest)
     assert ok
+    assert root is not None
     assert (dest / "main.py").is_file()
+
+
+def test_clone_stashes_nonempty_without_main(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, monkeypatch)
+    dest = target_comfy_dir(cfg)
+    dest.mkdir(parents=True)
+    (dest / "models").mkdir()
+    (dest / "models" / "readme.txt").write_text("keep", encoding="utf-8")
+    (dest / "random.txt").write_text("junk", encoding="utf-8")
+
+    def fake_run(cmd, **kwargs):
+        # dest should be empty after stash
+        assert list(dest.iterdir()) == [] or not any(dest.iterdir())
+        (dest / "main.py").write_text("# fake\n", encoding="utf-8")
+        (dest / "models").mkdir(exist_ok=True)
+        return True, "cloned"
+
+    with patch("viu.integrations.comfy.install._run", side_effect=fake_run):
+        ok, msg, root = clone_comfyui(dest)
+    assert ok, msg
+    assert root == dest.resolve()
+    assert (dest / "main.py").is_file()
+    assert "stash" in msg.lower() or "Старое" in msg
+    # models restored from stash
+    assert (dest / "models" / "readme.txt").is_file()
+    stashes = list(dest.parent.glob("ComfyUI_stash_*"))
+    assert stashes
+
+
+def test_find_nested_main(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, monkeypatch)
+    outer = target_comfy_dir(cfg)
+    nested = outer / "ComfyUI"
+    nested.mkdir(parents=True)
+    (nested / "main.py").write_text("#x\n", encoding="utf-8")
+    from viu.integrations.comfy.paths import find_comfy_main_under
+
+    found = find_comfy_main_under(outer)
+    assert found == nested.resolve()
 
 
 def test_download_workflows_convert(tmp_path, monkeypatch):

@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -21,13 +22,17 @@ from .model_pref import (
     PREFERRED_TEXT_ENCODER,
     PREFERRED_VAE,
 )
-from .paths import comfy_workflows_dir, resolve_comfy_root
+from .paths import (
+    comfy_workflows_dir,
+    find_comfy_main_under,
+    looks_like_comfy_root,
+    resolve_comfy_root,
+)
 from .ui_to_api import looks_like_ui_workflow, ui_workflow_to_api
 from .workflows import workflow_is_stub
 
 COMFY_GIT = "https://github.com/comfyanonymous/ComfyUI.git"
 
-# Официальные UI-workflows → конвертим в API Format.
 _WF_SOURCES = {
     "t2v.json": (
         "https://raw.githubusercontent.com/comfyanonymous/ComfyUI_examples/master/wan/text_to_video_wan.json"
@@ -41,7 +46,6 @@ _HF_BASE = (
     "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files"
 )
 
-# Минимальный набор для T2V MoCap (без 14B I2V).
 _T2V_MODELS: Tuple[Tuple[str, str, str], ...] = (
     ("diffusion_models", PREFERRED_T2V, f"{_HF_BASE}/diffusion_models/{PREFERRED_T2V}"),
     ("vae", PREFERRED_VAE, f"{_HF_BASE}/vae/{PREFERRED_VAE}"),
@@ -64,7 +68,7 @@ def target_comfy_dir(config: Config) -> Path:
 
 
 def scan_comfy_candidates(config: Config) -> List[Path]:
-    """Найти все каталоги с main.py рядом с Вью / типичные пути."""
+    """Найти все каталоги с ComfyUI рядом с Вью / типичные пути."""
     found: List[Path] = []
     roots: List[Path] = []
     try:
@@ -80,6 +84,14 @@ def scan_comfy_candidates(config: Config) -> List[Path]:
         ]
     )
     seen: set[str] = set()
+
+    def _add(p: Path) -> None:
+        key = str(p).lower()
+        if key in seen:
+            return
+        seen.add(key)
+        found.append(p)
+
     for root in roots:
         try:
             if not root.exists():
@@ -91,7 +103,6 @@ def scan_comfy_candidates(config: Config) -> List[Path]:
             root / "Apps" / "ComfyUI",
             root,
         ]
-        # неглубокий скан детей U:\Viu
         try:
             if root.name.lower() == "viu" and root.is_dir():
                 for child in root.iterdir():
@@ -100,15 +111,9 @@ def scan_comfy_candidates(config: Config) -> List[Path]:
         except OSError:
             pass
         for c in candidates:
-            key = str(c).lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            try:
-                if (c / "main.py").is_file():
-                    found.append(c.resolve())
-            except OSError:
-                continue
+            nested = find_comfy_main_under(c, max_depth=3)
+            if nested is not None:
+                _add(nested)
     return found
 
 
@@ -149,9 +154,11 @@ def _download(url: str, dest: Path, *, progress: ProgressCb = None) -> Tuple[boo
                     fh.write(chunk)
                     done += len(chunk)
                     if progress and total:
-                        progress(f"{dest.name}: {done // (1024*1024)}/{total // (1024*1024)} MB")
+                        progress(
+                            f"{dest.name}: {done // (1024 * 1024)}/{total // (1024 * 1024)} MB"
+                        )
         partial.replace(dest)
-        return True, f"скачала: {dest.name} ({dest.stat().st_size // (1024*1024)} MB)"
+        return True, f"скачала: {dest.name} ({dest.stat().st_size // (1024 * 1024)} MB)"
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
         try:
             if partial.is_file():
@@ -161,30 +168,117 @@ def _download(url: str, dest: Path, *, progress: ProgressCb = None) -> Tuple[boo
         return False, f"{dest.name}: {exc}"
 
 
-def clone_comfyui(dest: Path, *, progress: ProgressCb = None) -> Tuple[bool, str]:
-    if (dest / "main.py").is_file():
-        return True, f"ComfyUI уже на месте: {dest}"
+def _stash_nonempty_dir(dest: Path) -> Tuple[Path, List[str]]:
+    """Перенести содержимое dest в соседний ComfyUI_stash_<time>, dest остаётся пустым."""
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    stash = dest.parent / f"ComfyUI_stash_{stamp}"
+    n = 0
+    while stash.exists():
+        n += 1
+        stash = dest.parent / f"ComfyUI_stash_{stamp}_{n}"
+    stash.mkdir(parents=True, exist_ok=False)
+    moved: List[str] = []
+    for item in list(dest.iterdir()):
+        target = stash / item.name
+        shutil.move(str(item), str(target))
+        moved.append(item.name)
+    return stash, moved
+
+
+def _merge_models_from_stash(stash: Path, dest: Path) -> str:
+    """Вернуть модели из stash в новую установку (не затирая уже скачанное)."""
+    candidates = [stash / "models"]
+    try:
+        for child in stash.iterdir():
+            if child.is_dir() and (child / "models").is_dir():
+                candidates.append(child / "models")
+    except OSError:
+        pass
+    src = next((c for c in candidates if c.is_dir()), None)
+    if src is None:
+        return ""
+    dst = dest / "models"
+    dst.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for root, _dirs, files in os.walk(src):
+        rel = Path(root).relative_to(src)
+        out_dir = dst / rel
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for name in files:
+            s = Path(root) / name
+            d = out_dir / name
+            if d.exists():
+                continue
+            try:
+                shutil.copy2(s, d)
+                copied += 1
+            except OSError:
+                continue
+    if copied:
+        return f"Вернула {copied} файл(ов) моделей из {stash.name}."
+    return f"Модели из {stash.name} уже на месте или пусты."
+
+
+def clone_comfyui(dest: Path, *, progress: ProgressCb = None) -> Tuple[bool, str, Optional[Path]]:
+    """Поставить ComfyUI в dest. Если папка занята — ищем вложенный main.py или stash+clone."""
+    dest = Path(dest)
+    nested = find_comfy_main_under(dest, max_depth=4)
+    if nested is not None:
+        return True, f"ComfyUI уже есть (нашла main.py): {nested}", nested
+
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists() and any(dest.iterdir()):
-        # папка не пустая, но без main.py — не затираем
-        return False, (
-            f"Папка {dest} не пуста и без main.py. "
-            "Освободи её или укажи VIU_COMFY_ROOT на готовый ComfyUI."
-        )
+    stash: Optional[Path] = None
+    try:
+        nonempty = dest.exists() and any(dest.iterdir())
+    except OSError:
+        nonempty = False
+
+    if nonempty:
+        if progress:
+            progress(
+                f"папка {dest} занята без main.py — прячу содержимое в stash и ставлю Comfy заново"
+            )
+        try:
+            stash, moved = _stash_nonempty_dir(dest)
+        except OSError as exc:
+            return False, f"Не смогла освободить {dest}: {exc}", None
+        note = f"Старое содержимое → {stash.name} ({len(moved)} шт.)."
+    else:
+        note = ""
+        if dest.exists():
+            try:
+                dest.rmdir()
+            except OSError:
+                pass
+
     if progress:
         progress(f"git clone ComfyUI → {dest}")
-    # clone into temp name then move if needed
-    if dest.exists():
-        try:
-            dest.rmdir()
-        except OSError:
-            pass
     ok, msg = _run(["git", "clone", "--depth", "1", COMFY_GIT, str(dest)], timeout=600)
     if not ok:
-        return False, f"git clone failed: {msg}"
+        if stash is not None and stash.is_dir():
+            try:
+                for item in stash.iterdir():
+                    shutil.move(str(item), str(dest / item.name))
+                stash.rmdir()
+                note += " Clone failed — вернула stash обратно."
+            except OSError:
+                note += f" Clone failed; stash остался в {stash}."
+        return False, f"git clone failed: {msg}\n{note}".strip(), None
+
     if not (dest / "main.py").is_file():
-        return False, f"clone ok, но нет main.py в {dest}"
-    return True, f"Клонировала ComfyUI → {dest}"
+        return False, f"clone ok, но нет main.py в {dest}\n{note}".strip(), None
+
+    extras = []
+    if note:
+        extras.append(note)
+    if stash is not None:
+        merge_msg = _merge_models_from_stash(stash, dest)
+        if merge_msg:
+            extras.append(merge_msg)
+    text = f"Клонировала ComfyUI → {dest}"
+    if extras:
+        text += "\n" + "\n".join(extras)
+    return True, text, dest.resolve()
 
 
 def pip_install_requirements(root: Path, *, progress: ProgressCb = None) -> Tuple[bool, str]:
@@ -192,7 +286,6 @@ def pip_install_requirements(root: Path, *, progress: ProgressCb = None) -> Tupl
     if not req.is_file():
         return True, "requirements.txt нет — пропуск"
     py = sys.executable
-    # предпочитаем venv Comfy, если есть
     for cand in (
         root / "venv" / "Scripts" / "python.exe",
         root / "venv" / "bin" / "python",
@@ -202,7 +295,6 @@ def pip_install_requirements(root: Path, *, progress: ProgressCb = None) -> Tupl
             py = str(cand)
             break
     else:
-        # создать venv
         venv = root / "venv"
         if progress:
             progress("создаю venv для ComfyUI…")
@@ -222,7 +314,9 @@ def pip_install_requirements(root: Path, *, progress: ProgressCb = None) -> Tupl
     return True, "зависимости ComfyUI установлены"
 
 
-def download_wan_workflows(config: Config, *, force: bool = False, progress: ProgressCb = None) -> Tuple[bool, str]:
+def download_wan_workflows(
+    config: Config, *, force: bool = False, progress: ProgressCb = None
+) -> Tuple[bool, str]:
     dest = comfy_workflows_dir(config)
     lines: List[str] = []
     ok_all = True
@@ -254,7 +348,6 @@ def download_wan_workflows(config: Config, *, force: bool = False, progress: Pro
             continue
         target.write_text(json.dumps(api, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         lines.append(f"{name}: API Format сохранён ({len(api)} узлов)")
-    # default = t2v
     t2v = dest / "t2v.json"
     default = dest / "default.json"
     if t2v.is_file() and (force or not default.is_file() or workflow_is_stub(default)):
@@ -292,7 +385,7 @@ def ensure_comfy_installed(
     with_pip: bool = True,
     progress: ProgressCb = None,
 ) -> Tuple[bool, str]:
-    """Скан → clone при необходимости → workflows → модели → (pip)."""
+    """Скан → clone/repair при необходимости → workflows → модели → (pip)."""
     lines: List[str] = []
 
     existing = resolve_comfy_root(config)
@@ -301,27 +394,34 @@ def ensure_comfy_installed(
         if scanned:
             existing = scanned[0]
             lines.append(f"Нашла ComfyUI: {existing}")
-            # закрепить в runtime, если пустой comfy_root
-            if not (getattr(config, "comfy_root", None) or "").strip():
-                config.comfy_root = str(existing)
 
     dest = existing or target_comfy_dir(config)
-    if existing is None:
+
+    need_install = existing is None or not looks_like_comfy_root(Path(dest))
+    if need_install:
+        nested = find_comfy_main_under(target_comfy_dir(config), max_depth=4)
+        if nested is not None:
+            dest = nested
+            lines.append(f"Нашла вложенный ComfyUI: {dest}")
+            need_install = False
+
+    if need_install:
+        target = target_comfy_dir(config)
         if progress:
-            progress(f"устанавливаю ComfyUI → {dest}")
-        ok, msg = clone_comfyui(dest, progress=progress)
+            progress(f"устанавливаю ComfyUI → {target}")
+        ok, msg, root = clone_comfyui(target, progress=progress)
         lines.append(msg)
-        if not ok:
+        if not ok or root is None:
             return False, "\n".join(lines)
-        config.comfy_root = str(dest)
+        dest = root
     else:
         lines.append(f"Использую: {dest}")
-        config.comfy_root = str(dest)
+
+    config.comfy_root = str(dest)
 
     ok_wf, wf_msg = download_wan_workflows(config, progress=progress)
     lines.append("Workflows:\n" + wf_msg)
     if not ok_wf:
-        # не фатально, если есть bundled templates
         lines.append("(часть workflows не скачалась — попробую шаблоны из пакета Вью)")
         try:
             from .workflows import ensure_workflow_templates
