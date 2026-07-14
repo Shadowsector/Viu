@@ -16,6 +16,20 @@ def test_default_wishes_seeded():
     assert len(DEFAULT_WISHES) >= 20
     slugs = {w.slug for w in DEFAULT_WISHES}
     assert "climb_up" in slugs
+    assert "walk_back" in slugs
+    assert "lean" in slugs
+
+
+def test_merge_defaults_adds_new_wishes(tmp_path):
+    path = tmp_path / "cat.json"
+    store = AnimationCatalogStore(path)
+    store._items = {
+        w.id: w for w in DEFAULT_WISHES if w.slug == "idle"
+    }
+    added = store.merge_defaults()
+    assert added >= 1
+    assert store.get_by_slug("walk") is not None
+    assert store.get_by_slug("climb_up") is not None
 
 
 def test_match_fast_run_to_run(tmp_path):

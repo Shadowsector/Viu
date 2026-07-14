@@ -132,7 +132,7 @@ namespace Viu.Runtime
             }
 
             if (sideMove)
-                pos.x += h * walkSpeed * Time.deltaTime;
+                pos.x += h * walkSpeed * StrideMul() * Time.deltaTime;
 
             if (depthMove)
             {
@@ -150,7 +150,7 @@ namespace Viu.Runtime
                 }
                 CaptureBaseZ();
                 pos.z = Mathf.Clamp(
-                    pos.z + v * depthWalkSpeed * Time.deltaTime,
+                    pos.z + v * depthWalkSpeed * StrideMul() * Time.deltaTime,
                     minZ,
                     maxZ);
                 if (_depth != null)
@@ -160,9 +160,33 @@ namespace Viu.Runtime
             transform.position = pos;
         }
 
+        float StrideMul()
+        {
+            // Run-as-Walk: тормозить перемещение вместе с anim speed.
+            if (_walkAnimSpeed >= 0.95f) return 1f;
+            return Mathf.Lerp(0.65f, 1f, _walkAnimSpeed);
+        }
+
         float DetectRunAsWalkSpeed()
         {
-            // Run в слоте Walk — полная скорость (не замедлять).
+            // Run в слоте Walk → замедлить (иначе ноги «заплетаются»).
+            // Настоящий Walk-клип → 1.0.
+            if (_animator == null || _animator.runtimeAnimatorController == null)
+                return 1f;
+            foreach (var clip in _animator.runtimeAnimatorController.animationClips)
+            {
+                if (clip == null) continue;
+                var n = clip.name.ToLowerInvariant();
+                if (n.Contains("walk") && !n.Contains("run"))
+                    return 1f;
+            }
+            foreach (var clip in _animator.runtimeAnimatorController.animationClips)
+            {
+                if (clip == null) continue;
+                var n = clip.name.ToLowerInvariant();
+                if (n.Contains("run") || n.Contains("jog"))
+                    return 0.55f;
+            }
             return 1f;
         }
 

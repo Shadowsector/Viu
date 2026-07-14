@@ -27,6 +27,16 @@ _SLUG_ALIASES = {
     "melee": "attack_claws",
     "climb": "climb_up",
     "climbing": "climb_up",
+    "walkback": "walk_back",
+    "walkingbackward": "walk_back",
+    "backwards": "walk_back",
+    "backward": "walk_back",
+    "leaning": "lean",
+    "lean": "lean",
+    "knocking": "knock",
+    "knock": "knock",
+    "window": "look_window",
+    "peek": "look_window",
 }
 
 

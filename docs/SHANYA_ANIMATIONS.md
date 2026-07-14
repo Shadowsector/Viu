@@ -122,14 +122,57 @@
 { "file": "X Bot@Female Climbing.fbx", "state": "ClimbUp" }
 ```
 
-### Overlay locomotion (зафиксировано 2026-07-12)
+### Overlay locomotion (зафиксировано 2026-07-12, Walk — 2026-07-14)
 
 | State | FBX | Примечание |
 |-------|-----|------------|
 | Idle | `X Bot@Idle.fbx` | Create From This Model |
-| Walk | `Shanya_Run.fbx` (временно) | speed ~0.55 в Walk-слоте |
+| Walk | **`Shanya_Walk.fbx` или Mixamo Female Walk** | **не** Run |
+| Walk (fallback) | `Shanya_Run.fbx` | только если нет Walk; state.speed **0.55** |
 
-Полный чеклист «не откатывать» → [`OVERLAY_BASELINE.md`](OVERLAY_BASELINE.md).
+Полный чеклист «не откатывать» → [`OVERLAY_BASELINE.md`](./OVERLAY_BASELINE.md).
+
+### Почему ноги «заплетаются» на ходьбе
+
+Чаще всего **в слоте Walk крутится Run** (или клип с чужим скелетом), а персонаж едет с `walkSpeed`, не совпадающим с длиной шага:
+
+1. Стопы скользят / перекрещиваются (retarget + неверный stride).
+2. Avatar: **Create From This Model** на клипе, не Copy From Erisa на Mixamo (`OVERLAY_BASELINE` запрет #3–4).
+3. `applyRootMotion = false` — ок; движение задаёт код — stride клипа должен быть «на месте» или In Place.
+
+**Как поправить (сделай так):**
+
+1. Mixamo → **Female Walk** / **Walking** → Without Skin, In Place если есть.
+2. Имя: `Shanya_Walk.fbx` → `U:\Viu\Inbox\` → **«Принять анимацию»**.
+3. Scope: **Девушки-biped (Шаня + NPC)**.
+4. `viu_clips.json` уже предпочитает `Shanya_Walk.fbx` над Run.
+5. **Обновить аниматор** → Rebuild overlay.
+6. Если всё ещё криво: в Cascadeur на эталоне Шани — правка одной ноги на контакте с «полом», export → Animations.
+
+Viu с rev после 2026-07-14: если в контроллере только Run-клип, `animator.speed` и скорость перемещения **притормаживаются** (~0.55), чтобы меньше «заплетать».
+
+---
+
+## Mixamo — что скачать сейчас (Wave 1 + сарай)
+
+Клади **по одному** FBX в `U:\Viu\Inbox\`:
+
+| Приоритет | Mixamo (поиск) | slug каталога | Зачем |
+|-----------|----------------|---------------|--------|
+| 1 | **Female Walk** / Walking | `walk` | заменить Run-as-Walk |
+| 2 | Sitting Down | `sit_down` | стул в сарае |
+| 3 | Female Sitting / Sitting Idle | `sit_idle` | сидит |
+| 4 | Standing Up | `stand_up` | встаёт |
+| 5 | Lying Down / Sleeping Idle | `lie_down` / `sleep_idle` | солома |
+| 6 | Yawn / Stretching | `yawn` / `stretch` | быт |
+| 7 | Looking Around | `look_around` | у окна |
+| 8 | Climbing | `climb_up` | дерево / сарай |
+| 9 | Jump / Falling Idle | `jump` / `fall` | adventure |
+| 10 | Picking Up / Throw | `take` / `throw` | props |
+| 11 | Waving | `greeting` | Wave 2 |
+| 12 | Female Walk Backward | `walk_back` | отступление S |
+
+Настройки: **Without Skin**; In Place — для jump/sit/climb где есть.
 
 ---
 
@@ -143,6 +186,8 @@ route_inbox                     — разобрать Inbox
 unity_import_staging            — если FBX уже в Animations/
 unity_sync_animations           — пересобрать Animator
 ```
+
+Автоматизация / сарай: [VIU_AUTOMATION_2026.md](./VIU_AUTOMATION_2026.md), [BARN_LIVELINESS.md](./BARN_LIVELINESS.md).
 
 ---
 

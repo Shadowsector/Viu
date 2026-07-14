@@ -39,7 +39,8 @@ Transparency=UpdateLayeredWindow (per-pixel alpha) OK
 | State | FBX (Den preview OK) | Import rig |
 |-------|----------------------|------------|
 | **Idle** | `X Bot@Idle.fbx` | Humanoid → **Create From This Model** |
-| **Walk** (временно) | `Shanya_Run.fbx` | Create From This Model; playback **1.0** (полная скорость) |
+| Walk | `Shanya_Walk.fbx` (предпочтительно) или Mixamo Female Walk | Create From This Model |
+| Walk (fallback) | `Shanya_Run.fbx` | state.speed **0.55** + locomotion throttle |
 
 Пины: `viu_clips.json` → `overlay_preferred.Idle` / `Walk`, плюс `ShanyaAnimationSync.TryAddPinnedClip`.
 

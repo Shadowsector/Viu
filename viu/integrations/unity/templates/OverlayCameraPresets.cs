@@ -37,10 +37,11 @@ namespace Viu.Runtime
 
         public OverlayCameraPresetData instance = new OverlayCameraPresetData
         {
-            orthographicSize = 2.4f,
-            feetScreenFraction = 0.12f,
+            // Чуть крупнее / ниже — интерьер сарая читается как «комната»
+            orthographicSize = 2.15f,
+            feetScreenFraction = 0.10f,
             feetFractionCloseBoost = 0f,
-            distanceZ = 10f,
+            distanceZ = 9.5f,
             lockFollowX = true,
         };
 

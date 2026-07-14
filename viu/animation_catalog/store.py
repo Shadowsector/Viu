@@ -37,10 +37,21 @@ class AnimationCatalogStore:
                 self._pending = {}
         if not self._items:
             self.seed_defaults()
+        else:
+            self.merge_defaults()
         return self
 
     def seed_defaults(self) -> None:
         self._items = {w.id: w for w in DEFAULT_WISHES}
+
+    def merge_defaults(self) -> int:
+        """Добавить новые DEFAULT_WISHES, не затирая статусы/файлы существующих."""
+        added = 0
+        for w in DEFAULT_WISHES:
+            if w.id not in self._items:
+                self._items[w.id] = w
+                added += 1
+        return added
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

@@ -69,11 +69,19 @@ GUI «Ещё — игра»: три кнопки + «полный playtest».
 
 ---
 
-## 4. Фаза 2 — Ассистент по ассетам (следующая)
+## 4. Фаза 2 — Ассистент по ассетам + анимации
 
-- Автоматический retarget анимаций (поверх `rig_check` / Humanoid)
-- Blender Bridge — команды в открытый Blender
-- Affordance System — prop catalog → gameplay hooks
+Порядок (см. [VIU_AUTOMATION_2026.md](./VIU_AUTOMATION_2026.md)):
+
+1. **Wave 1 Mixamo** — закрыть missing каталога (sit, sleep, climb…)
+2. **Настоящий Walk** для Шани (не Run-as-Walk) — [SHANYA_ANIMATIONS.md](./SHANYA_ANIMATIONS.md)
+3. **Сарай** — камера Instance + props — [BARN_LIVELINESS.md](./BARN_LIVELINESS.md)
+4. Lab export Cascadeur → `Animations\`
+5. ComfyUI → референсы поз (`Lab/Refs`)
+6. Автоматический retarget (поверх `rig_check` / Humanoid)
+7. Blender Bridge — команды в открытый Blender
+8. Affordance → «нужен клип» в Telegram
+
 - Material sidecar `.viu.json` → Unity importer (не только Rebind)
 
 ---
@@ -116,4 +124,5 @@ Cursor cloud — C# templates, Python tools, docs, PR (без playtest на ма
 
 ---
 
-См. также: `OVERLAY_MODES.md`, `OVERLAY_BASELINE.md`, `VIU_CONCEPT.md`, `ASSET_PIPELINE.md`.
+См. также: `OVERLAY_MODES.md`, `OVERLAY_BASELINE.md`, `VIU_CONCEPT.md`, `ASSET_PIPELINE.md`,
+`VIU_AUTOMATION_2026.md`, `BARN_LIVELINESS.md`, `SHANYA_ANIMATIONS.md`.
