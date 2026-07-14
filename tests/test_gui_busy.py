@@ -13,10 +13,17 @@ def test_chat_ok_while_tool_busy():
     assert can_accept_chat(llm_busy=True) is False
 
 
-def test_scripts_block_on_tool_or_llm():
-    assert can_accept_scripts(tool_busy=False, llm_busy=False) is True
-    assert can_accept_scripts(tool_busy=True, llm_busy=False) is False
+def test_scripts_clickable_during_tool():
+    # Comfy долгий — кнопки не серые; повторный tool режет can_start_tool
+    assert can_accept_scripts(tool_busy=True, llm_busy=False) is True
     assert can_accept_scripts(tool_busy=False, llm_busy=True) is False
+
+
+def test_can_start_tool():
+    from viu.gui_busy import can_start_tool
+
+    assert can_start_tool(tool_busy=False) is True
+    assert can_start_tool(tool_busy=True) is False
 
 
 def test_background_tick():
@@ -25,5 +32,5 @@ def test_background_tick():
 
 
 def test_status_ru():
-    assert "чат свободен" in busy_status_ru(tool_busy=True, llm_busy=False)
+    assert "свободн" in busy_status_ru(tool_busy=True, llm_busy=False)
     assert busy_status_ru(tool_busy=False, llm_busy=True) == "думает"

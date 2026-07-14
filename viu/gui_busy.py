@@ -12,8 +12,17 @@ def can_accept_chat(*, llm_busy: bool) -> bool:
 
 
 def can_accept_scripts(*, tool_busy: bool, llm_busy: bool) -> bool:
-    """Сайдбар-скрипты: не копить параллельные lab/tool."""
-    return not tool_busy and not llm_busy
+    """Сайдбар кликабелен во время Comfy/lab; блокируем только пока LLM думает.
+
+    Повторный tool при tool_busy отклонит ``_run_tool`` сообщением — чат свободен.
+    """
+    del tool_busy  # намеренно: долгий Comfy не серит кнопки
+    return not llm_busy
+
+
+def can_start_tool(*, tool_busy: bool) -> bool:
+    """Второй параллельный tool (ещё один lab) — нет."""
+    return not tool_busy
 
 
 def can_run_background_tick(*, tool_busy: bool, llm_busy: bool) -> bool:
@@ -27,5 +36,5 @@ def busy_status_ru(*, tool_busy: bool, llm_busy: bool) -> str:
     if llm_busy:
         return "думает"
     if tool_busy:
-        return "lab/Comfy (чат свободен)"
+        return "lab/Comfy (чат и кнопки свободны)"
     return "нет"

@@ -125,6 +125,13 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Выбрать лучший из 3 ракурсов, сохранить last-frame для следующей анимации.",
     ),
     GuiAction(
+        "comfy_open",
+        "Открыть ComfyUI",
+        "Редко",
+        tool="__comfy_open__",
+        hint="Браузер → :8188. LoRA/v2v/отладка вручную; обычный MoCap — через Вью.",
+    ),
+    GuiAction(
         "lab_cascadeur_all",
         "Lab: весь цикл",
         "Редко",

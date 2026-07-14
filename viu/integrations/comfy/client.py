@@ -82,6 +82,20 @@ class ComfyClient:
             return None
         return hist.get(prompt_id)
 
+    def get_queue(self) -> dict:
+        """Текущая очередь Comfy (/queue)."""
+        try:
+            data = self._get("/queue")
+            return data if isinstance(data, dict) else {}
+        except ComfyError:
+            return {}
+
+    def queue_summary(self) -> str:
+        q = self.get_queue()
+        running = q.get("queue_running") or []
+        pending = q.get("queue_pending") or []
+        return f"running={len(running)} pending={len(pending)}"
+
     def wait_history(
         self,
         prompt_id: str,
@@ -95,7 +109,13 @@ class ComfyClient:
             if entry and entry.get("outputs") is not None:
                 return entry
             time.sleep(poll)
-        raise ComfyError(f"Таймаут ожидания prompt_id={prompt_id} ({timeout:.0f}s)")
+        qs = self.queue_summary()
+        raise ComfyError(
+            f"Таймаут ожидания prompt_id={prompt_id} ({timeout:.0f}s). "
+            f"Очередь Comfy: {qs}. "
+            "Если running>0 — Wan ещё считает (увеличь timeout или смотри UI :8188). "
+            "Если 0/0 — job упал (OOM/нода); открой ComfyUI и лог."
+        )
 
     def download_view(
         self,

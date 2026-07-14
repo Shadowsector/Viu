@@ -623,6 +623,9 @@ class ViuGUI:
         if action.tool == "__comfy_clips__":
             self._open_comfy_clip_review()
             return
+        if action.tool == "__comfy_open__":
+            self._open_comfy_ui()
+            return
         if action.tool == "__rescan_catalog__":
             self._open_prop_catalog()
             return
@@ -692,6 +695,15 @@ class ViuGUI:
         )
 
     def _run_tool_chain(self, action: GuiAction) -> None:
+        from .gui_busy import can_start_tool
+
+        if not can_start_tool(tool_busy=self._tool_busy):
+            self._append(
+                "система",
+                f"Уже крутится lab/Comfy — «{action.label}» подождёт. Чат свободен.",
+                tag="sys",
+            )
+            return
         self._append("ты", f"[{action.label}]")
         self._set_tool_busy(True)
         threading.Thread(target=self._chain_worker, args=(action,), daemon=True).start()
@@ -1138,7 +1150,17 @@ class ViuGUI:
         return True
 
     def _run_tool(self, name: str, args: dict, label: str = "", *, echo_user: bool = True) -> None:
+        from .gui_busy import can_start_tool
+
         title = label or name
+        if not can_start_tool(tool_busy=self._tool_busy):
+            self._append(
+                "система",
+                f"Уже крутится lab/Comfy — «{title}» подождёт.\n"
+                "Чат и Telegram свободны; ComfyUI: http://127.0.0.1:8188",
+                tag="sys",
+            )
+            return
         if echo_user:
             self._append("ты", f"[{title}]")
         self._set_tool_busy(True)
@@ -1480,8 +1502,6 @@ class ViuGUI:
 
         plan = invent_next_shot(self.agent.config)
         self._append("Вью", plan.summary_ru(), tag="viu")
-        if not auto:
-            self._set_tool_busy(True)
         args = {
             "topic": COMFY_TOPIC,
             "run_all": "1",
@@ -1547,6 +1567,23 @@ class ViuGUI:
             self._append("Вью", msg, tag=tag)
 
         open_lab_rating_review(self.root, self.agent.config, topic, on_finished=done)
+
+    def _open_comfy_ui(self) -> None:
+        import webbrowser
+
+        url = str(getattr(self.agent.config, "comfy_url", None) or "http://127.0.0.1:8188")
+        self._append("ты", "[Открыть ComfyUI]")
+        try:
+            webbrowser.open(url)
+            self._append(
+                "Вью",
+                f"Открыла {url}\n"
+                "Обычный MoCap — кнопкой lab; сюда — LoRA, v2v, отладка очереди.\n"
+                "Файлы LoRA клади в ComfyUI/models/loras/ — потом скажи мне подключить.",
+                tag="tool",
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._append("ошибка", f"Не открыла браузер: {exc}\nОткрой сама: {url}", tag="err")
 
     def _open_comfy_clip_review(self) -> None:
         from .integrations.comfy.clip_review_gui import open_comfy_clip_review
