@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+import re
 import subprocess
 import sys
 import time
@@ -14,6 +14,10 @@ from .client import ComfyClient
 from .paths import looks_like_comfy_root, resolve_comfy_root
 
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+# Стабильная связка под RTX 20/30/40 (у Дена 3060). CPU — только fallback.
+_TORCH_CUDA_INDEX = "https://download.pytorch.org/whl/cu124"
+_TORCH_PKGS = ("torch", "torchvision", "torchaudio")
 
 
 def _python_for_comfy(root: Path) -> Path:
@@ -40,19 +44,53 @@ def _launch_log_path(config: Config, root: Path) -> Path:
         return root / "viu_comfy_launch.log"
 
 
-def _tail_log(path: Path, *, max_chars: int = 1800) -> str:
+def extract_crash_summary(path: Path, *, max_chars: int = 2200) -> str:
+    """Вытащить Traceback/Error из лога, а не случайный хвост dir()."""
     try:
         if not path.is_file():
             return "(лога запуска ещё нет)"
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         return f"(не прочитала лог: {exc})"
-    text = text.strip()
-    if not text:
+    if not text.strip():
         return "(лог пуст — процесс сразу умер или не писал вывод)"
-    if len(text) > max_chars:
-        return "…\n" + text[-max_chars:]
-    return text
+
+    # Последний Traceback
+    idx = text.rfind("Traceback (most recent call last)")
+    if idx >= 0:
+        block = text[idx:].strip()
+        # обрезать огромные Did you mean: списки
+        block = re.sub(
+            r"Did you mean:.*?(?=\n\S|\Z)",
+            "Did you mean: …",
+            block,
+            flags=re.DOTALL,
+        )
+        if len(block) > max_chars:
+            block = block[: max_chars - 20] + "\n…(обрезано)"
+        return block
+
+    # Строки с Error/Exception
+    lines = text.splitlines()
+    err_lines = [
+        ln
+        for ln in lines
+        if re.search(r"(Error|Exception|CRITICAL|ModuleNotFoundError|ImportError)", ln)
+    ]
+    if err_lines:
+        chunk = "\n".join(err_lines[-40:])
+        if len(chunk) > max_chars:
+            chunk = chunk[-max_chars:]
+        return chunk
+
+    # fallback — конец лога без гигантских списков атрибутов
+    tail = text.strip()[-max_chars:]
+    if len(tail) > 200 and tail.count("'") > 80:
+        return (
+            "Лог похож на дамп атрибутов (часто AttributeError + torch). "
+            "Полный файл: " + str(path)
+        )
+    return "…\n" + tail if len(text) > max_chars else tail
 
 
 def _run_py(py: Path, code: str, *, cwd: Path, timeout: float = 60) -> Tuple[bool, str]:
@@ -72,39 +110,93 @@ def _run_py(py: Path, code: str, *, cwd: Path, timeout: float = 60) -> Tuple[boo
     return proc.returncode == 0, out[-1500:] or f"exit {proc.returncode}"
 
 
-def preflight_comfy_python(root: Path, py: Path) -> Tuple[bool, str]:
-    """Проверить, что interpreter видит torch (иначе сервер падает сразу)."""
-    ok, out = _run_py(py, "import torch; print(torch.__version__)", cwd=root, timeout=90)
-    if ok:
-        return True, f"python={py} torch={out.strip()}"
-    # частая дыра после pip install -r requirements: нет torch
-    tip = (
-        f"Interpreter {py} не импортирует torch.\n{out}\n"
-        "Ставлю torch (CPU wheel) — для CUDA потом можно заменить."
-    )
+def nvidia_gpu_available() -> bool:
+    try:
+        kwargs: dict = {"capture_output": True, "text": True, "timeout": 15}
+        if sys.platform == "win32":
+            kwargs["creationflags"] = _CREATE_NO_WINDOW
+        proc = subprocess.run(["nvidia-smi", "-L"], **kwargs)  # noqa: S603
+        return proc.returncode == 0 and bool((proc.stdout or "").strip())
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _pip_install(py: Path, args: List[str], *, cwd: Path) -> Tuple[bool, str]:
     try:
         kwargs: dict = {
-            "cwd": str(root),
+            "cwd": str(cwd),
             "capture_output": True,
             "text": True,
-            "timeout": 1800,
+            "timeout": 2400,
         }
         if sys.platform == "win32":
             kwargs["creationflags"] = _CREATE_NO_WINDOW
-        proc = subprocess.run(  # noqa: S603
-            [str(py), "-m", "pip", "install", "torch", "torchvision", "torchaudio"],
-            **kwargs,
-        )
-        pip_out = ((proc.stdout or "") + (proc.stderr or "")).strip()[-800:]
-        if proc.returncode != 0:
-            return False, tip + f"\npip torch failed: {pip_out}"
+        proc = subprocess.run([str(py), "-m", "pip", "install", *args], **kwargs)  # noqa: S603
     except (OSError, subprocess.TimeoutExpired) as exc:
-        return False, tip + f"\npip torch: {exc}"
+        return False, str(exc)
+    out = ((proc.stdout or "") + (proc.stderr or "")).strip()[-1200:]
+    return proc.returncode == 0, out
 
-    ok2, out2 = _run_py(py, "import torch; print(torch.__version__)", cwd=root, timeout=90)
+
+def _torch_info(py: Path, root: Path) -> Tuple[bool, str, bool]:
+    """(ok, version_line, cuda_available)."""
+    code = (
+        "import torch; "
+        "print(torch.__version__); "
+        "print('CUDA' if torch.cuda.is_available() else 'CPU')"
+    )
+    ok, out = _run_py(py, code, cwd=root, timeout=90)
+    if not ok:
+        return False, out, False
+    lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+    ver = lines[0] if lines else out
+    cuda = any(ln.upper() == "CUDA" for ln in lines)
+    return True, ver, cuda
+
+
+def ensure_torch_for_comfy(root: Path, py: Path, *, force_reinstall: bool = False) -> Tuple[bool, str]:
+    """Поставить подходящий torch: CUDA (cu124) при NVIDIA, иначе CPU."""
+    want_cuda = nvidia_gpu_available()
+    ok, ver, has_cuda = _torch_info(py, root)
+    notes: List[str] = []
+
+    need = force_reinstall or not ok
+    if ok and want_cuda and not has_cuda:
+        need = True
+        notes.append(f"Был {ver} без CUDA — ставлю cu124 (RTX).")
+    elif ok and want_cuda and has_cuda:
+        return True, f"python={py} torch={ver} CUDA=yes"
+    elif ok and not want_cuda:
+        return True, f"python={py} torch={ver} (CPU, nvidia-smi нет)"
+
+    if want_cuda:
+        notes.append(f"pip install {_TORCH_PKGS} из cu124…")
+        ok_p, pip_out = _pip_install(
+            py,
+            ["--upgrade", *_TORCH_PKGS, "--index-url", _TORCH_CUDA_INDEX],
+            cwd=root,
+        )
+        if not ok_p:
+            notes.append(f"cu124 не встал: {pip_out}\nПробую CPU torch…")
+            ok_p, pip_out = _pip_install(py, ["--upgrade", *_TORCH_PKGS], cwd=root)
+            if not ok_p:
+                return False, "\n".join(notes) + f"\nCPU torch тоже: {pip_out}"
+    else:
+        notes.append("nvidia-smi нет — CPU torch")
+        ok_p, pip_out = _pip_install(py, ["--upgrade", *_TORCH_PKGS], cwd=root)
+        if not ok_p:
+            return False, "\n".join(notes) + f"\n{pip_out}"
+
+    ok2, ver2, cuda2 = _torch_info(py, root)
     if not ok2:
-        return False, tip + f"\nПосле pip всё ещё нет torch: {out2}"
-    return True, f"python={py} torch={out2.strip()} (поставила CPU torch)"
+        return False, "\n".join(notes) + f"\nПосле установки import torch: {ver2}"
+    tag = "CUDA=yes" if cuda2 else "CUDA=no"
+    notes.append(f"python={py} torch={ver2} {tag}")
+    return True, "\n".join(notes)
+
+
+def preflight_comfy_python(root: Path, py: Path) -> Tuple[bool, str]:
+    return ensure_torch_for_comfy(root, py, force_reinstall=False)
 
 
 def _parse_port(url: str) -> int:
@@ -124,6 +216,7 @@ def launch_comfy_process(
     root: Path,
     *,
     py: Optional[Path] = None,
+    extra_args: Optional[List[str]] = None,
 ) -> Tuple[bool, str, Optional[subprocess.Popen]]:
     """Старт main.py с логом (не глотаем stderr)."""
     py = py or _python_for_comfy(root)
@@ -131,8 +224,16 @@ def launch_comfy_process(
     port = _parse_port(str(url))
     log_path = _launch_log_path(config, root)
     main_py = root / "main.py"
-    # --listen без IP = 0.0.0.0; так надёжнее на Windows, чем только 127.0.0.1
-    cmd = [str(py), str(main_py), "--listen", "--port", str(port)]
+    cmd = [
+        str(py),
+        str(main_py),
+        "--listen",
+        "--port",
+        str(port),
+        "--disable-cuda-malloc",
+    ]
+    if extra_args:
+        cmd.extend(extra_args)
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_f = log_path.open("w", encoding="utf-8", errors="replace")
@@ -149,7 +250,6 @@ def launch_comfy_process(
             "stdin": subprocess.DEVNULL,
         }
         if sys.platform == "win32":
-            # CREATE_NO_WINDOW, но БЕЗ DETACHED — иначе не видим падение и poll()
             kwargs["creationflags"] = _CREATE_NO_WINDOW
         else:
             kwargs["start_new_session"] = True
@@ -181,7 +281,7 @@ def wait_comfy_api(
         if proc is not None and proc.poll() is not None:
             return False, (
                 f"ComfyUI процесс завершился с кодом {proc.returncode}.\n"
-                f"Лог {log_path}:\n{_tail_log(log_path)}"
+                f"Суть ошибки:\n{extract_crash_summary(log_path)}"
             )
         ok, last = client.ping()
         if ok:
@@ -189,10 +289,10 @@ def wait_comfy_api(
         time.sleep(2.0)
     extra = ""
     if proc is not None and proc.poll() is None:
-        extra = f"\nПроцесс ещё жив (pid={proc.pid}), но :8188 молчит — смотри лог."
+        extra = f"\nПроцесс ещё жив (pid={proc.pid}), но :8188 молчит."
     return False, (
         f"API не ответил за {wait_seconds:.0f}s.\n{last}{extra}\n"
-        f"Лог {log_path}:\n{_tail_log(log_path)}"
+        f"Суть из лога:\n{extract_crash_summary(log_path)}"
     )
 
 
@@ -202,7 +302,7 @@ def ensure_comfy_running(
     wait_seconds: float = 180.0,
     auto_install: bool = True,
 ) -> Tuple[bool, str]:
-    """Пинг API; если нет — установить при необходимости, preflight, запуск, ждать."""
+    """Пинг API; если нет — установить при необходимости, CUDA torch, запуск, ждать."""
     url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
     client = ComfyClient(base_url=str(url), timeout=5.0)
     ok, msg = client.ping()
@@ -239,7 +339,7 @@ def ensure_comfy_running(
         return False, f"Путь не похож на ComfyUI: {root}"
 
     py = _python_for_comfy(root)
-    ok_pf, pf_msg = preflight_comfy_python(root, py)
+    ok_pf, pf_msg = ensure_torch_for_comfy(root, py)
     if not ok_pf:
         parts = [pf_msg]
         if install_note:
@@ -247,28 +347,50 @@ def ensure_comfy_running(
         return False, "\n".join(parts)
 
     log_path = _launch_log_path(config, root)
+    parts: List[str] = []
+    if install_note:
+        parts.append(install_note)
+    parts.append(pf_msg)
+
     ok_l, launch_msg, proc = launch_comfy_process(config, root, py=py)
+    parts.append(launch_msg)
     if not ok_l:
-        parts = [launch_msg, pf_msg]
-        if install_note:
-            parts.insert(0, install_note)
         return False, "\n".join(parts)
 
     ok_w, wait_msg = wait_comfy_api(
         client, proc=proc, log_path=log_path, wait_seconds=wait_seconds
     )
-    parts: List[str] = []
-    if install_note:
-        parts.append(install_note)
-    parts.append(pf_msg)
-    parts.append(launch_msg)
     if ok_w:
         parts.append(f"ComfyUI OK из {root}. {wait_msg}")
         return True, "\n".join(parts)
+
     parts.append(wait_msg)
+
+    # Авто-ремонт: был CPU torch при наличии GPU / странный AttributeError → CUDA torch + retry
+    _, _, has_cuda = _torch_info(py, root)
+    summary = extract_crash_summary(log_path).lower()
+    should_fix_torch = (nvidia_gpu_available() and not has_cuda) or any(
+        k in summary for k in ("attributeerror", "torch", "cuda", "dll load", "c10")
+    )
+    if should_fix_torch:
+        parts.append("Падение при старте — переставляю torch (CUDA cu124) и пробую ещё раз…")
+        ok_t, t_msg = ensure_torch_for_comfy(root, py, force_reinstall=True)
+        parts.append(t_msg)
+        if ok_t:
+            ok_l2, launch_msg2, proc2 = launch_comfy_process(config, root, py=py)
+            parts.append(launch_msg2)
+            if ok_l2:
+                ok_w2, wait_msg2 = wait_comfy_api(
+                    client, proc=proc2, log_path=log_path, wait_seconds=wait_seconds
+                )
+                if ok_w2:
+                    parts.append(f"ComfyUI OK после ремонта torch. {wait_msg2}")
+                    return True, "\n".join(parts)
+                parts.append(wait_msg2)
+
     parts.append(
-        "Не делай comfy_install заново — установка уже есть. "
-        "Исправь ошибку из лога (часто: torch/CUDA/custom nodes) и снова comfy_ensure."
+        "Не делай comfy_install заново. Лог: "
+        f"{log_path}. После правки torch — снова comfy_ensure."
     )
     return False, "\n".join(parts)
 

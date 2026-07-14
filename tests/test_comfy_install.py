@@ -148,7 +148,14 @@ def test_wait_api_detects_dead_process(tmp_path):
     from viu.integrations.comfy.process import wait_comfy_api
 
     log = tmp_path / "comfy_launch.log"
-    log.write_text("ImportError: torch\n", encoding="utf-8")
+    log.write_text(
+        "Traceback (most recent call last):\n"
+        "  File main.py, line 1\n"
+        "AttributeError: module 'torch' has no attribute 'foo'. Did you mean:\n"
+        + ", ".join(f"'{i}'" for i in range(200))
+        + "\n",
+        encoding="utf-8",
+    )
 
     class Dead:
         def poll(self):
@@ -169,7 +176,24 @@ def test_wait_api_detects_dead_process(tmp_path):
         wait_seconds=5,
     )
     assert not ok
-    assert "завершился" in msg.lower() or "torch" in msg.lower()
+    assert "AttributeError" in msg
+    assert "завершился" in msg.lower()
+
+
+def test_extract_crash_summary_prefers_traceback(tmp_path):
+    from viu.integrations.comfy.process import extract_crash_summary
+
+    log = tmp_path / "c.log"
+    log.write_text(
+        "cmd: x\n"
+        + "noise " * 100
+        + "\nTraceback (most recent call last):\n  File 'main.py'\n"
+        "RuntimeError: boom\n",
+        encoding="utf-8",
+    )
+    s = extract_crash_summary(log)
+    assert "RuntimeError: boom" in s
+    assert "Traceback" in s
 
 
 def test_download_workflows_convert(tmp_path, monkeypatch):
