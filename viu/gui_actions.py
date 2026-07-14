@@ -96,6 +96,14 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="После новых Idle/Walk — пересобрать контроллер.",
     ),
     GuiAction(
+        "cascadeur_batch_export",
+        "Cascadeur: batch FBX",
+        "Редко",
+        tool="blender_export_cascadeur_batch",
+        tool_args={"force": "1"},
+        hint="Все .blend из Inbox → CascadeurReady (без WGT, deform bones). Blender headless.",
+    ),
+    GuiAction(
         "lab_cascadeur",
         "Лаборатория: Cascadeur",
         "Редко",

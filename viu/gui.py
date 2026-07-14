@@ -965,22 +965,14 @@ class ViuGUI:
         self._append("Вью", msg, tag=tag)
 
     def _try_direct_tool_command(self, text: str) -> bool:
-        """lab_start reset=1 и др. — сразу инструмент, без «размышляет»."""
-        import re
+        """Имя инструмента + args — сразу tool.run, без «размышляет»."""
+        from .gui_direct import parse_direct_tool_command
 
-        raw = (text or "").strip()
-        m = re.match(
-            r"^(lab_(?:start|step|status|rate))(?:\s+(.+))?$",
-            raw,
-            re.IGNORECASE,
-        )
-        if not m:
+        parsed = parse_direct_tool_command(text, self.agent.registry)
+        if parsed is None:
             return False
-        name = m.group(1).lower()
-        args: dict = {"topic": "cascadeur"}
-        tail = (m.group(2) or "").strip()
-        for key, val in re.findall(r"(\w+)=([\w.+-]+)", tail):
-            args[key.lower()] = val
+        name, args = parsed
+        raw = (text or "").strip()
         self._run_tool(name, args, label=raw)
         return True
 
