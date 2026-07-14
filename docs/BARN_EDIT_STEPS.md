@@ -188,23 +188,23 @@
 ## Шаг 7. В сцене «сарай номер два» (`Viu_Home_Old_Stables_2`)
 
 Экспорт кладёт FBX в папку **`Old_Stables`**, а сцена может всё ещё держать старый объект **`Viu_Home_Old_Stables_2`**.  
-«Починить текстуры» красит **то, что уже в сцене** — поэтому лог писал `home=Viu_Home_Old_Stables_2`. Это не «кривой экспорт».
+**Rebind / «Починить текстуры» не меняет дом** — только красит то, что уже в Hierarchy.  
+Если после импорта `Old_Stables` снова видишь `_2` — чаще всего сцена **переоткрылась с диска** (в `.unity` ещё лежал старый объект) или не было **Ctrl+S** до Rebind.
 
-### Сейчас (без обновления Вью) — руками
-
-1. Hierarchy слева → кликни **`Viu_Home_Old_Stables_2`**.
-2. Клавиша **Delete** (или ПКМ → Delete). Шаню, камеру, `Viu_Anchors` **не** трогай.
-3. Внизу Project → поиск: `Old_Stables` → папка `Assets/Environment/Old_Stables/` → файл **`Old_Stables.fbx`**.
-4. Перетащи этот FBX в Hierarchy (в корень сцены, рядом с Шаней).
-5. Кликни новый объект → в Inspector сверху имя → переименуй в **`Viu_Home_Old_Stables`** (без `_2`).
-6. Меню **Viu → Overlay → Rebind All Materials**.
-7. **Ctrl+S**. В Hierarchy должно быть `Viu_Home_Old_Stables`, **без** `_2`.
-
-### После «Обновить Вью» — одна кнопка
+### Правильный путь — одна кнопка
 
 Меню Unity: **Viu → Overlay → Replace Home Building (from Environment)**  
-Сама удалит старые `Viu_Home_*`, поставит FBX из `Environment`, сделает Rebind.  
-**Bootstrap не нужен.**
+Сама удалит старые `Viu_Home_*`, поставит лучший FBX из `Assets/Environment/`, сделает Rebind и сохранит.  
+**Bootstrap не нужен.** Не таскай FBX руками, если есть этот пункт.
+
+### Руками (если меню ещё старое)
+
+1. Hierarchy → **`Viu_Home_Old_Stables_2`** → **Delete**. Шаню / камеру / `Viu_Anchors` не трогай.
+2. Project → `Assets/Environment/Old_Stables/Old_Stables.fbx` → перетащи в Hierarchy.
+3. Переименуй в **`Viu_Home_Old_Stables`** (без `_2`).
+4. **Ctrl+S** сразу (иначе старый Rebind мог перезагрузить сцену с диска и вернуть `_2`).
+5. **Viu → Overlay → Rebind All Materials**.
+6. Снова **Ctrl+S**. В Hierarchy — `Viu_Home_Old_Stables`, **без** `_2`.
 
 ---
 

@@ -40,7 +40,8 @@ Runtime: `OverlayModeController` + `OverlayCameraPresets` + `ShanyaDesktopOverla
 ## Меню Unity (Viu)
 
 - **Bootstrap Overlay Scene (once)** — полная первичная сборка
-- **Rebind All Materials** — текстуры → .mat r50
+- **Rebind All Materials** — текстуры → .mat (дом в Hierarchy не меняет; если нужен другой FBX — Replace Home)
+- **Replace Home Building** — убрать старый `Viu_Home_*`, поставить FBX из Environment + Rebind
 - **Validate Overlay Scene** — проверка (overlay_validate.log)
 - **Build Windows Overlay** — Validate + exe
 - **Build Windows Overlay (no validate)** — только exe

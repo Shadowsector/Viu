@@ -783,12 +783,31 @@ namespace Viu.Editor
 
         static GameObject FindHomeInScene()
         {
+            GameObject best = null;
+            var bestScore = int.MinValue;
             foreach (var go in UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None))
             {
-                if (go != null && go.name.StartsWith("Viu_Home_", StringComparison.Ordinal))
-                    return go;
+                if (go == null || !go.name.StartsWith("Viu_Home_", StringComparison.Ordinal))
+                    continue;
+                // Корень сцены — не вложенный мусор с тем же префиксом.
+                if (go.transform.parent != null)
+                    continue;
+                var score = 0;
+                var n = go.name;
+                if (n.IndexOf("Stables", StringComparison.OrdinalIgnoreCase) >= 0)
+                    score += 10;
+                if (n.EndsWith("_2", StringComparison.OrdinalIgnoreCase)
+                    || n.EndsWith("_1", StringComparison.OrdinalIgnoreCase))
+                    score -= 50; // старый Inbox-дубликат — не предпочитать
+                if (n.Equals("Viu_Home_Old_Stables", StringComparison.OrdinalIgnoreCase))
+                    score += 30;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = go;
+                }
             }
-            return null;
+            return best;
         }
 
         static void ResolveHomeAssetPaths(GameObject home, out string assetSourceDir, out string metaAssetPath)
@@ -829,10 +848,25 @@ namespace Viu.Editor
             BootstrapOverlayScene(scenePath);
         }
 
+        /// <summary>
+        /// Открыть overlay-сцену с диска. Если она уже активна — не трогать:
+        /// повторный OpenScene затирал Hierarchy (импорт Old_Stables → снова Old_Stables_2).
+        /// </summary>
         static void OpenSceneForOverlay(string scenePath)
         {
-            if (!string.IsNullOrEmpty(scenePath) && File.Exists(scenePath))
-                EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            if (string.IsNullOrEmpty(scenePath) || !File.Exists(scenePath))
+                return;
+
+            var want = Path.GetFullPath(scenePath).Replace('\\', '/');
+            var active = SceneManager.GetActiveScene();
+            if (!string.IsNullOrEmpty(active.path))
+            {
+                var have = Path.GetFullPath(active.path).Replace('\\', '/');
+                if (string.Equals(want, have, StringComparison.OrdinalIgnoreCase))
+                    return; // уже открыта — сохранить несохранённый импорт дома
+            }
+
+            EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
         }
 
         /// <summary>
