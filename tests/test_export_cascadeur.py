@@ -18,6 +18,9 @@ def test_cascadeur_export_script_deform_only():
     assert "use_armature_deform_only=True" in CASCADUR_EXPORT_SCRIPT
     assert "WGT" in CASCADUR_EXPORT_SCRIPT
     assert "_is_widget_mesh" in CASCADUR_EXPORT_SCRIPT
+    assert "_deselect_all" in CASCADUR_EXPORT_SCRIPT
+    assert "_mesh_has_armature_weights" in CASCADUR_EXPORT_SCRIPT
+    assert "temp_override" in CASCADUR_EXPORT_SCRIPT
 
 
 def test_export_cascadeur_mock_runner(tmp_path):

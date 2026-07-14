@@ -23,8 +23,11 @@ import bpy, json, sys, traceback
 def emit(payload):
     print("{_MARK_BEGIN}" + json.dumps(payload, ensure_ascii=False) + "{_MARK_END}")
 
-WIDGET_PREFIXES = ("WGT", "WGT-", "VIS_", "VIS-", "MCH-", "MCH_", "ORG-", "ORG_")
+WIDGET_PREFIXES = ("WGT", "WGT-", "VIS_", "VIS-", "MCH-", "MCH_")
 WIDGET_NAMES = frozenset({{"Circle", "Sphere", "Cube", "Plane"}})
+
+def _bone_names(arm_obj):
+    return {{b.name for b in arm_obj.data.bones}}
 
 def _is_widget_mesh(obj, arm_obj):
     if obj.type != "MESH":
@@ -44,10 +47,21 @@ def _is_widget_mesh(obj, arm_obj):
         except Exception:
             vc = 0
         has_arm = any(m.type == "ARMATURE" for m in obj.modifiers)
-        if not has_arm and vc < 900:
+        if not has_arm and vc < 400:
             return True
         pb = obj.parent.name
-        if pb.startswith(("WGT", "MCH", "ORG")) and vc < 1200:
+        if pb.startswith(("WGT", "MCH")) and vc < 800:
+            return True
+    return False
+
+def _mesh_has_armature_weights(obj, arm_obj):
+    if not obj.data or not getattr(obj.data, "vertices", None):
+        return False
+    if not obj.vertex_groups:
+        return False
+    bones = _bone_names(arm_obj)
+    for vg in obj.vertex_groups:
+        if vg.name in bones:
             return True
     return False
 
@@ -59,12 +73,50 @@ def _mesh_for_character(obj, arm_obj):
     for mod in obj.modifiers:
         if mod.type == "ARMATURE" and mod.object == arm_obj:
             return True
+    if _mesh_has_armature_weights(obj, arm_obj):
+        return True
     par = obj.parent
     while par is not None:
         if par == arm_obj:
             return True
         par = par.parent
     return False
+
+def _armature_score(arm_obj):
+    deform = sum(1 for b in arm_obj.data.bones if b.use_deform)
+    meshes = sum(
+        1 for o in bpy.data.objects
+        if o.type == "MESH" and _mesh_for_character(o, arm_obj)
+    )
+    return deform * 10 + meshes
+
+def _pick_armature():
+    arms = [
+        o for o in bpy.data.objects
+        if o.type == "ARMATURE" and not getattr(o, "library", None)
+    ]
+    if not arms:
+        return None
+    if len(arms) == 1:
+        return arms[0]
+    return max(arms, key=_armature_score)
+
+def _deselect_all():
+    for obj in bpy.data.objects:
+        try:
+            obj.select_set(False)
+        except RuntimeError:
+            pass
+
+def _ensure_object_mode(arm_obj):
+    try:
+        view_layer = bpy.context.view_layer
+        view_layer.objects.active = arm_obj
+        with bpy.context.temp_override(active_object=arm_obj, object=arm_obj, edit_object=None):
+            if bpy.context.mode != "OBJECT":
+                bpy.ops.object.mode_set(mode="OBJECT")
+    except Exception:
+        pass
 
 try:
     argv = sys.argv
@@ -122,16 +174,7 @@ try:
         except RuntimeError:
             pass
 
-    active_arm = None
-    for obj in view_layer.objects:
-        if obj.type == "ARMATURE":
-            active_arm = obj
-            break
-    if active_arm is None:
-        for obj in bpy.data.objects:
-            if obj.type == "ARMATURE":
-                active_arm = obj
-                break
+    active_arm = _pick_armature()
 
     if active_arm is None:
         raise RuntimeError("В сцене нет ARMATURE")
@@ -144,7 +187,7 @@ try:
         else:
             non_deform += 1
 
-    bpy.ops.object.select_all(action="DESELECT")
+    _deselect_all()
     selected = []
     skipped = []
 
@@ -160,13 +203,18 @@ try:
     except RuntimeError as exc:
         raise RuntimeError(f"Не выбрать armature: {{exc}}") from exc
 
-    for obj in list(view_layer.objects):
+    for obj in list(bpy.data.objects):
         if obj.type != "MESH":
             continue
+        if getattr(obj, "library", None):
+            continue
         if not _mesh_for_character(obj, active_arm):
-            skipped.append(obj.name)
+            if not _is_widget_mesh(obj, active_arm):
+                skipped.append(obj.name)
             continue
         try:
+            if obj.name not in view_layer.objects:
+                scene.collection.objects.link(obj)
             if obj.hide_viewport or obj.hide_get():
                 obj.hide_set(False)
                 obj.hide_viewport = False
@@ -178,12 +226,18 @@ try:
     if len(selected) < 2:
         raise RuntimeError(
             "Нет skinned mesh для экспорта (только armature?). "
-            f"Пропущено mesh: {{skipped[:8]}}"
+            f"Arm={{active_arm.name}}, пропущено mesh: {{skipped[:12]}}"
         )
 
-    bpy.context.view_layer.objects.active = active_arm
+    _ensure_object_mode(active_arm)
+    view_layer.objects.active = active_arm
 
-    bpy.ops.export_scene.fbx(
+    with bpy.context.temp_override(
+        scene=scene,
+        view_layer=view_layer,
+        active_object=active_arm,
+    ):
+        bpy.ops.export_scene.fbx(
         filepath=out_path,
         use_selection=True,
         object_types={{"ARMATURE", "MESH"}},
@@ -193,7 +247,7 @@ try:
         add_leaf_bones=False,
         mesh_smooth_type="FACE",
         apply_scale_options="FBX_SCALE_ALL",
-    )
+        )
 
     emit({{
         "ok": True,
@@ -376,6 +430,8 @@ def batch_export_cascadeur_models(
     )
 
     lines.append(f"OK: {report.ok}, пропуск: {report.skipped}, ошибки: {report.failed}")
+    if report.failed and report.ok:
+        lines.insert(1, f"⚠ Частично: {report.ok} готово, {report.failed} не конвертировались.")
     for row in report.rows:
         mark = "✓" if row.ok and not row.skipped else ("~" if row.skipped else "✗")
         name = Path(row.source).name
@@ -383,5 +439,5 @@ def batch_export_cascadeur_models(
         lines.append(f"  {mark} {name} — {tail}")
     lines.append(f"Manifest: {manifest}")
 
-    ok = report.failed == 0 and (report.ok > 0 or report.skipped > 0)
+    ok = report.ok > 0
     return ok, "\n".join(lines), manifest
