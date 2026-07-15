@@ -82,8 +82,8 @@ full body filling frame, [ACTION + micro-motions for idle],
 | 2 | Wan 2.1 T2V/I2V + `comfy_run` / triple | **готово** (нужен API workflow JSON один раз) |
 | 2b | Промпт → Telegram → 3 ракурса | **готово** (`lab topic=comfy` / `comfy_mocap`) |
 | 2c | Выбор лучшего + last-frame seed + граф | **готово** (`comfy_clip_pick` / «Оценить клипы Comfy») |
-| 3 | `cascadeur_import_reference` + MoCap assist | Python / pending |
-| 4 | `cascadeur_export_clip` → Animations + catalog | |
+| 3 | `cascadeur_import_reference` + MoCap assist | **готово** (pending + Commands; кнопка MoCap — руками) |
+| 4 | `cascadeur_export_clip` → Animations + catalog | **готово** (Viu.ExportClip + регистрация) |
 | 5 | Last-frame → next seed image (I2V) | seed PNG пишется; I2V queue — next |
 | 6 | Transition graph в catalog + runtime | **поля enters_from/exits_to в catalog** |
 | 7 | NSFW queue (отдельный флаг) | |
@@ -97,7 +97,18 @@ comfy_status / comfy_ensure
 comfy_mocap action=auto  → режиссёр (catalog) выбирает кадр; home→Telegram, away→сама
 comfy_mocap action=…     → явный action; home→Telegram approve → 3× Lab/Refs
 comfy_triple action=…    → 3 ракурса без Telegram
+comfy_clip_pick          → лучший → kept/ + авто prepare MoCap pending
+cascadeur_import_reference / cascadeur_mocap_assist
+cascadeur_export_clip    → Animations/shanya_<slug>.fbx + catalog
 lab_start topic=comfy
+```
+
+После выбора клипа Вью кладёт pending и деплоит Commands:
+
+```
+Cascadeur: Reload scripts → Viu → ImportReference
+  → Timeline → Mocap → Viu → ExportClip
+Вью: cascadeur_export_clip  (подхватит FBX в каталог)
 ```
 
 Ракурсы на каждый промпт: **side / three_quarter / front**.  
@@ -113,9 +124,12 @@ U:\Anabarra\Library\Lab\Refs\          ← сырые кандидаты mp4
 U:\Anabarra\Library\Lab\Refs\kept\     ← выбранные для MoCap
 U:\Anabarra\Library\Lab\Refs\rejected\ ← отклонённые ракурсы
 U:\Anabarra\Library\Lab\Refs\seeds\    ← last-frame PNG → следующий клип
+U:\Anabarra\Library\Lab\Cascadeur\Refs\  ← staging копия для Reference
+U:\Anabarra\Library\Lab\Cascadeur\Frames\<slug>\ ← кадры Reference (укажи в диалоге)
 U:\Anabarra\Library\Lab\ComfyOut\      ← сырой выход Comfy
 U:\Viu\.viu\comfy_clips.json           ← оценки и связи
-U:\Anabarra\Animations\                ← финальные FBX
+U:\Viu\.viu\lab\mocap\pending_mocap.json ← текущий MoCap job
+U:\Anabarra\Animations\                ← финальные FBX (shanya_<slug>.fbx)
 ```
 
 ---

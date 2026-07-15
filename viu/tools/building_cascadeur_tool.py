@@ -28,11 +28,18 @@ class BuildingWorkflowTool(Tool):
 class CascadeurStatusTool(Tool):
     name = "cascadeur_status"
     description = (
-        "Пути Cascadeur Inbox/Export, проверка VIU_CASCADEUR_EXE. "
+        "Пути Cascadeur Inbox/Export, проверка VIU_CASCADEUR_EXE, "
+        "очередь MoCap (kept → Reference). "
         "FBX для правки анимаций перед Unity."
     )
     parameters: dict = {}
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         ok, text = cascadeur_status(ctx.config)
+        try:
+            from ..integrations.cascadeur.reference_mocap import mocap_status_text
+
+            text = text + "\n\n" + mocap_status_text(ctx.config)
+        except Exception:
+            pass
         return ToolResult(ok, text)

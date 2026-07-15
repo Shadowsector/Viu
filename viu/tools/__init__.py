@@ -59,6 +59,11 @@ from .cursor_handoff_tool import (
 from .cursor_inbox_tool import CursorInboxCompleteTool, CursorInboxPullTool
 from .overlay_playtest_tool import OverlayPlaytestTool
 from .building_cascadeur_tool import BuildingWorkflowTool, CascadeurStatusTool
+from .cascadeur_mocap_tool import (
+    CascadeurExportClipTool,
+    CascadeurImportReferenceTool,
+    CascadeurMocapAssistTool,
+)
 from .export_asset_tool import ExportUnityAssetTool
 from .lab_tool import LabRateTool, LabRunAllTool, LabStartTool, LabStatusTool, LabStepTool
 from .comfy_tool import (
@@ -144,6 +149,9 @@ def build_default_registry() -> ToolRegistry:
         OverlayPlaytestTool(),
         BuildingWorkflowTool(),
         CascadeurStatusTool(),
+        CascadeurImportReferenceTool(),
+        CascadeurMocapAssistTool(),
+        CascadeurExportClipTool(),
         LabStartTool(),
         LabStepTool(),
         LabRunAllTool(),

@@ -8,6 +8,8 @@
 |-------|------------|
 | `U:\Anabarra\Library\Cascadeur\Inbox\` | FBX положить сюда → открыть в Cascadeur |
 | `U:\Anabarra\Library\Lab\Models\CascadeurReady\` | **Чистые FBX** после batch export из Blender |
+| `U:\Anabarra\Library\Lab\Refs\kept\` | Comfy mp4 → Reference / MoCap |
+| `U:\Anabarra\Library\Lab\Cascadeur\Refs\` | Staging копия видео для Cascadeur |
 | `U:\Anabarra\Animations\` | Export из Cascadeur → «Обновить аниматор» в Unity |
 
 ## Настройка
@@ -31,9 +33,18 @@ VIU_CASCADEUR_SCRIPTS=   # только если ScriptsDir в settings.ini не
 U:\Cascadeur\App\Cascadeur\resources\scripts\python\commands\
 ```
 
-**Commands → Reload scripts** (не Reload commands!) → **Viu.Lab Import**.
+**Commands → Reload scripts** (не Reload commands!) → **Viu.Lab Import** (FBX) /
+**Viu.ImportReference** (видео) / **Viu.ExportClip** (FBX клип).
 
 Проверка: **cascadeur_status** в чате Вью.
+
+### Comfy → MoCap
+
+См. [COMFY_CASCADEUR_PIPELINE.md](./COMFY_CASCADEUR_PIPELINE.md).
+
+1. `comfy_mocap` → выбрать клип → авто `cascadeur_import_reference`
+2. Cascadeur: **Viu → ImportReference** → Timeline → **Mocap**
+3. `cascadeur_export_clip` → `Animations/shanya_<slug>.fbx` + catalog
 
 ## Workflow
 

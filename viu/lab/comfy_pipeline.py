@@ -362,7 +362,32 @@ def apply_clip_pick_decision(
         session.step = 6
     save_session(config, session)
     append_journal(config, COMFY_TOPIC, f"### Клип выбран\n\n{msg}")
-    return msg + "\nДальше — отчёт lab."
+    next_hint = (
+        "\nДальше MoCap: **cascadeur_import_reference** "
+        f"(clip_id={clip.id}, slug={clip.catalog_slug or clip.action}) "
+        "→ в Cascadeur Viu.ImportReference + Mocap → **cascadeur_export_clip**."
+    )
+    try:
+        from ..integrations.cascadeur.reference_mocap import prepare_import_reference
+
+        ok_ref, ref_msg, _ = prepare_import_reference(
+            config,
+            clip_id=clip.id,
+            slug=str(clip.catalog_slug or "") or "",
+        )
+        if ok_ref:
+            append_journal(config, COMFY_TOPIC, f"### MoCap pending\n\n{ref_msg[:1500]}")
+            next_hint = (
+                "\nMoCap pending уже подготовлен (staging + Commands).\n"
+                "Cascadeur: Reload scripts → **Viu → ImportReference** → Timeline → **Mocap** "
+                "→ потом **cascadeur_export_clip**.\n"
+                + ref_msg[:900]
+            )
+        else:
+            next_hint += f"\n(авто-prepare: {ref_msg[:200]})"
+    except Exception as exc:  # noqa: BLE001
+        next_hint += f"\n(авто-prepare MoCap: {exc})"
+    return msg + next_hint
 
 
 def step_report(config: Config, session: LabSession) -> StepResult:
@@ -378,7 +403,8 @@ def step_report(config: Config, session: LabSession) -> StepResult:
         f"seed last-frame: {seed or '—'}\n"
         f"файлы ({len(files)}):\n"
         + "\n".join(f"  • {f}" for f in files)
-        + "\n\nДальше: Cascadeur MoCap по kept mp4; next clip можно стартовать с seed PNG (I2V)."
+        + "\n\nДальше: cascadeur_import_reference → MoCap → cascadeur_export_clip; "
+        "next clip — с seed PNG (I2V)."
     )
     session.last_report = report
     session.status = "awaiting_rating"

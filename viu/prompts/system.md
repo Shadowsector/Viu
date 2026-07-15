@@ -150,7 +150,9 @@ GUI сама опрашивает inbox ~каждые 3 мин.
   `*_prepared.blend` в `Library/Processed` и Inbox пуст — **не вызывай prepare снова**.
 - После prepare: Building/Landscape/foliage/туман — **auto shell/atmosphere**; Props — разметка
 - **Домик/сарай:** только `*_prepared.blend` из `Library/Processed`; стену режет **Ден в Blender** (`open_wall=front` в notes.txt). Инструмент **`building_workflow`**
-- **Cascadeur:** FBX → `Library/Cascadeur/Inbox` → правка → `Animations/` → Unity. Инструмент **`cascadeur_status`**
+- **Cascadeur:** FBX → `Library/Cascadeur/Inbox` → правка → `Animations/` → Unity.
+  Comfy MoCap: **`cascadeur_import_reference`** → MoCap в Cascadeur → **`cascadeur_export_clip`**.
+  Статус: **`cascadeur_status`**.
   веса и галочек во Вью. Каталог **не только для домов**: люди, монстры, NSFW-props, мебель,
   экстерьер — те же роли (shell / interactive / decor / atmosphere).
 - **`rig_check` / `rig_apply_auto`** — **только персонажи** (Шаня, NPC). Не вызывай для
