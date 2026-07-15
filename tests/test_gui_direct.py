@@ -27,3 +27,31 @@ def test_natural_language_not_direct():
 def test_unknown_tool_not_direct():
     reg = build_default_registry()
     assert parse_direct_tool_command("not_a_real_tool", reg) is None
+
+
+def test_creature_scan_direct():
+    reg = build_default_registry()
+    parsed = parse_direct_tool_command("creature_catalog_scan", reg)
+    assert parsed == ("creature_catalog_scan", {})
+
+
+def test_creature_scan_doubled_typo():
+    """Ден иногда склеивает имя дважды без пробела."""
+    reg = build_default_registry()
+    parsed = parse_direct_tool_command(
+        "creature_catalog_scancreature_catalog_scan", reg
+    )
+    assert parsed is not None
+    assert parsed[0] == "creature_catalog_scan"
+
+
+def test_creature_scan_ru_alias():
+    reg = build_default_registry()
+    parsed = parse_direct_tool_command("сканируй существ", reg)
+    assert parsed == ("creature_catalog_scan", {})
+
+
+def test_creature_pending_ru_alias():
+    reg = build_default_registry()
+    parsed = parse_direct_tool_command("очередь существ", reg)
+    assert parsed == ("creature_catalog_show", {"mode": "pending"})

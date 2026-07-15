@@ -1084,6 +1084,31 @@ class ViuGUI:
         self._append("ты", f"[Telegram] {text}")
         self._record_llm_turn("user", text)
 
+        # Прямая команда tool — без Ollama (creature_catalog_scan и т.п.).
+        from .gui_direct import looks_like_missing_creature_tool, parse_direct_tool_command
+
+        parsed = parse_direct_tool_command(text, self.agent.registry)
+        if parsed is not None:
+            self._telegram_waiting_reply = False
+            name, args = parsed
+            self._run_tool(
+                name, args, label=text, echo_user=False, notify_telegram=True
+            )
+            return
+        if looks_like_missing_creature_tool(text) and self.agent.registry.get(
+            "creature_catalog_scan"
+        ) is None:
+            self._telegram_waiting_reply = False
+            msg = (
+                "Команда существ ещё не в этой сборке.\n"
+                "В окне Вью: «Обновить Вью» → перезапуск → снова "
+                "`creature_catalog_scan` (один раз)."
+            )
+            self._append("система", msg, tag="sys")
+            if self._telegram is not None:
+                self._telegram.notify_chat(msg)
+            return
+
         try:
             from .integrations.comfy.approval import try_handle_comfy_telegram
             from .lab.comfy_pipeline import COMFY_TOPIC
@@ -1152,38 +1177,61 @@ class ViuGUI:
 
     def _try_direct_tool_command(self, text: str) -> bool:
         """Имя инструмента + args — сразу tool.run, без «размышляет»."""
-        from .gui_direct import parse_direct_tool_command
+        from .gui_direct import looks_like_missing_creature_tool, parse_direct_tool_command
 
         parsed = parse_direct_tool_command(text, self.agent.registry)
         if parsed is None:
+            if looks_like_missing_creature_tool(text) and self.agent.registry.get(
+                "creature_catalog_scan"
+            ) is None:
+                self._append("ты", text)
+                self._append(
+                    "система",
+                    "Команда существ есть в новой сборке, но здесь её ещё нет.\n"
+                    "«Обновить Вью» (ветка cursor/viu-agent-core-65c2) → перезапуск окна.\n"
+                    "Потом снова: creature_catalog_scan  (один раз, без склейки).",
+                    tag="sys",
+                )
+                return True
             return False
         name, args = parsed
         raw = (text or "").strip()
         self._run_tool(name, args, label=raw)
         return True
 
-    def _run_tool(self, name: str, args: dict, label: str = "", *, echo_user: bool = True) -> None:
+    def _run_tool(
+        self,
+        name: str,
+        args: dict,
+        label: str = "",
+        *,
+        echo_user: bool = True,
+        notify_telegram: bool = False,
+    ) -> None:
         from .gui_busy import can_start_tool
 
         title = label or name
         if not can_start_tool(tool_busy=self._tool_busy):
-            self._append(
-                "система",
+            msg = (
                 f"Уже крутится lab/Comfy — «{title}» подождёт.\n"
-                "Чат и Telegram свободны; ComfyUI: http://127.0.0.1:8188",
-                tag="sys",
+                "Чат и Telegram свободны; ComfyUI: http://127.0.0.1:8188"
             )
+            self._append("система", msg, tag="sys")
+            if notify_telegram and self._telegram is not None:
+                self._telegram.notify_chat(msg)
             return
         if echo_user:
             self._append("ты", f"[{title}]")
         self._set_tool_busy(True)
         threading.Thread(
             target=self._tool_worker,
-            args=(name, args, title),
+            args=(name, args, title, notify_telegram),
             daemon=True,
         ).start()
 
-    def _tool_worker(self, name: str, args: dict, title: str) -> None:
+    def _tool_worker(
+        self, name: str, args: dict, title: str, notify_telegram: bool = False
+    ) -> None:
         try:
             from .lab.controller import LAB_TOOL_NAMES, lab_controller
 
@@ -1195,9 +1243,15 @@ class ViuGUI:
                 return
             result = tool.run(args, self.agent.ctx)
             prefix = "OK" if result.ok else "ОШИБКА"
-            self._queue.put(("tool", f"[{title}] {prefix}\n{result.content}"))
+            body = f"[{title}] {prefix}\n{result.content}"
+            self._queue.put(("tool", body))
+            if notify_telegram and self._telegram is not None:
+                self._telegram.notify_chat(body[:1500])
         except Exception as exc:  # noqa: BLE001
-            self._queue.put(("tool", f"[{title}] ОШИБКА\n{exc}"))
+            body = f"[{title}] ОШИБКА\n{exc}"
+            self._queue.put(("tool", body))
+            if notify_telegram and self._telegram is not None:
+                self._telegram.notify_error(body[:1500])
 
     def _run_agent_task(self, task: str, *, via_telegram: bool = False) -> None:
         if not via_telegram:
