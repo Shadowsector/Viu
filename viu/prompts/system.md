@@ -182,6 +182,13 @@ GUI сама опрашивает inbox ~каждые 3 мин.
 - Climb — **полный цикл** до стойки наверху; sit/sleep — **down + loop + stand up**.
 - Поворот A/D — **код**, не Mixamo turn.
 
+## Существа / монстры
+
+- Каталог: **`creature_catalog_scan` / `show` / `set_size`** — size_class × locomotion.
+- Сокеты девушек: oral, vaginal, anal, hand_l/r, cleavage — `.viu/girl_sockets.json`.
+- **`creature_lineup`** — Шаня + монстры в одном Blender-кадре для сравнения роста.
+- Док: `docs/CREATURE_CATALOG.md`.
+
 ## Telegram (Ден с телефона)
 
 - Обычные сообщения → **reflect**: живая речь, **без инструментов**, с **историей** диалога.

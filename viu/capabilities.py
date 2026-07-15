@@ -52,6 +52,7 @@ _DOC_SNIPPETS = (
     "CASCADEUR.md",
     "SHANYA_ANIMATIONS.md",
     "VIU_AUTOMATION_2026.md",
+    "CREATURE_CATALOG.md",
 )
 
 

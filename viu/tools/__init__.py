@@ -58,6 +58,12 @@ from .cursor_handoff_tool import (
 )
 from .cursor_inbox_tool import CursorInboxCompleteTool, CursorInboxPullTool
 from .overlay_playtest_tool import OverlayPlaytestTool
+from .creature_catalog_tool import (
+    CreatureCatalogScanTool,
+    CreatureCatalogSetSizeTool,
+    CreatureCatalogShowTool,
+    CreatureLineupTool,
+)
 from .building_cascadeur_tool import BuildingWorkflowTool, CascadeurStatusTool
 from .export_asset_tool import ExportUnityAssetTool
 from .lab_tool import LabRateTool, LabRunAllTool, LabStartTool, LabStatusTool, LabStepTool
@@ -144,6 +150,10 @@ def build_default_registry() -> ToolRegistry:
         OverlayPlaytestTool(),
         BuildingWorkflowTool(),
         CascadeurStatusTool(),
+        CreatureCatalogScanTool(),
+        CreatureCatalogShowTool(),
+        CreatureCatalogSetSizeTool(),
+        CreatureLineupTool(),
         LabStartTool(),
         LabStepTool(),
         LabRunAllTool(),

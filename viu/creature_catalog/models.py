@@ -1,0 +1,272 @@
+"""Каталог существ: размеры, locomotion, NSFW-сокеты, нормализация роста."""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+# --- Рост (бипеды / антропоморфы). В пределах класса допускается variance. ---
+
+SIZE_CLASSES: Dict[str, Dict[str, Any]] = {
+    "mini": {
+        "label_ru": "Мини (феи)",
+        "target_m": 0.30,
+        "min_m": 0.22,
+        "max_m": 0.40,
+        "notes": "faeries / tiny bipeds",
+    },
+    "small": {
+        "label_ru": "Маленький (гоблины)",
+        "target_m": 0.80,
+        "min_m": 0.60,
+        "max_m": 1.00,
+        "notes": "goblins / short humanoids",
+    },
+    "humanoid": {
+        "label_ru": "Нормальный (антропоморфы)",
+        "target_m": 1.75,
+        "min_m": 1.55,
+        "max_m": 1.95,
+        "notes": "160–190 см; рядом с Шаней",
+    },
+    "large": {
+        "label_ru": "Большой",
+        "target_m": 2.35,
+        "min_m": 2.10,
+        "max_m": 2.60,
+        "notes": "220–250 см",
+    },
+    "huge": {
+        "label_ru": "Огромный",
+        "target_m": 3.60,
+        "min_m": 2.80,
+        "max_m": 5.00,
+        "notes": "может схватить Шаню за талию одной рукой",
+    },
+}
+
+# Четвероногие — высота в холке / по bounds Y в A-pose.
+QUAD_SIZE_CLASSES: Dict[str, Dict[str, Any]] = {
+    "quad_mini": {
+        "label_ru": "Четвероногие малые",
+        "target_m": 0.30,
+        "min_m": 0.18,
+        "max_m": 0.45,
+        "notes": "куницы, барсуки",
+    },
+    "quad_med": {
+        "label_ru": "Четвероногие средние",
+        "target_m": 0.75,
+        "min_m": 0.50,
+        "max_m": 1.00,
+        "notes": "собака / волк",
+    },
+    "quad_large": {
+        "label_ru": "Четвероногие крупные",
+        "target_m": 1.60,
+        "min_m": 1.20,
+        "max_m": 2.00,
+        "notes": "лошадь / корова",
+    },
+}
+
+LOCOMOTION = (
+    "biped",
+    "quadruped",
+    "amorph",      # слизни
+    "tentacle",    # осьминоги / щупальца
+    "mimic",       # сундуки-мимики
+    "flyer",       # опционально
+    "unknown",
+)
+
+STATUS_NEW = "new"
+STATUS_SIZED = "sized"          # Ден выбрал class
+STATUS_NORMALIZED = "normalized"  # scale в Blender сделан
+STATUS_READY = "ready"          # фото + sidecar
+STATUS_SKIP = "skip"
+
+ASSET_SUFFIXES = {".fbx", ".blend", ".obj", ".glb", ".gltf"}
+
+# Сокеты на девушках (penetrator aim targets).
+GIRL_SOCKETS: Tuple[Dict[str, str], ...] = (
+    {"id": "socket_oral", "bone_hint": "head / jaw", "label_ru": "рот"},
+    {"id": "socket_vaginal", "bone_hint": "hips / pelvis", "label_ru": "вагина"},
+    {"id": "socket_anal", "bone_hint": "hips / pelvis rear", "label_ru": "анус"},
+    {"id": "socket_hand_l", "bone_hint": "hand.L", "label_ru": "левая ладонь"},
+    {"id": "socket_hand_r", "bone_hint": "hand.R", "label_ru": "правая ладонь"},
+    {"id": "socket_cleavage", "bone_hint": "spine / chest", "label_ru": "меж грудей"},
+)
+
+ALL_SIZE_IDS = tuple(list(SIZE_CLASSES.keys()) + list(QUAD_SIZE_CLASSES.keys()))
+
+
+def size_spec(size_id: str) -> Optional[Dict[str, Any]]:
+    if size_id in SIZE_CLASSES:
+        return SIZE_CLASSES[size_id]
+    if size_id in QUAD_SIZE_CLASSES:
+        return QUAD_SIZE_CLASSES[size_id]
+    return None
+
+
+def creature_id_for_path(path: Path) -> str:
+    norm = str(path.expanduser().resolve()).lower()
+    return hashlib.sha256(norm.encode("utf-8")).hexdigest()[:16]
+
+
+def suggest_size_from_name(name: str) -> List[str]:
+    """Кандидаты size_class по имени файла (Ден подтверждает)."""
+    low = (name or "").lower()
+    hits: List[str] = []
+    rules = (
+        (("fairy", "faerie", "pixie", "sprite", "фея"), "mini"),
+        (("goblin", "imp", "gnome", "гоблин", "карлик"), "small"),
+        (("orc", "troll", "ogre", "yeti", "тролль"), "large"),
+        (("dragon", "giant", "coloss", "титан", "гигант"), "huge"),
+        (("slime", "slug", "ooze", "слиз"), "humanoid"),  # рост потом руками
+        (("mimic", "chest", "сундук"), "humanoid"),
+        (("wolf", "dog", "hound", "волк", "собак"), "quad_med"),
+        (("horse", "cow", "deer", "лошад", "коров"), "quad_large"),
+        (("weasel", "badger", "ferret", "куниц", "барсук"), "quad_mini"),
+        (("octopus", "tentacle", "щупаль"), "humanoid"),
+    )
+    for keys, size in rules:
+        if any(k in low for k in keys):
+            if size not in hits:
+                hits.append(size)
+    return hits
+
+
+def suggest_locomotion_from_name(name: str) -> str:
+    low = (name or "").lower()
+    if any(k in low for k in ("slime", "slug", "ooze", "слиз", "blob")):
+        return "amorph"
+    if any(k in low for k in ("octopus", "tentacle", "щупаль", "kraken")):
+        return "tentacle"
+    if any(k in low for k in ("mimic", "chest", "сундук")):
+        return "mimic"
+    if any(
+        k in low
+        for k in (
+            "wolf",
+            "dog",
+            "horse",
+            "cow",
+            "quad",
+            "волк",
+            "лошад",
+            "spider",
+            "паук",
+        )
+    ):
+        return "quadruped"
+    if any(k in low for k in ("wing", "bat", "bird", "крыл", "летуч")):
+        return "flyer"
+    if any(k in low for k in ("goblin", "orc", "human", "girl", "woman", "man", "гоблин")):
+        return "biped"
+    return "unknown"
+
+
+def scale_factor_to_target(measured_m: float, target_m: float) -> float:
+    if measured_m <= 1e-6 or target_m <= 0:
+        return 1.0
+    return target_m / measured_m
+
+
+def height_in_class_range(height_m: float, size_id: str) -> bool:
+    spec = size_spec(size_id)
+    if not spec:
+        return False
+    return float(spec["min_m"]) <= height_m <= float(spec["max_m"])
+
+
+def slugify(name: str) -> str:
+    s = re.sub(r"[^a-zA-Z0-9_\-]+", "_", (name or "").strip().lower())
+    return re.sub(r"_+", "_", s).strip("_")[:64] or "creature"
+
+
+@dataclass
+class CreatureEntry:
+    """Одна модель существа в каталоге."""
+
+    id: str
+    path: str
+    name: str
+    slug: str = ""
+    size_class: str = ""                 # основной класс
+    size_alt: List[str] = field(default_factory=list)  # dual (малый+большой гоблин)
+    locomotion: str = "unknown"
+    status: str = STATUS_NEW
+    measured_height_m: float = 0.0
+    target_height_m: float = 0.0
+    scale_applied: float = 1.0
+    textures_external: bool = False
+    textures_dir: str = ""
+    nsfw_capable: bool = False
+    genital_rig: str = ""                # none | pending | attached
+    flaccid_default: bool = True
+    prepared_path: str = ""
+    photo_front: str = ""
+    photo_side: str = ""
+    notes: str = ""
+    reviewed: bool = False
+    tags: List[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.slug:
+            self.slug = slugify(self.name)
+        if self.size_class and not self.target_height_m:
+            spec = size_spec(self.size_class)
+            if spec:
+                self.target_height_m = float(spec["target_m"])
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(d: Dict[str, Any]) -> "CreatureEntry":
+        e = CreatureEntry(
+            id=str(d.get("id") or ""),
+            path=str(d.get("path") or ""),
+            name=str(d.get("name") or ""),
+            slug=str(d.get("slug") or ""),
+            size_class=str(d.get("size_class") or ""),
+            size_alt=list(d.get("size_alt") or []),
+            locomotion=str(d.get("locomotion") or "unknown"),
+            status=str(d.get("status") or STATUS_NEW),
+            measured_height_m=float(d.get("measured_height_m") or 0),
+            target_height_m=float(d.get("target_height_m") or 0),
+            scale_applied=float(d.get("scale_applied") or 1),
+            textures_external=bool(d.get("textures_external")),
+            textures_dir=str(d.get("textures_dir") or ""),
+            nsfw_capable=bool(d.get("nsfw_capable")),
+            genital_rig=str(d.get("genital_rig") or ""),
+            flaccid_default=bool(d.get("flaccid_default", True)),
+            prepared_path=str(d.get("prepared_path") or ""),
+            photo_front=str(d.get("photo_front") or ""),
+            photo_side=str(d.get("photo_side") or ""),
+            notes=str(d.get("notes") or ""),
+            reviewed=bool(d.get("reviewed")),
+            tags=list(d.get("tags") or []),
+        )
+        if not e.id and e.path:
+            e.id = creature_id_for_path(Path(e.path))
+        return e
+
+    def anim_bucket(self) -> str:
+        """Ключ набора анимаций: size × locomotion."""
+        size = self.size_class or "unset"
+        loco = self.locomotion or "unknown"
+        return f"{size}__{loco}"
+
+    def render_line(self) -> str:
+        size = self.size_class or "?"
+        alt = f"+{','.join(self.size_alt)}" if self.size_alt else ""
+        h = f"{self.measured_height_m:.2f}→{self.target_height_m:.2f}m" if self.target_height_m else "—"
+        return (
+            f"[{self.status}] {self.name} | {size}{alt} | {self.locomotion} | "
+            f"{h} | {Path(self.path).name}"
+        )
