@@ -32,15 +32,22 @@ class OpenAICompatibleLLM(LLMProvider):
         self.temperature = temperature
         self.timeout = timeout
 
-    def complete(self, messages: List[Message], *, temperature: float | None = None) -> str:
+    def complete(
+        self,
+        messages: List[Message],
+        *,
+        temperature: float | None = None,
+        model: str | None = None,
+    ) -> str:
         if not self.api_key:
             raise RuntimeError(
                 "Не задан VIU_API_KEY. Укажите ключ или используйте VIU_PROVIDER=mock."
             )
         url = f"{self.base_url}/chat/completions"
         temp = self.temperature if temperature is None else temperature
+        use_model = (model or self.model or "").strip() or self.model
         payload = {
-            "model": self.model,
+            "model": use_model,
             "messages": messages,
             "temperature": temp,
         }
@@ -59,7 +66,7 @@ class OpenAICompatibleLLM(LLMProvider):
                 body = json.loads(resp.read().decode("utf-8"))
         except TimeoutError as exc:
             raise RuntimeError(
-                f"LLM не успела за {int(self.timeout)}с (модель={self.model}). "
+                f"LLM не успела за {int(self.timeout)}с (модель={use_model}). "
                 f"Ollama, скорее всего, жива, но думает долго. "
                 f"Увеличь VIU_LLM_TIMEOUT в .env или возьми модель полегче."
             ) from exc
@@ -70,7 +77,7 @@ class OpenAICompatibleLLM(LLMProvider):
             reason = str(exc.reason)
             if "timed out" in reason.lower() or "timeout" in reason.lower():
                 raise RuntimeError(
-                    f"LLM не успела за {int(self.timeout)}с (модель={self.model}). "
+                    f"LLM не успела за {int(self.timeout)}с (модель={use_model}). "
                     f"Увеличь VIU_LLM_TIMEOUT в .env (сейчас {int(self.timeout)})."
                 ) from exc
             raise RuntimeError(

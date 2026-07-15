@@ -54,7 +54,7 @@ class DiagnoseLLM(LLMProvider):
     def __init__(self) -> None:
         self.tools: list[str] = []
 
-    def complete(self, messages, *, temperature=None):
+    def complete(self, messages, *, temperature=None, model=None):
         sys = messages[0]["content"] if messages else ""
         user = messages[-1]["content"] if messages else ""
         if "github_diagnose" in sys and "github" in user.lower():
@@ -97,7 +97,7 @@ class HandoffLLM(LLMProvider):
     def __init__(self) -> None:
         self.tools: list[str] = []
 
-    def complete(self, messages, *, temperature=None):
+    def complete(self, messages, *, temperature=None, model=None):
         sys = messages[0]["content"] if messages else ""
         if "cursor_handoff" in sys or "Доступные инструменты" in sys:
             self.tools.append("cursor_handoff_with_logs")

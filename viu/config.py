@@ -50,6 +50,10 @@ class Config:
 
     # Параметры OpenAI-совместимого API.
     model: str = field(default_factory=lambda: _env("VIU_MODEL", "gpt-4o-mini"))
+    # Роли (пусто = VIU_MODEL). Ollama: разные теги, переключение на лету по запросу.
+    model_reflect: str = field(default_factory=lambda: _env("VIU_MODEL_REFLECT", ""))
+    model_work: str = field(default_factory=lambda: _env("VIU_MODEL_WORK", ""))
+    model_code: str = field(default_factory=lambda: _env("VIU_MODEL_CODE", ""))
     api_key: str = field(default_factory=lambda: _env("VIU_API_KEY", ""))
     base_url: str = field(
         default_factory=lambda: _env("VIU_BASE_URL", "https://api.openai.com/v1")
