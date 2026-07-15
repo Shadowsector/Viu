@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 from ..config import Config
 from .models import (
@@ -35,6 +35,11 @@ def scan_creatures_inbox(config: Config) -> Tuple[int, int, str]:
     """Добавить новые файлы из Creatures/Inbox (+ опционально Lab/Models/Inbox).
 
     Returns: (added, total, message)
+
+    Важно: считается **каждый файл** (.fbx/.blend/.glb…), рекурсивно.
+    Одна папка с goblin.fbx + goblin.blend + LOD = три записи — поэтому
+    «в проводнике 66 папок/моделей», а в каталоге может быть ~100+.
+    Также сканируется Lab/Models/Inbox, если он есть.
     """
     store = CreatureCatalogStore(creature_catalog_path(config)).load()
     inbox = creatures_inbox_dir(config)
@@ -48,9 +53,14 @@ def scan_creatures_inbox(config: Config) -> Tuple[int, int, str]:
         pass
 
     added = 0
+    per_root_added: Dict[str, int] = {}
+    per_root_seen: Dict[str, int] = {}
     seen_paths = {Path(e.path).resolve() for e in store.all() if e.path}
 
     for root in roots:
+        root_key = str(root)
+        per_root_added.setdefault(root_key, 0)
+        per_root_seen.setdefault(root_key, 0)
         if not root.is_dir():
             continue
         for path in sorted(root.rglob("*")):
@@ -65,6 +75,7 @@ def scan_creatures_inbox(config: Config) -> Tuple[int, int, str]:
                 resolved = path.resolve()
             except OSError:
                 continue
+            per_root_seen[root_key] = per_root_seen.get(root_key, 0) + 1
             if resolved in seen_paths:
                 continue
             cid = creature_id_for_path(resolved)
@@ -91,11 +102,21 @@ def scan_creatures_inbox(config: Config) -> Tuple[int, int, str]:
             store.upsert(entry)
             seen_paths.add(resolved)
             added += 1
+            per_root_added[root_key] = per_root_added.get(root_key, 0) + 1
 
     store.save()
+    breakdown = []
+    for root in roots:
+        rk = str(root)
+        breakdown.append(
+            f"  • {rk}\n"
+            f"    файлов-кандидатов: {per_root_seen.get(rk, 0)}, "
+            f"+новых в этот скан: {per_root_added.get(rk, 0)}"
+        )
     msg = (
         f"Скан существ: +{added} новых. Всего в каталоге: {len(store.all())}.\n"
-        f"Inbox: {inbox}\n"
+        f"Считается каждый .fbx/.blend/.glb/.obj (рекурсивно), не «папка = 1 модель».\n"
+        f"Откуда брали:\n" + "\n".join(breakdown) + "\n"
         f"{store.summary_text()}"
     )
     return added, len(store.all()), msg

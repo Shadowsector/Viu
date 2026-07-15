@@ -208,6 +208,10 @@ class CreatureEntry:
     nsfw_capable: bool = False
     genital_rig: str = ""                # none | pending | attached
     flaccid_default: bool = True
+    # Не трогать при bake/normalize: уши, хвосты, гениталии и пр. часто живут
+    # в shape keys / morph targets (в т.ч. «спрятанный» орган → вытянуть morph'ом).
+    preserve_morphs: bool = True
+    morph_notes: str = ""                # что нашли глазами: penis_reveal, ears, tail…
     prepared_path: str = ""
     photo_front: str = ""
     photo_side: str = ""
@@ -245,6 +249,8 @@ class CreatureEntry:
             nsfw_capable=bool(d.get("nsfw_capable")),
             genital_rig=str(d.get("genital_rig") or ""),
             flaccid_default=bool(d.get("flaccid_default", True)),
+            preserve_morphs=bool(d.get("preserve_morphs", True)),
+            morph_notes=str(d.get("morph_notes") or ""),
             prepared_path=str(d.get("prepared_path") or ""),
             photo_front=str(d.get("photo_front") or ""),
             photo_side=str(d.get("photo_side") or ""),

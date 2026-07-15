@@ -130,9 +130,15 @@ def build_lineup_job(
 
 
 # Исполняется внутри Blender (bpy).
+# Политика: только импорт + scale корня + расстановка.
+# НЕ apply modifiers, НЕ bake shape keys, НЕ трогать morphs ушей/хвостов/гениталий.
 _LINEUP_BLENDER_SCRIPT = textwrap.dedent(
     r'''
-"""Viu — lineup существ рядом с Шаней (сравнение роста)."""
+"""Viu — lineup существ рядом с Шаней (сравнение роста).
+
+Только импорт + scale корня + расстановка.
+Не apply modifiers / не bake shape keys — morphs (уши, хвосты, гениталии) сохраняем.
+"""
 import json
 import math
 import sys
