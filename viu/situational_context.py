@@ -50,6 +50,16 @@ def build_reflect_notes(config: Config) -> str:
     parts: list[str] = []
 
     try:
+        from .capabilities import CAPABILITY_BRIEF, docs_vector_brief
+
+        parts.append(CAPABILITY_BRIEF)
+        docs = docs_vector_brief(max_chars=1600)
+        if docs:
+            parts.append(docs)
+    except OSError:
+        pass
+
+    try:
         from .integrations.unity.process import unity_process_running
 
         if unity_process_running():

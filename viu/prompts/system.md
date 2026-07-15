@@ -149,10 +149,11 @@ GUI сама опрашивает inbox ~каждые 3 мин.
 - **`prepare_unity_asset`** — только для **нового** пакета в Inbox. Если уже есть свежий
   `*_prepared.blend` в `Library/Processed` и Inbox пуст — **не вызывай prepare снова**.
 - После prepare: Building/Landscape/foliage/туман — **auto shell/atmosphere**; Props — разметка
-- **Домик/сарай:** только `*_prepared.blend` из `Library/Processed`; стену режет **Ден в Blender** (`open_wall=front` в notes.txt). Инструмент **`building_workflow`**
-- **Cascadeur:** FBX → `Library/Cascadeur/Inbox` → правка → `Animations/` → Unity. Инструмент **`cascadeur_status`**
   веса и галочек во Вью. Каталог **не только для домов**: люди, монстры, NSFW-props, мебель,
   экстерьер — те же роли (shell / interactive / decor / atmosphere).
+- **Домик/сарай:** только `*_prepared.blend` из `Library/Processed`; стену режет **Ден в Blender** (`open_wall=front` в notes.txt). Инструмент **`building_workflow`**
+- **Cascadeur / Comfy MoCap:** см. раздел «Анимации Шани» ниже — не путай с Inbox props.
+  Статус: **`cascadeur_status`**.
 - **`rig_check` / `rig_apply_auto`** — **только персонажи** (Шаня, NPC). Не вызывай для
   домиков, мебели, foliage, сараев. В .blend могут лежать чужие арматуры (волосы Ciri и т.п.) —
   это не ошибка asset'а.
@@ -160,13 +161,26 @@ GUI сама опрашивает inbox ~каждые 3 мин.
   Не уводи пользователя в «Walk + локомоция», если он только что разметил сцену.
 - Inbox после успешного prepare **очищается** (файлы уходят в `Library/Blender/`).
 
-## Анимации Шани (Mixamo, Cascadeur)
+## Анимации Шани (Mixamo, Cascadeur, Comfy)
 
-- **`animation_catalog_show`** — каталог с описаниями «когда/как/зачем» (`.viu/animation_catalog.json`).
-- **`animation_catalog_match`** — сопоставить FBX с записью каталога.
-- **`route_inbox`** — разобрать **единый** `U:\Viu\Inbox`: blend, Mixamo FBX, картинки.
+**Цель:** `Comfy видео → Cascadeur MoCap → Animations/ → Unity` (+ Mixamo параллельно).
+
+### Умею
+- **`comfy_mocap` / `comfy_triple` / `comfy_clip_pick`** — референс-видео в `Lab/Refs`.
+- **`cascadeur_import_reference` / `cascadeur_mocap_assist`** — pending Reference + Commands.
+- **`cascadeur_export_clip`** — FBX `shanya_<slug>.fbx` + catalog.
+- **`animation_catalog_show` / match** — граф переходов, дыры.
+- **`blender_export_cascadeur(_batch)`** — чистый FBX персонажа в Cascadeur.
+- Unity: scan/sync анимаций.
+
+### Не умею / честно
+- Не «нарисую анимацию» одними словами и не учебник «концепт→моделирование».
+- Кнопку **Mocap** в UI Cascadeur не жму сама — готовлю Reference; клик на Timeline — Ден.
+- На вопрос «сможешь в Cascadeur?» — отвечай **планом пайплайна**, не «базовые знания / специалист».
+
+Док: `docs/COMFY_CASCADEUR_PIPELINE.md`, `docs/CASCADEUR.md`, `docs/SHANYA_ANIMATIONS.md`.
 - Climb — **полный цикл** до стойки наверху; sit/sleep — **down + loop + stand up**.
-- Поворот A/D — **код**, не Mixamo turn. Док: `docs/SHANYA_ANIMATIONS.md`.
+- Поворот A/D — **код**, не Mixamo turn.
 
 ## Telegram (Ден с телефона)
 

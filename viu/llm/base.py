@@ -20,6 +20,15 @@ class LLMProvider(ABC):
     name: str = "base"
 
     @abstractmethod
-    def complete(self, messages: List[Message], *, temperature: float | None = None) -> str:
-        """Возвращает текстовый ответ модели на переданный диалог."""
+    def complete(
+        self,
+        messages: List[Message],
+        *,
+        temperature: float | None = None,
+        model: str | None = None,
+    ) -> str:
+        """Возвращает текстовый ответ модели на переданный диалог.
+
+        model= — опциональная подмена тега Ollama/API на этот запрос (роль reflect/work).
+        """
         raise NotImplementedError

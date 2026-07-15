@@ -139,6 +139,11 @@ class Agent:
         except OSError:
             pass
 
+    def _model_for(self, role: str) -> str | None:
+        from .llm_roles import resolve_model
+
+        return resolve_model(self.config, role)  # type: ignore[arg-type]
+
     def run(
         self,
         task: str,
@@ -157,7 +162,14 @@ class Agent:
             {"role": "user", "content": user},
         ]
         result = RunResult(final="", completed=False, chat_only=chat_only)
-        self._log(f"TASK[work]: {task[:200]}")
+        from .llm_roles import guess_work_role
+
+        work_role = guess_work_role(task)
+        work_model = self._model_for(work_role)
+        self._log(
+            f"TASK[work/{work_role}]: {task[:200]}"
+            + (f" model={work_model}" if work_model else "")
+        )
         voice_retries = 0
 
         # Защита от зацикливания: считаем повторы одинаковых вызовов (tool+args).
@@ -166,7 +178,7 @@ class Agent:
         REPEAT_STOP_AT = 3   # на 3-м — принудительно останавливаемся
 
         for _ in range(limit):
-            raw = self.llm.complete(messages)
+            raw = self.llm.complete(messages, model=work_model)
             parsed = extract_json(raw)
 
             if parsed is None:
@@ -346,7 +358,7 @@ class Agent:
         result = RunResult(final="", completed=False, chat_only=True)
         self._log(f"CHAT: {task}")
 
-        raw = self.llm.complete(messages)
+        raw = self.llm.complete(messages, model=self._model_for("reflect"))
         parsed = extract_json(raw)
         if parsed and "final" in parsed:
             result.final = str(parsed["final"]).strip()
@@ -432,8 +444,9 @@ class Agent:
             messages.extend(hist[-16:])
         messages.append({"role": "user", "content": user_text})
 
+        reflect_model = self._model_for("reflect")
         for _ in range(3):
-            raw = self.llm.complete(messages, temperature=temp)
+            raw = self.llm.complete(messages, temperature=temp, model=reflect_model)
             parsed = extract_json(raw)
 
             if parsed and "final" in parsed and "action" not in parsed:
@@ -540,7 +553,9 @@ class Agent:
         self._log("REFLECT_HEARTBEAT")
 
         for _ in range(2):
-            raw = self.llm.complete(messages, temperature=temp)
+            raw = self.llm.complete(
+                messages, temperature=temp, model=self._model_for("reflect")
+            )
             parsed = extract_json(raw)
             if parsed and "final" in parsed:
                 result.final = str(parsed["final"]).strip()

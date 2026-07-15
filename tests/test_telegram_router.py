@@ -15,7 +15,7 @@ class MockLLM(LLMProvider):
     def __init__(self, response: str) -> None:
         self._response = response
 
-    def complete(self, messages, *, temperature=None):
+    def complete(self, messages, *, temperature=None, model=None):
         return self._response
 
 
@@ -30,7 +30,7 @@ class ReflectLLM(LLMProvider):
         self.calls = 0
         self.last_messages = None
 
-    def complete(self, messages, *, temperature=None):
+    def complete(self, messages, *, temperature=None, model=None):
         self.calls += 1
         self.last_messages = messages
         return json.dumps(
@@ -45,7 +45,7 @@ class RetrySpeakLLM(LLMProvider):
     def __init__(self) -> None:
         self.calls = 0
 
-    def complete(self, messages, *, temperature=None):
+    def complete(self, messages, *, temperature=None, model=None):
         self.calls += 1
         if self.calls == 1:
             return '{"thought":"хм","final":"Не стесняйся спрашивать!"}'
