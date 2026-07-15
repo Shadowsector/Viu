@@ -92,6 +92,19 @@ class CreatureCatalogStore:
         self._items[e.id] = e
         return e
 
+    def mark_skip(self, cid: str, reason: str = "") -> Optional[CreatureEntry]:
+        from .models import STATUS_SKIP
+
+        e = self._items.get(cid)
+        if e is None:
+            return None
+        e.status = STATUS_SKIP
+        e.reviewed = True
+        if reason:
+            e.notes = ((e.notes or "") + "\n" + reason).strip()
+        self._items[e.id] = e
+        return e
+
     def summary_text(self) -> str:
         total = len(self._items)
         pending = len(self.pending())

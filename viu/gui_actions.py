@@ -64,6 +64,13 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Что Вью отложила, пока тебя не было.",
     ),
     GuiAction(
+        "creature_catalog",
+        "Разметить существ",
+        "Главное",
+        tool="__creature_catalog__",
+        hint="Скан Inbox → авто по именам → кнопки размеров (гоблин/волк/…).",
+    ),
+    GuiAction(
         "send_logs",
         "Что сломалось?",
         "Главное",

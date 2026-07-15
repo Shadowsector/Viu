@@ -12,6 +12,7 @@ from ..creature_catalog import (
     list_size_classes_text,
     scan_creatures_inbox,
 )
+from ..creature_catalog.auto_size import auto_apply_size_guesses
 from ..creature_catalog.models import ALL_SIZE_IDS, LOCOMOTION
 from .base import AgentContext, Tool, ToolResult
 
@@ -20,14 +21,55 @@ class CreatureCatalogScanTool(Tool):
     name = "creature_catalog_scan"
     description = (
         "Сканировать Lab/Creatures/Inbox (+ Lab/Models/Inbox) → creature_catalog.json. "
-        "Новые модели без size_class; подсказки по имени в notes/tags."
+        "Потом авторазметка уверенных имён. Основной UX — кнопка «Разметить существ»."
     )
     parameters: dict = {}
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         _a, _t, msg = scan_creatures_inbox(ctx.config)
         ensure_girl_sockets_doc(ctx.config)
-        return ToolResult(True, msg + "\n\n" + list_size_classes_text())
+        store = CreatureCatalogStore(creature_catalog_path(ctx.config)).load()
+        auto_n, auto_lines = auto_apply_size_guesses(store)
+        auto_block = ""
+        if auto_n:
+            auto_block = (
+                f"\nАвто по имени: +{auto_n}\n" + "\n".join(auto_lines[:25])
+            )
+            if auto_n > 25:
+                auto_block += f"\n  … +{auto_n - 25}"
+        pending = len(store.pending())
+        hint = (
+            "\n\nДальше: в окне Вью слева кнопка «Разметить существ» "
+            f"(кнопки размеров, без команд). Ещё ждут разметки: {pending}."
+        )
+        return ToolResult(
+            True,
+            msg + auto_block + hint + "\n\n" + list_size_classes_text(),
+        )
+
+
+class CreatureCatalogAutoSizeTool(Tool):
+    name = "creature_catalog_auto_size"
+    description = (
+        "Автопроставить size_class там, где по имени файла ровно одна догадка "
+        "(goblin→small, wolf→quad_med…). Остальное — GUI «Разметить существ»."
+    )
+    parameters: dict = {}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        store = CreatureCatalogStore(creature_catalog_path(ctx.config)).load()
+        n, lines = auto_apply_size_guesses(store)
+        pending = len(store.pending())
+        if n == 0:
+            return ToolResult(
+                True,
+                f"Авто: 0 (нет уверенных имён). Ждут GUI: {pending}.\n"
+                "Открой «Разметить существ» в боковой панели.",
+            )
+        return ToolResult(
+            True,
+            f"Авто: +{n}. Ещё ждут: {pending}.\n" + "\n".join(lines[:40]),
+        )
 
 
 class CreatureCatalogShowTool(Tool):
@@ -159,3 +201,12 @@ class CreatureLineupTool(Tool):
             spacing_m=spacing,
         )
         return ToolResult(ok, msg)
+
+
+__all__ = [
+    "CreatureCatalogScanTool",
+    "CreatureCatalogShowTool",
+    "CreatureCatalogSetSizeTool",
+    "CreatureCatalogAutoSizeTool",
+    "CreatureLineupTool",
+]

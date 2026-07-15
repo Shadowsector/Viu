@@ -618,6 +618,9 @@ class ViuGUI:
         if action.tool == "__prop_catalog__":
             self._open_prop_catalog()
             return
+        if action.tool == "__creature_catalog__":
+            self._open_creature_catalog()
+            return
         if action.tool == "__next_step__":
             self._run_next_step()
             return
@@ -910,6 +913,62 @@ class ViuGUI:
 
         self.root.after(0, open_win)
 
+    def _open_creature_catalog(self) -> None:
+        """Скан Inbox → авто по именам → окно кнопок размеров."""
+        from .creature_catalog import (
+            CreatureCatalogStore,
+            auto_apply_size_guesses,
+            creature_catalog_path,
+            ensure_girl_sockets_doc,
+            open_creature_catalog_review,
+            scan_creatures_inbox,
+        )
+
+        cfg = self.agent.config
+        self._append("система", "Сканирую существ и открываю разметку…", tag="sys")
+
+        def open_win() -> None:
+            try:
+                added, total, scan_msg = scan_creatures_inbox(cfg)
+                ensure_girl_sockets_doc(cfg)
+                store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+                auto_n, auto_lines = auto_apply_size_guesses(store)
+                parts = [scan_msg.split("\n")[0]]
+                if auto_n:
+                    parts.append(f"Авто по имени: +{auto_n}")
+                    parts.extend(auto_lines[:8])
+                pending = len(store.pending())
+                parts.append(f"В очереди на кнопки: {pending} (всего в каталоге {total}).")
+                self._append("система", "\n".join(parts), tag="sys")
+
+                def on_finished() -> None:
+                    store2 = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+                    self._append(
+                        "система",
+                        "Разметка существ закрыта.\n" + store2.summary_text(),
+                        tag="sys",
+                    )
+                    self._refresh_action_visibility()
+
+                if pending == 0 and added == 0 and total == 0:
+                    self._append(
+                        "система",
+                        "Inbox пуст. Положи модели в "
+                        "Lab\\Creatures\\Inbox и снова «Разметить существ».",
+                        tag="sys",
+                    )
+                    return
+
+                open_creature_catalog_review(
+                    self.root,
+                    store,
+                    on_finished=on_finished,
+                )
+            except Exception as exc:
+                self._append("система", f"Существа: {exc}", tag="err")
+
+        self.root.after(0, open_win)
+
     def _open_animation_review(self) -> None:
         from .animation_catalog import AnimationCatalogStore, animation_catalog_path
         from .animation_catalog.review_gui import open_animation_review
@@ -1087,6 +1146,27 @@ class ViuGUI:
         # Прямая команда tool — без Ollama (creature_catalog_scan и т.п.).
         from .gui_direct import looks_like_missing_creature_tool, parse_direct_tool_command
 
+        raw_low = " ".join((text or "").strip().lower().split())
+        if raw_low in (
+            "разметить существ",
+            "разметка существ",
+            "размечай существ",
+            "существа разметить",
+        ):
+            self._telegram_waiting_reply = False
+            # GUI только на ПК — в Telegram скажем открыть кнопку.
+            msg = (
+                "Разметка существ — кнопками в окне Вью:\n"
+                "слева «Разметить существ» (или на ПК в чате Вью то же слово).\n"
+                "Из Telegram могу только скан/авто: напиши «сканируй существ»."
+            )
+            self._append("система", msg, tag="sys")
+            if self._telegram is not None:
+                self._telegram.notify_chat(msg)
+            # на всякий случай открыть окно, если Вью на этом же ПК
+            self.root.after(0, self._open_creature_catalog)
+            return
+
         parsed = parse_direct_tool_command(text, self.agent.registry)
         if parsed is not None:
             self._telegram_waiting_reply = False
@@ -1178,6 +1258,17 @@ class ViuGUI:
     def _try_direct_tool_command(self, text: str) -> bool:
         """Имя инструмента + args — сразу tool.run, без «размышляет»."""
         from .gui_direct import looks_like_missing_creature_tool, parse_direct_tool_command
+
+        raw_low = " ".join((text or "").strip().lower().split())
+        if raw_low in (
+            "разметить существ",
+            "разметка существ",
+            "размечай существ",
+            "существа разметить",
+        ):
+            self._append("ты", text)
+            self._open_creature_catalog()
+            return True
 
         parsed = parse_direct_tool_command(text, self.agent.registry)
         if parsed is None:

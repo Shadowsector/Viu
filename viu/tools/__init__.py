@@ -59,6 +59,7 @@ from .cursor_handoff_tool import (
 from .cursor_inbox_tool import CursorInboxCompleteTool, CursorInboxPullTool
 from .overlay_playtest_tool import OverlayPlaytestTool
 from .creature_catalog_tool import (
+    CreatureCatalogAutoSizeTool,
     CreatureCatalogScanTool,
     CreatureCatalogSetSizeTool,
     CreatureCatalogShowTool,
@@ -153,6 +154,7 @@ def build_default_registry() -> ToolRegistry:
         CreatureCatalogScanTool(),
         CreatureCatalogShowTool(),
         CreatureCatalogSetSizeTool(),
+        CreatureCatalogAutoSizeTool(),
         CreatureLineupTool(),
         LabStartTool(),
         LabStepTool(),

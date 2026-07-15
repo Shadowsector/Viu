@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from viu.config import Config
+from viu.creature_catalog.auto_size import apply_size_to_same_stem, auto_apply_size_guesses
 from viu.creature_catalog.lineup import build_lineup_job
 from viu.creature_catalog.models import (
     GIRL_SOCKETS,
-    CreatureEntry,
     suggest_locomotion_from_name,
     suggest_size_from_name,
 )
@@ -77,6 +77,39 @@ def test_scan_and_set_size(tmp_path, monkeypatch):
     assert sock.is_file()
 
 
+def test_auto_apply_and_same_stem(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, monkeypatch)
+    inbox = creatures_inbox_dir(cfg)
+    (inbox / "DireWolf.fbx").write_bytes(b"fbx")
+    (inbox / "DireWolf.blend").write_bytes(b"blend")
+    (inbox / "MysteryThing.fbx").write_bytes(b"x")
+    scan_creatures_inbox(cfg)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    assert len(store.pending()) == 3
+
+    n, lines = auto_apply_size_guesses(store)
+    assert n >= 1
+    assert any("DireWolf" in ln for ln in lines)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    wolves = [e for e in store.all() if "DireWolf" in e.name]
+    # auto marks both if both pending with clear name — or first then sibling
+    sized_wolves = [e for e in wolves if e.size_class]
+    assert sized_wolves
+    assert all(e.size_class == "quad_med" for e in sized_wolves)
+
+    # mystery still pending
+    mystery = next(e for e in store.all() if "Mystery" in e.name)
+    assert mystery.status == "new"
+
+    # sibling helper: mark remaining wolf file if any
+    if len(sized_wolves) == 1 and len(wolves) == 2:
+        extra = apply_size_to_same_stem(
+            store, sized_wolves[0].id, "quad_med", locomotion="quadruped"
+        )
+        store.save()
+        assert extra == 1
+
+
 def test_lineup_job(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     inbox = creatures_inbox_dir(cfg)
@@ -100,4 +133,15 @@ def test_tools_registered():
     names = build_default_registry().names()
     assert "creature_catalog_scan" in names
     assert "creature_catalog_set_size" in names
+    assert "creature_catalog_auto_size" in names
     assert "creature_lineup" in names
+
+
+def test_gui_action_creature_catalog():
+    from viu.gui_actions import GUI_ACTIONS
+
+    ids = {a.action_id for a in GUI_ACTIONS}
+    assert "creature_catalog" in ids
+    action = next(a for a in GUI_ACTIONS if a.action_id == "creature_catalog")
+    assert action.tool == "__creature_catalog__"
+    assert action.group == "Главное"

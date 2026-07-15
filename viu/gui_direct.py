@@ -34,6 +34,8 @@ _RU_ALIASES: Dict[str, Tuple[str, Dict[str, Any]]] = {
     "сканируй существ": ("creature_catalog_scan", {}),
     "скан существ": ("creature_catalog_scan", {}),
     "сканировать существ": ("creature_catalog_scan", {}),
+    "авто размер существ": ("creature_catalog_auto_size", {}),
+    "авторазметка существ": ("creature_catalog_auto_size", {}),
     "каталог существ": ("creature_catalog_show", {"mode": "summary"}),
     "очередь существ": ("creature_catalog_show", {"mode": "pending"}),
     "линейка существ": ("creature_lineup", {}),
@@ -129,4 +131,8 @@ def looks_like_missing_creature_tool(text: str) -> bool:
         return False
     if raw.startswith("creature_catalog") or raw.startswith("creature_lineup"):
         return True
-    return any(raw.startswith(p) or raw == p for p in _RU_ALIASES)
+    return any(raw.startswith(p) or raw == p for p in _RU_ALIASES) or raw in (
+        "разметить существ",
+        "разметка существ",
+        "размечай существ",
+    )

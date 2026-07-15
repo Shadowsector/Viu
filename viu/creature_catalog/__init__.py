@@ -1,5 +1,6 @@
 """Каталог существ Анабарры."""
 
+from .auto_size import auto_apply_size_guesses
 from .lineup import build_lineup_job
 from .models import (
     ALL_SIZE_IDS,
@@ -16,6 +17,7 @@ from .paths import (
     creatures_lineup_dir,
     creatures_processed_dir,
 )
+from .review_gui import open_creature_catalog_review
 from .scanner import list_size_classes_text, scan_creatures_inbox
 from .sockets import ensure_girl_sockets_doc, list_girl_socket_ids
 from .store import CreatureCatalogStore
@@ -28,6 +30,7 @@ __all__ = [
     "LOCOMOTION",
     "QUAD_SIZE_CLASSES",
     "SIZE_CLASSES",
+    "auto_apply_size_guesses",
     "build_lineup_job",
     "creature_catalog_path",
     "creatures_inbox_dir",
@@ -36,6 +39,7 @@ __all__ = [
     "ensure_girl_sockets_doc",
     "list_girl_socket_ids",
     "list_size_classes_text",
+    "open_creature_catalog_review",
     "scan_creatures_inbox",
     "size_spec",
 ]
