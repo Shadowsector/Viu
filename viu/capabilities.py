@@ -26,6 +26,7 @@ CAPABILITY_BRIEF = """
 - **Blender:** чистый FBX для Cascadeur (`blender_export_cascadeur` / batch), риг-check персонажей.
 - **Unity:** scan/sync анимаций, оверлей, «Обновить аниматор».
 - **Каталог:** `animation_catalog_show` — граф `enters_from` / `exits_to`, чего не хватает.
+- **Существа:** `creature_catalog_scan` / `set_size` / `creature_lineup` — size×loco, сокеты девушек.
 
 ### Не умею / ограничение
 - **Не** «нарисую анимацию словами» и не заменю Cascadeur болтовнёй.
