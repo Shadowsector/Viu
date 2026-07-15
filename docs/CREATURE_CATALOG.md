@@ -1,87 +1,184 @@
-# Каталог существ и нормализация роста
+# Монстры: что делать по шагам
 
-**Цель:** меньше уникальных анимаций — все модели сводятся к **size_class × locomotion**,  
-рост внутри класса можно чуть варьировать; анимации общие на bucket.
+Обновление Вью тянет ветку **`cursor/viu-agent-core-65c2`**.  
+Каталог существ туда уже влит — после «Обновить Вью» перезапусти окно.
 
-## Классы роста
+---
 
-### Бипеды / антропоморфы
+## Зачем это
 
-| id | Target | Допуск | Пример |
-|----|--------|--------|--------|
-| `mini` | 0.30 m | 0.22–0.40 | феи |
-| `small` | 0.80 m | 0.60–1.00 | гоблины |
-| `humanoid` | 1.75 m | 1.55–1.95 | антропоморфы ~Шаня |
-| `large` | 2.35 m | 2.10–2.60 | 220–250 см |
-| `huge` | 3.60 m | 2.80–5.00 | хватает Шаню за талию |
+Много скачанных моделей → привести к **нескольким размерам**.  
+Тогда анимации пишутся **на размер** (гоблин-класс, волк-класс…), а не на каждого монстра отдельно.
 
-### Четвероногие (высота)
+Внутри класса рост чуть плавает (узкий допуск), lineup в Blender показывает всех **рядом с Шаней**.
 
-| id | Target | Пример |
-|----|--------|--------|
-| `quad_mini` | 0.30 m | куницы |
-| `quad_med` | 0.75 m | собака / волк |
-| `quad_large` | 1.60 m | лошадь / корова |
+---
 
-**Dual-size:** у записи `size_class` + `size_alt[]` (например гоблин `small` и вариант `humanoid`).
+## Шаг 0. Куда класть файлы
 
-## Locomotion
-
-`biped` · `quadruped` · `amorph` · `tentacle` · `mimic` · `flyer` · `unknown`
-
-Набор анимаций = `{size_class}__{locomotion}` (поле `anim_bucket`).
-
-## Сокеты на девушках
-
-Файл: `.viu/girl_sockets.json` (создаётся при скане).
-
-| id | Назначение |
-|----|------------|
-| `socket_oral` | рот |
-| `socket_vaginal` | вагина |
-| `socket_anal` | анус |
-| `socket_hand_l` / `socket_hand_r` | ладони |
-| `socket_cleavage` | меж грудей |
-
-Penetrator (монстр / NSFW-prop) целится в активный socket.  
-Flaccid/erect — состояния одного genital-рига (позже).
-
-## Папки
+Папка:
 
 ```
-U:\Anabarra\Library\Lab\Creatures\Inbox\       ← сырые модели
-U:\Anabarra\Library\Lab\Creatures\Processed\   ← после scale / bake
-U:\Anabarra\Library\Lab\Creatures\Lineup\      ← lineup_job + creature_lineup.blend
-U:\Viu\.viu\creature_catalog.json
-U:\Viu\.viu\girl_sockets.json
+U:\Anabarra\Library\Lab\Creatures\Inbox\
 ```
 
-Текстуры рядом (`textures/`) — флаг `textures_external` при скане.
+- Кинь туда `.fbx` / `.blend` / `.glb` монстров.
+- Если текстуры **отдельной папкой** — положи рядом `textures\` (или `Textures\`) в той же папке, что модель.
+- Пока **не** жми Bootstrap Unity и не тащи в Cascadeur — сначала каталог.
 
-## Инструменты Вью
+---
+
+## Шаг 1. Скан → таблица
+
+**Где:** чат Вью (или Telegram с командой на work / просто попроси «сканируй существ»).
+
+**Напиши:**
 
 ```
-creature_catalog_scan              → таблица из Inbox
-creature_catalog_show mode=pending → очередь разметки
-creature_catalog_set_size id=… size=small locomotion=biped size_alt=humanoid
-creature_lineup size=small,humanoid shanya_path=…
+creature_catalog_scan
 ```
 
-Lineup: Blender-скрипт ставит **Шаню слева** и существ в ряд, каждый scale к `target_height` класса — визуальное сравнение в одном кадре.
+**Что произойдёт:**
+- Вью обойдёт Inbox (и заодно Lab/Models/Inbox).
+- Создаст/обновит файл `.viu/creature_catalog.json` — список всех моделей.
+- По имени угадает подсказки (гоблин → small, волк → quad_med), но **класс не назначит сама**.
+- Создаст `.viu/girl_sockets.json` (мишени на девушках — на будущее).
 
-```bash
-blender --background --python "…/Lineup/viu_creature_lineup.py" -- "…/Lineup/lineup_job.json"
+**Результат:** таблица «ждут разметки». Модели на диске не двигаются.
+
+Просмотр очереди:
+
+```
+creature_catalog_show mode=pending
 ```
 
-## Порядок работы (Ден)
+---
 
-1. Кинуть модели в `Lab/Creatures/Inbox` (текстуры рядом, если отдельно).
-2. `creature_catalog_scan`.
-3. Пройти `pending`: для каждого `set_size` (+ dual / locomotion / nsfw).
-4. `creature_lineup` → открыть `creature_lineup.blend`, поправить глазками.
-5. Позже: bake текстур, genital prefab, A-pose фото → Comfy (отдельные шаги).
+## Шаг 2. Ты назначаешь размер (главное)
 
-## Связь с анимациями
+Для **каждой** модели из pending скажи Вью, к какому классу она относится.
 
-Девушки 150–170 см → один Humanoid-набор.  
-Монстры → клипы на `anim_bucket`, не на имя файла.
+**Пример:**
+
+```
+creature_catalog_set_size id=abc12345 size=small locomotion=biped
+```
+
+или по имени:
+
+```
+creature_catalog_set_size slug=goblin_a size=small locomotion=biped
+```
+
+### Какие `size` бывают
+
+| size | Target | Допуск | Кто |
+|------|--------|--------|-----|
+| `mini` | 30 см | 27–33 см | феи |
+| `small` | 80 см | 74–86 см | гоблины |
+| `humanoid` | 175 см | 168–182 см | антропоморфы ~рост Шани |
+| `large` | 235 см | 225–245 см | крупные твари |
+| `huge` | 360 см | 330–390 см | хватает Шаню за талию |
+| `quad_mini` | 30 см | 26–34 см | куницы… |
+| `quad_med` | 75 см | 68–82 см | собака/волк |
+| `quad_large` | 160 см | 150–170 см | лошадь/корова |
+
+### `locomotion` (как ходит)
+
+`biped` · `quadruped` · `amorph` (слизень) · `tentacle` · `mimic` · `flyer`
+
+### Два размера у одной модели
+
+Маленький гоблин и «большой вариант» одной болванки:
+
+```
+creature_catalog_set_size slug=goblin_a size=small size_alt=humanoid locomotion=biped
+```
+
+### NSFW-метка (пока флаг)
+
+```
+creature_catalog_set_size slug=orc_boss size=large locomotion=biped nsfw=1
+```
+
+**Что произойдёт:** в каталоге у записи появятся `size_class`, целевой рост, `anim_bucket` вроде `small__biped`.  
+Позже все с одним bucket будут делить анимации.
+
+Повтори шаг 2, пока `mode=pending` не станет пустым.
+
+---
+
+## Шаг 3. Увидеть рост рядом с Шаней
+
+Когда хотя бы несколько размечены:
+
+```
+creature_lineup
+```
+
+или только гоблины:
+
+```
+creature_lineup size=small
+```
+
+Если Шаня не нашлась сама:
+
+```
+creature_lineup shanya_path=U:\путь\к\Shanya.fbx
+```
+
+**Что произойдёт:**
+- Вью напишет файлы в  
+  `U:\Anabarra\Library\Lab\Creatures\Lineup\`
+  - `lineup_job.json` — список кого ставить
+  - `viu_creature_lineup.py` — скрипт Blender
+  - потом появится `creature_lineup.blend`
+
+**Ты запускаешь Blender** (один раз):
+
+```bat
+blender --background --python "U:\Anabarra\Library\Lab\Creatures\Lineup\viu_creature_lineup.py" -- "U:\Anabarra\Library\Lab\Creatures\Lineup\lineup_job.json"
+```
+
+(путь к `blender.exe` — как у тебя в PATH или полный)
+
+**Результат:** открой `creature_lineup.blend` — **Шаня слева**, монстры в ряд, каждый уже **подогнан к target своего класса**. Глазами проверь: кто выбивается → смени ему `size` (шаг 2) и lineup снова.
+
+---
+
+## Шаг 4. Пока не делаем (следующая очередь)
+
+Это **ещё не** автоматизировано в этой версии:
+
+| Позже | Смысл |
+|-------|--------|
+| Bake текстур / pack | можно руками в Blender |
+| Genital-риг + flaccid | после эталонного prefab |
+| A-pose фото → Comfy | как у Шани, но seed = монстр |
+| Сокеты на теле Шани в Unity | oral / vaginal / anal / руки / cleavage |
+
+Сейчас цель шагов 1–3: **таблица + твои классы + визуальная линейка роста**.
+
+---
+
+## Шпаргалка команд
+
+| Команда | Зачем |
+|---------|--------|
+| `creature_catalog_scan` | собрать таблицу из Inbox |
+| `creature_catalog_show mode=pending` | кого ещё не разметил |
+| `creature_catalog_show mode=classes` | таблица размеров |
+| `creature_catalog_show mode=sockets` | мишени на девушках |
+| `creature_catalog_set_size …` | назначить класс |
+| `creature_lineup` | подготовить сравнение с Шаней в Blender |
+
+Список всех: `creature_catalog_show mode=all`
+
+---
+
+## Если «Обновить Вью» пишет «и так новая»
+
+Кнопка смотрит ветку **`cursor/viu-agent-core-65c2`**.  
+Нужен коммит с каталогом существ **на этой** ветке (не только на `creature-catalog`).  
+После пуша в agent-core: снова «Обновить Вью» → должен подтянуть новый SHA → перезапуск.
