@@ -243,8 +243,8 @@ class CreatureCatalogReviewWindow:
             self.done_text.insert(
                 "end",
                 self.store.summary_text()
-                + "\n\nДальше во Вью можно нажать «Линейка существ» "
-                "(или написать линейка существ) — сравнить рост с Шаней в Blender.",
+                + "\n\nДальше: кнопка «Линейка существ» в Главном — "
+                "Вью сама запустит Blender и откроет .blend рядом с Шаней.",
             )
             self._current = None
             return

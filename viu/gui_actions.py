@@ -71,6 +71,13 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Скан Inbox → авто по именам → кнопки размеров (гоблин/волк/…).",
     ),
     GuiAction(
+        "creature_lineup",
+        "Линейка существ",
+        "Главное",
+        tool="creature_lineup",
+        hint="Вью сама запускает Blender: Шаня + монстры по росту. Откроет .blend.",
+    ),
+    GuiAction(
         "send_logs",
         "Что сломалось?",
         "Главное",

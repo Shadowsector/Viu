@@ -1,7 +1,7 @@
 """Каталог существ Анабарры."""
 
 from .auto_size import auto_apply_size_guesses
-from .lineup import build_lineup_job
+from .lineup import build_lineup_job, run_creature_lineup
 from .models import (
     ALL_SIZE_IDS,
     GIRL_SOCKETS,
@@ -40,6 +40,7 @@ __all__ = [
     "list_girl_socket_ids",
     "list_size_classes_text",
     "open_creature_catalog_review",
+    "run_creature_lineup",
     "scan_creatures_inbox",
     "size_spec",
 ]

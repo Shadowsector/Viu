@@ -129,6 +129,63 @@ def test_lineup_job(tmp_path, monkeypatch):
     assert "import_scene.fbx" in script.read_text(encoding="utf-8")
 
 
+def test_lineup_dedupe_and_auto_run(tmp_path, monkeypatch):
+    from viu.creature_catalog.lineup import build_lineup_jobs, run_creature_lineup
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    inbox = creatures_inbox_dir(cfg)
+    (inbox / "Goblin.fbx").write_bytes(b"fbx")
+    (inbox / "Goblin.blend").write_bytes(b"blend")
+    (inbox / "Wolf.fbx").write_bytes(b"fbx")
+    scan_creatures_inbox(cfg)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    for e in store.all():
+        if "Goblin" in e.name:
+            store.set_size(e.id, "small", locomotion="biped")
+        else:
+            store.set_size(e.id, "quad_med", locomotion="quadruped")
+    store.save()
+
+    ok, msg, jobs = build_lineup_jobs(cfg, split=False)
+    assert ok, msg
+    data = __import__("json").loads(jobs[0].read_text(encoding="utf-8"))
+    # дедуп: Goblin.fbx+blend → один
+    assert len(data["creatures"]) == 2
+    names = {c["name"] for c in data["creatures"]}
+    assert "Goblin" in names
+    assert "Wolf" in names
+
+    calls = []
+
+    def fake_runner(cmd, capture_output=True, text=True, timeout=900.0):
+        calls.append(cmd)
+        job_path = Path(cmd[-1])
+        job = __import__("json").loads(job_path.read_text(encoding="utf-8"))
+        out = Path(job["output_blend"])
+        out.write_bytes(b"BLENDER")
+        stdout = "VIU_LINEUP_OK " + str(out) + "\n"
+        for c in job["creatures"]:
+            stdout += (
+                'VIU_LINEUP_ROW {"id": "%s", "measured_m": 1.2, "scale": 0.5}\n'
+                % c["id"]
+            )
+        from types import SimpleNamespace
+
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(
+        "viu.integrations.blender.exe.resolve_blender_exe",
+        lambda config=None, override="": Path("/fake/blender"),
+    )
+    ok, msg = run_creature_lineup(
+        cfg, split=False, open_result=False, runner=fake_runner
+    )
+    assert ok, msg
+    assert calls
+    store2 = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    assert any(e.measured_height_m > 0 for e in store2.all())
+
+
 def test_tools_registered():
     names = build_default_registry().names()
     assert "creature_catalog_scan" in names
@@ -142,6 +199,9 @@ def test_gui_action_creature_catalog():
 
     ids = {a.action_id for a in GUI_ACTIONS}
     assert "creature_catalog" in ids
+    assert "creature_lineup" in ids
     action = next(a for a in GUI_ACTIONS if a.action_id == "creature_catalog")
     assert action.tool == "__creature_catalog__"
     assert action.group == "Главное"
+    lineup = next(a for a in GUI_ACTIONS if a.action_id == "creature_lineup")
+    assert lineup.tool == "creature_lineup"

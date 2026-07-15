@@ -13,6 +13,7 @@ from ..creature_catalog import (
     scan_creatures_inbox,
 )
 from ..creature_catalog.auto_size import auto_apply_size_guesses
+from ..creature_catalog.lineup import run_creature_lineup
 from ..creature_catalog.models import ALL_SIZE_IDS, LOCOMOTION
 from .base import AgentContext, Tool, ToolResult
 
@@ -179,13 +180,18 @@ class CreatureCatalogSetSizeTool(Tool):
 class CreatureLineupTool(Tool):
     name = "creature_lineup"
     description = (
-        "Собрать Blender lineup: Шаня + существа с size_class в одном кадре для сравнения роста. "
-        "size= фильтр классов через запятую; shanya_path= явный FBX/blend Шани."
+        "Линейка существ: Вью сама запускает Blender, собирает .blend рядом с Шаней, "
+        "открывает результат. size= фильтр; open=0 не открывать; split=0 одна сцена; "
+        "all=1 без дедупа имён; prepare_only=1 только JSON без Blender."
     )
     parameters = {
         "size": "фильтр size_class через запятую (пусто = все размеченные)",
         "shanya_path": "путь к модели Шани",
         "spacing": "метры между фигурами (1.2)",
+        "open": "1 открыть .blend/папку (по умолчанию), 0 — нет",
+        "split": "1 всегда по классам, 0 одна сцена, пусто — авто если много",
+        "all": "1 все файлы без дедупа fbx+blend",
+        "prepare_only": "1 только подготовить job, не запускать Blender",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
@@ -194,11 +200,40 @@ class CreatureLineupTool(Tool):
             spacing = float(args.get("spacing") or 1.2)
         except (TypeError, ValueError):
             spacing = 1.2
-        ok, msg, _ = build_lineup_job(
+
+        if str(args.get("prepare_only") or "").strip() in ("1", "true", "yes"):
+            ok, msg, path = build_lineup_job(
+                ctx.config,
+                size_filter=sizes,
+                shanya_path=str(args.get("shanya_path") or "").strip(),
+                spacing_m=spacing,
+            )
+            return ToolResult(ok, msg if path else msg)
+
+        split_raw = str(args.get("split") or "").strip().lower()
+        split: bool | None
+        if split_raw in ("1", "true", "yes"):
+            split = True
+        elif split_raw in ("0", "false", "no"):
+            split = False
+        else:
+            split = None
+
+        open_result = str(args.get("open") or "1").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+        )
+        all_files = str(args.get("all") or "").strip().lower() in ("1", "true", "yes")
+
+        ok, msg = run_creature_lineup(
             ctx.config,
             size_filter=sizes,
             shanya_path=str(args.get("shanya_path") or "").strip(),
             spacing_m=spacing,
+            split=split,
+            all_files=all_files,
+            open_result=open_result,
         )
         return ToolResult(ok, msg)
 
