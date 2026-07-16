@@ -1,4 +1,4 @@
-"""Тройная генерация: один промпт → 3 ракурса → Lab/Refs."""
+"""Тройная генерация MoCap: 3 дубля в ракурсе ¾ (разный seed + вариация промпта)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from .angles import CameraAngle, default_angles
 from .client import ComfyClient, ComfyError
 from .model_pref import choose_workflow_name
 from .paths import comfy_out_dir, comfy_refs_dir
-from .prompts import mocap_negative, mocap_prompt
+from .prompts import diversify_action, mocap_negative, mocap_prompt
 from .workflows import (
     inject_negative_prompt,
     inject_seed,
@@ -28,8 +28,8 @@ def _client(config: Config) -> ComfyClient:
     return ComfyClient(base_url=str(url))
 
 
-def _seed_for(action: str, angle_id: str) -> int:
-    h = hashlib.sha256(f"{action}|{angle_id}".encode("utf-8")).hexdigest()
+def _seed_for(action: str, take_id: str, *, salt: str = "") -> int:
+    h = hashlib.sha256(f"{action}|{take_id}|{salt}".encode("utf-8")).hexdigest()
     return int(h[:8], 16) % (2**31 - 1)
 
 
@@ -41,6 +41,7 @@ def run_single_angle(
     slug: str,
     workflow_name: str | None = None,
     timeout: float = 900.0,
+    seed_salt: str = "",
 ) -> Tuple[bool, str, List[str]]:
     prompt = mocap_prompt(action, angle)
     negative = mocap_negative()
@@ -52,7 +53,7 @@ def run_single_angle(
 
     wf = inject_text_prompt(wf, prompt)
     wf = inject_negative_prompt(wf, negative)
-    wf = inject_seed(wf, _seed_for(action, angle.id))
+    wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
     wf = prepare_mocap_workflow(wf, action=action)
 
     client = _client(config)
@@ -75,7 +76,6 @@ def run_single_angle(
             [],
         )
 
-    # предпочесть mp4 (SaveVideo), не превью/лишние image
     files = sorted(
         files,
         key=lambda m: (
@@ -84,7 +84,6 @@ def run_single_angle(
             m.get("filename") or "",
         ),
     )
-    # если есть хотя бы один mp4 — не тащить webp/png рядом
     if any(str(m.get("filename", "")).lower().endswith(".mp4") for m in files):
         files = [m for m in files if str(m.get("filename", "")).lower().endswith(".mp4")]
 
@@ -121,7 +120,7 @@ def run_triple_angles(
     slug: str | None = None,
     timeout_each: float = 900.0,
 ) -> Tuple[bool, str, Dict[str, Any]]:
-    """Три ракурса подряд. Не останавливается на первом fail — собирает отчёт."""
+    """Три дубля ¾ подряд (разный seed + вариация действия)."""
     angles = default_angles()
     base_slug = (slug or "mocap").strip() or "mocap"
     stamp = time.strftime("%Y%m%d_%H%M%S")
@@ -131,18 +130,27 @@ def run_triple_angles(
         "slug": slug_full,
         "angles": {},
         "files": [],
+        "mode": "three_quarter_takes",
     }
-    lines: List[str] = [f"Comfy triple ×{len(angles)} — «{action[:80]}»"]
+    lines: List[str] = [f"Comfy ×{len(angles)} дубля (¾) — «{action[:80]}»"]
     any_ok = False
-    for angle in angles:
+    for i, angle in enumerate(angles):
+        take_action = diversify_action(action, i)
         ok, msg, files = run_single_angle(
             config,
-            action=action,
+            action=take_action,
             angle=angle,
             slug=slug_full,
             timeout=timeout_each,
+            seed_salt=f"{stamp}|{i}|{angle.id}",
         )
-        results["angles"][angle.id] = {"ok": ok, "msg": msg, "files": files, "label": angle.label_ru}
+        results["angles"][angle.id] = {
+            "ok": ok,
+            "msg": msg,
+            "files": files,
+            "label": angle.label_ru,
+            "action_variant": take_action,
+        }
         results["files"].extend(files)
         mark = "OK" if ok else "FAIL"
         lines.append(f"  [{mark}] {angle.label_ru} ({angle.id}): {msg}")

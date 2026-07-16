@@ -85,7 +85,12 @@ class AnimationCatalogStore:
         return [w for w in self.all_wishes() if w.category == category]
 
     def missing(self) -> List[AnimationWish]:
-        return [w for w in self.all_wishes() if w.status == STATUS_WISHED]
+        """Дыры для съёмки: wished и ещё без ref_video (Comfy keep закрывает дыру)."""
+        return [
+            w
+            for w in self.all_wishes()
+            if w.status == STATUS_WISHED and not (w.ref_video or w.clip_file)
+        ]
 
     def pending_reviews(self) -> List[AnimationImportReview]:
         return [p for p in self._pending.values() if not p.reviewed]

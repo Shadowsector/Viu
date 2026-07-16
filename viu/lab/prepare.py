@@ -108,6 +108,7 @@ def run_lab_prepared(
     force_reset: bool = False,
     run_all: bool = False,
     action: str = "",
+    meta_extra: Optional[dict] = None,
 ) -> Tuple[bool, str, Optional[LabSession]]:
     if topic == "comfy":
         from .comfy_pipeline import ensure_task_file, run_one_step, run_until_done
@@ -121,7 +122,12 @@ def run_lab_prepared(
         ensure_task_file(config, action=action)
         if action.strip():
             session.meta["action"] = action.strip()
-            save_session(config, session)
+        if meta_extra:
+            for k, v in meta_extra.items():
+                if v is None or v == "" or v == []:
+                    continue
+                session.meta[k] = v
+        save_session(config, session)
         if mode == "continue" and session.status == "awaiting_prompt":
             return True, prefix + "Жду одобрение Comfy-промпта в Telegram.", session
 

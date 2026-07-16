@@ -1,7 +1,7 @@
-"""Режиссёр Comfy MoCap: Вью сама выбирает, что снять.
+"""Режиссёр Comfy MoCap: граф переходов → следующий кадр.
 
-Не хардкодим idle stand — смотрим каталог анимаций, граф переходов,
-недавно снятое, и собираем filmable action на английском для Wan.
+Away: сама идёт по дырам графа.
+Дома: предлагает кадр (одобрение в Telegram) с альтернативами.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from ..animation_catalog.models import AnimationWish, STATUS_WISHED
 from ..config import Config
 from ..integrations.comfy.clip_review import ComfyClipStore, STATUS_KEPT, clip_review_path
 
-# Английские шаблоны по slug — Wan лучше ест EN.
+# Базовые EN-шаблоны по slug — Wan лучше ест EN.
 _SLUG_ACTION_EN = {
     "idle": (
         "idle stand, subtle breathing, soft weight shift, "
@@ -40,6 +40,34 @@ _SLUG_ACTION_EN = {
     "lean": "leaning against invisible wall, one shoulder/hip contact, relaxed",
 }
 
+# Парафразы — чтобы повтор одного slug не был дословной копией
+_SLUG_PARAPHRASE = {
+    "idle": (
+        "standing idle loop, quiet breath, tiny shoulder rolls, soft gaze drift",
+        "neutral stand, micro weight transfer left-right, fingers relax, calm presence",
+    ),
+    "walk": (
+        "steady walk cycle forward, relaxed arms, even footsteps, full body",
+        "casual stroll forward, natural hip sway, arms swing opposite legs",
+    ),
+    "wave": (
+        "friendly hello wave with right hand, smile energy, planted feet",
+        "raise hand and wave once then twice, cheerful greeting, stand in place",
+    ),
+    "sit_down": (
+        "from stand, lower onto invisible chair, knees bend, sit controlled",
+        "take a seat motion: bend, touch invisible seat, settle upright",
+    ),
+    "sit_idle": (
+        "sitting still on invisible chair, soft breath, tiny torso sway",
+        "seated rest, hands on thighs, slight head tilt, quiet idle",
+    ),
+    "stand_up": (
+        "rise from sit to stand, push lightly, straighten spine",
+        "get up from chair pose to full standing, smooth continuous rise",
+    ),
+}
+
 
 @dataclass
 class MocapShotPlan:
@@ -49,12 +77,17 @@ class MocapShotPlan:
     enters_from: List[str] = field(default_factory=list)
     exits_to: List[str] = field(default_factory=list)
     title_ru: str = ""
+    alternatives: List[str] = field(default_factory=list)
 
     def summary_ru(self) -> str:
-        return (
-            f"Снимаю «{self.title_ru or self.catalog_slug}»: {self.action}\n"
-            f"Почему: {self.reason}"
-        )
+        lines = [
+            f"Снимаю «{self.title_ru or self.catalog_slug}»: {self.action}",
+            f"Почему: {self.reason}",
+            "Ракурс: только ¾ · 3 разных дубля (seed + timing).",
+        ]
+        if self.alternatives:
+            lines.append("Ещё можно: " + ", ".join(self.alternatives[:4]))
+        return "\n".join(lines)
 
 
 def _recent_slugs(config: Config, *, limit: int = 12) -> Set[str]:
@@ -65,17 +98,23 @@ def _recent_slugs(config: Config, *, limit: int = 12) -> Set[str]:
     for c in kept[:limit]:
         if c.catalog_slug:
             out.add(c.catalog_slug)
-        # также slug из action
-        s = re.sub(r"[^a-z0-9_\-]+", "_", (c.action or "").lower())[:40]
-        if s:
-            out.add(s.strip("_"))
     return out
 
 
-def _wish_to_action(wish: AnimationWish) -> str:
+def _wish_filled(w: AnimationWish) -> bool:
+    """Дыра закрыта, если есть ref_video или статус не wished."""
+    if w.ref_video or w.clip_file:
+        return True
+    return w.status != STATUS_WISHED
+
+
+def _wish_to_action(wish: AnimationWish, *, paraphrase_i: int = 0) -> str:
     if wish.slug in _SLUG_ACTION_EN:
-        return _SLUG_ACTION_EN[wish.slug]
-    # fallback: slug + краткий EN из looks_like если латиница, иначе slug words
+        base = _SLUG_ACTION_EN[wish.slug]
+        alts = _SLUG_PARAPHRASE.get(wish.slug) or ()
+        if paraphrase_i > 0 and alts:
+            return alts[(paraphrase_i - 1) % len(alts)]
+        return base
     words = wish.slug.replace("_", " ")
     hint = (wish.looks_like or "").strip()
     if hint and re.search(r"[A-Za-z]{3,}", hint):
@@ -83,42 +122,64 @@ def _wish_to_action(wish: AnimationWish) -> str:
     return f"{words}, full body character motion, clear limbs, loopable short clip"
 
 
+def _sources_ready(cat: AnimationCatalogStore, w: AnimationWish) -> bool:
+    if not w.enters_from:
+        return True
+    for src in w.enters_from:
+        sw = cat.get_by_slug(src)
+        if sw is None:
+            # нет записи — считаем ок (внешний)
+            continue
+        if _wish_filled(sw):
+            return True
+    # ни один источник не готов
+    return False
+
+
+def _graph_ordered_holes(
+    cat: AnimationCatalogStore, holes: List[AnimationWish]
+) -> List[AnimationWish]:
+    """Сначала то, чьи enters_from уже сняты; потом wave; не idle если есть иное."""
+    ready = [w for w in holes if _sources_ready(cat, w)]
+    pool = ready or holes
+    wave1 = [w for w in pool if w.wave <= 1]
+    base = wave1 or pool
+    non_idle = [w for w in base if w.slug != "idle"]
+    pool2 = non_idle or base
+
+    transitions = [w for w in pool2 if w.category == "transition"]
+    rest = [w for w in pool2 if w.category == "rest"]
+    loco = [w for w in pool2 if w.category == "locomotion"]
+    return transitions or rest or loco or pool2
+
+
 def invent_next_shot(config: Config) -> MocapShotPlan:
-    """Выбрать следующий клип для съёмки. Без LLM — по каталогу и графу."""
+    """Следующий клип по каталогу и графу. Без LLM."""
     cat = AnimationCatalogStore(animation_catalog_path(config)).load()
     recent = _recent_slugs(config)
-    missing = [w for w in cat.missing() if w.slug not in recent]
+    # missing() уже без ref_video; плюс недавние kept
+    holes = [w for w in cat.missing() if w.slug not in recent]
+    ordered = _graph_ordered_holes(cat, holes) if holes else []
 
-    # 1) волна 1 без недавних повторов
-    wave1 = [w for w in missing if w.wave <= 1]
-    # не залипать на idle, если есть другие дыры
-    non_idle = [w for w in wave1 if w.slug != "idle"]
-    pool = non_idle or wave1 or missing
-
-    # 2) приоритет transition, у которых enters_from уже «закрыты» (есть ref или imported)
-    def _ready_sources(w: AnimationWish) -> bool:
-        if not w.enters_from:
-            return True
-        for src in w.enters_from:
-            sw = cat.get_by_slug(src)
-            if sw is None:
-                continue
-            if sw.status != STATUS_WISHED or sw.ref_video or sw.clip_file:
-                return True
-        return False
-
-    transitions = [w for w in pool if w.category == "transition" and _ready_sources(w)]
-    rest = [w for w in pool if w.category == "rest"]
-    loco = [w for w in pool if w.category == "locomotion"]
-    ordered = transitions or rest or loco or pool
+    alts: List[str] = []
+    if len(ordered) > 1:
+        alts = [f"{w.slug} ({w.title_ru})" for w in ordered[1:5]]
 
     if ordered:
         wish = ordered[0]
-        action = _wish_to_action(wish)
+        # сколько раз уже снимали этот slug (для парафраза)
+        kept_n = sum(
+            1
+            for c in ComfyClipStore(clip_review_path(config)).load().clips
+            if c.status == STATUS_KEPT and c.catalog_slug == wish.slug
+        )
+        action = _wish_to_action(wish, paraphrase_i=kept_n)
         reason = (
-            f"в каталоге нет клипа `{wish.slug}` (wave {wish.wave}, {wish.category}); "
+            f"дыра в графе `{wish.slug}` (wave {wish.wave}, {wish.category}); "
             f"когда: {wish.when_used[:80]}"
         )
+        if wish.enters_from:
+            reason += f"; enters_from={wish.enters_from}"
         return MocapShotPlan(
             action=action,
             catalog_slug=wish.slug,
@@ -126,9 +187,10 @@ def invent_next_shot(config: Config) -> MocapShotPlan:
             enters_from=list(wish.enters_from),
             exits_to=list(wish.exits_to),
             title_ru=wish.title_ru,
+            alternatives=alts,
         )
 
-    # 3) всё закрыто — вариация поверх имеющихся (не тот же idle)
+    # всё закрыто — вариация по графу (не тот же idle)
     all_w = [w for w in cat.all_wishes() if w.slug not in recent]
     if not all_w:
         all_w = cat.all_wishes()
@@ -137,11 +199,11 @@ def invent_next_shot(config: Config) -> MocapShotPlan:
         return MocapShotPlan(
             action=_SLUG_ACTION_EN["wave"],
             catalog_slug="wave",
-            reason="каталог пуст — сниму жест приветствия как разведку",
+            reason="каталог пуст — жест приветствия как разведка",
             title_ru="Машет рукой",
         )
     return MocapShotPlan(
-        action=_wish_to_action(pick) + ", alternate take, slightly different timing",
+        action=_wish_to_action(pick, paraphrase_i=1),
         catalog_slug=pick.slug,
         reason=f"дыр нет — вариация `{pick.slug}` для MoCap",
         enters_from=list(pick.enters_from),
@@ -151,5 +213,25 @@ def invent_next_shot(config: Config) -> MocapShotPlan:
 
 
 def invent_next_action(config: Config) -> str:
-    """Только строка action (для lab/tools)."""
     return invent_next_shot(config).action
+
+
+def invent_shot_choices(config: Config, *, limit: int = 5) -> List[MocapShotPlan]:
+    """Несколько кандидатов — для предложения дома."""
+    cat = AnimationCatalogStore(animation_catalog_path(config)).load()
+    recent = _recent_slugs(config)
+    holes = [w for w in cat.missing() if w.slug not in recent]
+    ordered = _graph_ordered_holes(cat, holes) if holes else []
+    out: List[MocapShotPlan] = []
+    for w in ordered[:limit]:
+        out.append(
+            MocapShotPlan(
+                action=_wish_to_action(w),
+                catalog_slug=w.slug,
+                reason=f"кандидат `{w.slug}`",
+                enters_from=list(w.enters_from),
+                exits_to=list(w.exits_to),
+                title_ru=w.title_ru,
+            )
+        )
+    return out

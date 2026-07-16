@@ -28,3 +28,21 @@ def test_invent_action_string(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     action = invent_next_action(cfg)
     assert isinstance(action, str) and len(action) > 10
+
+
+def test_missing_excludes_ref_video(tmp_path, monkeypatch):
+    from viu.animation_catalog import AnimationCatalogStore, animation_catalog_path
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    store = AnimationCatalogStore(animation_catalog_path(cfg)).load()
+    store.merge_defaults()
+    w = store.get_by_slug("wave")
+    assert w is not None
+    w.ref_video = str(tmp_path / "fake.mp4")
+    store.upsert(w)
+    store.save()
+    missing_slugs = {x.slug for x in store.missing()}
+    assert "wave" not in missing_slugs
+    plan = invent_next_shot(cfg)
+    assert plan.catalog_slug != "wave" or not missing_slugs
+

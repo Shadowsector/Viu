@@ -302,7 +302,7 @@ class ComfyClipPickTool(Tool):
 
         angle = str(args.get("angle") or "").strip()
         if not angle:
-            return ToolResult(False, "Нужен angle=front|side|three_quarter")
+            return ToolResult(False, "Нужен angle=take_a|take_b|take_c (или a/b/c)")
         try:
             score = int(args.get("score") or 4)
         except (TypeError, ValueError):
@@ -312,9 +312,16 @@ class ComfyClipPickTool(Tool):
             return [p.strip() for p in str(args.get(key) or "").split(",") if p.strip()]
 
         if session is not None and session.status == "awaiting_clip_pick":
-            session.meta["catalog_slug"] = str(args.get("catalog_slug") or "")
-            session.meta["enters_from"] = _csv("enters_from")
-            session.meta["exits_to"] = _csv("exits_to")
+            # не затирать meta пустыми args
+            cs = str(args.get("catalog_slug") or "").strip()
+            if cs:
+                session.meta["catalog_slug"] = cs
+            ef = _csv("enters_from")
+            et = _csv("exits_to")
+            if ef:
+                session.meta["enters_from"] = ef
+            if et:
+                session.meta["exits_to"] = et
             from ..lab.session import save_session
 
             save_session(ctx.config, session)

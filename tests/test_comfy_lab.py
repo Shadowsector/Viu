@@ -80,12 +80,23 @@ def test_parse_approval():
 def test_mocap_angles_in_prompt():
     angles = default_angles()
     assert len(angles) == 3
+    assert {a.id for a in angles} == {"take_a", "take_b", "take_c"}
     p = mocap_prompt("sit down", angles[0])
-    assert "side view" in p
+    assert "three-quarter" in p
     assert "sit down" in p
     assert "tanned" in p
     assert "white" in p.lower()
     assert "frontal" in p.lower() or "fill light" in p.lower() or "fills the frame" in p
+
+
+def test_diversify_takes_differ():
+    from viu.integrations.comfy.prompts import diversify_action
+
+    a = diversify_action("walking forward", 0)
+    b = diversify_action("walking forward", 1)
+    c = diversify_action("walking forward", 2)
+    assert a != b and b != c
+
 
 
 def test_comfy_lab_awaits_telegram(tmp_path, monkeypatch):

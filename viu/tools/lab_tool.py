@@ -27,7 +27,7 @@ class LabStartTool(Tool):
     description = (
         "Начать или возобновить лабораторную сессию. "
         "topic=cascadeur — FBX/Cascadeur. topic=comfy — Wan video → Lab/Refs "
-        "(промпт в Telegram, 3 ракурса). "
+        "(промпт в Telegram, 3 дубля ¾). "
         "run_all=1 — весь цикл. action= для comfy (действие в кадре). "
         "verify=1 — после ручного import Cascadeur."
     )
@@ -37,6 +37,10 @@ class LabStartTool(Tool):
         "run_all": "1 = выполнить все шаги до отчёта/затыка",
         "verify": "1 = проверить ручной import (скрин + vision)",
         "action": "для comfy: действие персонажа (sit down, walk, …)",
+        "catalog_slug": "slug из каталога анимаций",
+        "enters_from": "через запятую",
+        "exits_to": "через запятую",
+        "shot_reason": "почему этот кадр",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
@@ -93,12 +97,25 @@ class LabStartTool(Tool):
             if session and inbox_models_newer_than_session(ctx.config, session):
                 reset = True
 
+        def _csv(key: str) -> list:
+            return [p.strip() for p in str(args.get(key) or "").split(",") if p.strip()]
+
+        meta_extra = None
+        if topic == "comfy":
+            meta_extra = {
+                "catalog_slug": str(args.get("catalog_slug") or "").strip(),
+                "enters_from": _csv("enters_from"),
+                "exits_to": _csv("exits_to"),
+                "shot_reason": str(args.get("shot_reason") or "").strip(),
+            }
+
         ok, msg, session = run_lab_prepared(
             ctx.config,
             topic,
             force_reset=reset,
             run_all=run_all,
             action=action,
+            meta_extra=meta_extra,
         )
         if session is None:
             return ToolResult(False, msg)

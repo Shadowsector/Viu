@@ -63,7 +63,7 @@ idle ◄──► walk ◄──► run
 ```
 simple tanned young woman, soft frontal light, pure white studio,
 full body filling frame, [ACTION + micro-motions for idle],
-+ 3 ракурса → MP4
++ 3 дубля ¾ (разный seed/timing) → MP4
 стоячие: 576×1024 vertical | лежачие: 1024×576 horizontal
 длина: idle ~81 кадр (~3.4с @24fps), жест ~49, переход ~65
 ```
@@ -80,7 +80,7 @@ full body filling frame, [ACTION + micro-motions for idle],
 | 0 | Эталон Шаня + QRT в Cascadeur | сейчас |
 | 1 | Путь `U:\Viu\ComfyUI` + автозапуск API | **готово** |
 | 2 | Wan 2.1 T2V/I2V + `comfy_run` / triple | **готово** (нужен API workflow JSON один раз) |
-| 2b | Промпт → Telegram → 3 ракурса | **готово** (`lab topic=comfy` / `comfy_mocap`) |
+| 2b | Промпт → Telegram → 3 дубля ¾ | **готово** (`lab topic=comfy` / `comfy_mocap`) |
 | 2c | Выбор лучшего + last-frame seed + граф | **готово** (`comfy_clip_pick` / «Оценить клипы Comfy») |
 | 3 | `cascadeur_import_reference` + MoCap assist | Python / pending |
 | 4 | `cascadeur_export_clip` → Animations + catalog | |
@@ -95,12 +95,13 @@ VRAM: Comfy **или** Cascadeur **или** Unity — не вместе на 6�
 ```
 comfy_status / comfy_ensure
 comfy_mocap action=auto  → режиссёр (catalog) выбирает кадр; home→Telegram, away→сама
-comfy_mocap action=…     → явный action; home→Telegram approve → 3× Lab/Refs
-comfy_triple action=…    → 3 ракурса без Telegram
+comfy_mocap action=…     → явный action; home→Telegram approve → 3× дубля ¾ → Lab/Refs
+comfy_triple action=…    → 3 дубля ¾ без Telegram
 lab_start topic=comfy
 ```
 
-Ракурсы на каждый промпт: **side / three_quarter / front**.  
+Дубли на каждый промпт: **take_a / take_b / take_c** (все ¾, разный seed + timing).  
+Away: авто-одобрение + keep `take_b`. Режиссёр идёт по графу `enters_from`/`exits_to`, закрывает дыры через `ref_video`.
 Режиссёр (`viu/lab/comfy_director.py`): дыры wave 1 из `animation_catalog`, **не** idle по умолчанию.
 
 Env: `VIU_COMFY_URL`, `VIU_COMFY_ROOT=U:/Viu/ComfyUI`.  

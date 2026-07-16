@@ -175,14 +175,18 @@ def register_triple_batch(
     *,
     action: str,
     results: Dict[str, Any],
+    catalog_slug: str = "",
+    enters_from: Optional[List[str]] = None,
+    exits_to: Optional[List[str]] = None,
 ) -> List[ComfyClip]:
-    """Зарегистрировать 3 ракурса после генерации."""
+    """Зарегистрировать 3 дубля после генерации."""
     store = ComfyClipStore(clip_review_path(config)).load()
     batch_id = str(results.get("slug") or f"batch_{int(time.time())}")
     spec = frame_spec_for_action(action)
     stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
     created: List[ComfyClip] = []
     angles = results.get("angles") or {}
+    slug = (catalog_slug or "").strip()
     for angle_id, info in angles.items():
         if not isinstance(info, dict):
             continue
@@ -193,7 +197,7 @@ def register_triple_batch(
         clip = ComfyClip(
             id=_clip_id(batch_id, str(angle_id), path),
             batch_id=batch_id,
-            action=action,
+            action=str(info.get("action_variant") or action),
             angle=str(angle_id),
             angle_label=str(info.get("label") or angle_id),
             path=path,
@@ -204,6 +208,9 @@ def register_triple_batch(
             length=spec.length,
             fps=spec.fps,
             created_at=stamp,
+            catalog_slug=slug,
+            enters_from=list(enters_from or []),
+            exits_to=list(exits_to or []),
         )
         # заменить если тот же id
         store.clips = [c for c in store.clips if c.id != clip.id]
@@ -309,7 +316,12 @@ def keep_clip(
     if not src.is_file():
         return False, f"файл пропал: {src}", None
 
-    slug = _slugify(catalog_slug or clip.action)
+    slug = _slugify(catalog_slug or clip.catalog_slug or clip.action)
+    # если передали короткий catalog_slug (sit_idle) — не перетирать длинным action
+    if catalog_slug.strip():
+        slug = _slugify(catalog_slug)
+    elif clip.catalog_slug.strip():
+        slug = _slugify(clip.catalog_slug)
     kept_name = f"{slug}_{clip.angle}_{clip.batch_id[-6:]}.mp4"
     kept_path = comfy_kept_dir(config) / kept_name
     try:
@@ -325,8 +337,10 @@ def keep_clip(
     clip.score = max(1, min(5, int(score or 4)))
     clip.notes = (notes or "").strip()
     clip.catalog_slug = slug
-    clip.enters_from = [ _slugify(x) for x in (enters_from or []) if str(x).strip() ]
-    clip.exits_to = [ _slugify(x) for x in (exits_to or []) if str(x).strip() ]
+    ef = enters_from if enters_from is not None else list(clip.enters_from)
+    et = exits_to if exits_to is not None else list(clip.exits_to)
+    clip.enters_from = [_slugify(x) for x in ef if str(x).strip()]
+    clip.exits_to = [_slugify(x) for x in et if str(x).strip()]
     clip.path = str(kept_path)
     clip.seed_frame = str(seed_path) if ok_f else ""
     clip.kept_at = time.strftime("%Y-%m-%dT%H:%M:%S")
@@ -441,6 +455,15 @@ def keep_best_by_angle(
         "анфас": "front",
         "front": "front",
         "фронт": "front",
+        "a": "take_a",
+        "b": "take_b",
+        "c": "take_c",
+        "take_a": "take_a",
+        "take_b": "take_b",
+        "take_c": "take_c",
+        "дубль_a": "take_a",
+        "дубль_b": "take_b",
+        "дубль_c": "take_c",
     }
     angle_id = aliases.get(angle_l, angle_l)
     for clip in store.by_batch(batch_id):
@@ -502,9 +525,12 @@ def _sync_catalog_wish(config: Config, clip: ComfyClip) -> None:
         )
     wish.ref_video = clip.path
     wish.seed_frame = clip.seed_frame
-    wish.enters_from = list(clip.enters_from)
-    wish.exits_to = list(clip.exits_to)
+    if clip.enters_from:
+        wish.enters_from = list(clip.enters_from)
+    if clip.exits_to:
+        wish.exits_to = list(clip.exits_to)
     wish.comfy_score = clip.score
+    # ref закрывает дыру для режиссёра (missing() смотрит на ref_video)
     extra = f"ref={Path(clip.path).name}; seed={Path(clip.seed_frame).name if clip.seed_frame else '—'}"
     if extra not in (wish.notes or ""):
         wish.notes = ((wish.notes or "") + f"\n{extra}").strip()
@@ -517,8 +543,8 @@ def format_candidates_message(clips: List[ComfyClip]) -> str:
         return "Нет кандидатов на оценку."
     batch = clips[0].batch_id
     lines = [
-        f"Выбери лучший ракурс (batch `{batch}`):",
-        "В Telegram/чате: `лучший: front` / `лучший: side 5` / `отклонить все`",
+        f"Выбери лучший дубль ¾ (batch `{batch}`):",
+        "В Telegram/чате: `лучший: take_b` / `лучший: a` / `лучший: c 5` / `отклонить все`",
         "Или кнопка «Оценить клипы Comfy».",
         "",
     ]

@@ -1591,11 +1591,31 @@ class ViuGUI:
                 )
                 return
             if comfy.status == "awaiting_clip_pick" and auto:
-                # away: авто-выбор front
+                # away: авто-выбор дубля B (¾)
+                from .integrations.comfy.angles import AWAY_AUTO_TAKE_ID
+                from .lab.session import load_session as _ls
+                from .lab.session import save_session as _ss
+
+                sess = _ls(self.agent.config, COMFY_TOPIC)
+                pick_args = {
+                    "angle": AWAY_AUTO_TAKE_ID,
+                    "score": "3",
+                    "notes": "auto away take_b",
+                }
+                # не затирать catalog_slug / граф
+                if sess is not None:
+                    if sess.meta.get("catalog_slug"):
+                        pick_args["catalog_slug"] = str(sess.meta["catalog_slug"])
+                    ef = sess.meta.get("enters_from") or []
+                    et = sess.meta.get("exits_to") or []
+                    if ef:
+                        pick_args["enters_from"] = ",".join(ef) if isinstance(ef, list) else str(ef)
+                    if et:
+                        pick_args["exits_to"] = ",".join(et) if isinstance(et, list) else str(et)
                 self._run_tool(
                     "comfy_clip_pick",
-                    {"angle": "front", "score": "3", "notes": "auto away"},
-                    label="Comfy: авто-выбор клипа",
+                    pick_args,
+                    label="Comfy: авто-выбор дубля",
                 )
                 self._run_tool(
                     "lab_step",
@@ -1663,28 +1683,17 @@ class ViuGUI:
             "run_all": "1",
             "reset": "1",
             "action": plan.action,
+            "catalog_slug": plan.catalog_slug,
+            "enters_from": ",".join(plan.enters_from),
+            "exits_to": ",".join(plan.exits_to),
+            "shot_reason": plan.reason,
         }
-        # прокинуть граф в session через meta после start — lab_start принимает action
         self._run_tool(
             "lab_start",
             args,
             label="Лаборатория: Comfy MoCap",
             echo_user=not auto,
         )
-        # после старта дописать catalog_slug в сессию
-        def _patch_meta() -> None:
-            from .lab.session import load_session, save_session
-
-            sess = load_session(self.agent.config, COMFY_TOPIC)
-            if sess is None:
-                return
-            sess.meta["catalog_slug"] = plan.catalog_slug
-            sess.meta["enters_from"] = list(plan.enters_from)
-            sess.meta["exits_to"] = list(plan.exits_to)
-            sess.meta["shot_reason"] = plan.reason
-            save_session(self.agent.config, sess)
-
-        self.root.after(800, _patch_meta)
 
     def _lab_run_all_action(self, *, reset: bool = False) -> None:
         from .lab.cascadeur_pipeline import CASCADEUR_TOPIC

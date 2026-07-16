@@ -24,6 +24,27 @@ _BASE = (
     "high contrast against white, loopable short motion"
 )
 
+# Вариации дублей — чтобы A/B/C не были копиями
+_TAKE_FLAVOR = (
+    "calm natural pacing, soft micro-movements",
+    "slightly snappier timing, clearer weight shifts, more decisive limb arcs",
+    "slower softer motion, gentler breath, smaller gestures, relaxed energy",
+)
+
+
+def take_flavor(take_index: int) -> str:
+    return _TAKE_FLAVOR[take_index % len(_TAKE_FLAVOR)]
+
+
+def diversify_action(action: str, take_index: int) -> str:
+    """Базовое действие + вкус дубля (не копипаста трёх одинаковых клипов)."""
+    base = enrich_idle_action((action or "").strip())
+    flavor = take_flavor(take_index)
+    # не дублировать, если уже есть
+    if flavor.split(",")[0] in base:
+        return base
+    return f"{base}, {flavor}"
+
 
 def mocap_prompt(action: str, angle: CameraAngle | None = None) -> str:
     action = enrich_idle_action(action)
@@ -49,11 +70,10 @@ def draft_bundle(action: str) -> str:
     spec = frame_spec_for_action(action_e)
     return (
         f"Действие: {action_e}\n\n"
-        f"Базовый промпт (к нему Вью добавит 3 ракурса: сбоку / ¾ / анфас):\n"
+        f"Базовый промпт (Вью снимет 3 дубля в ракурсе ¾ с разным timing/seed):\n"
         f"{base}\n\n"
-        f"Кадр: {spec.summary_ru()}.\n"
-        f"Длина считается так: Wan = кадры 4n+1, FPS={spec.fps:.0f} как у Cascadeur; "
-        f"idle длиннее (~3.4 с), чтобы успели микродвижения; "
-        f"жест ~2 с; переход ~2.7 с. Выход — MP4 h264.\n\n"
+        f"Кадр: {spec.summary_ru()}. Ракурс: только три четверти.\n"
+        f"Длина: Wan = кадры 4n+1, FPS={spec.fps:.0f}; "
+        f"idle длиннее (~3.4 с), жест ~2 с; переход ~2.7 с. Выход — MP4 h264.\n\n"
         f"Negative:\n{mocap_negative()}"
     )

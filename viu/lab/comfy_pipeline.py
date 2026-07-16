@@ -31,8 +31,8 @@ STEP_LABELS = [
     "Модели Wan",
     "Черновик промпта",
     "Одобрение Telegram",
-    "3 ракурса",
-    "Выбор лучшего клипа",
+    "3 дубля (¾)",
+    "Выбор лучшего дубля",
     "Отчёт",
 ]
 
@@ -202,12 +202,27 @@ def step_request_approval(config: Config, session: LabSession) -> StepResult:
         save_session(config, session)
         msg = (
             f"Нет дома — сама одобрила съёмку «{action[:80]}».\n"
-            "Дальше 3 ракурса без ожидания Telegram."
+            "Дальше 3 дубля в ракурсе ¾ (разный seed/timing) без ожидания Telegram."
         )
         append_journal(config, COMFY_TOPIC, f"### Авто-одобрение (away)\n\n{msg}\n\n{draft}")
         return True, msg, None
 
     sent, msg = send_prompt_for_approval(config, action, draft)
+    try:
+        from .comfy_director import invent_shot_choices
+
+        choices = invent_shot_choices(config, limit=4)
+        if choices:
+            alts = "\n".join(
+                f"  • {c.catalog_slug} — {c.title_ru or c.action[:60]}" for c in choices
+            )
+            msg = (
+                msg
+                + "\n\nПо графу ещё можно снять (скажи «правки: <slug>» или одобри текущее):\n"
+                + alts
+            )
+    except Exception:
+        pass
     session.status = "awaiting_prompt"
     session.meta["approval_sent"] = sent
     save_session(config, session)
@@ -245,11 +260,11 @@ def apply_prompt_decision(
     append_journal(
         config,
         COMFY_TOPIC,
-        f"### Промпт одобрен\n\naction: {action}\n\nДальше — 3 ракурса.",
+        f"### Промпт одобрен\n\naction: {action}\n\nДальше — 3 дубля ¾.",
     )
     return (
         f"Промпт принят («{action[:80]}»).\n"
-        "Запускаю 3 ракурса (сбоку / ¾ / анфас) → Lab/Refs."
+        "Запускаю 3 дубля (три четверти, разный seed) → Lab/Refs."
     )
 
 
@@ -262,12 +277,15 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
         return True, "Промпт ещё не одобрен — жду Telegram.", None
 
     action = str(session.meta.get("approved_action") or session.meta.get("action") or "")
-    slug = "".join(c if c.isalnum() or c in "-_" else "_" for c in action.lower())[:40] or "mocap"
+    catalog_slug = str(session.meta.get("catalog_slug") or "").strip()
+    slug = catalog_slug or (
+        "".join(c if c.isalnum() or c in "-_" else "_" for c in action.lower())[:40] or "mocap"
+    )
     ok, msg, results = run_triple_angles(config, action=action, slug=slug)
     session.meta["triple"] = results
     for path in results.get("files") or []:
         session.append_artifact(path)
-    append_journal(config, COMFY_TOPIC, f"### 3 ракурса\n\n{msg}")
+    append_journal(config, COMFY_TOPIC, f"### 3 дубля ¾\n\n{msg}")
     if not ok:
         return False, msg, None
 
@@ -276,16 +294,23 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
         register_triple_batch,
     )
 
-    clips = register_triple_batch(config, action=action, results=results)
+    clips = register_triple_batch(
+        config,
+        action=action,
+        results=results,
+        catalog_slug=catalog_slug,
+        enters_from=list(session.meta.get("enters_from") or []),
+        exits_to=list(session.meta.get("exits_to") or []),
+    )
     session.meta["clip_batch_id"] = str(results.get("slug") or "")
     session.meta["clip_candidate_ids"] = [c.id for c in clips]
     pick_msg = format_candidates_message(clips)
-    append_journal(config, COMFY_TOPIC, f"### Выбор клипа\n\n{pick_msg}")
+    append_journal(config, COMFY_TOPIC, f"### Выбор дубля\n\n{pick_msg}")
     return True, msg + "\n\n" + pick_msg, None
 
 
 def step_await_clip_pick(config: Config, session: LabSession) -> StepResult:
-    """Пауза: Ден выбирает лучший из 3 ракурсов."""
+    """Пауза: Ден выбирает лучший из 3 дублей."""
     if session.meta.get("clip_kept_id"):
         return True, f"Клип уже выбран: {session.meta.get('clip_kept_id')}.", None
     from ..integrations.comfy.clip_review import ComfyClipStore, clip_review_path, format_candidates_message
@@ -336,7 +361,7 @@ def apply_clip_pick_decision(
         append_journal(config, COMFY_TOPIC, f"### Клипы отклонены\n\n{msg}")
         return msg + "\nМожно снова comfy_mocap с другим промптом."
 
-    angle = str(payload.get("angle") or "front")
+    angle = str(payload.get("angle") or "take_b")
     score = int(payload.get("score") or 4)
     notes = str(payload.get("notes") or "")
     ok, msg, clip = keep_best_by_angle(
