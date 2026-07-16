@@ -85,6 +85,13 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Характеры и отношения — локальный файл, не на GitHub. Правишь сам.",
     ),
     GuiAction(
+        "places",
+        "Места (папки)",
+        "Главное",
+        tool="__places__",
+        hint="Inbox, клипы Comfy, Animations, Vision, модели — все входы/выходы.",
+    ),
+    GuiAction(
         "send_logs",
         "Что сломалось?",
         "Главное",

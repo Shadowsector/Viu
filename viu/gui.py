@@ -464,6 +464,29 @@ class ViuGUI:
         m_edit.add_command(label="Выделить всё", command=self._select_all_focused)
         menubar.add_cascade(label="Правка", menu=m_edit)
 
+        m_places = tk.Menu(menubar, tearoff=0)
+        m_places.add_command(label="Все места…", command=self._open_places_window)
+        m_places.add_separator()
+        try:
+            from .places import places_by_group
+
+            for group, items in places_by_group().items():
+                sub = tk.Menu(m_places, tearoff=0)
+                for place in items:
+                    sub.add_command(
+                        label=place.label,
+                        command=lambda p=place: self._open_place(p),
+                    )
+                m_places.add_cascade(label=group, menu=sub)
+        except Exception:  # noqa: BLE001
+            pass
+        m_places.add_separator()
+        m_places.add_command(
+            label="Показать пути в чате",
+            command=self._show_places_in_chat,
+        )
+        menubar.add_cascade(label="Места", menu=m_places)
+
         self.root.config(menu=menubar)
 
     def _attach_tooltip(self, widget: tk.Widget, text: str) -> None:
@@ -623,6 +646,9 @@ class ViuGUI:
             return
         if action.tool == "__characters_vision__":
             self._open_characters_vision()
+            return
+        if action.tool == "__places__":
+            self._open_places_window()
             return
         if action.tool == "__next_step__":
             self._run_next_step()
@@ -978,6 +1004,77 @@ class ViuGUI:
         ok, msg = open_characters_vision(self.agent.config)
         self._append("ты", "[Персонажи]")
         self._append("система", msg, tag="sys" if ok else "err")
+
+    def _open_place(self, place) -> None:
+        from .places import open_place
+
+        ok, msg = open_place(self.agent.config, place)
+        self._append("система", msg, tag="sys" if ok else "err")
+
+    def _show_places_in_chat(self) -> None:
+        from .places import describe_places
+
+        self._append("ты", "[Места]")
+        self._append("система", describe_places(self.agent.config), tag="sys")
+
+    def _open_places_window(self) -> None:
+        from .places import places_by_group
+
+        win = tk.Toplevel(self.root)
+        win.title("Места — входы и выходы Вью")
+        win.geometry("520x560")
+        win.transient(self.root)
+
+        outer = ttk.Frame(win, padding=8)
+        outer.pack(fill="both", expand=True)
+
+        ttk.Label(
+            outer,
+            text="Куда класть модели / откуда забирать клипы и правки.",
+            wraplength=480,
+            font=("Segoe UI", 9),
+            foreground="#666666",
+        ).pack(anchor="w", pady=(0, 6))
+
+        canvas = tk.Canvas(outer, highlightthickness=0)
+        scroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas)
+        inner.bind(
+            "<Configure>",
+            lambda _e: canvas.configure(scrollregion=canvas.bbox("all")),
+        )
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+
+        for group, items in places_by_group().items():
+            box = ttk.LabelFrame(inner, text=group, padding=6)
+            box.pack(fill="x", padx=4, pady=4)
+            for place in items:
+                row = ttk.Frame(box)
+                row.pack(fill="x", pady=2)
+                btn = ttk.Button(
+                    row,
+                    text=place.label,
+                    width=36,
+                    command=lambda p=place: self._open_place(p),
+                )
+                btn.pack(side="left")
+                if place.hint:
+                    self._attach_tooltip(btn, place.hint)
+
+        foot = ttk.Frame(outer)
+        foot.pack(fill="x", pady=(8, 0))
+        ttk.Button(
+            foot,
+            text="Пути в чат",
+            command=self._show_places_in_chat,
+        ).pack(side="left")
+        ttk.Button(foot, text="Закрыть", command=win.destroy).pack(side="right")
+
+        self._append("ты", "[Места]")
+        self._append("система", "Окно мест: папки и файлы взаимодействия.", tag="sys")
 
     def _open_animation_review(self) -> None:
         from .animation_catalog import AnimationCatalogStore, animation_catalog_path
