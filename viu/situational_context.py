@@ -115,4 +115,17 @@ def build_reflect_notes(config: Config) -> str:
     except OSError:
         pass
 
+    try:
+        from .animation_catalog import AnimationCatalogStore, animation_catalog_path
+
+        store = AnimationCatalogStore(animation_catalog_path(config)).load()
+        brief = store.graph_brief(max_holes=6).strip()
+        if brief:
+            parts.append(
+                "--- Граф анимаций (не зачитывать списком; предлагай закрывать цепочки) ---\n"
+                + brief
+            )
+    except OSError:
+        pass
+
     return "\n\n".join(parts) if parts else ""

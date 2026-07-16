@@ -67,6 +67,10 @@
 | Take / throw / attack | **Нет** — one-shot + Trigger |
 | **Climb** | **Да** — один **полный** клип до стойки наверху |
 
+Граф в данных: `enters_from[]` / `exits_to[]` у каждой записи.  
+Вью видит снимок в чате/heartbeat; `animation_catalog_show mode=graph` — дыры по приоритету.  
+Comfy-режиссёр сначала закрывает transition wave 1 с готовым входом.
+
 ---
 
 ## Куда кидать файлы

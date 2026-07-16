@@ -53,7 +53,18 @@ class LabStartTool(Tool):
             ensure_task_file(ctx.config)
         if topic == "comfy":
             from ..lab.comfy_pipeline import ensure_task_file as ensure_comfy_task
+            from ..lab.comfy_director import invent_next_shot
 
+            # Без явного slug — invent полный план, чтобы граф не терялся
+            if not str(args.get("catalog_slug") or "").strip():
+                if not action or action.lower() in ("auto", "сам", "сама", "invent"):
+                    plan = invent_next_shot(ctx.config)
+                    action = plan.action
+                    args = dict(args)
+                    args["catalog_slug"] = plan.catalog_slug
+                    args["enters_from"] = ",".join(plan.enters_from)
+                    args["exits_to"] = ",".join(plan.exits_to)
+                    args["shot_reason"] = plan.reason
             ensure_comfy_task(ctx.config, action=action)
 
         session = None if reset else load_session(ctx.config, topic)

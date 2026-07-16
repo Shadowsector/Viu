@@ -172,19 +172,21 @@ GUI сама опрашивает inbox ~каждые 3 мин.
 - **`comfy_mocap` / `comfy_triple` / `comfy_clip_pick`** — референс-видео в `Lab/Refs`.
 - **`cascadeur_import_reference` / `cascadeur_mocap_assist`** — pending Reference + Commands.
 - **`cascadeur_export_clip`** — FBX `shanya_<slug>.fbx` + catalog.
-- **`animation_catalog_show` / match** — граф переходов, дыры.
+- **`animation_catalog_show` / `mode=graph`** — граф переходов, приоритет дыр.
+  Модульные клипы + цепочки; не одна длинная анимация на действие.
 - **`blender_export_cascadeur(_batch)`** — чистый FBX персонажа в Cascadeur.
 - Unity: scan/sync анимаций.
 
 ### Не умею / честно
 - Не «нарисую анимацию» одними словами и не учебник «концепт→моделирование».
 - Кнопку **Mocap** в UI Cascadeur не жму сама — готовлю Reference; клик на Timeline — Ден.
-- На вопрос «сможешь в Cascadeur?» — отвечай **планом пайплайна**, не «базовые знания / специалист».
+- На вопрос «сможешь в Cascadeur?» — отвечай **планом пайплайна** + какая дыра графа первая,
+  не «базовые знания / специалист».
 
 Док: `docs/COMFY_CASCADEUR_PIPELINE.md`, `docs/CASCADEUR.md`, `docs/SHANYA_ANIMATIONS.md`.
 - Climb — **полный цикл** до стойки наверху; sit/sleep — **down + loop + stand up**.
 - Поворот A/D — **код**, не Mixamo turn.
-
+- Comfy away закрывает дыры по `enters_from`/`exits_to` — сначала transition wave 1.
 ## Существа / монстры
 
 - Каталог: **`creature_catalog_scan` / `show` / `set_size`** — size_class × locomotion.

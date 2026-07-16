@@ -18,17 +18,23 @@ from .base import AgentContext, Tool, ToolResult
 class AnimationCatalogShowTool(Tool):
     name = "animation_catalog_show"
     description = (
-        "Каталог анимаций Шани: категории, описания «когда/как/зачем», "
-        "что уже импортировано и чего не хватает (wave 1)."
+        "Каталог анимаций Шани + граф переходов (enters_from/exits_to). "
+        "mode=graph|holes — только дыры с рёбрами; slug= — одна запись; "
+        "missing_only=1 — без клипа."
     )
     parameters = {
         "category": "фильтр категории (locomotion, adventure, …) или пусто = всё",
         "missing_only": "1 = только без клипа",
         "slug": "одна запись по slug (climb_up, sit_idle, …)",
+        "mode": "пусто | graph | holes — снимок графа / приоритет дыр",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         store = AnimationCatalogStore(animation_catalog_path(ctx.config)).load()
+        mode = str(args.get("mode") or "").strip().lower()
+        if mode in ("graph", "holes", "дыры", "граф"):
+            return ToolResult(True, store.graph_brief(max_holes=16))
+
         slug = str(args.get("slug", "")).strip()
         if slug:
             w = store.get_by_slug(slug)
@@ -42,7 +48,7 @@ class AnimationCatalogShowTool(Tool):
         if cat:
             wishes = [w for w in wishes if w.category == cat]
         if missing:
-            wishes = [w for w in wishes if w.status == "wished"]
+            wishes = [w for w in wishes if w.status == "wished" and not (w.ref_video or w.clip_file)]
 
         if not wishes:
             return ToolResult(True, store.summary_text() + "\n\n(пусто по фильтру)")
@@ -54,8 +60,12 @@ class AnimationCatalogShowTool(Tool):
                 cur_cat = w.category
                 label = ANIMATION_CATEGORIES.get(cur_cat, (cur_cat, ""))[0]
                 lines.append(f"\n## {label} ({cur_cat})")
-            status = "✓" if w.status != "wished" else "○"
+            status = "✓" if (w.status != "wished" or w.ref_video or w.clip_file) else "○"
             lines.append(f"{status} **{w.title_ru}** (`{w.slug}`, wave {w.wave})")
+            if w.enters_from or w.exits_to:
+                lines.append(
+                    f"  Граф: {w.enters_from or '—'} → `{w.slug}` → {w.exits_to or '—'}"
+                )
             lines.append(f"  Когда: {w.when_used}")
             lines.append(f"  Как: {w.looks_like}")
         return ToolResult(True, "\n".join(lines))

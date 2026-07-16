@@ -218,6 +218,7 @@ class ComfyMocapTool(Tool):
         from .lab_tool import LabStartTool
 
         action = str(args.get("action") or "").strip()
+        plan_meta: Dict[str, Any] = {}
         if not action or action.lower() in ("auto", "сам", "сама", "invent"):
             from ..lab.comfy_director import invent_next_shot
             from ..lab.comfy_pipeline import ensure_task_file
@@ -225,15 +226,20 @@ class ComfyMocapTool(Tool):
             plan = invent_next_shot(ctx.config)
             action = plan.action
             ensure_task_file(ctx.config, action=action)
-        return LabStartTool().run(
-            {
-                "topic": "comfy",
-                "run_all": "1",
-                "reset": args.get("reset", "1"),
-                "action": action,
-            },
-            ctx,
-        )
+            plan_meta = {
+                "catalog_slug": plan.catalog_slug,
+                "enters_from": ",".join(plan.enters_from),
+                "exits_to": ",".join(plan.exits_to),
+                "shot_reason": plan.reason,
+            }
+        payload = {
+            "topic": "comfy",
+            "run_all": "1",
+            "reset": args.get("reset", "1"),
+            "action": action,
+            **plan_meta,
+        }
+        return LabStartTool().run(payload, ctx)
 
 
 class ComfyTripleTool(Tool):

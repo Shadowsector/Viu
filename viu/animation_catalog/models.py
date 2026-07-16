@@ -262,7 +262,20 @@ DEFAULT_WISHES: List[AnimationWish] = [
         wave=1,
         animator_state="Idle",
         enters_from=["walk", "walk_back", "run", "stand_up", "get_up", "wave"],
-        exits_to=["walk", "walk_back", "run", "sit_down", "lie_down", "wave"],
+        exits_to=[
+            "walk",
+            "walk_back",
+            "run",
+            "sit_down",
+            "lie_down",
+            "wave",
+            "yawn",
+            "stretch",
+            "look_around",
+            "take",
+            "jump",
+            "climb_up",
+        ],
     ),
     _w(
         "walk",
@@ -275,7 +288,7 @@ DEFAULT_WISHES: List[AnimationWish] = [
         wave=1,
         animator_state="Walk",
         enters_from=["idle", "run", "walk_back"],
-        exits_to=["idle", "run", "walk_back"],
+        exits_to=["idle", "run", "walk_back", "fall", "stumble"],
     ),
     _w(
         "walk_back",
@@ -312,6 +325,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Adventure + позже stealth на карте.",
         ["Sneaking", "Crouched Walk"],
         wave=2,
+        enters_from=["idle", "walk"],
+        exits_to=["idle", "hide_peek"],
     ),
     _w(
         "walk_proud",
@@ -322,6 +337,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Эмоциональная альтернатива Walk по триггеру настроения.",
         ["Confident Walk", "Strut Walk"],
         wave=3,
+        enters_from=["idle"],
+        exits_to=["idle"],
     ),
     # --- transition ---
     _w(
@@ -425,6 +442,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Короткий one-shot или overlay на Idle.",
         ["Yawn", "Yawning"],
         wave=1,
+        enters_from=["idle", "sit_idle"],
+        exits_to=["idle", "sit_idle"],
     ),
     _w(
         "stretch",
@@ -435,6 +454,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "One-shot из Idle; Viu может предложить после sleep.",
         ["Stretching", "Stretch"],
         wave=1,
+        enters_from=["idle", "get_up"],
+        exits_to=["idle"],
     ),
     # --- routine ---
     _w(
@@ -446,6 +467,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Idle-вариант домашней жизни.",
         ["Face Wash", "Cleaning Face"],
         wave=2,
+        enters_from=["idle", "sit_idle"],
+        exits_to=["idle", "sit_idle"],
     ),
     _w(
         "look_around",
@@ -456,6 +479,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Перед interaction или adventure scout.",
         ["Looking Around", "Look Around"],
         wave=1,
+        enters_from=["idle"],
+        exits_to=["idle", "scout"],
     ),
     _w(
         "lean",
@@ -466,6 +491,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Быт у сарая; связка с prop lean.",
         ["Idle Lean", "Standing Lean", "Leaning"],
         wave=2,
+        enters_from=["idle", "walk"],
+        exits_to=["idle"],
     ),
     _w(
         "knock",
@@ -476,6 +503,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Триггер у Anchor_BarnEntrance.",
         ["Knocking", "Door Knock"],
         wave=2,
+        enters_from=["idle", "walk"],
+        exits_to=["idle"],
     ),
     _w(
         "look_window",
@@ -486,6 +515,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Атмосфера Instance-режима.",
         ["Window Peek", "Looking Out Window", "Peek"],
         wave=2,
+        enters_from=["idle", "sit_idle"],
+        exits_to=["idle", "sit_idle"],
     ),
     # --- hygiene ---
     _w(
@@ -497,6 +528,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Сцена дома, позже NSFW-ветки отдельно.",
         ["Showering", "Taking Shower"],
         wave=3,
+        enters_from=["idle", "stand_up"],
+        exits_to=["idle"],
     ),
     _w(
         "bath",
@@ -507,6 +540,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Долгая сцена rest+hygiene.",
         ["Bath", "Sitting In Bath"],
         wave=3,
+        enters_from=["sit_down", "idle"],
+        exits_to=["sit_idle", "stand_up"],
     ),
     # --- social ---
     _w(
@@ -518,6 +553,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Триггер от диалога или клика по Шане.",
         ["Waving", "Greeting", "Hello"],
         wave=2,
+        enters_from=["idle"],
+        exits_to=["idle", "wave"],
     ),
     # --- interaction ---
     _w(
@@ -529,6 +566,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Связь с prop_catalog.",
         ["Picking Up", "Pick Up"],
         wave=1,
+        enters_from=["idle"],
+        exits_to=["idle", "throw"],
     ),
     _w(
         "throw",
@@ -539,6 +578,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Affordance throw.",
         ["Throw", "Throw Object"],
         wave=1,
+        enters_from=["idle", "take"],
+        exits_to=["idle"],
     ),
     # --- food ---
     _w(
@@ -550,6 +591,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Affordance eat.",
         ["Eating", "Standing Eating"],
         wave=2,
+        enters_from=["idle", "sit_idle"],
+        exits_to=["idle", "sit_idle"],
     ),
     _w(
         "drink",
@@ -560,6 +603,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Affordance drink (добавим в interactions).",
         ["Drinking"],
         wave=2,
+        enters_from=["idle", "sit_idle"],
+        exits_to=["idle", "sit_idle"],
     ),
     _w(
         "cook",
@@ -570,6 +615,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Сцена с kitchen props.",
         ["Cooking", "Stirring Pot"],
         wave=3,
+        enters_from=["idle"],
+        exits_to=["idle"],
     ),
     # --- fight ---
     _w(
@@ -581,6 +628,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Combat; позже свой Cascadeur-вариант «кошачий».",
         ["Standing Melee Attack", "Cat stance", "Scratch"],
         wave=1,
+        enters_from=["idle"],
+        exits_to=["idle", "hit_react"],
     ),
     _w(
         "hit_react",
@@ -591,6 +640,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Переход в Idle/Stagger.",
         ["Hit Reaction", "Recoil"],
         wave=2,
+        enters_from=["idle", "attack_claws"],
+        exits_to=["idle"],
     ),
     # --- adventure ---
     _w(
@@ -602,6 +653,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Главный climb; Viu предлагает, если «не лезет на дерево».",
         ["Climbing", "Climb Up Wall", "Free Hang Climb"],
         wave=1,
+        enters_from=["idle", "walk"],
+        exits_to=["idle"],
     ),
     _w(
         "jump",
@@ -612,6 +665,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "In Place Jump с Mixamo; спрыгнуть с уступа = jump с края + fall, или Comfy/Cascadeur позже.",
         ["Jump", "Jumping"],
         wave=1,
+        enters_from=["idle"],
+        exits_to=["idle", "fall"],
     ),
     _w(
         "fall",
@@ -622,6 +677,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "После jump с высоты или триггер падения; не заменяет jump с места.",
         ["Falling Idle", "Hard Landing", "Fall"],
         wave=1,
+        enters_from=["jump", "walk", "climb_up"],
+        exits_to=["idle"],
     ),
     _w(
         "hide_peek",
@@ -632,6 +689,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Adventure stealth; «за деревом» из твоего списка.",
         ["Peek", "Hide", "Cover Idle"],
         wave=2,
+        enters_from=["idle", "sneak"],
+        exits_to=["idle", "sneak"],
     ),
     _w(
         "scout",
@@ -642,6 +701,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Перед transition в локацию.",
         ["Looking Around", "Inspect", "Scout"],
         wave=2,
+        enters_from=["idle", "look_around"],
+        exits_to=["idle"],
     ),
     # --- dance ---
     _w(
@@ -653,6 +714,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Эмоция + dance category.",
         ["Dancing", "Dance"],
         wave=3,
+        enters_from=["idle"],
+        exits_to=["idle"],
     ),
     # --- special ---
     _w(
@@ -664,6 +727,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         "Между Walk и Fall.",
         ["Stumble", "Trip"],
         wave=3,
+        enters_from=["walk", "run"],
+        exits_to=["idle", "fall"],
     ),
 ]
 

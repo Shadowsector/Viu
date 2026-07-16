@@ -92,6 +92,101 @@ class AnimationCatalogStore:
             if w.status == STATUS_WISHED and not (w.ref_video or w.clip_file)
         ]
 
+    @staticmethod
+    def is_filled(wish: AnimationWish) -> bool:
+        """Дыра закрыта: есть ref_video / clip_file или статус уже не wished."""
+        if wish.ref_video or wish.clip_file:
+            return True
+        return wish.status != STATUS_WISHED
+
+    def sources_ready(self, wish: AnimationWish) -> bool:
+        """Можно снимать приоритетно: нет enters_from или хотя бы один источник заполнен."""
+        if not wish.enters_from:
+            return True
+        for src in wish.enters_from:
+            sw = self.get_by_slug(src)
+            if sw is None:
+                continue
+            if self.is_filled(sw):
+                return True
+        return False
+
+    def blocking_sources(self, wish: AnimationWish) -> List[str]:
+        """Slug'и enters_from, которые ещё дыры (для подсказки Вью)."""
+        if not wish.enters_from:
+            return []
+        out: List[str] = []
+        for src in wish.enters_from:
+            sw = self.get_by_slug(src)
+            if sw is not None and not self.is_filled(sw):
+                out.append(src)
+        return out
+
+    def ordered_holes(self) -> List[AnimationWish]:
+        """Приоритет съёмки: готовые enters_from → wave≤1 → transition → rest → loco.
+
+        Среди transition сначала входы из idle (sit_down/lie_down), потом выходы.
+        """
+        holes = self.missing()
+        if not holes:
+            return []
+        ready = [w for w in holes if self.sources_ready(w)]
+        pool = ready or holes
+        wave1 = [w for w in pool if w.wave <= 1]
+        base = wave1 or pool
+        non_idle = [w for w in base if w.slug != "idle"]
+        pool2 = non_idle or base
+
+        def _entry_key(w: AnimationWish) -> tuple:
+            # 0 = из idle / без входа; 1 = остальные
+            from_idle = (not w.enters_from) or ("idle" in w.enters_from)
+            return (0 if from_idle else 1, w.slug)
+
+        transitions = sorted(
+            [w for w in pool2 if w.category == "transition"], key=_entry_key
+        )
+        rest = sorted([w for w in pool2 if w.category == "rest"], key=_entry_key)
+        loco = sorted([w for w in pool2 if w.category == "locomotion"], key=_entry_key)
+        other = sorted(
+            [w for w in pool2 if w.category not in ("transition", "rest", "locomotion")],
+            key=_entry_key,
+        )
+        return transitions or rest or loco or other or pool2
+
+    def graph_brief(self, *, max_holes: int = 8) -> str:
+        """Короткий снимок графа для reflect / heartbeat / tool."""
+        missing = self.missing()
+        ordered = self.ordered_holes()
+        with_edges = sum(1 for w in self.all_wishes() if w.enters_from or w.exits_to)
+        lines = [
+            "Граф анимаций (модульные клипы + переходы, не «одна большая»):",
+            f"Записей: {len(self._items)}, с рёбрами enters_from/exits_to: {with_edges}, "
+            f"дыр без клипа/ref: {len(missing)}.",
+            "Цепочки: idle→sit_down→sit_idle→stand_up→idle; "
+            "idle→lie_down→sleep_idle→get_up→idle; idle↔walk↔run.",
+        ]
+        if not ordered:
+            lines.append("Дыр нет — можно вариации / NSFW / wave 2+.")
+            return "\n".join(lines)
+
+        lines.append("Следующие дыры (приоритет съёмки Comfy):")
+        for w in ordered[:max_holes]:
+            edge = f"{w.enters_from or '—'} → `{w.slug}` → {w.exits_to or '—'}"
+            if self.sources_ready(w):
+                mark = "готово снимать"
+            else:
+                blocked = self.blocking_sources(w)
+                mark = f"сначала закрой: {', '.join(blocked)}" if blocked else "ждёт вход"
+            lines.append(
+                f"  • [{w.category}/w{w.wave}] {w.title_ru} — {edge} ({mark})"
+            )
+        if len(ordered) > max_holes:
+            lines.append(f"  … ещё {len(ordered) - max_holes}")
+        lines.append(
+            "В чате предлагай закрывать цепочки; comfy_mocap action=auto берёт верхнюю дыру."
+        )
+        return "\n".join(lines)
+
     def pending_reviews(self) -> List[AnimationImportReview]:
         return [p for p in self._pending.values() if not p.reviewed]
 
@@ -172,10 +267,6 @@ class AnimationCatalogStore:
         ]
         if pending:
             lines.append(f"Ожидают описания: {pending} — «Принять анимацию» или «Очередь анимаций».")
-        if missing:
-            lines.append("\nПриоритет (wave 1, нет клипа):")
-            for w in self.missing():
-                if w.wave != 1:
-                    continue
-                lines.append(f"  • [{w.category}] {w.title_ru} — {w.slug}")
+        lines.append("")
+        lines.append(self.graph_brief(max_holes=6))
         return "\n".join(lines)

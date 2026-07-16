@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Set
 
 from ..animation_catalog import AnimationCatalogStore, animation_catalog_path
-from ..animation_catalog.models import AnimationWish, STATUS_WISHED
+from ..animation_catalog.models import AnimationWish
 from ..config import Config
 from ..integrations.comfy.clip_review import ComfyClipStore, STATUS_KEPT, clip_review_path
 
@@ -103,9 +103,7 @@ def _recent_slugs(config: Config, *, limit: int = 12) -> Set[str]:
 
 def _wish_filled(w: AnimationWish) -> bool:
     """Дыра закрыта, если есть ref_video или статус не wished."""
-    if w.ref_video or w.clip_file:
-        return True
-    return w.status != STATUS_WISHED
+    return AnimationCatalogStore.is_filled(w)
 
 
 def _wish_to_action(wish: AnimationWish, *, paraphrase_i: int = 0) -> str:
@@ -123,23 +121,16 @@ def _wish_to_action(wish: AnimationWish, *, paraphrase_i: int = 0) -> str:
 
 
 def _sources_ready(cat: AnimationCatalogStore, w: AnimationWish) -> bool:
-    if not w.enters_from:
-        return True
-    for src in w.enters_from:
-        sw = cat.get_by_slug(src)
-        if sw is None:
-            # нет записи — считаем ок (внешний)
-            continue
-        if _wish_filled(sw):
-            return True
-    # ни один источник не готов
-    return False
+    return cat.sources_ready(w)
 
 
 def _graph_ordered_holes(
     cat: AnimationCatalogStore, holes: List[AnimationWish]
 ) -> List[AnimationWish]:
-    """Сначала то, чьи enters_from уже сняты; потом wave; не idle если есть иное."""
+    """Сначала то, чьи enters_from уже сняты; потом wave; не idle если есть иное.
+
+    holes уже отфильтрованы (например без recent) — не зовём ordered_holes() целиком.
+    """
     ready = [w for w in holes if _sources_ready(cat, w)]
     pool = ready or holes
     wave1 = [w for w in pool if w.wave <= 1]
@@ -147,10 +138,20 @@ def _graph_ordered_holes(
     non_idle = [w for w in base if w.slug != "idle"]
     pool2 = non_idle or base
 
-    transitions = [w for w in pool2 if w.category == "transition"]
-    rest = [w for w in pool2 if w.category == "rest"]
-    loco = [w for w in pool2 if w.category == "locomotion"]
-    return transitions or rest or loco or pool2
+    def _entry_key(w: AnimationWish) -> tuple:
+        from_idle = (not w.enters_from) or ("idle" in w.enters_from)
+        return (0 if from_idle else 1, w.slug)
+
+    transitions = sorted(
+        [w for w in pool2 if w.category == "transition"], key=_entry_key
+    )
+    rest = sorted([w for w in pool2 if w.category == "rest"], key=_entry_key)
+    loco = sorted([w for w in pool2 if w.category == "locomotion"], key=_entry_key)
+    other = sorted(
+        [w for w in pool2 if w.category not in ("transition", "rest", "locomotion")],
+        key=_entry_key,
+    )
+    return transitions or rest or loco or other or pool2
 
 
 def invent_next_shot(config: Config) -> MocapShotPlan:

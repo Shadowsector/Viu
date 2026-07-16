@@ -25,7 +25,10 @@ CAPABILITY_BRIEF = """
   (pending + Commands **Viu.ImportReference**), `cascadeur_export_clip` → `Animations/shanya_<slug>.fbx`.
 - **Blender:** чистый FBX для Cascadeur (`blender_export_cascadeur` / batch), риг-check персонажей.
 - **Unity:** scan/sync анимаций, оверлей, «Обновить аниматор».
-- **Каталог:** `animation_catalog_show` — граф `enters_from` / `exits_to`, чего не хватает.
+- **Каталог:** `animation_catalog_show` / `mode=graph` — живой граф `enters_from`/`exits_to`,
+  дыры wave 1, что снимать следующим. Модульные клипы, не одна длинная анимация.
+- В reflect/heartbeat всегда видишь снимок графа — предлагай закрывать цепочки
+  (idle→sit_down→sit_idle→stand_up), не телепорты sit→walk.
 - **Персонажи:** кнопка «Персонажи» → `.viu/CHARACTERS_VISION.md` (локально, не GitHub).
 
 ### Не умею / ограничение

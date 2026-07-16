@@ -13,6 +13,11 @@ def test_wave1_core_has_graph_edges():
         assert w.enters_from or w.exits_to, slug
 
 
+def test_all_wishes_have_graph_edges():
+    missing = [w.slug for w in DEFAULT_WISHES if not (w.enters_from or w.exits_to)]
+    assert missing == [], f"без рёбер: {missing}"
+
+
 def test_sit_chain():
     by_slug = {w.slug: w for w in DEFAULT_WISHES}
     assert "idle" in by_slug["sit_down"].enters_from
@@ -34,3 +39,12 @@ def test_merge_fills_empty_graph(tmp_path: Path):
     assert idle2 is not None
     assert idle2.enters_from
     assert idle2.exits_to
+
+
+def test_graph_brief_lists_holes(tmp_path: Path):
+    path = tmp_path / "animation_catalog.json"
+    store = AnimationCatalogStore(path).load()
+    text = store.graph_brief(max_holes=5)
+    assert "Граф анимаций" in text
+    assert "sit_down" in text or "дыр" in text.lower()
+    assert "→" in text
