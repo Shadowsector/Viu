@@ -136,6 +136,9 @@ class AnimationCatalogStore:
         base = wave1 or pool
         non_idle = [w for w in base if w.slug != "idle"]
         pool2 = non_idle or base
+        # Не idle, пока есть другие дыры wave 1
+        if any(w.wave <= 1 and w.slug != "idle" for w in holes):
+            pool2 = [w for w in pool2 if w.slug != "idle"] or pool2
 
         def _entry_key(w: AnimationWish) -> tuple:
             # 0 = из idle / без входа; 1 = остальные

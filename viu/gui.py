@@ -108,12 +108,14 @@ class ViuGUI:
         self.root.after(100, self._poll_queue)
         self.root.after(300, self._check_updates_on_start)
         self.root.after(600, self._show_next_step_banner)
+        self.root.after(2500, self._maybe_prompt_comfy_clip_pick)
         self._refresh_status()
         self._schedule_auto_update()
         self._start_telegram()
         self._schedule_heartbeat()
         self._schedule_cursor_inbox()
         self._schedule_lab()
+        self._schedule_comfy_home_watch()
         try:
             from .vision import ensure_vision
 
@@ -1572,6 +1574,7 @@ class ViuGUI:
                     lab_controller.clear_operator_priority()
                     self._refresh_action_visibility()
                     self._maybe_prompt_lab_rating()
+                    self._maybe_prompt_comfy_clip_pick()
                     if text.startswith("[") and "ОШИБКА" in text:
                         self._telegram_notify_error(text)
                 elif kind == "final":
@@ -1782,9 +1785,18 @@ class ViuGUI:
         """Вью сама выбирает кадр (каталог/граф). Без диалога idle stand."""
         from .lab.comfy_director import invent_next_shot
         from .lab.comfy_pipeline import COMFY_TOPIC
+        from .presence import is_away
 
         plan = invent_next_shot(self.agent.config)
         self._append("Вью", plan.summary_ru(), tag="viu")
+        if not auto and not is_away(self.agent.config):
+            self._append(
+                "Вью",
+                "Дома: сейчас спрошу одобрение промпта (Telegram/чат: «ок» / "
+                "«правки: sit_down» / «стоп»). Без твоего «ок» снимать не начну.\n"
+                "После тройки дублей окно выбора откроется само.",
+                tag="viu",
+            )
         args = {
             "topic": COMFY_TOPIC,
             "run_all": "1",
@@ -1809,6 +1821,48 @@ class ViuGUI:
         if reset:
             args["reset"] = "1"
         self._run_tool("lab_run_all", args, label="Lab: весь цикл", echo_user=True)
+
+    def _schedule_comfy_home_watch(self) -> None:
+        """Дома: если ждут выбора клипа — открыть окно само (не искать кнопку)."""
+
+        def tick() -> None:
+            try:
+                from .presence import is_away
+
+                if not is_away(self.agent.config):
+                    self._maybe_prompt_comfy_clip_pick()
+            except Exception:
+                pass
+            self.root.after(20_000, tick)
+
+        self.root.after(8_000, tick)
+
+    def _maybe_prompt_comfy_clip_pick(self) -> None:
+        from .lab.comfy_pipeline import COMFY_TOPIC
+        from .lab.session import load_session
+        from .presence import is_away
+
+        if is_away(self.agent.config):
+            return
+        if getattr(self, "_comfy_clip_prompt_open", False):
+            return
+        if self._tool_busy:
+            return
+        session = load_session(self.agent.config, COMFY_TOPIC)
+        if session is None or session.status != "awaiting_clip_pick":
+            return
+        self._comfy_clip_prompt_open = True
+        self._append(
+            "Вью",
+            "Клипы готовы — открою окно выбора лучшего дубля.\n"
+            "Или в чате: «лучший: take_b» / «отклонить все».",
+            tag="viu",
+        )
+        try:
+            self._open_comfy_clip_review()
+        finally:
+            # снова предложить, если закрыли без выбора
+            self.root.after(30_000, lambda: setattr(self, "_comfy_clip_prompt_open", False))
 
     def _maybe_prompt_lab_rating(self) -> None:
         from .lab.cascadeur_pipeline import CASCADEUR_TOPIC

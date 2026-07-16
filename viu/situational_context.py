@@ -128,4 +128,27 @@ def build_reflect_notes(config: Config) -> str:
     except OSError:
         pass
 
+    try:
+        from .lab.comfy_director import invent_next_shot
+
+        plan = invent_next_shot(config)
+        parts.append(
+            "--- Следующий кадр (предложи Дена, спроси одобрение) ---\n"
+            + plan.summary_ru()
+        )
+    except Exception:
+        pass
+
+    try:
+        from pathlib import Path
+
+        direction = Path(__file__).resolve().parent.parent / "docs" / "VIU_DIRECTION.md"
+        if direction.is_file():
+            text = direction.read_text(encoding="utf-8", errors="replace")
+            if len(text) > 1200:
+                text = text[:1200] + "…"
+            parts.append("--- Направление работ ---\n" + text)
+    except OSError:
+        pass
+
     return "\n\n".join(parts) if parts else ""

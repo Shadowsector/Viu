@@ -78,12 +78,15 @@ class MocapShotPlan:
     exits_to: List[str] = field(default_factory=list)
     title_ru: str = ""
     alternatives: List[str] = field(default_factory=list)
+    looped: bool = False
 
     def summary_ru(self) -> str:
+        kind = "цикл (looped)" if self.looped else "переход / one-shot"
         lines = [
             f"Снимаю «{self.title_ru or self.catalog_slug}»: {self.action}",
-            f"Почему: {self.reason}",
+            f"Тип: {kind}. Почему: {self.reason}",
             "Ракурс: только ¾ · 3 разных дубля (seed + timing).",
+            f"Граф: {self.enters_from or '—'} → `{self.catalog_slug}` → {self.exits_to or '—'}",
         ]
         if self.alternatives:
             lines.append("Ещё можно: " + ", ".join(self.alternatives[:4]))
@@ -111,13 +114,41 @@ def _wish_to_action(wish: AnimationWish, *, paraphrase_i: int = 0) -> str:
         base = _SLUG_ACTION_EN[wish.slug]
         alts = _SLUG_PARAPHRASE.get(wish.slug) or ()
         if paraphrase_i > 0 and alts:
-            return alts[(paraphrase_i - 1) % len(alts)]
-        return base
-    words = wish.slug.replace("_", " ")
-    hint = (wish.looks_like or "").strip()
-    if hint and re.search(r"[A-Za-z]{3,}", hint):
-        return f"{words}, {hint}"
-    return f"{words}, full body character motion, clear limbs, loopable short clip"
+            base = alts[(paraphrase_i - 1) % len(alts)]
+    else:
+        words = wish.slug.replace("_", " ")
+        hint = (wish.looks_like or "").strip()
+        if hint and re.search(r"[A-Za-z]{3,}", hint):
+            base = f"{words}, {hint}"
+        else:
+            base = f"{words}, full body character motion, clear limbs, loopable short clip"
+    if wish_is_looped(wish):
+        if "seamless loop" not in base.lower() and "loopable" not in base.lower():
+            base = (
+                f"{base}, seamless loop, matching first and last pose, "
+                "continuous cycle, no freeze at end"
+            )
+    return base
+
+
+def wish_is_looped(wish: AnimationWish) -> bool:
+    """Цикл (idle/walk/sit_idle…) vs one-shot переход."""
+    if getattr(wish, "looped", False):
+        return True
+    if wish.category == "transition":
+        return False
+    if wish.slug in (
+        "idle",
+        "sit_idle",
+        "sleep_idle",
+        "walk",
+        "walk_back",
+        "run",
+        "sneak",
+        "walk_proud",
+    ):
+        return True
+    return "idle" in wish.slug
 
 
 def _sources_ready(cat: AnimationCatalogStore, w: AnimationWish) -> bool:
@@ -130,11 +161,16 @@ def _graph_ordered_holes(
     """Сначала то, чьи enters_from уже сняты; потом wave; не idle если есть иное.
 
     holes уже отфильтрованы (например без recent) — не зовём ordered_holes() целиком.
+    **idle не берём**, пока есть другие дыры wave≤1.
     """
     ready = [w for w in holes if _sources_ready(cat, w)]
     pool = ready or holes
     wave1 = [w for w in pool if w.wave <= 1]
     base = wave1 or pool
+    # Жёстко: не idle, пока есть любая другая дыра wave 1
+    other_w1 = [w for w in holes if w.wave <= 1 and w.slug != "idle"]
+    if other_w1:
+        base = [w for w in base if w.slug != "idle"] or base
     non_idle = [w for w in base if w.slug != "idle"]
     pool2 = non_idle or base
 
@@ -189,6 +225,7 @@ def invent_next_shot(config: Config) -> MocapShotPlan:
             exits_to=list(wish.exits_to),
             title_ru=wish.title_ru,
             alternatives=alts,
+            looped=wish_is_looped(wish),
         )
 
     # всё закрыто — вариация по графу (не тот же idle)
@@ -210,6 +247,7 @@ def invent_next_shot(config: Config) -> MocapShotPlan:
         enters_from=list(pick.enters_from),
         exits_to=list(pick.exits_to),
         title_ru=pick.title_ru,
+        looped=wish_is_looped(pick),
     )
 
 

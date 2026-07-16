@@ -25,6 +25,16 @@ def open_comfy_clip_review(
     *,
     on_finished: Optional[Callable[[bool, str], None]] = None,
 ) -> None:
+    # Подтянуть то, что Native Comfy оставил в U:\Viu\ComfyUI\output\
+    try:
+        from .clip_review import harvest_comfy_native_output
+
+        n, harvest_msg = harvest_comfy_native_output(config)
+        if n:
+            messagebox.showinfo("Comfy → Refs", harvest_msg, parent=master)
+    except Exception:
+        pass
+
     store = ComfyClipStore(clip_review_path(config)).load()
     session = load_session(config, COMFY_TOPIC)
     batch = ""
@@ -75,13 +85,30 @@ def open_comfy_clip_review(
         row=0, column=1, sticky="w", padx=6
     )
     ttk.Label(form, text="Slug каталога").grid(row=1, column=0, sticky="w", pady=4)
-    slug_var = tk.StringVar(value="")
+    default_slug = ""
+    default_enters = ""
+    default_exits = ""
+    if session is not None:
+        default_slug = str(session.meta.get("catalog_slug") or "")
+        ef = session.meta.get("enters_from") or []
+        et = session.meta.get("exits_to") or []
+        if isinstance(ef, list):
+            default_enters = ",".join(str(x) for x in ef)
+        else:
+            default_enters = str(ef)
+        if isinstance(et, list):
+            default_exits = ",".join(str(x) for x in et)
+        else:
+            default_exits = str(et)
+    if not default_slug and candidates:
+        default_slug = candidates[0].catalog_slug or ""
+    slug_var = tk.StringVar(value=default_slug)
     ttk.Entry(form, textvariable=slug_var, width=40).grid(row=1, column=1, sticky="w", padx=6)
     ttk.Label(form, text="enters_from (через запятую)").grid(row=2, column=0, sticky="w")
-    enters_var = tk.StringVar(value="")
+    enters_var = tk.StringVar(value=default_enters)
     ttk.Entry(form, textvariable=enters_var, width=40).grid(row=2, column=1, sticky="w", padx=6)
     ttk.Label(form, text="exits_to (через запятую)").grid(row=3, column=0, sticky="w", pady=4)
-    exits_var = tk.StringVar(value="")
+    exits_var = tk.StringVar(value=default_exits)
     ttk.Entry(form, textvariable=exits_var, width=40).grid(row=3, column=1, sticky="w", padx=6)
     ttk.Label(form, text="Заметки").grid(row=4, column=0, sticky="nw")
     notes = tk.Text(form, height=3, width=48)

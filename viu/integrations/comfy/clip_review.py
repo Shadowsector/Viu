@@ -295,6 +295,25 @@ def _slugify(text: str) -> str:
     return (s or "clip")[:48]
 
 
+# EN-action / ошибочные имена файлов → канонический slug каталога
+_CATALOG_SLUG_ALIASES = {
+    "idle_stand": "idle",
+    "idle_standing": "idle",
+    "standing_idle": "idle",
+    "breathing_idle": "idle",
+}
+
+
+def normalize_catalog_slug(slug: str) -> str:
+    """idle_stand_* / slugify(EN action) → idle; иначе slugify."""
+    s = _slugify(slug)
+    if s in _CATALOG_SLUG_ALIASES:
+        return _CATALOG_SLUG_ALIASES[s]
+    if s.startswith("idle_stand"):
+        return "idle"
+    return s
+
+
 def keep_clip(
     config: Config,
     clip_id: str,
@@ -316,12 +335,12 @@ def keep_clip(
     if not src.is_file():
         return False, f"файл пропал: {src}", None
 
-    slug = _slugify(catalog_slug or clip.catalog_slug or clip.action)
+    slug = normalize_catalog_slug(catalog_slug or clip.catalog_slug or clip.action)
     # если передали короткий catalog_slug (sit_idle) — не перетирать длинным action
     if catalog_slug.strip():
-        slug = _slugify(catalog_slug)
+        slug = normalize_catalog_slug(catalog_slug)
     elif clip.catalog_slug.strip():
-        slug = _slugify(clip.catalog_slug)
+        slug = normalize_catalog_slug(clip.catalog_slug)
     kept_name = f"{slug}_{clip.angle}_{clip.batch_id[-6:]}.mp4"
     kept_path = comfy_kept_dir(config) / kept_name
     try:
@@ -510,12 +529,12 @@ def _sync_catalog_wish(config: Config, clip: ComfyClip) -> None:
     except Exception:
         return
     store = AnimationCatalogStore(animation_catalog_path(config)).load()
-    slug = clip.catalog_slug or _slugify(clip.action)
+    slug = normalize_catalog_slug(clip.catalog_slug or clip.action)
     wish = store.get_by_slug(slug)
     if wish is None:
         wish = AnimationWish(
             slug=slug,
-            category="rest" if "idle" in slug else "special",
+            category="rest" if slug in ("idle", "sit_idle", "sleep_idle") else "special",
             title_ru=slug.replace("_", " "),
             when_used="Comfy MoCap reference",
             looks_like=clip.action,
@@ -544,11 +563,48 @@ def format_candidates_message(clips: List[ComfyClip]) -> str:
     batch = clips[0].batch_id
     lines = [
         f"Выбери лучший дубль ¾ (batch `{batch}`):",
-        "В Telegram/чате: `лучший: take_b` / `лучший: a` / `лучший: c 5` / `отклонить все`",
-        "Или кнопка «Оценить клипы Comfy».",
+        "Окно оценки откроется само (дома). Или в чате/Telegram:",
+        "`лучший: take_b` / `лучший: a` / `лучший: c 5` / `отклонить все`",
         "",
     ]
     for c in clips:
-        mark = "✓" if c.status == STATUS_KEPT else ("✗" if c.status == STATUS_REJECTED else "•")
-        lines.append(f"{mark} [{c.angle}] {c.angle_label}: {c.path}")
+        lines.append(f"  • {c.angle} ({c.angle_label}): {Path(c.path).name}")
     return "\n".join(lines)
+
+
+def harvest_comfy_native_output(
+    config: Config, *, limit: int = 40
+) -> Tuple[int, str]:
+    """Скопировать свежие mp4 из U:\\Viu\\ComfyUI\\output\\ → Lab/Refs.
+
+    Native Comfy всегда пишет туда; без копирования оценка клипов «пустая».
+    """
+    from .paths import resolve_comfy_root
+
+    root = resolve_comfy_root(config)
+    if root is None:
+        return 0, "ComfyUI root не найден — нечего собирать."
+    src_dir = root / "output"
+    if not src_dir.is_dir():
+        return 0, f"Нет папки {src_dir}"
+    refs = comfy_refs_dir(config)
+    mp4s = sorted(
+        src_dir.rglob("*.mp4"),
+        key=lambda p: p.stat().st_mtime if p.is_file() else 0,
+        reverse=True,
+    )[:limit]
+    n = 0
+    lines = [f"Сбор из {src_dir} → {refs}:"]
+    for src in mp4s:
+        dest = refs / src.name
+        if dest.is_file() and dest.stat().st_size == src.stat().st_size:
+            continue
+        try:
+            shutil.copy2(src, dest)
+            n += 1
+            lines.append(f"  + {src.name}")
+        except OSError as exc:
+            lines.append(f"  ✗ {src.name}: {exc}")
+    if n == 0:
+        lines.append("  (новых нет — уже в Refs или output пуст)")
+    return n, "\n".join(lines)

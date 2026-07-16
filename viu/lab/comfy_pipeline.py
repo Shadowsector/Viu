@@ -39,15 +39,23 @@ STEP_LABELS = [
 
 def ensure_task_file(config: Config, *, action: str = "") -> Path:
     path = task_path(config, COMFY_TOPIC)
-    if not path.is_file() or action.strip():
-        if not action.strip():
-            from .comfy_director import invent_next_action
+    plan_slug = ""
+    plan_looped = False
+    if not action.strip():
+        from .comfy_director import invent_next_shot
 
-            action = invent_next_action(config)
+        plan = invent_next_shot(config)
+        action = plan.action
+        plan_slug = plan.catalog_slug
+        plan_looped = plan.looped
+    if not path.is_file() or action.strip():
+        kind = "looped цикл" if plan_looped else "переход/жест"
         body = (
             "# Lab Comfy → Cascadeur MoCap\n\n"
-            "Вью сама выбирает действие из каталога анимаций (не idle stand по умолчанию).\n"
+            "Вью выбирает дыру графа (не idle, пока есть другие wave 1).\n"
             "Промпт — Telegram дома; в режиме «Нет дома» — сама одобряет.\n\n"
+            f"## catalog_slug\n\n{plan_slug or '(из session.meta)'}\n\n"
+            f"## kind\n\n{kind}\n\n"
             f"## action\n\n{action.strip()}\n"
         )
         path.write_text(body, encoding="utf-8")
@@ -278,9 +286,24 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
 
     action = str(session.meta.get("approved_action") or session.meta.get("action") or "")
     catalog_slug = str(session.meta.get("catalog_slug") or "").strip()
-    slug = catalog_slug or (
-        "".join(c if c.isalnum() or c in "-_" else "_" for c in action.lower())[:40] or "mocap"
-    )
+    if not catalog_slug:
+        from .comfy_director import invent_next_shot
+
+        plan = invent_next_shot(config)
+        catalog_slug = plan.catalog_slug
+        if not action:
+            action = plan.action
+        session.meta["catalog_slug"] = catalog_slug
+        session.meta["enters_from"] = list(plan.enters_from)
+        session.meta["exits_to"] = list(plan.exits_to)
+        session.meta["shot_reason"] = plan.reason
+        session.meta["looped"] = plan.looped
+        save_session(config, session)
+    # Никогда не slugify EN-action («idle stand…» → idle_stand)
+    from ..integrations.comfy.clip_review import normalize_catalog_slug
+
+    slug = normalize_catalog_slug(catalog_slug) or "mocap"
+    session.meta["catalog_slug"] = slug
     ok, msg, results = run_triple_angles(config, action=action, slug=slug)
     session.meta["triple"] = results
     for path in results.get("files") or []:
@@ -298,7 +321,7 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
         config,
         action=action,
         results=results,
-        catalog_slug=catalog_slug,
+        catalog_slug=slug,
         enters_from=list(session.meta.get("enters_from") or []),
         exits_to=list(session.meta.get("exits_to") or []),
     )

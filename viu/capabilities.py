@@ -29,6 +29,10 @@ CAPABILITY_BRIEF = """
   дыры wave 1, что снимать следующим. Модульные клипы, не одна длинная анимация.
 - В reflect/heartbeat всегда видишь снимок графа — предлагай закрывать цепочки
   (idle→sit_down→sit_idle→stand_up), не телепорты sit→walk.
+- **idle / walk / sit_idle** — looped; переходы — one-shot. Пока есть другие дыры wave 1 —
+  **не предлагай idle**.
+- Клипы: Native Comfy → `ComfyUI/output/`, рабочая копия — `Lab/Refs`; одобрение дома
+  всплывает само. Док: `docs/VIU_DIRECTION.md`.
 - **Персонажи:** кнопка «Персонажи» → `.viu/CHARACTERS_VISION.md` (локально, не GitHub).
 
 ### Не умею / ограничение
@@ -52,6 +56,7 @@ CAPABILITY_BRIEF = """
 
 
 _DOC_SNIPPETS = (
+    "VIU_DIRECTION.md",
     "COMFY_CASCADEUR_PIPELINE.md",
     "CASCADEUR.md",
     "SHANYA_ANIMATIONS.md",

@@ -71,11 +71,12 @@ def set_update_interval_min(config: Config, minutes: int) -> None:
 def get_heartbeat_interval_min(config: Config) -> int:
     raw = get(config, "heartbeat_interval_min", None)
     if raw is None:
-        return int(float(__import__("os").environ.get("VIU_HEARTBEAT_MIN", "0") or 0))
+        # По умолчанию раз в 20 мин — Вью не молчит; 0 = выкл явно
+        return int(float(__import__("os").environ.get("VIU_HEARTBEAT_MIN", "20") or 20))
     try:
         return max(0, int(raw))
     except (TypeError, ValueError):
-        return 0
+        return 20
 
 
 def set_heartbeat_interval_min(config: Config, minutes: int) -> None:

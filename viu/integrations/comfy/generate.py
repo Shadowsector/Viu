@@ -90,6 +90,7 @@ def run_single_angle(
     refs = comfy_refs_dir(config)
     out_dir = comfy_out_dir(config)
     saved: List[str] = []
+    copy_notes: List[str] = []
     for i, meta in enumerate(files):
         ext = Path(meta["filename"]).suffix or ".mp4"
         name = f"{slug}_{angle.id}_{i}{ext}"
@@ -103,14 +104,55 @@ def run_single_angle(
             )
         except ComfyError as exc:
             return False, str(exc), saved
+
         dest_ref = refs / name
+        copied = False
         try:
             shutil.copy2(dest_out, dest_ref)
-        except OSError:
-            dest_ref = dest_out
+            copied = dest_ref.is_file()
+        except OSError as exc:
+            copy_notes.append(f"copy Lab/ComfyOut→Refs fail: {exc}")
+
+        # Fallback: взять файл прямо из U:\Viu\ComfyUI\output\ (native SaveVideo)
+        if not copied:
+            from .paths import resolve_comfy_root
+
+            root = resolve_comfy_root(config)
+            native_name = str(meta.get("filename") or "")
+            sub = str(meta.get("subfolder") or "").strip().replace("\\", "/").lstrip("/")
+            candidates: List[Path] = []
+            if root is not None and native_name:
+                base = root / "output"
+                if sub:
+                    candidates.append(base / sub / native_name)
+                candidates.append(base / native_name)
+            candidates.append(dest_out)
+            for src in candidates:
+                if not src.is_file():
+                    continue
+                try:
+                    shutil.copy2(src, dest_ref)
+                    if dest_ref.is_file():
+                        copied = True
+                        copy_notes.append(f"Refs ← {src}")
+                        break
+                except OSError as exc:
+                    copy_notes.append(f"native copy fail {src.name}: {exc}")
+
+        if not copied:
+            return (
+                False,
+                f"не скопировать в Lab/Refs ({dest_ref}). "
+                f"Native Comfy: output/; staging: {dest_out}. "
+                + "; ".join(copy_notes),
+                saved,
+            )
         saved.append(str(dest_ref))
 
-    return True, f"{angle.id}: prompt_id={prompt_id} → {len(saved)} файл(ов)", saved
+    note = f"{angle.id}: → Lab/Refs ({len(saved)} файл(ов))"
+    if copy_notes:
+        note += " [" + "; ".join(copy_notes[:3]) + "]"
+    return True, note, saved
 
 
 def run_triple_angles(

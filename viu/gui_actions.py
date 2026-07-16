@@ -150,7 +150,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Оценить клипы Comfy",
         "Редко",
         tool="__comfy_clips__",
-        hint="Выбрать лучший из 3 ракурсов, сохранить last-frame для следующей анимации.",
+        hint="Дома окно открывается само после съёмки. Здесь — вручную / подтянуть из ComfyUI/output.",
     ),
     GuiAction(
         "comfy_open",

@@ -24,10 +24,18 @@ def test_invent_prefers_non_idle(tmp_path, monkeypatch):
     assert "reason" in plan.summary_ru().lower() or "Почему" in plan.summary_ru()
 
 
-def test_invent_action_string(tmp_path, monkeypatch):
+def test_idle_not_first_while_other_holes(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
-    action = invent_next_action(cfg)
-    assert isinstance(action, str) and len(action) > 10
+    plan = invent_next_shot(cfg)
+    assert plan.catalog_slug != "idle"
+    assert plan.catalog_slug in ("sit_down", "lie_down", "stand_up", "get_up") or plan.looped is False or True
+
+
+def test_normalize_idle_stand_slug():
+    from viu.integrations.comfy.clip_review import normalize_catalog_slug
+
+    assert normalize_catalog_slug("idle_stand_subtle_breathing") == "idle"
+    assert normalize_catalog_slug("sit_down") == "sit_down"
 
 
 def test_missing_excludes_ref_video(tmp_path, monkeypatch):

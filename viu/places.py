@@ -83,6 +83,15 @@ def _characters(config: Config) -> Path:
     return ensure_characters_vision(config)
 
 
+def _comfy_native_output(config: Config) -> Path:
+    from .integrations.comfy.paths import resolve_comfy_root
+
+    root = resolve_comfy_root(config)
+    if root is not None:
+        return root / "output"
+    return Path("U:/Viu/ComfyUI/output")
+
+
 def _logs(config: Config) -> Path:
     p = config.data_dir / "logs"
     p.mkdir(parents=True, exist_ok=True)
@@ -170,8 +179,17 @@ def all_places() -> List[Place]:
             "Клипы Comfy (Refs)",
             "folder",
             "Выходы",
-            "Свежие MP4 от Wan / MoCap-кандидаты.",
+            "Свежие MP4 от Wan / MoCap-кандидаты (сюда копирует Вью).",
             comfy_refs_dir,
+        ),
+        Place(
+            "comfy_native_out",
+            "ComfyUI output (native)",
+            "folder",
+            "Выходы",
+            "U:\\Viu\\ComfyUI\\output — сырой вывод; Вью копирует в Lab/Refs.",
+            _comfy_native_output,
+            ensure=False,
         ),
         Place(
             "comfy_kept",
