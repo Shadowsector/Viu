@@ -67,53 +67,119 @@ def _skip_mesh_name(name: str) -> bool:
             "trigger",
             "lod3",
             "lod4",
+            # оружие / пропы раздувают AABB (Alice + мечи → «факт 2м», тело 50см)
+            "sword",
+            "blade",
+            "weapon",
+            "knife",
+            "dagger",
+            "axe",
+            "spear",
+            "bow",
+            "arrow",
+            "gun",
+            "rifle",
+            "shield",
+            "scabbard",
+            "sheath",
+            "prop",
+            "accessory",
+            "attach",
+            "item",
+            "fx_",
+            "vfx",
+            "particle",
+            "wing_l",  # иногда отдельные крылья далеко — нет, крылья часть роста феи
         )
     )
 
 
-def mesh_aabb(objects):
-    depsgraph = bpy.context.evaluated_depsgraph_get()
+def _mesh_has_armature(obj) -> bool:
+    for mod in getattr(obj, "modifiers", []) or []:
+        if getattr(mod, "type", "") == "ARMATURE":
+            return True
+    if obj.parent is not None and obj.parent.type == "ARMATURE":
+        return True
+    return False
+
+
+def _mesh_world_points(obj, depsgraph):
+    if obj.type != "MESH" or _skip_mesh_name(obj.name):
+        return []
+    eval_obj = obj.evaluated_get(depsgraph)
+    try:
+        mesh = eval_obj.to_mesh()
+    except RuntimeError:
+        return []
+    pts = []
+    try:
+        mw = eval_obj.matrix_world
+        for v in mesh.vertices:
+            pts.append(mw @ v.co)
+    finally:
+        eval_obj.to_mesh_clear()
+    return pts
+
+
+def _aabb_from_points(pts):
     mins = Vector((1e18, 1e18, 1e18))
     maxs = Vector((-1e18, -1e18, -1e18))
-    any_v = False
-    for obj in objects:
-        if obj.type != "MESH":
-            continue
-        if _skip_mesh_name(obj.name):
-            continue
-        eval_obj = obj.evaluated_get(depsgraph)
+    for w in pts:
+        mins.x = min(mins.x, w.x)
+        mins.y = min(mins.y, w.y)
+        mins.z = min(mins.z, w.z)
+        maxs.x = max(maxs.x, w.x)
+        maxs.y = max(maxs.y, w.y)
+        maxs.z = max(maxs.z, w.z)
+    return mins, maxs
+
+
+def _select_body_meshes(objects):
+    """Меши тела: с арматурой и без имён оружия; иначе самый крупный mesh."""
+    meshes = [o for o in objects if o.type == "MESH" and not _skip_mesh_name(o.name)]
+    if not meshes:
+        return []
+    rigged = [o for o in meshes if _mesh_has_armature(o)]
+    pool = rigged if rigged else meshes
+    # отсечь мелкий хлам: оставить меши ≥ 15% от самого жирного по verts
+    def vcount(o):
         try:
-            mesh = eval_obj.to_mesh()
-        except RuntimeError:
-            continue
-        try:
-            mw = eval_obj.matrix_world
-            for v in mesh.vertices:
-                w = mw @ v.co
-                mins.x = min(mins.x, w.x)
-                mins.y = min(mins.y, w.y)
-                mins.z = min(mins.z, w.z)
-                maxs.x = max(maxs.x, w.x)
-                maxs.y = max(maxs.y, w.y)
-                maxs.z = max(maxs.z, w.z)
-                any_v = True
-        finally:
-            eval_obj.to_mesh_clear()
-    if not any_v:
+            return len(o.data.vertices)
+        except Exception:
+            return 0
+
+    top = max(vcount(o) for o in pool) or 1
+    body = [o for o in pool if vcount(o) >= top * 0.15]
+    return body or pool
+
+
+def mesh_aabb(objects):
+    """AABB тела (без оружия). Если мечи далеко — в рост не входят."""
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    body = _select_body_meshes(objects)
+    pts = []
+    for obj in body:
+        pts.extend(_mesh_world_points(obj, depsgraph))
+    if not pts:
+        # fallback: всё что не skip
         for obj in objects:
-            if obj.type != "MESH" or _skip_mesh_name(obj.name):
-                continue
-            for corner in obj.bound_box:
-                w = obj.matrix_world @ Vector(corner)
-                mins.x = min(mins.x, w.x)
-                mins.y = min(mins.y, w.y)
-                mins.z = min(mins.z, w.z)
-                maxs.x = max(maxs.x, w.x)
-                maxs.y = max(maxs.y, w.y)
-                maxs.z = max(maxs.z, w.z)
-                any_v = True
-    if not any_v:
+            pts.extend(_mesh_world_points(obj, depsgraph))
+    if not pts:
         return Vector((0, 0, 0)), Vector((0, 0, 1))
+    mins, maxs = _aabb_from_points(pts)
+    # отсев выбросов по Z: вершины далеко от медианы XY тела (отлетевшие мечи)
+    if len(pts) >= 32:
+        cx = sorted(p.x for p in pts)[len(pts) // 2]
+        cy = sorted(p.y for p in pts)[len(pts) // 2]
+        span_xy = max(maxs.x - mins.x, maxs.y - mins.y, 0.01)
+        radius = span_xy * 0.75
+        core = [
+            p
+            for p in pts
+            if (p.x - cx) * (p.x - cx) + (p.y - cy) * (p.y - cy) <= radius * radius
+        ]
+        if len(core) >= max(16, len(pts) // 10):
+            mins, maxs = _aabb_from_points(core)
     return mins, maxs
 
 
