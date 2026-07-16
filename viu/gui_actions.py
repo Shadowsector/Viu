@@ -78,6 +78,13 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Вью сама запускает Blender: Шаня + монстры по росту. Откроет .blend.",
     ),
     GuiAction(
+        "characters_vision",
+        "Персонажи",
+        "Главное",
+        tool="__characters_vision__",
+        hint="Характеры и отношения — локальный файл, не на GitHub. Правишь сам.",
+    ),
+    GuiAction(
         "send_logs",
         "Что сломалось?",
         "Главное",

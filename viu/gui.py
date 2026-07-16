@@ -621,6 +621,9 @@ class ViuGUI:
         if action.tool == "__creature_catalog__":
             self._open_creature_catalog()
             return
+        if action.tool == "__characters_vision__":
+            self._open_characters_vision()
+            return
         if action.tool == "__next_step__":
             self._run_next_step()
             return
@@ -968,6 +971,13 @@ class ViuGUI:
                 self._append("система", f"Существа: {exc}", tag="err")
 
         self.root.after(0, open_win)
+
+    def _open_characters_vision(self) -> None:
+        from .characters_vision import open_characters_vision
+
+        ok, msg = open_characters_vision(self.agent.config)
+        self._append("ты", "[Персонажи]")
+        self._append("система", msg, tag="sys" if ok else "err")
 
     def _open_animation_review(self) -> None:
         from .animation_catalog import AnimationCatalogStore, animation_catalog_path

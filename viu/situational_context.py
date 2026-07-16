@@ -99,4 +99,20 @@ def build_reflect_notes(config: Config) -> str:
     except OSError:
         pass
 
+    try:
+        from .characters_vision import read_characters_vision
+
+        chars = read_characters_vision(config, max_chars=2800).strip()
+        # подключать только если Ден уже что-то дописал после двоеточий
+        filled = any(
+            ("**" in ln and ":" in ln and len(ln.split(":", 1)[-1].strip()) > 0)
+            for ln in chars.splitlines()
+        )
+        if filled:
+            parts.append(
+                "--- CHARACTERS_VISION (локально, не зачитывать списком) ---\n" + chars
+            )
+    except OSError:
+        pass
+
     return "\n\n".join(parts) if parts else ""
