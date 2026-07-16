@@ -3,6 +3,16 @@ setlocal EnableExtensions
 set "EC=0"
 cd /d "%~dp0.."
 
+rem UTF-8 console + Python
+chcp 65001 >nul
+set "PYTHONIOENCODING=utf-8"
+set "PYTHONUTF8=1"
+set "PYTHONUNBUFFERED=1"
+
+rem 70B needs a long timeout (seconds). Override in .env if needed.
+if "%VIU_DIAG_TIMEOUT%"=="" set "VIU_DIAG_TIMEOUT=1200"
+if "%VIU_LLM_TIMEOUT%"=="" set "VIU_LLM_TIMEOUT=1200"
+
 echo ========================================
 echo  Viu NSFW halves diag
 echo  Folder: %CD%
@@ -38,7 +48,6 @@ if not defined PYEXE (
 if not defined PYEXE (
   echo ERROR: Python not found in PATH.
   echo Install Python and enable Add python.exe to PATH.
-  echo Or run from cmd with full path to python.exe
   set "EC=1"
   goto END
 )
@@ -46,24 +55,25 @@ if not defined PYEXE (
 echo Python: %PYEXE%
 echo Model:  %VIU_MODEL_REFLECT%
 echo API:    %VIU_BASE_URL%
+echo Timeout:%VIU_DIAG_TIMEOUT% sec per request
 echo Log:    %LOG%
 echo.
-echo Wait - large models are slow...
+echo First run loads 70B into VRAM - can take many minutes.
+echo Window will show progress. Do not close.
 echo.
 
 if /i "%PYEXE%"=="py" (
-  py -3 "scripts\diag_viu_nsfw_halves.py" > "%LOG%" 2>&1
+  py -3 -u "scripts\diag_viu_nsfw_halves.py"
 ) else (
-  "%PYEXE%" "scripts\diag_viu_nsfw_halves.py" > "%LOG%" 2>&1
+  "%PYEXE%" -u "scripts\diag_viu_nsfw_halves.py"
 )
 set "EC=%ERRORLEVEL%"
 
 echo.
-type "%LOG%"
-echo.
 echo ----------------------------------------
 echo Exit code: %EC%
 echo Full log:  %LOG%
+echo Tip: open the log in Notepad if console text looks broken.
 
 :END
 echo.
