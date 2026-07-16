@@ -399,10 +399,16 @@ class Agent:
     ) -> RunResult:
         """Один проход чата: thought + final. Без инструментов."""
         from .prompts.reflect_mode import (
-            REFLECT_SYSTEM,
+            NSFW_AFFIRM_FALLBACK,
+            REFLECT_RESCUE_SYSTEM,
+            asks_about_nsfw,
+            is_nsfw_refusal,
             looks_like_story_chat,
+            reflect_prompt_half,
             reflect_reply_issues,
             reflect_temperature,
+            scrub_poisoned_history,
+            select_reflect_system,
         )
         from .situational_context import build_reflect_notes
 
@@ -426,25 +432,79 @@ class Agent:
         except OSError:
             story = None
 
-        # history: GUI + долгая память
-        hist = list(history or [])
+        # history: GUI + долгая память (без цензорских/саппорт-ответов)
+        hist = scrub_poisoned_history(list(history or []))
         if len(hist) < 4 and story is not None:
-            long_hist = story.as_chat_history(limit=16)
+            long_hist = scrub_poisoned_history(story.as_chat_history(limit=16))
             if long_hist:
                 hist = long_hist
 
-        self._log(f"REFLECT: {user_text[:160]}")
+        half = reflect_prompt_half()
+        # диагностика: persona/bare — без заметок; work/full — с заметками
+        use_notes = half in ("full", "work") and bool(notes)
+        use_hist = half not in ("bare",) and bool(hist)
+        if asks_about_nsfw(user_text):
+            # вопрос про NSFW — история отказов особенно ядовита
+            hist = scrub_poisoned_history(hist)
+            use_hist = half == "full" and bool(hist)
 
-        system = REFLECT_SYSTEM
-        if notes:
+        self._log(
+            f"REFLECT half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}: "
+            f"{user_text[:120]}"
+        )
+
+        system = select_reflect_system(half)
+        if use_notes:
             system += "\n\n--- Заметки и память сюжета ---\n" + notes
 
         messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
-        if hist:
+        if use_hist:
             messages.extend(hist[-16:])
         messages.append({"role": "user", "content": user_text})
 
         reflect_model = self._model_for("reflect")
+        saw_nsfw_refusal = False
+
+        def _accept_final(text: str, thought: str) -> RunResult:
+            result.inner_thought = thought
+            result.final = text
+            result.completed = True
+            if thought and on_step:
+                on_step(Step(kind="think", thought=thought))
+            step = Step(kind="final", thought=thought, observation=result.final)
+            result.steps.append(step)
+            if on_step:
+                on_step(step)
+            try:
+                from .story_memory import get_story_memory
+
+                get_story_memory(self.config).add_exchange(
+                    user_text,
+                    text,
+                    source="chat",
+                    tags=["story"] if looks_like_story_chat(user_text) else [],
+                )
+                self.memory.add(
+                    f"Ден: {user_text[:200]} | Вью: {text[:200]}",
+                    tags=["dialog", "story"]
+                    if looks_like_story_chat(user_text)
+                    else ["dialog"],
+                )
+            except OSError:
+                pass
+            if looks_like_story_chat(user_text):
+                try:
+                    from .vision import append_vision
+
+                    append_vision(
+                        self.config,
+                        "Диалог",
+                        f"**Ден:** {user_text[:500]}\n**Вью:** {text[:800]}",
+                    )
+                except OSError:
+                    pass
+            return result
+
         for _ in range(3):
             raw = self.llm.complete(messages, temperature=temp, model=reflect_model)
             parsed = extract_json(raw)
@@ -452,7 +512,9 @@ class Agent:
             if parsed and "final" in parsed and "action" not in parsed:
                 text = str(parsed["final"]).strip()
                 thought = str(parsed.get("thought") or parsed.get("inner") or "").strip()
-                issues = reflect_reply_issues(text, has_history=bool(hist))
+                if is_nsfw_refusal(text):
+                    saw_nsfw_refusal = True
+                issues = reflect_reply_issues(text, has_history=bool(use_hist and hist))
                 if issues:
                     messages.append({"role": "assistant", "content": raw})
                     messages.append(
@@ -467,43 +529,7 @@ class Agent:
                         }
                     )
                     continue
-                result.inner_thought = thought
-                result.final = text
-                result.completed = True
-                if thought and on_step:
-                    on_step(Step(kind="think", thought=thought))
-                step = Step(kind="final", thought=thought, observation=result.final)
-                result.steps.append(step)
-                if on_step:
-                    on_step(step)
-                # всегда в сюжетную память; vision — если похоже на сюжет
-                try:
-                    from .story_memory import get_story_memory
-
-                    get_story_memory(self.config).add_exchange(
-                        user_text,
-                        text,
-                        source="chat",
-                        tags=["story"] if looks_like_story_chat(user_text) else [],
-                    )
-                    self.memory.add(
-                        f"Ден: {user_text[:200]} | Вью: {text[:200]}",
-                        tags=["dialog", "story"] if looks_like_story_chat(user_text) else ["dialog"],
-                    )
-                except OSError:
-                    pass
-                if looks_like_story_chat(user_text):
-                    try:
-                        from .vision import append_vision
-
-                        append_vision(
-                            self.config,
-                            "Диалог",
-                            f"**Ден:** {user_text[:500]}\n**Вью:** {text[:800]}",
-                        )
-                    except OSError:
-                        pass
-                return result
+                return _accept_final(text, thought)
 
             if parsed and "action" in parsed:
                 messages.append({"role": "assistant", "content": raw})
@@ -518,7 +544,9 @@ class Agent:
             # Plain-text без JSON — тоже гоняем через фильтр тона (иначе проскакивает цензор)
             if parsed is None and raw.strip() and not raw.strip().startswith("{"):
                 text = raw.strip()[:800]
-                issues = reflect_reply_issues(text, has_history=bool(hist))
+                if is_nsfw_refusal(text):
+                    saw_nsfw_refusal = True
+                issues = reflect_reply_issues(text, has_history=bool(use_hist and hist))
                 if issues:
                     messages.append({"role": "assistant", "content": raw})
                     messages.append(
@@ -530,9 +558,7 @@ class Agent:
                         }
                     )
                     continue
-                result.final = text
-                result.completed = True
-                return result
+                return _accept_final(text, "")
 
             messages.append({"role": "assistant", "content": raw or "{}"})
             messages.append(
@@ -541,6 +567,35 @@ class Agent:
                     "content": 'Нужен JSON: {"thought":"…","final":"ответ Дену…"} — без action.',
                 }
             )
+
+        # Rescue: изолированный вызов без заметок/истории — где именно «Стоп»
+        if saw_nsfw_refusal or asks_about_nsfw(user_text):
+            self._log("REFLECT_RESCUE: isolated bare system (no notes/history)")
+            rescue_msgs: List[Dict[str, str]] = [
+                {"role": "system", "content": REFLECT_RESCUE_SYSTEM},
+                {"role": "user", "content": user_text},
+            ]
+            try:
+                raw = self.llm.complete(
+                    rescue_msgs, temperature=max(temp, 0.85), model=reflect_model
+                )
+            except RuntimeError as exc:
+                self._log(f"REFLECT_RESCUE fail: {exc}")
+                raw = ""
+            parsed = extract_json(raw) if raw else None
+            text = ""
+            thought = ""
+            if parsed and "final" in parsed:
+                text = str(parsed["final"]).strip()
+                thought = str(parsed.get("thought") or "").strip()
+            elif raw and not raw.strip().startswith("{"):
+                text = raw.strip()[:800]
+            if text and not is_nsfw_refusal(text) and not reflect_reply_issues(text):
+                self._log("REFLECT_RESCUE: ok")
+                return _accept_final(text, thought or "rescue")
+            # Жёсткий запасной ответ — цензор до Дена не доходит
+            self._log("REFLECT_RESCUE: hard NSFW affirm fallback")
+            return _accept_final(NSFW_AFFIRM_FALLBACK, "fallback: модель отказала")
 
         result.final = (
             "Хм, меня на секунду переклинило на шаблон. "
