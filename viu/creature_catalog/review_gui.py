@@ -95,6 +95,13 @@ class CreatureCatalogReviewWindow:
         ttk.Button(left, text="Авто по именам файлов", command=self._run_auto).pack(
             fill="x", pady=(6, 2)
         )
+        self.show_sized_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            left,
+            text="Показать уже размеченных (исправить рост)",
+            variable=self.show_sized_var,
+            command=self._reload_list,
+        ).pack(anchor="w", pady=2)
         ttk.Button(left, text="✓ Готово — закрыть", command=self._finish_and_close).pack(
             fill="x", pady=2
         )
@@ -151,7 +158,20 @@ class CreatureCatalogReviewWindow:
             self.detail,
             text="NSFW (есть гениталии / взрослый контент)",
             variable=self.nsfw_var,
-        ).pack(anchor="w", pady=(4, 8))
+        ).pack(anchor="w", pady=(4, 4))
+
+        hrow = ttk.Frame(self.detail)
+        hrow.pack(anchor="w", fill="x", pady=(0, 8))
+        ttk.Label(hrow, text="Точный рост (м):", font=("Segoe UI", 10)).pack(
+            side="left", padx=(0, 6)
+        )
+        self.height_var = tk.StringVar(value="")
+        ttk.Entry(hrow, textvariable=self.height_var, width=8).pack(side="left")
+        ttk.Label(
+            hrow,
+            text="пусто = из класса (Facehug 0.7, Крок 2.2, фея 0.23…)",
+            font=("Segoe UI", 8),
+        ).pack(side="left", padx=8)
 
         ttk.Label(
             self.detail,
@@ -225,18 +245,25 @@ class CreatureCatalogReviewWindow:
         for iid in self.tree.get_children():
             self.tree.delete(iid)
         pending = sorted(self.store.pending(), key=lambda e: e.name.lower())
-        sized = sum(1 for e in self.store.all() if e.size_class)
+        sized = sorted(self.store.sized(), key=lambda e: e.name.lower())
+        show = list(pending)
+        if self.show_sized_var.get():
+            # размеченные в конец очереди для правок
+            show.extend(sized)
         self.queue_status.config(
-            text=f"Ждут: {len(pending)} · уже размечено: {sized}"
+            text=f"В списке: {len(show)} · ждут: {len(pending)} · размечено: {len(sized)}"
         )
-        for e in pending:
+        for e in show:
+            hint = self._hint_for(e)
+            if e.size_class:
+                hint = f"{e.size_class}/{e.target_height_m:.2f}m"
             self.tree.insert(
                 "",
                 "end",
                 iid=e.id,
-                values=(e.name, self._hint_for(e), Path(e.path).suffix.lower()),
+                values=(e.name, hint, Path(e.path).suffix.lower()),
             )
-        if not pending:
+        if not show:
             self.detail.pack_forget()
             self.done_panel.pack(fill="both", expand=True)
             self.done_text.delete("1.0", "end")
@@ -244,7 +271,8 @@ class CreatureCatalogReviewWindow:
                 "end",
                 self.store.summary_text()
                 + "\n\nДальше: кнопка «Линейка существ» в Главном — "
-                "Вью сама запустит Blender и откроет .blend рядом с Шаней.",
+                "Вью сама запустит Blender и откроет .blend рядом с Шаней.\n"
+                "Если рост кривой — включи «Показать уже размеченных» и задай точный рост (м).",
             )
             self._current = None
             return
@@ -288,14 +316,38 @@ class CreatureCatalogReviewWindow:
         )
         self._set_loco_display(loco)
         self.nsfw_var.set(bool(e.nsfw_capable))
+        if e.target_height_m > 0 and e.size_class:
+            # показать текущий целевой рост для правки
+            self.height_var.set(f"{e.target_height_m:.2f}".rstrip("0").rstrip("."))
+        else:
+            self.height_var.set("")
         self.status_lbl.config(text="")
+
+    def _parse_custom_height(self) -> float | None:
+        raw = (self.height_var.get() or "").strip().replace(",", ".")
+        if not raw:
+            return None
+        try:
+            val = float(raw)
+        except ValueError:
+            messagebox.showerror("Вью", "Рост — число в метрах, например 0.7", parent=self.win)
+            return -1.0
+        if val <= 0 or val > 20:
+            messagebox.showerror("Вью", "Рост должен быть от 0 до 20 м", parent=self.win)
+            return -1.0
+        return val
 
     def _apply_size(self, size: str) -> None:
         if self._current is None:
             return
         e = self._current
         loco = self._loco_choice()
-        updated = self.store.set_size(e.id, size, locomotion=loco)
+        custom = self._parse_custom_height()
+        if custom is not None and custom < 0:
+            return
+        updated = self.store.set_size(
+            e.id, size, locomotion=loco, target_m=custom
+        )
         if updated is None:
             messagebox.showerror("Вью", f"Не удалось поставить size={size}", parent=self.win)
             return
@@ -308,9 +360,10 @@ class CreatureCatalogReviewWindow:
             size,
             locomotion=loco,
             nsfw=self.nsfw_var.get(),
+            target_m=updated.target_height_m,
         )
         self.store.save()
-        msg = f"✓ {e.name} → {size} / {loco}"
+        msg = f"✓ {e.name} → {size} / {loco} / {updated.target_height_m:.2f}м"
         if extra:
             msg += f" (+{extra} файл(ов) с тем же именем)"
         self.status_lbl.config(text=msg)

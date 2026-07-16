@@ -120,6 +120,7 @@ class CreatureCatalogSetSizeTool(Tool):
         "locomotion": "locomotion",
         "nsfw": "1 = nsfw_capable",
         "notes": "заметка",
+        "height": "точный рост в метрах (иначе из класса)",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
@@ -156,12 +157,21 @@ class CreatureCatalogSetSizeTool(Tool):
         if loco and loco not in LOCOMOTION:
             return ToolResult(False, f"locomotion= один из {', '.join(LOCOMOTION)}")
 
+        target_m = None
+        h_raw = str(args.get("height") or args.get("target_m") or "").strip().replace(",", ".")
+        if h_raw:
+            try:
+                target_m = float(h_raw)
+            except ValueError:
+                return ToolResult(False, "height= число в метрах, например 0.7")
+
         updated = store.set_size(
             entry.id,
             size,
             size_alt=size_alt or None,
             locomotion=loco,
             notes=str(args.get("notes") or ""),
+            target_m=target_m,
         )
         if updated is None:
             return ToolResult(False, "Не удалось обновить")

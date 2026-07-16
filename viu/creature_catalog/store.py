@@ -72,6 +72,7 @@ class CreatureCatalogStore:
         size_alt: Optional[List[str]] = None,
         locomotion: str = "",
         notes: str = "",
+        target_m: Optional[float] = None,
     ) -> Optional[CreatureEntry]:
         e = self._items.get(cid)
         if e is None:
@@ -80,7 +81,10 @@ class CreatureCatalogStore:
         if not spec:
             return None
         e.size_class = size_class
-        e.target_height_m = float(spec["target_m"])
+        if target_m is not None and float(target_m) > 0:
+            e.target_height_m = float(target_m)
+        else:
+            e.target_height_m = float(spec["target_m"])
         if size_alt is not None:
             e.size_alt = list(size_alt)
         if locomotion:
@@ -89,8 +93,14 @@ class CreatureCatalogStore:
             e.notes = ((e.notes or "") + "\n" + notes).strip()
         e.status = STATUS_SIZED
         e.reviewed = True
+        # сброс старого замера — линейка перемерит
+        e.measured_height_m = 0.0
+        e.scale_applied = 1.0
         self._items[e.id] = e
         return e
+
+    def sized(self) -> List[CreatureEntry]:
+        return [e for e in self._items.values() if e.size_class and e.status != "skip"]
 
     def mark_skip(self, cid: str, reason: str = "") -> Optional[CreatureEntry]:
         from .models import STATUS_SKIP

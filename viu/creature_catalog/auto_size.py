@@ -61,6 +61,7 @@ def apply_size_to_same_stem(
     *,
     locomotion: str = "",
     nsfw: bool = False,
+    target_m: float | None = None,
 ) -> int:
     """Той же разметкой пометить другие файлы с тем же stem (fbx+blend и т.п.)."""
     src = store.get(source_id)
@@ -71,11 +72,14 @@ def apply_size_to_same_stem(
     for e in list(store.all()):
         if e.id == source_id:
             continue
-        if e.size_class and e.reviewed:
-            continue
         if Path(e.path).stem.lower() != stem:
             continue
-        updated = store.set_size(e.id, size, locomotion=locomotion or src.locomotion)
+        updated = store.set_size(
+            e.id,
+            size,
+            locomotion=locomotion or src.locomotion,
+            target_m=target_m if target_m is not None else (src.target_height_m or None),
+        )
         if updated is None:
             continue
         if nsfw:

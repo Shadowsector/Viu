@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -16,9 +16,20 @@ from .paths import creature_catalog_path, creatures_lineup_dir
 from .store import CreatureCatalogStore
 
 LINEUP_SCRIPT_NAME = "viu_creature_lineup.py"
+_BLENDER_BODY = Path(__file__).resolve().parent / "_lineup_blender_body.py"
 # После дедупа — если больше, делаем отдельный .blend на каждый size_class
-_SPLIT_AFTER = 12
+_SPLIT_AFTER = 8
 _EXT_PREF = {".blend": 0, ".glb": 1, ".gltf": 2, ".fbx": 3, ".obj": 4}
+_DEFAULT_SPACING = 2.8
+
+
+def _install_lineup_script(out_dir: Path) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    dest = out_dir / LINEUP_SCRIPT_NAME
+    if not _BLENDER_BODY.is_file():
+        raise FileNotFoundError(f"Нет скрипта линейки: {_BLENDER_BODY}")
+    shutil.copyfile(_BLENDER_BODY, dest)
+    return dest
 
 
 def _shanya_candidates(config: Config) -> List[Path]:
@@ -121,7 +132,7 @@ def build_lineup_jobs(
     *,
     size_filter: Sequence[str] = (),
     shanya_path: str = "",
-    spacing_m: float = 1.2,
+    spacing_m: float = _DEFAULT_SPACING,
     split: Optional[bool] = None,
     all_files: bool = False,
 ) -> Tuple[bool, str, List[Path]]:
@@ -149,8 +160,7 @@ def build_lineup_jobs(
 
     shanya = resolve_shanya_path(config, shanya_path)
     out_dir = creatures_lineup_dir(config)
-    script_path = out_dir / LINEUP_SCRIPT_NAME
-    script_path.write_text(_LINEUP_BLENDER_SCRIPT, encoding="utf-8")
+    script_path = _install_lineup_script(out_dir)
 
     do_split = split if split is not None else (deduped_n > _SPLIT_AFTER)
     job_paths: List[Path] = []
@@ -250,10 +260,17 @@ def _apply_measured(config: Config, rows: Sequence[Dict[str, Any]]) -> int:
         try:
             measured = float(row.get("measured_m") or 0)
             scale = float(row.get("scale") or 0)
+            final_h = float(row.get("final_m") or 0)
         except (TypeError, ValueError):
             continue
         if measured > 0:
             e.measured_height_m = measured
+        if final_h > 0:
+            # фактический рост после scale — для контроля
+            e.notes = (
+                (e.notes or "")
+                + f"\nlineup_final={final_h:.3f}m target={row.get('target_m')}"
+            ).strip()
         if scale > 0:
             e.scale_applied = scale
         if e.status == "sized":
@@ -285,7 +302,7 @@ def run_blender_lineup_job(
     blend_out = Path(job.get("output_blend") or (job_path.parent / "creature_lineup.blend"))
     script_path = job_path.parent / LINEUP_SCRIPT_NAME
     if not script_path.is_file():
-        script_path.write_text(_LINEUP_BLENDER_SCRIPT, encoding="utf-8")
+        _install_lineup_script(job_path.parent)
 
     try:
         exe = resolve_blender_exe(config)
@@ -311,6 +328,7 @@ def run_blender_lineup_job(
     rows = _parse_measured(proc.stdout or "")
     updated = _apply_measured(config, rows)
     ok_mark = "VIU_LINEUP_OK" in combined
+    fails = [ln for ln in (proc.stdout or "").splitlines() if "VIU_LINEUP_HEIGHT_FAIL" in ln]
     if proc.returncode != 0 and not ok_mark:
         tail = combined.strip()[-1800:]
         return False, f"Blender код {proc.returncode} ({job_path.name}).\n{tail}", Path()
@@ -321,6 +339,9 @@ def run_blender_lineup_job(
     if updated:
         msg += f", рост записан у {updated}"
     msg += ")"
+    if fails:
+        msg += f"\n⚠ рост не сошёлся у {len(fails)} — см. красные таблички в сцене:\n"
+        msg += "\n".join(fails[:12])
     return True, msg, blend_out
 
 
@@ -346,7 +367,7 @@ def run_creature_lineup(
     *,
     size_filter: Sequence[str] = (),
     shanya_path: str = "",
-    spacing_m: float = 1.2,
+    spacing_m: float = _DEFAULT_SPACING,
     split: Optional[bool] = None,
     all_files: bool = False,
     open_result: bool = True,
@@ -365,7 +386,13 @@ def run_creature_lineup(
     if not ok or not jobs:
         return False, prep
 
-    lines = [prep, "", "Запускаю Blender сама (тебе ничего копировать не надо)…"]
+    lines = [
+        prep,
+        "",
+        "Запускаю Blender сама…",
+        "В сцене: Шаня + таблички с именем и целевым ростом.",
+        "Если рост не совпал — в «Разметить существ» поставь точный рост (м) и перезапусти линейку.",
+    ]
     blends: List[Path] = []
     failed = 0
     for jp in jobs:
@@ -380,205 +407,17 @@ def run_creature_lineup(
 
     out_dir = creatures_lineup_dir(config)
     if blends:
-        # обзор первым, иначе первый успешный
         prefer = next((b for b in blends if "overview" in b.name), blends[0])
         if open_result:
             lines.append(open_lineup_result(prefer))
             if len(blends) > 1:
                 lines.append(open_lineup_result(out_dir))
         lines.append("")
-        lines.append("Смотри рост рядом с Шаней. Кто выбивается — снова «Разметить существ».")
+        lines.append(
+            "Смотри таблички под моделями (имя + цель + факт). "
+            "Старый открытый .blend не обновится сам — открой новый overview из Lineup."
+        )
         lines.append(f"Все файлы: {out_dir}")
         return failed == 0, "\n".join(lines)
 
     return False, "\n".join(lines)
-
-
-# Исполняется внутри Blender (bpy).
-# Политика: только импорт + scale корня + расстановка.
-# НЕ apply modifiers, НЕ bake shape keys, НЕ трогать morphs ушей/хвостов/гениталий.
-_LINEUP_BLENDER_SCRIPT = textwrap.dedent(
-    r'''
-"""Viu — lineup существ рядом с Шаней (сравнение роста).
-
-Только импорт + scale корня + расстановка.
-Не apply modifiers / не bake shape keys — morphs (уши, хвосты, гениталии) сохраняем.
-"""
-import json
-import math
-import sys
-import traceback
-from pathlib import Path
-
-import bpy
-from mathutils import Vector
-
-
-def _argv_job():
-    argv = sys.argv
-    if "--" in argv:
-        return Path(argv[argv.index("--") + 1])
-    return Path(__file__).resolve().parent / "lineup_job.json"
-
-
-def clear_scene():
-    bpy.ops.object.select_all(action="SELECT")
-    bpy.ops.object.delete(use_global=False)
-    for block in (bpy.data.meshes, bpy.data.armatures, bpy.data.materials):
-        for b in list(block):
-            if b.users == 0:
-                block.remove(b)
-
-
-def import_asset(path: Path):
-    path = Path(path)
-    before = set(bpy.data.objects)
-    suf = path.suffix.lower()
-    if suf == ".fbx":
-        bpy.ops.import_scene.fbx(filepath=str(path))
-    elif suf == ".obj":
-        bpy.ops.wm.obj_import(filepath=str(path))
-    elif suf in (".glb", ".gltf"):
-        bpy.ops.import_scene.gltf(filepath=str(path))
-    elif suf == ".blend":
-        with bpy.data.libraries.load(str(path), link=False) as (data_from, data_to):
-            data_to.objects = list(data_from.objects)
-        for obj in data_to.objects:
-            if obj is not None:
-                bpy.context.collection.objects.link(obj)
-    else:
-        raise RuntimeError("unsupported: " + suf)
-    return [o for o in bpy.data.objects if o not in before]
-
-
-def world_bounds(objects):
-    mins = Vector((1e9, 1e9, 1e9))
-    maxs = Vector((-1e9, -1e9, -1e9))
-    any_mesh = False
-    for obj in objects:
-        if obj.type != "MESH":
-            continue
-        any_mesh = True
-        for corner in obj.bound_box:
-            w = obj.matrix_world @ Vector(corner)
-            mins.x = min(mins.x, w.x); mins.y = min(mins.y, w.y); mins.z = min(mins.z, w.z)
-            maxs.x = max(maxs.x, w.x); maxs.y = max(maxs.y, w.y); maxs.z = max(maxs.z, w.z)
-    if not any_mesh:
-        return Vector((0, 0, 0)), Vector((0, 0, 1))
-    return mins, maxs
-
-
-def height_of(objects):
-    mins, maxs = world_bounds(objects)
-    return float(maxs.z - mins.z)
-
-
-def place_group(objects, x, ground_z=0.0):
-    mins, maxs = world_bounds(objects)
-    cx = (mins.x + maxs.x) * 0.5
-    cy = (mins.y + maxs.y) * 0.5
-    dz = ground_z - mins.z
-    dx = x - cx
-    dy = 0.0 - cy
-    for obj in objects:
-        if obj.parent:
-            continue
-        obj.location.x += dx
-        obj.location.y += dy
-        obj.location.z += dz
-    bpy.context.view_layer.update()
-
-
-def scale_roots(objects, factor):
-    for obj in objects:
-        if obj.parent:
-            continue
-        obj.scale *= factor
-    bpy.context.view_layer.update()
-
-
-def label_empty(name, location):
-    empty = bpy.data.objects.new(name[:60], None)
-    empty.empty_display_type = "PLAIN_AXES"
-    empty.location = location
-    bpy.context.collection.objects.link(empty)
-    return empty
-
-
-def main():
-    job_path = _argv_job()
-    job = json.loads(job_path.read_text(encoding="utf-8"))
-    clear_scene()
-
-    spacing = float(job.get("spacing_m") or 1.2)
-    x = 0.0
-
-    shanya_path = (job.get("shanya_path") or "").strip()
-    if shanya_path and Path(shanya_path).is_file():
-        try:
-            objs = import_asset(Path(shanya_path))
-            h = height_of(objs)
-            target = float(job.get("shanya_target_m") or 1.70)
-            if h > 1e-4:
-                scale_roots(objs, target / h)
-            place_group(objs, x)
-            label_empty("LABEL_Shanya", (x, -0.5, target + 0.1))
-        except Exception as exc:
-            print("VIU_LINEUP_WARN shanya", exc)
-            traceback.print_exc()
-            label_empty("MISSING_Shanya", (0, 0, 1.7))
-        x += spacing
-    else:
-        label_empty("MISSING_Shanya", (0, 0, 1.7))
-        x += spacing
-
-    for entry in job.get("creatures") or []:
-        p = Path(entry["path"])
-        name = str(entry.get("name") or "?")
-        if not p.is_file():
-            label_empty("MISSING_" + name[:40], (x, 0, 1))
-            x += spacing
-            continue
-        try:
-            objs = import_asset(p)
-            h_before = height_of(objs)
-            target = float(entry.get("target_height_m") or 1.0)
-            scale = 1.0
-            if h_before > 1e-4 and target > 0:
-                scale = target / h_before
-                scale_roots(objs, scale)
-            place_group(objs, x)
-            label_empty(
-                "LABEL_" + str(entry.get("size_class") or "") + "_" + name[:24],
-                (x, -0.5, target + 0.1),
-            )
-            print("VIU_LINEUP_ROW", json.dumps({
-                "id": entry.get("id"),
-                "name": name,
-                "measured_m": round(h_before, 4),
-                "target_m": target,
-                "scale": round(scale, 6),
-            }, ensure_ascii=False))
-        except Exception as exc:
-            print("VIU_LINEUP_WARN", name, exc)
-            traceback.print_exc()
-            label_empty("FAIL_" + name[:40], (x, 0, 1))
-        x += spacing
-
-    cam_data = bpy.data.cameras.new("LineupCam")
-    cam = bpy.data.objects.new("LineupCam", cam_data)
-    bpy.context.collection.objects.link(cam)
-    cam.location = (x * 0.5 - spacing * 0.5, -max(4.0, x * 0.55), 1.6)
-    cam.rotation_euler = (math.radians(85), 0, 0)
-    bpy.context.scene.camera = cam
-
-    out = Path(job.get("output_blend") or (job_path.parent / "creature_lineup.blend"))
-    out.parent.mkdir(parents=True, exist_ok=True)
-    bpy.ops.wm.save_as_mainfile(filepath=str(out))
-    print("VIU_LINEUP_OK", out)
-
-
-if __name__ == "__main__":
-    main()
-'''
-).lstrip()

@@ -122,9 +122,24 @@ def suggest_size_from_name(name: str) -> List[str]:
     low = (name or "").lower()
     hits: List[str] = []
     rules = (
-        (("fairy", "faerie", "pixie", "sprite", "фея"), "mini"),
-        (("goblin", "imp", "gnome", "гоблин", "карлик"), "small"),
-        (("orc", "troll", "ogre", "yeti", "тролль"), "large"),
+        (("fairy", "faerie", "pixie", "sprite", "фея", "fairie"), "mini"),
+        (("facehug", "face_hug", "imp", "goblin", "gnome", "гоблин", "карлик"), "small"),
+        (("centaur", "кентавр"), "humanoid"),
+        (
+            (
+                "werewolf",
+                "wolfman",
+                "orc",
+                "troll",
+                "ogre",
+                "yeti",
+                "тролль",
+                "renekton",
+                "croc",
+                "крок",
+            ),
+            "large",
+        ),
         (("dragon", "giant", "coloss", "титан", "гигант"), "huge"),
         (("slime", "slug", "ooze", "слиз"), "humanoid"),  # рост потом руками
         (("mimic", "chest", "сундук"), "humanoid"),

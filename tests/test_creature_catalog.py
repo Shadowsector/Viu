@@ -126,6 +126,7 @@ def test_lineup_job(tmp_path, monkeypatch):
     assert job.is_file()
     script = job.parent / "viu_creature_lineup.py"
     assert script.is_file()
+    assert "wrap_root" in script.read_text(encoding="utf-8")
     assert "import_scene.fbx" in script.read_text(encoding="utf-8")
 
 
@@ -184,6 +185,27 @@ def test_lineup_dedupe_and_auto_run(tmp_path, monkeypatch):
     assert calls
     store2 = CreatureCatalogStore(creature_catalog_path(cfg)).load()
     assert any(e.measured_height_m > 0 for e in store2.all())
+
+
+def test_set_size_custom_height(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, monkeypatch)
+    inbox = creatures_inbox_dir(cfg)
+    (inbox / "Facehug.fbx").write_bytes(b"x")
+    scan_creatures_inbox(cfg)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    e = store.all()[0]
+    updated = store.set_size(e.id, "small", locomotion="biped", target_m=0.7)
+    assert updated is not None
+    assert updated.target_height_m == 0.7
+    assert updated.size_class == "small"
+
+
+def test_suggest_facehug_and_croc():
+    assert "small" in suggest_size_from_name("Facehugger_v2")
+    assert "large" in suggest_size_from_name("Renekton_Croc")
+    assert "mini" in suggest_size_from_name("FAIRIE_bee")
+    assert "humanoid" in suggest_size_from_name("Lilia_Centauress")
+    assert "large" in suggest_size_from_name("Bareoth_Werewolf_1")
 
 
 def test_tools_registered():
