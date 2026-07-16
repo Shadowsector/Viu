@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Диагностика: какая половина промпта Вью включает «Стоп» на NSFW.
 
-На машине Дена (где Ollama):
+На машине Дена (где Ollama) — проще всего:
 
-  cd U:\\Viu
-  set VIU_MODEL_REFLECT=nchapman/l3.3-70b-euryale-v2.3
-  python scripts/diag_viu_nsfw_halves.py
+  двойной клик по U:\\Viu\\diag_nsfw.bat
+  (или Enter на нём в Total Commander)
+
+Окно не закроется само; лог ещё в U:\\Viu\\diag_nsfw_halves.log
+
+Из обычного cmd.exe (Win+R → cmd):
+
+  cd /d U:\\Viu
+  diag_nsfw.bat
 
 Прогоняет один и тот же вопрос через:
   bare / persona / work / full / full+notes
