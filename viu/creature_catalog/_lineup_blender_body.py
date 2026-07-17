@@ -242,6 +242,158 @@ def scale_root_to_target(root, objects, target):
     return s, h, h_final
 
 
+def _slugify_name(name: str) -> str:
+    import re
+
+    s = re.sub(r"[^a-zA-Z0-9_\-]+", "_", (name or "").strip().lower())
+    return re.sub(r"_+", "_", s).strip("_")[:64] or "creature"
+
+
+def _set_render_engine(scene):
+    for eng in ("BLENDER_EEVEE_NEXT", "BLENDER_EEVEE", "CYCLES", "BLENDER_WORKBENCH"):
+        try:
+            scene.render.engine = eng
+            return eng
+        except TypeError:
+            continue
+    return scene.render.engine
+
+
+def _setup_render_settings(scene, *, res=768):
+    _set_render_engine(scene)
+    scene.render.resolution_x = int(res)
+    scene.render.resolution_y = int(res)
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.film_transparent = False
+
+
+def _ensure_shot_lights():
+    if bpy.data.objects.get("VIU_ShotSun"):
+        return
+    bpy.ops.object.light_add(type="SUN", location=(2.0, -3.0, 5.0))
+    sun = bpy.context.active_object
+    sun.name = "VIU_ShotSun"
+    sun.data.energy = 2.5
+    sun.rotation_euler = (math.radians(55), 0, math.radians(25))
+    bpy.ops.object.light_add(type="AREA", location=(-2.5, 2.0, 2.0))
+    fill = bpy.context.active_object
+    fill.name = "VIU_ShotFill"
+    fill.data.energy = 180.0
+    fill.data.size = 4.0
+
+
+def _aabb_center_span(objects):
+    mins, maxs = mesh_aabb(objects)
+    center = (mins + maxs) * 0.5
+    span = max(maxs.x - mins.x, maxs.y - mins.y, maxs.z - mins.z, 0.25)
+    return center, span, mins, maxs
+
+
+def _make_shot_camera(objects, yaw_deg: float):
+    """yaw 0 = фронт (−Y), 90 = профиль (+X)."""
+    center, span, _mins, maxs = _aabb_center_span(objects)
+    dist = max(span * 2.4, 1.2)
+    rad = math.radians(float(yaw_deg))
+    ox = center.x + dist * math.sin(rad)
+    oy = center.y - dist * math.cos(rad)
+    oz = center.z + span * 0.08
+    cam_data = bpy.data.cameras.new("VIU_ShotCam")
+    cam_data.lens = 50.0
+    cam = bpy.data.objects.new("VIU_ShotCam", cam_data)
+    bpy.context.collection.objects.link(cam)
+    cam.location = (ox, oy, oz)
+    direction = center - cam.location
+    if direction.length > 1e-6:
+        cam.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+    cam.data.clip_start = 0.01
+    cam.data.clip_end = max(dist * 4.0, maxs.z - _mins.z + 10.0)
+    return cam
+
+
+_hidden_restore = []
+
+
+def _isolate_creature(root):
+    global _hidden_restore
+    _hidden_restore = []
+    keep = set()
+
+    def walk(obj):
+        keep.add(obj)
+        for ch in obj.children:
+            walk(ch)
+
+    walk(root)
+    for obj in bpy.data.objects:
+        if obj in keep:
+            continue
+        if obj.type in ("CAMERA", "LIGHT"):
+            continue
+        _hidden_restore.append((obj, obj.hide_render, obj.hide_viewport))
+        obj.hide_render = True
+        obj.hide_viewport = True
+
+
+def _restore_visibility():
+    global _hidden_restore
+    for obj, hr, hv in _hidden_restore:
+        try:
+            obj.hide_render = hr
+            obj.hide_viewport = hv
+        except ReferenceError:
+            pass
+    _hidden_restore = []
+
+
+def render_creature_shots(placed, processed_root: Path):
+    """Изолированный front/side PNG на существо → Processed/<slug>/."""
+    processed_root = Path(processed_root)
+    if not placed or not str(processed_root).strip():
+        return 0
+    scene = bpy.context.scene
+    _setup_render_settings(scene)
+    _ensure_shot_lights()
+    lineup_cam = bpy.data.objects.get("LineupCam")
+    if lineup_cam:
+        lineup_cam.hide_render = True
+    n = 0
+    for item in placed:
+        root = item.get("root")
+        imported = item.get("imported") or []
+        entry = item.get("entry") or {}
+        if root is None or not imported:
+            continue
+        slug = str(entry.get("slug") or "").strip() or _slugify_name(entry.get("name"))
+        out_dir = processed_root / slug
+        out_dir.mkdir(parents=True, exist_ok=True)
+        front_path = out_dir / "front.png"
+        side_path = out_dir / "side.png"
+        _isolate_creature(root)
+        try:
+            for yaw, path in ((0.0, front_path), (90.0, side_path)):
+                cam = _make_shot_camera(imported, yaw)
+                scene.camera = cam
+                scene.render.filepath = str(path)
+                bpy.ops.render.render(write_still=True)
+                bpy.data.objects.remove(cam, do_unlink=True)
+            row = {
+                "id": entry.get("id"),
+                "slug": slug,
+                "front": str(front_path),
+                "side": str(side_path),
+            }
+            print("VIU_LINEUP_PHOTO", json.dumps(row, ensure_ascii=False))
+            n += 1
+        except Exception as exc:
+            print("VIU_LINEUP_PHOTO_FAIL", slug, exc)
+            traceback.print_exc()
+        finally:
+            _restore_visibility()
+    if lineup_cam:
+        lineup_cam.hide_render = False
+    return n
+
+
 def add_text_label(text, location, *, size=0.18):
     curve = bpy.data.curves.new(name="lbl", type="FONT")
     curve.body = text
@@ -285,7 +437,7 @@ def place_creature(entry, x, y):
     print("VIU_LINEUP_ROW", json.dumps(row, ensure_ascii=False))
     if not ok:
         print("VIU_LINEUP_HEIGHT_FAIL", name, f"final={h_final:.3f}", f"target={target:.3f}")
-    return root
+    return {"root": root, "imported": imported, "entry": entry}
 
 
 def main():
@@ -320,6 +472,7 @@ def main():
 
     max_x = spacing
     row_i = 0
+    placed: list = []
     for size_id, group in sorted(by_class.items()):
         y = -(row_i + 1) * row_pitch
         add_text_label(f"— {size_id} —", (spacing, y + 1.2, 0.3), size=0.22)
@@ -327,7 +480,9 @@ def main():
             x = (col + 1) * spacing
             max_x = max(max_x, x)
             try:
-                place_creature(entry, x, y)
+                result = place_creature(entry, x, y)
+                if result:
+                    placed.append(result)
             except Exception as exc:
                 print("VIU_LINEUP_WARN", entry.get("name"), exc)
                 traceback.print_exc()
@@ -343,6 +498,11 @@ def main():
     cam.location = (max_x * 0.45, -depth, 2.2)
     cam.rotation_euler = (math.radians(72), 0, 0)
     bpy.context.scene.camera = cam
+
+    processed_root = (job.get("processed_root") or "").strip()
+    if processed_root and placed:
+        shot_n = render_creature_shots(placed, Path(processed_root))
+        print("VIU_LINEUP_PHOTOS_DONE", shot_n)
 
     out = Path(job.get("output_blend") or (job_path.parent / "creature_lineup.blend"))
     out.parent.mkdir(parents=True, exist_ok=True)

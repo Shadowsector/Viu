@@ -38,6 +38,14 @@ def creatures_processed_dir(config: Config) -> Path:
     return p
 
 
+def creature_processed_slug_dir(config: Config, slug: str) -> Path:
+    """PNG front/side после lineup: Processed/<slug>/."""
+    s = (slug or "creature").strip().strip("/\\") or "creature"
+    p = creatures_processed_dir(config) / s
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def creatures_lineup_dir(config: Config) -> Path:
     p = library_root(config) / "Lab" / "Creatures" / "Lineup"
     p.mkdir(parents=True, exist_ok=True)

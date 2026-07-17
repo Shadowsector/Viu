@@ -177,10 +177,51 @@ def test_lineup_job(tmp_path, monkeypatch):
     ok, msg, job = build_lineup_job(cfg, size_filter=["quad_med"])
     assert ok, msg
     assert job.is_file()
+    data = __import__("json").loads(job.read_text(encoding="utf-8"))
+    assert data.get("processed_root")
+    assert data["creatures"][0].get("slug")
     script = job.parent / "viu_creature_lineup.py"
     assert script.is_file()
-    assert "wrap_root" in script.read_text(encoding="utf-8")
-    assert "import_scene.fbx" in script.read_text(encoding="utf-8")
+    body = script.read_text(encoding="utf-8")
+    assert "wrap_root" in body
+    assert "import_scene.fbx" in body
+    assert "VIU_LINEUP_PHOTO" in body
+    assert "render_creature_shots" in body
+
+
+def test_lineup_parse_photos_and_apply(tmp_path, monkeypatch):
+    from viu.creature_catalog.lineup import _apply_photos, _parse_photos
+    from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
+
+    stdout = (
+        'VIU_LINEUP_PHOTO {"id": "abc", "slug": "goblin", '
+        '"front": "/tmp/goblin/front.png", "side": "/tmp/goblin/side.png"}\n'
+        "VIU_LINEUP_PHOTOS_DONE 1\n"
+        "VIU_LINEUP_PHOTO_FAIL goblin2 boom\n"
+    )
+    rows = _parse_photos(stdout)
+    assert len(rows) == 1
+    assert rows[0]["slug"] == "goblin"
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    store.upsert(
+        CreatureEntry(
+            id="abc",
+            path=str(tmp_path / "Goblin.fbx"),
+            name="Goblin",
+            slug="goblin",
+            size_class="small",
+            status=STATUS_SIZED,
+        )
+    )
+    store.save()
+    n = _apply_photos(cfg, rows)
+    assert n == 1
+    g = CreatureCatalogStore(creature_catalog_path(cfg)).load().get("abc")
+    assert g is not None
+    assert g.photo_front.endswith("front.png")
+    assert g.photo_side.endswith("side.png")
 
 
 def test_lineup_dedupe_and_auto_run(tmp_path, monkeypatch):
@@ -219,9 +260,16 @@ def test_lineup_dedupe_and_auto_run(tmp_path, monkeypatch):
         out.write_bytes(b"BLENDER")
         stdout = "VIU_LINEUP_OK " + str(out) + "\n"
         for c in job["creatures"]:
+            slug = c.get("slug") or "creature"
+            front = str(tmp_path / "Library" / "Lab" / "Creatures" / "Processed" / slug / "front.png")
+            side = str(tmp_path / "Library" / "Lab" / "Creatures" / "Processed" / slug / "side.png")
             stdout += (
                 'VIU_LINEUP_ROW {"id": "%s", "measured_m": 1.2, "scale": 0.5}\n'
                 % c["id"]
+            )
+            stdout += (
+                'VIU_LINEUP_PHOTO {"id": "%s", "slug": "%s", "front": "%s", "side": "%s"}\n'
+                % (c["id"], slug, front, side)
             )
         from types import SimpleNamespace
 
@@ -238,6 +286,7 @@ def test_lineup_dedupe_and_auto_run(tmp_path, monkeypatch):
     assert calls
     store2 = CreatureCatalogStore(creature_catalog_path(cfg)).load()
     assert any(e.measured_height_m > 0 for e in store2.all())
+    assert any(e.photo_front for e in store2.all())
 
 
 def test_set_size_custom_height(tmp_path, monkeypatch):

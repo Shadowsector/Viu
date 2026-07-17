@@ -39,16 +39,16 @@ VIU_MODEL_REFLECT=viu-command-r
 | Поля `photo_*`, `appearance_en/ru/tags` | ✅ |
 | `creature_describe` (Ollama VL по PNG) | ✅ |
 | Inject в reflect notes | ✅ |
-| Авто-рендер A-pose из Blender | ⏳ (ручной скрин / `blender_screenshot`) |
+| Авто-рендер front/side после lineup (Blender → Processed) | ✅ |
 | Comfy WD14 / Interrogator workflow | ⏳ (тот же schema) |
 | Авто seed → MoCap клип | ⏳ (шаг 7) |
 
 ### Как пользоваться (v1)
 
 1. Разметить рост (`Разметить существ` / lineup).
-2. В Blender поставить монстра (A-pose), сделать скрин →  
-   `Lab/Creatures/Processed/<slug>/front.png`  
-   или указать путь.
+2. **«Линейка существ»** — после Blender в каталоге появятся `photo_front` / `photo_side`  
+   (`Lab/Creatures/Processed/<slug>/front.png`, `side.png`).  
+   Ручной скрин по-прежнему можно положить туда же.
 3. В чате Вью / tool:
 
 ```text
@@ -66,10 +66,9 @@ Ollama **llava** уже стоит; WD14 в Comfy — отдельный workflo
 
 ### Дальше по приоритету
 
-1. Авто-PNG после lineup (камера front/side → `photo_front` / `photo_side`).
-2. Кнопка «Описать» в GUI разметки существ.
-3. Comfy caption node (опционально).
-4. MoCap seed из `photo_front` (шаг 5–7 старого плана).
+1. Кнопка «Описать» в GUI разметки существ.
+2. Comfy caption node (опционально).
+3. MoCap seed из `photo_front` (шаг 5–7 старого плана).
 
 Старый чеклист morphs / genital / сокеты — ниже без изменений смысла.
 
