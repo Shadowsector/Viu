@@ -8,6 +8,7 @@ vLLM, LocalAI) и прочих совместимых эндпоинтов.
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.request
 from typing import List
@@ -46,11 +47,19 @@ class OpenAICompatibleLLM(LLMProvider):
         url = f"{self.base_url}/chat/completions"
         temp = self.temperature if temperature is None else temperature
         use_model = (model or self.model or "").strip() or self.model
-        payload = {
+        payload: dict = {
             "model": use_model,
             "messages": messages,
             "temperature": temp,
         }
+        # Ollama: не держать 70B в VRAM вечно при смене ролей
+        keep = (os.environ.get("VIU_OLLAMA_KEEP_ALIVE") or "").strip()
+        if keep and ("11434" in self.base_url or "ollama" in self.base_url.lower()):
+            # "5m", "0" (unload сразу), "-1" (держать)
+            if keep.isdigit() or (keep.startswith("-") and keep[1:].isdigit()):
+                payload["keep_alive"] = int(keep)
+            else:
+                payload["keep_alive"] = keep
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             url,
