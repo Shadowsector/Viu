@@ -41,8 +41,10 @@ def main() -> int:
     _ensure_path()
     try:
         from viu.env_file import bootstrap_env
+        from viu.net_env import apply_proxy_scrub_to_process
 
         bootstrap_env(ROOT)
+        apply_proxy_scrub_to_process()
         from viu.gui import main as gui_main
 
         return gui_main()

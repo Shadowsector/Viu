@@ -9,6 +9,23 @@ title Viu — Anabarra
 set PYTHONUTF8=1
 set PYTHONPATH=%~dp0
 
+rem --- Мёртвый локальный прокси (Clash/V2Ray на 127.0.0.1) ломает pip/GitHub ---
+rem Если свой прокси реально нужен: set VIU_KEEP_PROXY=1
+if /i not "%VIU_KEEP_PROXY%"=="1" (
+  if defined HTTPS_PROXY echo [net] Снимаю HTTPS_PROXY=%HTTPS_PROXY% ^(прокси не отвечает^)
+  if defined HTTP_PROXY  echo [net] Снимаю HTTP_PROXY=%HTTP_PROXY%
+  if defined ALL_PROXY   echo [net] Снимаю ALL_PROXY=%ALL_PROXY%
+  set "HTTP_PROXY="
+  set "HTTPS_PROXY="
+  set "ALL_PROXY="
+  set "http_proxy="
+  set "https_proxy="
+  set "all_proxy="
+  set "PIP_PROXY="
+  set "NO_PROXY=*"
+  set "no_proxy=*"
+)
+
 rem --- настройки (можно править) ---
 set VIU_PROVIDER=openai
 set VIU_BASE_URL=http://localhost:11434/v1
@@ -50,9 +67,18 @@ echo [1b/2] Файл настроек .env...
 if not exist "%~dp0.env" if exist "%~dp0.env.example" copy /Y "%~dp0.env.example" "%~dp0.env" >nul
 
 echo [2/2] Готовлю пакет...
-python -m pip install -e . -q
+python -m pip install -e . -q --proxy=""
+if errorlevel 1 (
+  echo [net] Повтор без скачивания setuptools (--no-build-isolation)...
+  python -m pip install -e . -q --proxy="" --no-build-isolation
+)
 if errorlevel 1 (
   echo [ОШИБКА] Не удалось установить пакет Viu.
+  echo.
+  echo Если в ошибке было 127.0.0.1:PORT — у тебя в системе прописан
+  echo прокси ^(Clash/VPN^), который сейчас выключен. Выключи proxy в
+  echo параметрах Windows или закрой старые переменные HTTP_PROXY.
+  echo Быстрый обход уже в этом Viu.cmd; обнови файлы и запусти снова.
   goto :fail
 )
 

@@ -177,18 +177,57 @@ def cleanup_obsolete() -> None:
 
 
 def pip_install() -> None:
-    log("pip install -e . …")
-    proc = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-e", str(root_dir())],
-        cwd=str(root_dir()),
-        capture_output=True,
-        text=True,
-        timeout=1200,
-        creationflags=_NO_WINDOW,
-    )
-    if proc.returncode != 0:
-        tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-500:]
-        raise RuntimeError(f"pip не удался: {tail}")
+    """pip install -e . без мёртвого локального proxy; fallback без build isolation."""
+    try:
+        from viu.net_env import scrub_proxy_env
+    except ImportError:
+        def scrub_proxy_env():  # type: ignore[misc]
+            out = dict(os.environ)
+            for key in (
+                "HTTP_PROXY",
+                "HTTPS_PROXY",
+                "ALL_PROXY",
+                "http_proxy",
+                "https_proxy",
+                "all_proxy",
+                "PIP_PROXY",
+            ):
+                out.pop(key, None)
+            out["NO_PROXY"] = "*"
+            out["no_proxy"] = "*"
+            return out
+
+    env = scrub_proxy_env()
+    cwd = str(root_dir())
+    attempts = [
+        [sys.executable, "-m", "pip", "install", "-e", cwd, "--proxy="],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-e",
+            cwd,
+            "--proxy=",
+            "--no-build-isolation",
+        ],
+    ]
+    last_tail = ""
+    for cmd in attempts:
+        log(" ".join(cmd[3:]) + " …")
+        proc = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=1200,
+            creationflags=_NO_WINDOW,
+            env=env,
+        )
+        if proc.returncode == 0:
+            return
+        last_tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-500:]
+    raise RuntimeError(f"pip не удался: {last_tail}")
 
 
 def launch_gui() -> None:
@@ -254,6 +293,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true", help="только проверить")
     parser.add_argument("--launch", action="store_true", help="открыть GUI после обновления")
     args = parser.parse_args(argv)
+
+    try:
+        from viu.net_env import apply_proxy_scrub_to_process, proxy_hint
+
+        removed = apply_proxy_scrub_to_process()
+        hint = proxy_hint(removed)
+        if hint:
+            log(hint)
+    except Exception:  # noqa: BLE001
+        for key in (
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+        ):
+            os.environ.pop(key, None)
 
     if args.check:
         try:

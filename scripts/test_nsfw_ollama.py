@@ -75,7 +75,7 @@ def _model() -> str:
     return (
         os.environ.get("VIU_OLLAMA_MODEL")
         or os.environ.get("OLLAMA_MODEL")
-        or "huihui_ai/llama3.3-abliterated:70b"
+        or "viu-euryale"
     )
 
 

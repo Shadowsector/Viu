@@ -254,24 +254,43 @@ def current_commit(repo: Optional[Path] = None) -> str:
 
 def install_package(root: Optional[Path] = None) -> Tuple[bool, str]:
     """pip install -e . — как Mia install_requirements."""
+    from .net_env import scrub_proxy_env
+
     cwd = root or package_root()
+    env = scrub_proxy_env()
+    attempts = [
+        [sys.executable, "-m", "pip", "install", "-e", str(cwd), "--proxy="],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-e",
+            str(cwd),
+            "--proxy=",
+            "--no-build-isolation",
+        ],
+    ]
+    last_tail = ""
     try:
-        proc = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-e", str(cwd)],
-            cwd=str(cwd),
-            capture_output=True,
-            text=True,
-            timeout=1200,
-            creationflags=_NO_WINDOW,
-        )
+        for cmd in attempts:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(cwd),
+                capture_output=True,
+                text=True,
+                timeout=1200,
+                creationflags=_NO_WINDOW,
+                env=env,
+            )
+            if proc.returncode == 0:
+                return True, "Зависимости установлены (pip install -e .)."
+            last_tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-400:]
     except subprocess.TimeoutExpired:
         return False, "pip: таймаут 1200s"
     except OSError as exc:
         return False, f"pip: {exc}"
-    if proc.returncode == 0:
-        return True, "Зависимости установлены (pip install -e .)."
-    tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-400:]
-    return False, f"pip ошибка: {tail}"
+    return False, f"pip ошибка: {last_tail}"
 
 
 def check_for_update(
