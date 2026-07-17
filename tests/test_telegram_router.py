@@ -104,6 +104,31 @@ def test_run_reflect_greeting_accepts_hello_reply(tmp_path):
     assert "не прошёл" not in result.final.lower()
     assert llm.calls == 1
 
+
+def test_run_reflect_viu_comma_hi_greeting_fallback(tmp_path):
+    """«Вью, привет» + морализаторская модель → тёплый greeting-fallback."""
+
+    class MoralLLM(LLMProvider):
+        name = "moral"
+
+        def complete(self, messages, *, temperature=None, model=None):
+            return (
+                '{"thought":"x","final":"Извините за путаницу. '
+                'Важно уважать наших персонажей."}'
+            )
+
+    agent = Agent(
+        llm=MoralLLM(),
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    result = agent.run_reflect("Вью, привет", history=[])
+    assert result.completed
+    assert "Привет" in result.final
+    assert "уважать" not in result.final.lower()
+    assert "путаниц" not in result.final.lower()
+
+
+def test_run_reflect_with_history(tmp_path):
     llm = ReflectLLM(
         "Анабарра — Шаня у таскбара, снежинка, не walk sim.",
         "Ну, Анабарра — Шаня у таскбара, не walk simulator.",

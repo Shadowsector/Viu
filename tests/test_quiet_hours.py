@@ -21,17 +21,24 @@ def test_reflect_mid_conversation_greeting_rejected():
 
 
 def test_reflect_greeting_ok_when_user_said_hi():
-    from viu.prompts.reflect_mode import user_is_greeting
+    from viu.prompts.reflect_mode import is_nsfw_refusal, user_is_greeting
 
     assert user_is_greeting("Привет, Вью.")
     assert user_is_greeting("[Telegram] Привет, Вью.")
     assert user_is_greeting("привет")
+    assert user_is_greeting("Вью, привет")
+    assert user_is_greeting("Вьюшка, привет!")
     assert not user_is_greeting("в чём игра?")
     # Ден поздоровался — ответ «Привет» не баним, даже если есть история
     assert not reflect_reply_issues(
         "Привет! Рада тебя слышать.",
         has_history=True,
         user_text="Привет, Вью.",
+    )
+    assert not reflect_reply_issues(
+        "Привет! На связи.",
+        has_history=True,
+        user_text="Вью, привет",
     )
     # Без приветствия от Дена — по-прежнему режем
     assert any(
@@ -42,6 +49,12 @@ def test_reflect_greeting_ok_when_user_said_hi():
             user_text="в чём игра?",
         )
     )
+    moral = (
+        "Извините за путаницу. Важно уважать наших персонажей "
+        "и быть аккуратными и ответственными."
+    )
+    assert reflect_reply_issues(moral)
+    assert is_nsfw_refusal(moral)
 
 
 def test_reflect_cjk_rejected():

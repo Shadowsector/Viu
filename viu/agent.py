@@ -629,6 +629,12 @@ class Agent:
             ):
                 self._log("REFLECT_RESCUE: ok")
                 return _accept_final(text, thought or "rescue")
+            if greeting:
+                self._log("REFLECT_RESCUE: greeting fallback after moralize")
+                return _accept_final(
+                    "Привет. Я здесь — пиши, о чём думаешь или что делаем дальше.",
+                    "greeting-fallback",
+                )
             # Жёсткий запасной ответ — цензор до Дена не доходит
             self._log("REFLECT_RESCUE: hard NSFW affirm fallback")
             return _accept_final(NSFW_AFFIRM_FALLBACK, "fallback: модель отказала")
@@ -636,12 +642,25 @@ class Agent:
         self._log(
             "REFLECT_FAIL template: issues="
             + (",".join(last_issues) if last_issues else "-")
-            + f" raw={(last_raw or '')[:200]!r}"
+            + f" model={reflect_model or '-'} raw={(last_raw or '')[:200]!r}"
         )
+        if greeting:
+            return _accept_final(
+                "Привет. Я здесь — пиши, о чём думаешь или что делаем дальше.",
+                "greeting-fallback",
+            )
+        why = (
+            "; ".join(last_issues[:3])
+            if last_issues
+            else "кривой JSON или пустой ответ"
+        )
+        model_hint = reflect_model or "default"
         result.final = (
-            "Хм, ответ модели не прошёл (тон/JSON). "
-            "Напиши ещё раз — или проверь VIU_MODEL_REFLECT и что Ollama жива. "
-            "«Следующий шаг» — если пора делать руками."
+            f"Ответ не прошёл ({why}). "
+            f"Сейчас reflect={model_hint}. "
+            "Для чата лучше VIU_MODEL_REFLECT=viu-cydonia "
+            "(command-r — под GDD, часто моралит). "
+            "Модель в окне Ollama на Viu не влияет — только .env."
         )
         result.completed = True
         return result

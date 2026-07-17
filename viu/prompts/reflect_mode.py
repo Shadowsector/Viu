@@ -162,7 +162,7 @@ def is_nsfw_refusal(text: str) -> bool:
     """Явный цензорский отказ (не просто плохой тон)."""
     if not text:
         return False
-    if _REFUSAL_RE.search(text):
+    if _REFUSAL_RE.search(text) or _MORALIZE_RE.search(text):
         return True
     low = text.lower()
     markers = (
@@ -171,6 +171,8 @@ def is_nsfw_refusal(text: str) -> bool:
         "нежелательных чувств",
         "against my guidelines",
         "against my programming",
+        "уважать наших персонажей",
+        "извините за путаницу",
     )
     return any(m in low for m in markers)
 
@@ -284,6 +286,16 @@ BANNED_PHRASES = (
     "анимированные текстуры",
     "натуралистичные результаты",
     "более сложных проектов может потребоваться",
+    # Command R / корпоративная мораль
+    "извините за путаницу",
+    "извините за",
+    "уважать наших персонажей",
+    "уважать персонажей",
+    "аккуратными и ответственными",
+    "не навредить им",
+    "давайте попробуем обсудить другой аспект",
+    "обсудить другой аспект",
+    "спортивных или насмешливых",
 )
 
 _MASCULINE_RE = re.compile(
@@ -333,9 +345,15 @@ _REFUSAL_RE = re.compile(
 
 _USER_GREETING_RE = re.compile(
     r"(?is)^\s*(?:\[telegram\]\s*)?"
+    r"(?:"
+    # «привет» / «привет, Вью»
     r"(?:привет|здравствуй|здорово|хай|хелло|hello|hi|yo)"
-    r"(?:\s*[,!.…]+\s*|\s+)?"
-    r"(?:вью|viu)?"
+    r"(?:\s*[,!.…]+\s*|\s+)?(?:вью(?:шка)?|viu)?"
+    r"|"
+    # «Вью, привет» / «Вьюшка привет»
+    r"(?:вью(?:шка)?|viu)\s*[,!.…]?\s*"
+    r"(?:привет|здравствуй|здорово|хай|хелло|hello|hi|yo)"
+    r")"
     r"(?:\s*[,!.…]*)?\s*$"
 )
 
@@ -345,9 +363,27 @@ def user_is_greeting(user_text: str) -> bool:
     t = (user_text or "").strip()
     if not t or len(t) > 80:
         return False
-    return bool(_USER_GREETING_RE.match(t)) or bool(
-        _GREETING_START_RE.match(t) and len(t.split()) <= 4
-    )
+    if _USER_GREETING_RE.match(t):
+        return True
+    # короткие «хай вью» без запятой и т.п.
+    return bool(_GREETING_START_RE.match(t) and len(t.split()) <= 4)
+
+
+_MORALIZE_RE = re.compile(
+    r"(?i)("
+    r"уважать\s+(?:наших\s+)?персонаж|"
+    r"не\s+использовать\s+их\s+в|"
+    r"аккуратн\w+\s+и\s+ответствен|"
+    r"не\s+навредить\s+(?:им|себе|персонаж)|"
+    r"спортивн\w+\s+или\s+насмешлив|"
+    r"давайте\s+попробуем\s+обсудить\s+другой\s+аспект|"
+    r"важно\s+уважать|"
+    r"быть\s+ответственн|"
+    r"извините\s+за\s+путаниц|"
+    r"как\s+ии[, ]\s*я\s+должн|"
+    r"этическ\w+\s+(?:соображен|причин|норм)"
+    r")"
+)
 
 
 def viu_voice_issues(
@@ -359,8 +395,8 @@ def viu_voice_issues(
     for phrase in BANNED_PHRASES:
         if phrase in low:
             issues.append(f"шаблон «{phrase}»")
-    if _REFUSAL_RE.search(text):
-        issues.append("ложный запрет NSFW — у нас взрослая игра, NSFW разрешён")
+    if _REFUSAL_RE.search(text) or _MORALIZE_RE.search(text):
+        issues.append("ложный запрет/мораль — у нас взрослая игра, NSFW разрешён")
     if _PROFANITY_RE.search(text):
         issues.append("мат/чернуха — только тёплый язык")
     if _MASCULINE_RE.search(text):
