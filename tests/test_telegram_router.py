@@ -105,6 +105,30 @@ def test_run_reflect_greeting_accepts_hello_reply(tmp_path):
     assert llm.calls == 1
 
 
+def test_run_reflect_nsfw_question_rejects_corporate(tmp_path):
+    """Вопрос про NSFW + корпоративный ответ → affirm fallback, не лекция."""
+
+    class CorporateNSFW(LLMProvider):
+        name = "corp"
+
+        def complete(self, messages, *, temperature=None, model=None):
+            return (
+                '{"thought":"x","final":"NSFW-элементы являются частью дизайна '
+                "игры и разрешены в пределах наших правил. Важно сохранять "
+                'уважение к персонажам."}'
+            )
+
+    agent = Agent(
+        llm=CorporateNSFW(),
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    result = agent.run_reflect("Как ты относишься к NSFW?", history=[])
+    assert result.completed
+    assert "уважение" not in result.final.lower()
+    assert "правила" not in result.final.lower()
+    assert "nsfw" in result.final.lower() or "можем" in result.final.lower()
+
+
 def test_run_reflect_viu_comma_hi_greeting_fallback(tmp_path):
     """«Вью, привет» + морализаторская модель → тёплый greeting-fallback."""
 

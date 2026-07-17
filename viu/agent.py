@@ -445,17 +445,21 @@ class Agent:
                 hist = long_hist
 
         half = reflect_prompt_half()
-        # диагностика: persona/bare — без заметок; work/full — с заметками
-        use_notes = half in ("full", "work") and bool(notes) and not greeting
+        nsfw_q = asks_about_nsfw(user_text)
+        # Привет / вопрос про NSFW: лёгкий промпт как в чате Ollama.
+        # Полный GDD-system заставляет Command R моралить и ломать JSON.
+        if greeting or nsfw_q:
+            half = "bare"
+        use_notes = half in ("full", "work") and bool(notes) and not greeting and not nsfw_q
         use_hist = half not in ("bare",) and bool(hist) and not greeting
-        if asks_about_nsfw(user_text):
-            # вопрос про NSFW — история отказов особенно ядовита
+        if nsfw_q:
             hist = scrub_poisoned_history(hist)
-            use_hist = half == "full" and bool(hist)
+            use_hist = False
 
         self._log(
             f"REFLECT half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}"
-            f"{' greeting' if greeting else ''}: {user_text[:120]}"
+            f"{' greeting' if greeting else ''}{' nsfw_q' if nsfw_q else ''}: "
+            f"{user_text[:120]}"
         )
 
         system = select_reflect_system(half)
@@ -603,7 +607,7 @@ class Agent:
             )
 
         # Rescue: изолированный вызов без заметок/истории — где именно «Стоп»
-        if saw_nsfw_refusal or asks_about_nsfw(user_text):
+        if saw_nsfw_refusal or nsfw_q:
             self._log("REFLECT_RESCUE: isolated bare system (no notes/history)")
             rescue_msgs: List[Dict[str, str]] = [
                 {"role": "system", "content": REFLECT_RESCUE_SYSTEM},

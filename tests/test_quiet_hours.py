@@ -55,6 +55,13 @@ def test_reflect_greeting_ok_when_user_said_hi():
     )
     assert reflect_reply_issues(moral)
     assert is_nsfw_refusal(moral)
+    soft = (
+        "NSFW-элементы являются частью дизайна игры и разрешены в пределах наших правил. "
+        "Мы можем обсуждать и планировать такие сцены, но важно сохранять уважение "
+        "к персонажам и контексту."
+    )
+    assert reflect_reply_issues(soft)
+    assert is_nsfw_refusal(soft)
 
 
 def test_reflect_cjk_rejected():
