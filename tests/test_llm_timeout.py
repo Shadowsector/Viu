@@ -7,13 +7,13 @@ from viu.llm.openai_compatible import OpenAICompatibleLLM
 
 def test_default_llm_timeout_is_long():
     c = Config(provider="openai", api_key="ollama", base_url="http://localhost:11434/v1")
-    assert c.llm_timeout >= 600
+    assert c.llm_timeout >= 1200
     p = build_provider(c)
     assert isinstance(p, OpenAICompatibleLLM)
-    assert p.timeout >= 600
+    assert p.timeout >= 1200
 
 
 def test_llm_timeout_from_env(monkeypatch):
-    monkeypatch.setenv("VIU_LLM_TIMEOUT", "900")
+    monkeypatch.setenv("VIU_LLM_TIMEOUT", "1800")
     c = Config(provider="openai", api_key="x")
-    assert c.llm_timeout == 900.0
+    assert c.llm_timeout == 1800.0

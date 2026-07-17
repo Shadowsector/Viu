@@ -31,16 +31,16 @@ if /i not "%VIU_KEEP_PROXY%"=="1" (
   set "no_proxy=*"
 )
 
-rem --- настройки (можно править) ---
+rem --- дефолты, если в .env нет строки (`.env` перекрывает эти ключи) ---
 set VIU_PROVIDER=openai
 set VIU_BASE_URL=http://localhost:11434/v1
 set VIU_API_KEY=ollama
-set VIU_MODEL=qwen2.5-coder:14b
-set VIU_LLM_TIMEOUT=600
+set VIU_LLM_TIMEOUT=1200
 set VIU_UNITY_PROJECT=U:\Anabarra\Unity\Anabarra
 set VIU_ANIM_STAGING=U:\Anabarra\Animations
 set VIU_QUIET_HOURS=0-7
 set VIU_REFLECT_TEMPERATURE=0.88
+rem Модели — только из .env (VIU_MODEL_REFLECT=viu-cydonia и т.д.)
 rem ---------------------------------
 
 echo.

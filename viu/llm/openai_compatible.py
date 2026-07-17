@@ -25,7 +25,7 @@ class OpenAICompatibleLLM(LLMProvider):
         base_url: str = "https://api.openai.com/v1",
         model: str = "gpt-4o-mini",
         temperature: float = 0.2,
-        timeout: float = 600.0,
+        timeout: float = 1200.0,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
