@@ -28,6 +28,8 @@ def test_reflect_greeting_ok_when_user_said_hi():
     assert user_is_greeting("привет")
     assert user_is_greeting("Вью, привет")
     assert user_is_greeting("Вьюшка, привет!")
+    assert user_is_greeting("И снова привет")
+    assert user_is_greeting("ну снова привет")
     assert not user_is_greeting("в чём игра?")
     # Ден поздоровался — ответ «Привет» не баним, даже если есть история
     assert not reflect_reply_issues(
@@ -62,6 +64,12 @@ def test_reflect_greeting_ok_when_user_said_hi():
     )
     assert reflect_reply_issues(soft)
     assert is_nsfw_refusal(soft)
+    deflect = (
+        "Я понимаю твое интерес, но давай лучше поговорим о чем-нибудь другом. "
+        "Может быть, об обычных хобби или планах на выходные?"
+    )
+    assert reflect_reply_issues(deflect)
+    assert is_nsfw_refusal(deflect)
 
 
 def test_reflect_cjk_rejected():

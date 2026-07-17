@@ -26,6 +26,7 @@ from .config import Config
 from .gui_actions import ACTION_GROUPS, GUI_ACTIONS, GuiAction, actions_by_group
 from .pipeline import action_visible, get_pipeline_context
 from .health import ollama_available
+from .llm_roles import effective_model, model_label
 from .integrations.unity.watcher import AnimationFolderWatcher
 from .runtime_settings import get_update_interval_min, get_window_geometry, set_window_geometry
 from .updater import (
@@ -94,7 +95,12 @@ class ViuGUI:
             removed = []
 
         self._build_ui()
-        self._append("система", f"{version_label()}. Модель: {self.agent.llm.name}.")
+        self._append(
+            "система",
+            f"{version_label()}. "
+            f"Чат/reflect: {model_label(self.agent.config, 'reflect')}. "
+            f"Work: {effective_model(self.agent.config, 'work')}.",
+        )
         if getattr(self, "_story_ingest_msg", ""):
             self._append("система", self._story_ingest_msg, tag="sys")
         if removed:
@@ -252,14 +258,18 @@ class ViuGUI:
         self._append("Вью", render_open(self.agent.config), tag="tool")
 
     def _refresh_presence_button(self) -> None:
+        from .llm_roles import model_label
         from .presence import is_away
 
         away = is_away(self.agent.config)
+        model = model_label(self.agent.config, "reflect")
+        # длинные теги обрежем для кнопки
+        short = model if len(model) <= 36 else model[:33] + "…"
         btn = getattr(self, "_presence_btn", None)
         if btn is not None:
             if away:
                 btn.config(
-                    text="● Нет дома",
+                    text=f"● Нет дома · {short}",
                     bg="#c62828",
                     fg="#ffffff",
                     activebackground="#b71c1c",
@@ -267,7 +277,7 @@ class ViuGUI:
                 )
             else:
                 btn.config(
-                    text="● Дома",
+                    text=f"● Дома · {short}",
                     bg="#2e7d32",
                     fg="#ffffff",
                     activebackground="#1b5e20",
@@ -277,7 +287,7 @@ class ViuGUI:
         text = "Режим: меня нет (автономно)" if away else "Режим: я дома (с вопросами)"
         for aid, b in self._action_buttons:
             if aid == "presence_toggle":
-                b.config(text=text)
+                b.config(text=f"{text}\n{short}")
                 break
 
     def _refresh_status(self) -> None:
@@ -285,6 +295,7 @@ class ViuGUI:
 
         def compute() -> str:
             from .decision_queue import count_open
+            from .llm_roles import effective_model, model_label
             from .presence import is_away
 
             ollama = "Ollama ✓" if ollama_available(cfg.base_url) else "Ollama ✗"
@@ -293,12 +304,18 @@ class ViuGUI:
             mode = "автономно" if is_away(cfg) else "дома"
             qn = count_open(cfg)
             q = f" | вопросов: {qn}" if qn else ""
+            reflect = model_label(cfg, "reflect")
+            work = effective_model(cfg, "work")
             return (
                 f"{ollama}  |  {mode}{q}  |  {unity}  |  {version_label()} ({git})  |  "
-                f"Модель: {self.agent.llm.name}"
+                f"чат: {reflect}  |  work: {work}"
             )
 
         self._run_bg(compute, self._set_top_status)
+        try:
+            self._refresh_presence_button()
+        except Exception:  # noqa: BLE001
+            pass
         self.root.after(5000, self._refresh_status)
 
     def _set_top_status(self, result) -> None:
@@ -1224,10 +1241,14 @@ class ViuGUI:
         unity = cfg.unity_project or "(Unity не задан)"
         chat = "привязан" if self._telegram and self._telegram.enabled else "нет"
         from .integrations.telegram import settings as tg_settings
+        from .llm_roles import model_label
+        from .presence import is_away
 
         cid = tg_settings.chat_id(cfg)
+        home = "нет дома" if is_away(cfg) else "дома"
         return (
             f"{version_label()}\n"
+            f"Режим: {home} · {model_label(cfg, 'reflect')}\n"
             f"Ollama: {'ok' if ollama_available() else 'нет'}\n"
             f"Unity: {unity}\n"
             f"Занята: {getattr(self, '_busy_label', None) or ('да' if (self._tool_busy or self._llm_busy) else 'нет')}\n"

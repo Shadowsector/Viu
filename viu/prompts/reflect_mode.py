@@ -163,7 +163,7 @@ def is_nsfw_refusal(text: str) -> bool:
     """Явный цензорский отказ (не просто плохой тон)."""
     if not text:
         return False
-    if _REFUSAL_RE.search(text) or _MORALIZE_RE.search(text):
+    if _REFUSAL_RE.search(text) or _MORALIZE_RE.search(text) or _DEFLECT_RE.search(text):
         return True
     low = text.lower()
     markers = (
@@ -176,6 +176,9 @@ def is_nsfw_refusal(text: str) -> bool:
         "извините за путаницу",
         "уважение к персонажам",
         "в пределах наших правил",
+        "давай лучше поговорим",
+        "чем-нибудь другом",
+        "чём-нибудь другом",
     )
     return any(m in low for m in markers)
 
@@ -305,6 +308,11 @@ BANNED_PHRASES = (
     "в пределах правил",
     "являются частью дизайна",
     "важно сохранять уважение",
+    "давай лучше поговорим",
+    "поговорим о чем-нибудь другом",
+    "поговорим о чём-нибудь другом",
+    "обычных хобби",
+    "планах на выходные",
 )
 
 _MASCULINE_RE = re.compile(
@@ -355,12 +363,15 @@ _REFUSAL_RE = re.compile(
 _USER_GREETING_RE = re.compile(
     r"(?is)^\s*(?:\[telegram\]\s*)?"
     r"(?:"
-    # «привет» / «привет, Вью»
+    # «ну/и/а … снова/опять … привет»
+    r"(?:ну\s+|и\s+|а\s+|э+[,.]?\s*)?"
+    r"(?:снова\s+|опять\s+|ещё\s+раз\s+)?"
     r"(?:привет|здравствуй|здорово|хай|хелло|hello|hi|yo)"
     r"(?:\s*[,!.…]+\s*|\s+)?(?:вью(?:шка)?|viu)?"
     r"|"
     # «Вью, привет» / «Вьюшка привет»
     r"(?:вью(?:шка)?|viu)\s*[,!.…]?\s*"
+    r"(?:снова\s+|опять\s+|ещё\s+раз\s+)?"
     r"(?:привет|здравствуй|здорово|хай|хелло|hello|hi|yo)"
     r")"
     r"(?:\s*[,!.…]*)?\s*$"
@@ -370,13 +381,32 @@ _USER_GREETING_RE = re.compile(
 def user_is_greeting(user_text: str) -> bool:
     """Короткий hello от Дена — ответ «Привет» тогда нормален, не баним."""
     t = (user_text or "").strip()
-    if not t or len(t) > 80:
+    if not t or len(t) > 100:
         return False
     if _USER_GREETING_RE.match(t):
         return True
-    # короткие «хай вью» без запятой и т.п.
+    # короткие «хай вью» / «и снова привет» без идеального match
+    low = t.lower()
+    if len(t.split()) <= 6 and re.search(
+        r"(?:^|\s)(?:привет|здравствуй|hello|hi)\b", low
+    ):
+        return True
     return bool(_GREETING_START_RE.match(t) and len(t.split()) <= 4)
 
+
+_DEFLECT_RE = re.compile(
+    r"(?i)("
+    r"давай\s+лучше\s+поговорим|"
+    r"поговорим\s+о\s+ч[её]м[-\s]?нибудь\s+другом|"
+    r"о\s+ч[её]м[-\s]?нибудь\s+другом|"
+    r"обычн\w*\s+хобби|"
+    r"планах?\s+на\s+выходн|"
+    r"сменим\s+тему|"
+    r"другую\s+тему|"
+    r"не\s+будем\s+об\s+этом|"
+    r"лучше\s+не\s+будем\s+говорить"
+    r")"
+)
 
 _MORALIZE_RE = re.compile(
     r"(?i)("
@@ -411,6 +441,8 @@ def viu_voice_issues(
             issues.append(f"шаблон «{phrase}»")
     if _REFUSAL_RE.search(text) or _MORALIZE_RE.search(text):
         issues.append("ложный запрет/мораль — у нас взрослая игра, NSFW разрешён")
+    if _DEFLECT_RE.search(text):
+        issues.append("уход от темы — отвечай по делу, NSFW у нас ок")
     if _PROFANITY_RE.search(text):
         issues.append("мат/чернуха — только тёплый язык")
     if _MASCULINE_RE.search(text):

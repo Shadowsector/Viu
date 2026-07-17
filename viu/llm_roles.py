@@ -29,6 +29,24 @@ def resolve_model(config: Config, role: Role = "default") -> Optional[str]:
     return None
 
 
+def effective_model(config: Config, role: Role = "default") -> str:
+    """Реальный тег Ollama/API, который уйдёт в запрос (с fallback на VIU_MODEL)."""
+    resolved = resolve_model(config, role)
+    if resolved:
+        return resolved
+    return (config.model or "").strip() or "(none)"
+
+
+def model_label(config: Config, role: Role = "reflect") -> str:
+    """Короткая подпись для UI: тег + предупреждение, если нет viu-обёртки."""
+    name = effective_model(config, role)
+    if name.startswith("viu-"):
+        return name
+    if name in ("(none)", ""):
+        return "модель не задана"
+    return f"{name} ⚠без viu-обёртки"
+
+
 def guess_work_role(task: str) -> Role:
     """Грубая эвристика: code vs work. Сюжетный чат сюда не попадает (это reflect)."""
     if _CODE_HINT_RE.search(task or ""):

@@ -472,6 +472,9 @@ class Agent:
         messages.append({"role": "user", "content": user_text})
 
         reflect_model = self._model_for("reflect")
+        from .llm_roles import effective_model, model_label
+
+        reflect_tag = effective_model(self.config, "reflect")
         saw_nsfw_refusal = False
         last_raw = ""
         last_issues: list[str] = []
@@ -534,7 +537,7 @@ class Agent:
             except RuntimeError as exc:
                 self._log(f"REFLECT LLM fail: {exc}")
                 result.final = (
-                    f"Не достучалась до модели ({reflect_model or 'default'}): {exc}"
+                    f"Не достучалась до модели ({reflect_tag}): {exc}"
                 )
                 result.completed = True
                 return result
@@ -646,7 +649,7 @@ class Agent:
         self._log(
             "REFLECT_FAIL template: issues="
             + (",".join(last_issues) if last_issues else "-")
-            + f" model={reflect_model or '-'} raw={(last_raw or '')[:200]!r}"
+            + f" model={reflect_tag} raw={(last_raw or '')[:200]!r}"
         )
         if greeting:
             return _accept_final(
@@ -658,12 +661,12 @@ class Agent:
             if last_issues
             else "кривой JSON или пустой ответ"
         )
-        model_hint = reflect_model or "default"
+        wrap = model_label(self.config, "reflect")
         result.final = (
             f"Ответ не прошёл ({why}). "
-            f"Сейчас reflect={model_hint}. "
-            "Для чата лучше VIU_MODEL_REFLECT=viu-cydonia "
-            "(command-r — под GDD, часто моралит). "
+            f"Сейчас reflect={wrap}. "
+            "В .env нужно VIU_MODEL_REFLECT=viu-cydonia "
+            "(viu-command-r — под GDD). "
             "Модель в окне Ollama на Viu не влияет — только .env."
         )
         result.completed = True
