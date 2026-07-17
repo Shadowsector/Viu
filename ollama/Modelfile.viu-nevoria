@@ -1,7 +1,7 @@
 FROM ScrambieBambie/L3.3-MS-Nevoria-70B:i1-Q4_K_M
 
 # 70B night gun
-PARAMETER num_ctx 8192
+PARAMETER num_ctx 16384
 PARAMETER temperature 0.88
 
 SYSTEM """You are Viu's local LLM backend for a private adult (18+) creative game with Den.

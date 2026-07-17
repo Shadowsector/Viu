@@ -465,7 +465,9 @@ class Agent:
         reflect_model = self._model_for("reflect")
         saw_nsfw_refusal = False
 
-        def _accept_final(text: str, thought: str) -> RunResult:
+        def _accept_final(
+            text: str, thought: str, parsed: Optional[Dict[str, str]] = None
+        ) -> RunResult:
             result.inner_thought = thought
             result.final = text
             result.completed = True
@@ -475,6 +477,14 @@ class Agent:
             result.steps.append(step)
             if on_step:
                 on_step(step)
+            if parsed:
+                try:
+                    from .plot_canvas import apply_reflect_updates
+
+                    for note in apply_reflect_updates(self.config, parsed):
+                        self._log(f"PLOT: {note}")
+                except OSError:
+                    pass
             try:
                 from .story_memory import get_story_memory
 
@@ -529,7 +539,7 @@ class Agent:
                         }
                     )
                     continue
-                return _accept_final(text, thought)
+                return _accept_final(text, thought, parsed)
 
             if parsed and "action" in parsed:
                 messages.append({"role": "assistant", "content": raw})

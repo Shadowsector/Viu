@@ -116,6 +116,36 @@ def build_reflect_notes(config: Config) -> str:
         pass
 
     try:
+        from .plot_canvas import (
+            canvas_has_substance,
+            ensure_plot_canvas,
+            ensure_quests,
+            read_plot_canvas,
+            read_quests,
+        )
+
+        ensure_plot_canvas(config)
+        ensure_quests(config)
+        canvas = read_plot_canvas(config, max_chars=4000).strip()
+        if canvas_has_substance(canvas):
+            parts.append(
+                "--- PLOT_CANVAS (канон сюжета — сверяйся при квестах; не зачитывать списком) ---\n"
+                + canvas
+            )
+        else:
+            parts.append(
+                "--- PLOT_CANVAS: пока пусто. Перед новым квестом предложи биты канвы "
+                "и запиши через plot_update. ---"
+            )
+        quests = read_quests(config, max_chars=3000).strip()
+        if canvas_has_substance(quests):
+            parts.append(
+                "--- QUESTS (сверяйся с канвой; не зачитывать списком) ---\n" + quests
+            )
+    except OSError:
+        pass
+
+    try:
         from .animation_catalog import AnimationCatalogStore, animation_catalog_path
 
         store = AnimationCatalogStore(animation_catalog_path(config)).load()

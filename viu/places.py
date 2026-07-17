@@ -83,6 +83,18 @@ def _characters(config: Config) -> Path:
     return ensure_characters_vision(config)
 
 
+def _plot_canvas(config: Config) -> Path:
+    from .plot_canvas import ensure_plot_canvas
+
+    return ensure_plot_canvas(config)
+
+
+def _quests(config: Config) -> Path:
+    from .plot_canvas import ensure_quests
+
+    return ensure_quests(config)
+
+
 def _comfy_native_output(config: Config) -> Path:
     from .integrations.comfy.paths import resolve_comfy_root
 
@@ -271,6 +283,22 @@ def all_places() -> List[Place]:
             "Файлы",
             "Характеры/интим — локально, не на GitHub.",
             _characters,
+        ),
+        Place(
+            "plot_canvas",
+            "Канва сюжета (PLOT_CANVAS)",
+            "file",
+            "Файлы",
+            "Общая канва — квесты сверяются с ней. Локально.",
+            _plot_canvas,
+        ),
+        Place(
+            "quests",
+            "Квесты (QUESTS)",
+            "file",
+            "Файлы",
+            "Отдельные квесты — локально в .viu/.",
+            _quests,
         ),
         Place(
             "girl_sockets",

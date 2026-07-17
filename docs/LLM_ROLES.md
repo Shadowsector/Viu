@@ -49,7 +49,7 @@ VIU_REFLECT_TEMPERATURE=0.88
 # выгрузить модель после ответа — меньше свопа при смене ролей
 VIU_OLLAMA_KEEP_ALIVE=5m
 # контекст запросов Viu (токены). UI Ollama на API обычно не действует.
-VIU_OLLAMA_NUM_CTX=8192
+VIU_OLLAMA_NUM_CTX=16384
 ```
 
 ## Контекст (num_ctx)
