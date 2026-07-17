@@ -14,6 +14,14 @@ def test_load_env_file_sets_missing_only(tmp_path, monkeypatch):
     assert os.environ["VIU_TEST_KEY"] == "already"
 
 
+def test_load_env_file_overrides_llm_timeout(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIU_LLM_TIMEOUT", "600")
+    env = tmp_path / ".env"
+    env.write_text("VIU_LLM_TIMEOUT=1200\n", encoding="utf-8")
+    load_env_file(tmp_path)
+    assert os.environ["VIU_LLM_TIMEOUT"] == "1200"
+
+
 def test_reload_secret_overwrites_empty_env(tmp_path, monkeypatch):
     monkeypatch.setenv("VIU_GITHUB_TOKEN", "")
     env = tmp_path / ".env"
