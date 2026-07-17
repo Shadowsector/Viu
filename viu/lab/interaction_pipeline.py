@@ -123,19 +123,23 @@ def step_spec(config: Config, session: LabSession) -> StepResult:
 
 
 def step_blocking(config: Config, session: LabSession) -> StepResult:
+    from ..interaction_catalog.blocking import run_interaction_blocking
+
     wish = load_wish(config, str(session.meta.get("catalog_slug", "")))
     if wish is None:
         return False, "Нет wish для blocking.", None
     paths = _scene_paths(config, wish)
     _ensure_dirs(paths)
     blend = paths["blocking"] / "blocking.blend"
-    msg = (
-        f"MVP: blocking ещё не автоматизирован.\n"
-        f"Ожидается: creature_lineup + empties по sync_markers → {blend}\n"
-        f"Маркеры: {', '.join(f'@{m.frame}:{m.event}' for m in wish.sync_markers)}"
-    )
-    append_journal(config, INTERACTION_TOPIC, "blocking: scaffold")
-    return True, msg, None
+
+    ok, msg = run_interaction_blocking(config, wish, open_result=False)
+    if not ok:
+        append_journal(config, INTERACTION_TOPIC, f"blocking fail: {msg[:200]}")
+        return False, msg, None
+
+    append_journal(config, INTERACTION_TOPIC, f"blocking ok: {blend}")
+    markers = ", ".join(f"@{m.frame}:{m.event}" for m in wish.sync_markers)
+    return True, f"{msg}\nМаркеры: {markers}", None
 
 
 def step_master_draft(config: Config, session: LabSession) -> StepResult:

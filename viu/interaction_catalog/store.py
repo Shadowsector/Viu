@@ -73,6 +73,9 @@ class InteractionCatalogStore:
                 return w
         return None
 
+    def upsert(self, wish: InteractionWish) -> None:
+        self._items[wish.id] = wish
+
     def missing(self) -> List[InteractionWish]:
         """Дыры: wished без master_ref и без assembly."""
         return [

@@ -1,5 +1,6 @@
 """Каталог совместных анимаций."""
 
+from .blocking import build_blocking_job, resolve_actor_asset, run_interaction_blocking
 from .format_reflect import format_interactions_for_reflect
 from .models import (
     DEFAULT_INTERACTIONS,
@@ -30,8 +31,11 @@ __all__ = [
     "RIG_KINDS",
     "SyncMarker",
     "actor_dir",
+    "build_blocking_job",
     "format_interactions_for_reflect",
     "interaction_catalog_path",
     "interaction_lab_root",
     "interaction_scene_dir",
+    "resolve_actor_asset",
+    "run_interaction_blocking",
 ]

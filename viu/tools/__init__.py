@@ -84,7 +84,7 @@ from .animation_catalog_tool import (
     AnimationCatalogShowTool,
     RouteInboxTool,
 )
-from .interaction_catalog_tool import InteractionCatalogShowTool
+from .interaction_catalog_tool import InteractionBlockingTool, InteractionCatalogShowTool
 from .presence_tool import (
     AppsCloseTool,
     AppsRestartTool,
@@ -176,6 +176,7 @@ def build_default_registry() -> ToolRegistry:
         AnimationCatalogShowTool(),
         AnimationCatalogMatchTool(),
         InteractionCatalogShowTool(),
+        InteractionBlockingTool(),
         RouteInboxTool(),
         RoadmapShowTool(),
         RoadmapUpdateTool(),

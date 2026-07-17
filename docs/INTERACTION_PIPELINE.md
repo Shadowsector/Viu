@@ -180,7 +180,7 @@ lab_run_all topic=interaction
 | # | Шаг | Статус |
 |---|-----|--------|
 | 0 | Спека из каталога | ✅ scaffold |
-| 1 | Blocking Blender | ⏳ |
+| 1 | Blocking Blender | ✅ `interaction_blocking` / lab step 2 |
 | 2 | Master draft Comfy | ⏳ |
 | 3 | Одобрение (Telegram/GUI) | ⏳ |
 | 4 | Per-actor isolated ref | ⏳ |
@@ -199,7 +199,8 @@ VRAM: как у solo — Comfy и Cascadeur **не параллельно** (`VI
 | `interaction_catalog_show` | список / slug / holes / graph |
 | `lab_start topic=interaction` | начать сессию по slug |
 | `lab_step topic=interaction` | следующий шаг |
-| `creature_lineup` | вход для blocking (те же росты) |
+| `interaction_blocking` | Blender blocking (актёры + маркеры + камера) |
+| `creature_lineup` | росты в creature_catalog (prerequisite) |
 | `comfy_run` / `comfy_triple` | master и per-actor (позже с lock) |
 | `cascadeur_status` | MoCap humanoid (когда bridge готов) |
 | `blender_command` | blocking / assembly scripts |
@@ -244,7 +245,7 @@ Control Pose **не дублирует** пайплайн — меняется �
 Чеклист готовности пилота:
 
 1. ✅ `interaction_catalog.json` + seed wish
-2. ⏳ blocking.blend из lineup
+2. ✅ blocking.blend из lineup-ростов (`interaction_blocking`)
 3. ⏳ master_draft + approve
 4. ⏳ 2× isolated ref
 5. ⏳ MoCap Шани + CP волка (ручной допустим)

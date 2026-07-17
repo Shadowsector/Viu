@@ -7,6 +7,7 @@ from typing import Any, Dict
 from ..interaction_catalog import (
     InteractionCatalogStore,
     interaction_catalog_path,
+    run_interaction_blocking,
 )
 from .base import AgentContext, Tool, ToolResult
 
@@ -58,3 +59,28 @@ class InteractionCatalogShowTool(Tool):
             if actors:
                 lines.append(f"  Актёры: {actors}")
         return ToolResult(True, "\n".join(lines))
+
+
+class InteractionBlockingTool(Tool):
+    name = "interaction_blocking"
+    description = (
+        "Blender blocking для multi-actor сцены: актёры + studio-камера + маркеры. "
+        "slug= из interaction_catalog (по умолчанию первая дыра wave 1)."
+    )
+    parameters = {
+        "slug": "slug сцены (shanya_wolf_approach)",
+        "open": "1 = открыть .blend после (по умолчанию 1)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        store = InteractionCatalogStore(interaction_catalog_path(ctx.config)).load()
+        slug = str(args.get("slug") or "").strip()
+        wish = store.get_by_slug(slug) if slug else None
+        if wish is None:
+            holes = store.holes_for_wave(wave=1)
+            wish = holes[0] if holes else None
+        if wish is None:
+            return ToolResult(False, "Нет interaction в каталоге.")
+        open_result = str(args.get("open", "1")).lower() in ("1", "true", "yes")
+        ok, msg = run_interaction_blocking(ctx.config, wish, open_result=open_result)
+        return ToolResult(ok, msg)
