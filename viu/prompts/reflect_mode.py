@@ -331,7 +331,28 @@ _REFUSAL_RE = re.compile(
 )
 
 
-def viu_voice_issues(text: str, *, has_history: bool = False) -> list[str]:
+_USER_GREETING_RE = re.compile(
+    r"(?is)^\s*(?:\[telegram\]\s*)?"
+    r"(?:привет|здравствуй|здорово|хай|хелло|hello|hi|yo)"
+    r"(?:\s*[,!.…]+\s*|\s+)?"
+    r"(?:вью|viu)?"
+    r"(?:\s*[,!.…]*)?\s*$"
+)
+
+
+def user_is_greeting(user_text: str) -> bool:
+    """Короткий hello от Дена — ответ «Привет» тогда нормален, не баним."""
+    t = (user_text or "").strip()
+    if not t or len(t) > 80:
+        return False
+    return bool(_USER_GREETING_RE.match(t)) or bool(
+        _GREETING_START_RE.match(t) and len(t.split()) <= 4
+    )
+
+
+def viu_voice_issues(
+    text: str, *, has_history: bool = False, user_text: str = ""
+) -> list[str]:
     """Проблемы тона Вью — reflect и work."""
     low = text.lower()
     issues: list[str] = []
@@ -346,7 +367,12 @@ def viu_voice_issues(text: str, *, has_history: bool = False) -> list[str]:
         issues.append("мужской род (рад/готов/сказал)")
     if _CJK_RE.search(text):
         issues.append("иероглифы — только русский")
-    if has_history and _GREETING_START_RE.match(text):
+    # Не режем ответ-привет, если Ден сам поздоровался (Telegram «Привет, Вью»).
+    if (
+        has_history
+        and _GREETING_START_RE.match(text)
+        and not user_is_greeting(user_text)
+    ):
         issues.append("приветствие посреди диалога")
     if re.search(r"\bвы\b", low) and "выклад" not in low:
         issues.append("обращение на «вы» — Дену на «ты»")
@@ -355,8 +381,10 @@ def viu_voice_issues(text: str, *, has_history: bool = False) -> list[str]:
     return issues
 
 
-def reflect_reply_issues(text: str, *, has_history: bool = False) -> list[str]:
-    return viu_voice_issues(text, has_history=has_history)
+def reflect_reply_issues(
+    text: str, *, has_history: bool = False, user_text: str = ""
+) -> list[str]:
+    return viu_voice_issues(text, has_history=has_history, user_text=user_text)
 
 
 def reflect_temperature(config) -> float:

@@ -84,7 +84,26 @@ def test_extract_inner_json():
     assert extract_inner_json('```json\n{"inner":"ok"}\n```') == {"inner": "ok"}
 
 
-def test_run_reflect_with_history(tmp_path):
+def test_run_reflect_greeting_accepts_hello_reply(tmp_path):
+    """Telegram «Привет» + история: раньше фильтр резал «Привет» → шаблон."""
+    llm = ReflectLLM("рада", "Привет! На связи, Ден.")
+    agent = Agent(
+        llm=llm,
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    history = [
+        {"role": "user", "content": "вчера про сарай"},
+        {"role": "assistant", "content": "да, текстуры"},
+        {"role": "user", "content": "ок"},
+        {"role": "assistant", "content": "жду"},
+    ]
+    result = agent.run_reflect("Привет, Вью.", history=history)
+    assert result.completed
+    assert "Привет" in result.final
+    assert "шаблон" not in result.final.lower()
+    assert "не прошёл" not in result.final.lower()
+    assert llm.calls == 1
+
     llm = ReflectLLM(
         "Анабарра — Шаня у таскбара, снежинка, не walk sim.",
         "Ну, Анабарра — Шаня у таскбара, не walk simulator.",

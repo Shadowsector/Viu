@@ -20,6 +20,30 @@ def test_reflect_mid_conversation_greeting_rejected():
     assert not reflect_reply_issues("Рада снова поговорить.", has_history=True)
 
 
+def test_reflect_greeting_ok_when_user_said_hi():
+    from viu.prompts.reflect_mode import user_is_greeting
+
+    assert user_is_greeting("Привет, Вью.")
+    assert user_is_greeting("[Telegram] Привет, Вью.")
+    assert user_is_greeting("привет")
+    assert not user_is_greeting("в чём игра?")
+    # Ден поздоровался — ответ «Привет» не баним, даже если есть история
+    assert not reflect_reply_issues(
+        "Привет! Рада тебя слышать.",
+        has_history=True,
+        user_text="Привет, Вью.",
+    )
+    # Без приветствия от Дена — по-прежнему режем
+    assert any(
+        "приветствие" in i
+        for i in reflect_reply_issues(
+            "Привет! Рада тебя слышать.",
+            has_history=True,
+            user_text="в чём игра?",
+        )
+    )
+
+
 def test_reflect_cjk_rejected():
     issues = reflect_reply_issues("Возможности 拍摄a!")
     assert any("иероглиф" in i for i in issues)

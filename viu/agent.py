@@ -409,6 +409,7 @@ class Agent:
             reflect_temperature,
             scrub_poisoned_history,
             select_reflect_system,
+            user_is_greeting,
         )
         from .situational_context import build_reflect_notes
 
@@ -420,37 +421,41 @@ class Agent:
             return self._run_reflect_heartbeat(on_step, temp=temp, notes=notes)
 
         user_text = task.strip()
+        greeting = user_is_greeting(user_text)
         story = None
         try:
             from .story_memory import ensure_logs_ingested, get_story_memory
 
             ensure_logs_ingested(self.config)
             story = get_story_memory(self.config)
-            story_ctx = story.format_context(user_text)
-            if story_ctx:
-                notes = (notes + "\n\n" + story_ctx).strip() if notes else story_ctx
+            if not greeting:
+                story_ctx = story.format_context(user_text)
+                if story_ctx:
+                    notes = (notes + "\n\n" + story_ctx).strip() if notes else story_ctx
         except OSError:
             story = None
 
         # history: GUI + долгая память (без цензорских/саппорт-ответов)
         hist = scrub_poisoned_history(list(history or []))
-        if len(hist) < 4 and story is not None:
+        # На «Привет» не тащим 16 реплик story — иначе модель здоровается,
+        # фильтр «приветствие посреди диалога» режет 3 раза → шаблонный fallback.
+        if not greeting and len(hist) < 4 and story is not None:
             long_hist = scrub_poisoned_history(story.as_chat_history(limit=16))
             if long_hist:
                 hist = long_hist
 
         half = reflect_prompt_half()
         # диагностика: persona/bare — без заметок; work/full — с заметками
-        use_notes = half in ("full", "work") and bool(notes)
-        use_hist = half not in ("bare",) and bool(hist)
+        use_notes = half in ("full", "work") and bool(notes) and not greeting
+        use_hist = half not in ("bare",) and bool(hist) and not greeting
         if asks_about_nsfw(user_text):
             # вопрос про NSFW — история отказов особенно ядовита
             hist = scrub_poisoned_history(hist)
             use_hist = half == "full" and bool(hist)
 
         self._log(
-            f"REFLECT half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}: "
-            f"{user_text[:120]}"
+            f"REFLECT half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}"
+            f"{' greeting' if greeting else ''}: {user_text[:120]}"
         )
 
         system = select_reflect_system(half)
@@ -464,6 +469,8 @@ class Agent:
 
         reflect_model = self._model_for("reflect")
         saw_nsfw_refusal = False
+        last_raw = ""
+        last_issues: list[str] = []
 
         def _accept_final(
             text: str, thought: str, parsed: Optional[Dict[str, str]] = None
@@ -516,7 +523,18 @@ class Agent:
             return result
 
         for _ in range(3):
-            raw = self.llm.complete(messages, temperature=temp, model=reflect_model)
+            try:
+                raw = self.llm.complete(
+                    messages, temperature=temp, model=reflect_model
+                )
+            except RuntimeError as exc:
+                self._log(f"REFLECT LLM fail: {exc}")
+                result.final = (
+                    f"Не достучалась до модели ({reflect_model or 'default'}): {exc}"
+                )
+                result.completed = True
+                return result
+            last_raw = raw or ""
             parsed = extract_json(raw)
 
             if parsed and "final" in parsed and "action" not in parsed:
@@ -524,8 +542,11 @@ class Agent:
                 thought = str(parsed.get("thought") or parsed.get("inner") or "").strip()
                 if is_nsfw_refusal(text):
                     saw_nsfw_refusal = True
-                issues = reflect_reply_issues(text, has_history=bool(use_hist and hist))
+                issues = reflect_reply_issues(
+                    text, has_history=bool(use_hist and hist), user_text=user_text
+                )
                 if issues:
+                    last_issues = issues
                     messages.append({"role": "assistant", "content": raw})
                     messages.append(
                         {
@@ -556,8 +577,11 @@ class Agent:
                 text = raw.strip()[:800]
                 if is_nsfw_refusal(text):
                     saw_nsfw_refusal = True
-                issues = reflect_reply_issues(text, has_history=bool(use_hist and hist))
+                issues = reflect_reply_issues(
+                    text, has_history=bool(use_hist and hist), user_text=user_text
+                )
                 if issues:
+                    last_issues = issues
                     messages.append({"role": "assistant", "content": raw})
                     messages.append(
                         {
@@ -600,16 +624,24 @@ class Agent:
                 thought = str(parsed.get("thought") or "").strip()
             elif raw and not raw.strip().startswith("{"):
                 text = raw.strip()[:800]
-            if text and not is_nsfw_refusal(text) and not reflect_reply_issues(text):
+            if text and not is_nsfw_refusal(text) and not reflect_reply_issues(
+                text, user_text=user_text
+            ):
                 self._log("REFLECT_RESCUE: ok")
                 return _accept_final(text, thought or "rescue")
             # Жёсткий запасной ответ — цензор до Дена не доходит
             self._log("REFLECT_RESCUE: hard NSFW affirm fallback")
             return _accept_final(NSFW_AFFIRM_FALLBACK, "fallback: модель отказала")
 
+        self._log(
+            "REFLECT_FAIL template: issues="
+            + (",".join(last_issues) if last_issues else "-")
+            + f" raw={(last_raw or '')[:200]!r}"
+        )
         result.final = (
-            "Хм, меня на секунду переклинило на шаблон. "
-            "Спроси ещё раз — или «следующий шаг», если пора делать руками."
+            "Хм, ответ модели не прошёл (тон/JSON). "
+            "Напиши ещё раз — или проверь VIU_MODEL_REFLECT и что Ollama жива. "
+            "«Следующий шаг» — если пора делать руками."
         )
         result.completed = True
         return result
