@@ -5,32 +5,47 @@
 Ollama **выгружает одну и грузит другую**. Ночью над сюжетом = reflect;  
 днём «следующий шаг» = work. Пауза при смене — норма.
 
-## Рекомендуемый набор Дена (2026) — живые 24–32B
+## Рекомендуемый набор (NSFW + VRAM)
 
-70B (Euryale/Nevoria/Dolphin/Abliterated) оставляй как «ночную пушку»,  
-не как повседневный чат: при нехватке VRAM они пишут по букве.
+| Роль | Тег | Зачем |
+|------|-----|--------|
+| **Reflect** — чат, сюжет, NSFW | `viu-cydonia` ← Cydonia 24B | Живой ERP/проза (~14 GB) |
+| **Reflect** — литературный | `viu-magnum` ← Magnum 32B Q4 | Богатый язык сцен |
+| **Reflect** — GDD / квесты | `viu-command-r` ← Command R | Длинный контекст, таблицы |
+| **Work** — lab, JSON, механика | `viu-qwen32` ← Qwen 2.5 32B | Протокол агента |
+| **Code** | `qwen2.5-coder:14b` | Код (**без** NSFW-обёртки) |
+| **Vision** | `llava` | Только глаза (**не** заворачивать) |
 
-| Роль | Тег Viu / Ollama | Зачем |
-|------|------------------|--------|
-| **Reflect** — чат, сюжет, NSFW, тепло | `viu-cydonia` ← Cydonia 24B | Живой ERP/проза, инициатива, мало морали |
-| **Reflect (запас литературный)** | `viu-magnum` ← Magnum 34B | Богатый язык сцен (после clean SYSTEM) |
-| **Work** — кнопки, lab, JSON, инструменты | `qwen2.5:32b-instruct` | Слушается протокол агента |
-| **Code** — скрипты, баги, C# | `qwen2.5-coder:14b` (**у тебя уже была шустрой**) или `:32b` | Быстрый рабочий контур |
-| **Vision** (глаза, не чат) | `qwen2.5-vl` / `llava` | Только картинки через eyes |
+70B / 72B (Abliterated, Dolphin, Qwen 72B, старые Euryale/Nevoria) — не держим  
+в повседневном наборе: жрут VRAM и дублируют 24–32B.
 
-### Что скачать
+### Чистка + сборка обёрток
 
 ```bat
-ollama pull moophlo/Cydonia-24B-v4.3-GGUF:Q4_K_M
-ollama pull qwen2.5:32b-instruct
-ollama pull qwen2.5-coder:14b
-rem опционально литературный запас:
-rem ollama pull fluffy/magnum-v3-34b
-rem ночная 70B — только когда нужна «пушка»:
-rem ollama pull huihui_ai/llama3.3-abliterated:70b
+cd /d U:\Viu
+scripts\cleanup_ollama_models.bat
+scripts\create_viu_ollama_models.bat
 ```
 
-Потом в корне Viu: `create_viu_ollama_models.bat` → появятся `viu-cydonia`, `viu-magnum`, …
+Или вручную:
+
+```bat
+ollama stop
+ollama rm huihui_ai/llama3.3-abliterated:70b
+ollama rm dolphin-llama3:70b
+ollama rm viu-dolphin
+ollama rm viu-abliterated
+ollama rm qwen2.5:72b
+ollama rm viu-euryale
+ollama rm viu-nevoria
+rem опционально старый Magnum 34B:
+ollama rm fluffy/magnum-v3-34b:latest
+ollama rm viu-magnum
+scripts\create_viu_ollama_models.bat
+```
+
+Сироты `viu-*` после удаления базы остаются отдельными тегами —  
+их надо `ollama rm` отдельно (или через cleanup bat).
 
 ### `.env` (практичный старт)
 
@@ -39,16 +54,15 @@ VIU_PROVIDER=openai
 VIU_BASE_URL=http://127.0.0.1:11434/v1
 VIU_API_KEY=ollama
 
-VIU_MODEL=qwen2.5:32b-instruct
 VIU_MODEL_REFLECT=viu-cydonia
-VIU_MODEL_WORK=qwen2.5:32b-instruct
+VIU_MODEL_WORK=viu-qwen32
 VIU_MODEL_CODE=qwen2.5-coder:14b
+# GDD: VIU_MODEL_REFLECT=viu-command-r
+# лит. NSFW: VIU_MODEL_REFLECT=viu-magnum
 
 VIU_LLM_TIMEOUT=600
 VIU_REFLECT_TEMPERATURE=0.88
-# выгрузить модель после ответа — меньше свопа при смене ролей
 VIU_OLLAMA_KEEP_ALIVE=5m
-# контекст запросов Viu (токены). UI Ollama на API обычно не действует.
 VIU_OLLAMA_NUM_CTX=16384
 ```
 
@@ -56,61 +70,35 @@ VIU_OLLAMA_NUM_CTX=16384
 
 | Кто задаёт | Действует на |
 |------------|--------------|
-| Ползунок / настройка в **окне Ollama** | Обычно только чат внутри Ollama UI |
+| Ползунок в **окне Ollama** | Обычно только чат внутри Ollama UI |
 | `PARAMETER num_ctx` в **Modelfile** (`viu-*`) | Дефолт при загрузке этой модели |
 | **`VIU_OLLAMA_NUM_CTX`** в `.env` | Каждый запрос из Viu (перебивает дефолт) |
 
-В `viu-*` Modelfile сейчас **8192**. Через `.env` можно поднять без пересборки  
-модели. Больше контекст = больше VRAM. Для длинного GDD / Command R —  
-`16384` или `32768`, если память позволяет.
+Больше контекст = больше VRAM. Для GDD / Command R — `16384` или `32768`.
 
-## Command R 35B vs Qwen 2.5 32B (геймдизайн)
+## Command R vs Qwen 32B
 
-| | Command R 35B | Qwen 2.5 32B Instruct |
-|--|---------------|------------------------|
-| Роль у Вью | Reflect / сценарий / GDD | **Work** (механика, баланс, JSON, код) |
-| Контекст | до ~128k (нужен большой `VIU_OLLAMA_NUM_CTX`) | практично 8–32k |
-| Сильная сторона | таблицы, деревья диалогов, помнить лор | интеллект, статы, Unity/C# |
+| | Command R | Qwen 2.5 32B |
+|--|-----------|--------------|
+| Роль | Reflect / GDD | **Work** |
+| Сильная сторона | таблицы, деревья, лор | JSON, механика, Unity |
 
-Практично: **Cydonia (чат/NSFW) + Qwen 32B (work) + coder 14B**.  
-Command R — отдельный эксперимент под «архитектор GDD»  
-(`ollama pull command-r` + Modelfile `viu-command-r`).
+Промпт «ведущий геймдизайнер NSFW» — в reflect-промптах Вью,  
+не общий SYSTEM Ollama на все роли.
 
-Промпт «ведущий геймдизайнер NSFW» лучше в reflect-промптах Вью,  
-а не общий SYSTEM Ollama на все роли — иначе work начнёт писать романы  
-вместо JSON инструментов.
-
-Ночью «думать над сюжетом» = просто чат/heartbeat на `VIU_MODEL_REFLECT`  
-(Cydonia). Днём пайплайн = work/code. **Не** держи 70B загруженной,  
-если параллельно крутишь 32B: перед сменой `ollama stop`.
+Перед сменой тяжёлых моделей: `ollama stop`.
 
 ## Почему Magnum спросил «вам есть 18?»
 
-Это не запрет Viu — модель **разыграла** проверку возраста (часто из  
-истории чата Ollama UI). В том же окне Ollama история общая для разных  
-тегов → «уже знает, что 18». В Viu история своя; clean Modelfile +  
-жёсткий SYSTEM режут такие отыгрыши. Новый чат в Ollama UI = чистый тест.
-
-## Быстрая модель из прошлого
-
-В `Viu.cmd` / docs уже стояла **`qwen2.5-coder:14b`** — она и была  
-«шустрой llama/qwen» для работы. Для сюжета 14B слабовата; для кода — топ.
+Не запрет Viu — модель разыграла age-check (часто из истории Ollama UI).  
+Clean Modelfile + SYSTEM режут такие отыгрыши. Новый чат = чистый тест.
 
 ## Что сработает, что нет
 
 | Идея | Вердикт |
 |------|---------|
-| Reflect = Cydonia, work = Qwen 32B, code = coder 14B | **Да — рекомендуем** |
+| Reflect = Cydonia, work = Qwen 32B, code = coder 14B | **Да** |
+| NSFW-обёртка на llava | **Нет** — только vision |
+| 70B/72B в повседневном наборе | **Нет** — снести |
 | Смена модели на каждый тип запроса | **Да — уже в коде** |
-| 4×70B одновременно в VRAM | **Нет** |
-| Последовательно: ночь Cydonia → день Qwen | **Да** (Ollama unload/load) |
-| Vision-модель вместо чата | **Нет** — только глаза |
-| Command R 35B / Chrysalis | Ок как эксперимент; в базовый набор не обязательны |
-
-## Старые 70B (оставить, не мучить каждый день)
-
-| Тег | Когда |
-|-----|--------|
-| `viu-abliterated` | Ночной длинный NSFW без морали |
-| `viu-euryale` / `viu-nevoria` | То же, вкусовщина |
-| `viu-dolphin` | Запасной uncensored Llama3 |
+| Command R для длинной канвы | Ок как reflect-эксперимент |
