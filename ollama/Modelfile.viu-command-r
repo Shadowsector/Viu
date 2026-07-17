@@ -1,6 +1,6 @@
-FROM dolphin-llama3:70b
+FROM command-r:latest
 
-# 70B uncensored llama3
+# 35B GDD / long context — structure, quests, tables
 PARAMETER num_ctx 16384
 PARAMETER temperature 0.88
 

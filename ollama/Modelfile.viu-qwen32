@@ -1,6 +1,6 @@
-FROM huihui_ai/llama3.3-abliterated:70b
+FROM qwen2.5:32b-instruct-q6_K
 
-# 70B abliterated llama
+# 32B work/design — tools+GDD; NSFW allowed, still follows JSON
 PARAMETER num_ctx 16384
 PARAMETER temperature 0.88
 

@@ -1,6 +1,6 @@
 FROM moophlo/Cydonia-24B-v4.3-GGUF:Q4_K_M
 
-# 24B ERP/story — recommended reflect
+# 24B ERP/story — primary reflect
 PARAMETER num_ctx 16384
 PARAMETER temperature 0.88
 
