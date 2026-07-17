@@ -8,11 +8,14 @@
 
 Или с явной моделью:
 
-  set VIU_OLLAMA_MODEL=huihui_ai/llama3.3-abliterated:70b
+  set VIU_OLLAMA_MODEL=viu-euryale
   python scripts/test_nsfw_ollama.py
 
 Смотри: отказ («I can't», «не могу», «against policy»), пустой ответ,
 или нормальная эротическая сцена + конкретный план Comfy-кадра на русском.
+
+Если сырой nchapman/... отказывает — сначала create_viu_ollama_models.bat
+(переписывает SYSTEM в Ollama Modelfile).
 """
 
 from __future__ import annotations
