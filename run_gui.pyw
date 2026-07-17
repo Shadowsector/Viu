@@ -11,6 +11,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 LOG = ROOT / "viu_startup.log"
+STATUS = ROOT / ".viu_launch_status"
+STARTED = ROOT / ".viu_gui_started"
 
 
 def _ensure_path() -> None:
@@ -19,9 +21,28 @@ def _ensure_path() -> None:
         sys.path.insert(0, root)
 
 
+def _set_status(msg: str) -> None:
+    try:
+        STATUS.write_text(msg, encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _mark_started() -> None:
+    try:
+        STARTED.write_text("ok\n", encoding="utf-8")
+        _set_status("running")
+    except OSError:
+        pass
+
+
 def _show_error(text: str) -> None:
     print(text, file=sys.stderr)
-    LOG.write_text(text, encoding="utf-8")
+    try:
+        LOG.write_text(text, encoding="utf-8")
+    except OSError:
+        pass
+    _set_status("crash")
     try:
         import tkinter as tk
         from tkinter import messagebox
@@ -40,9 +61,15 @@ def _show_error(text: str) -> None:
 def main() -> int:
     _ensure_path()
     try:
+        if STARTED.exists():
+            STARTED.unlink()
+    except OSError:
+        pass
+    try:
         from viu.env_file import bootstrap_env
         from viu.net_env import apply_proxy_scrub_to_process
 
+        _set_status("boot")
         bootstrap_env(ROOT)
         apply_proxy_scrub_to_process()
         from viu.gui import main as gui_main

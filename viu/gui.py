@@ -135,6 +135,15 @@ class ViuGUI:
 
     def _build_ui(self) -> None:
         self.root = tk.Tk()
+        try:
+            (Path(__file__).resolve().parent.parent / ".viu_gui_started").write_text(
+                "ok\n", encoding="utf-8"
+            )
+            (Path(__file__).resolve().parent.parent / ".viu_launch_status").write_text(
+                "tk_ready", encoding="utf-8"
+            )
+        except OSError:
+            pass
         self.root.title("Вью — Анабарра")
         saved_geom = get_window_geometry(self.agent.config)
         self.root.geometry(saved_geom if saved_geom else _GUI_DEFAULT_GEOMETRY)
@@ -2439,15 +2448,43 @@ def acquire_single_instance(port: int = _INSTANCE_PORT):
 
 def main() -> int:
     global _instance_sock
+    root_dir = Path(__file__).resolve().parent.parent
+    status_path = root_dir / ".viu_launch_status"
+    started_path = root_dir / ".viu_gui_started"
+
+    def _status(msg: str) -> None:
+        try:
+            status_path.write_text(msg, encoding="utf-8")
+        except OSError:
+            pass
+
+    def _mark_started() -> None:
+        try:
+            started_path.write_text("ok\n", encoding="utf-8")
+            _status("running")
+        except OSError:
+            pass
+
+    _status("locking")
     _instance_sock = acquire_single_instance()
     if _instance_sock is None:
+        _status("already_running")
+        try:
+            (root_dir / "viu_startup.log").write_text(
+                "Вью уже запущена (порт 47615 занят).\n"
+                "Найди окно на панели задач или запусти fix_viu_lock.bat\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
         try:
             root = tk.Tk()
             root.withdraw()
             messagebox.showinfo(
                 "Вью уже открыта",
                 "Окно Вью уже запущено. Найди его на панели задач.\n"
-                "Если окна не видно — заверши процесс python в Диспетчере задач и запусти снова.",
+                "Если окна не видно — запусти fix_viu_lock.bat "
+                "или заверши python/pythonw в Диспетчере задач.",
             )
             root.destroy()
         except Exception:  # noqa: BLE001
@@ -2455,12 +2492,16 @@ def main() -> int:
         return 0
 
     try:
-        ViuGUI().run()
+        _status("creating_gui")
+        app = ViuGUI()
+        _mark_started()
+        app.run()
         return 0
     except Exception as exc:  # noqa: BLE001
         import traceback
 
-        log = Path(__file__).resolve().parent.parent / "viu_startup.log"
+        _status("crash")
+        log = root_dir / "viu_startup.log"
         log.write_text(traceback.format_exc(), encoding="utf-8")
         try:
             root = tk.Tk()
