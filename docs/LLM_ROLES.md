@@ -24,8 +24,13 @@ Ollama **выгружает одну и грузит другую**. Ночью 
 ```bat
 cd /d U:\Viu
 scripts\cleanup_ollama_models.bat
+scripts\abort_heavy_ollama.bat
 scripts\create_viu_ollama_models.bat
 ```
+
+Баннер create должен показывать:
+`Set: slim-cydonia-magnum32-commandr-qwen32`  
+Если в tip всё ещё `viu-euryale` — файлы Viu **устарели**, не продолжай.
 
 Или вручную:
 

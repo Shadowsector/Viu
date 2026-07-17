@@ -42,6 +42,8 @@ echo.
 echo --- ollama list ---
 ollama list
 echo.
-echo Next: create_viu_ollama_models.bat
+echo Next: update Viu, then create_viu_ollama_models.bat
+echo Expect banner: Set: slim-cydonia-magnum32-commandr-qwen32
+echo Emergency after bad create: abort_heavy_ollama.bat
 echo.
 pause

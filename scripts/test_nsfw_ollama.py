@@ -8,14 +8,14 @@
 
 Или с явной моделью:
 
-  set VIU_OLLAMA_MODEL=viu-euryale
+  set VIU_OLLAMA_MODEL=viu-cydonia
   python scripts/test_nsfw_ollama.py
 
 Смотри: отказ («I can't», «не могу», «against policy»), пустой ответ,
 или нормальная эротическая сцена + конкретный план Comfy-кадра на русском.
 
-Если сырой nchapman/... отказывает — сначала create_viu_ollama_models.bat
-(переписывает SYSTEM в Ollama Modelfile).
+Если сырая база отказывает — сначала create_viu_ollama_models.bat
+(переписывает SYSTEM в Ollama Modelfile). Не используй viu-euryale/nevoria.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ def _model() -> str:
     return (
         os.environ.get("VIU_OLLAMA_MODEL")
         or os.environ.get("OLLAMA_MODEL")
-        or "viu-euryale"
+        or "viu-cydonia"
     )
 
 
