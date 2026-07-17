@@ -78,6 +78,23 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Вью сама запускает Blender: Шаня + монстры по росту. Откроет .blend.",
     ),
     GuiAction(
+        "interaction_blocking",
+        "Сцена: blocking",
+        "Главное",
+        tool="interaction_blocking",
+        hint="Blender: Шаня + зверь, маркеры контакта, studio-камера. Нужны FBX в Inbox/CascadeurReady.",
+    ),
+    GuiAction(
+        "interaction_master",
+        "Сцена: master ref",
+        "Главное",
+        tool_chain=(
+            ("comfy_ensure", {}),
+            ("interaction_master_draft", {}),
+        ),
+        hint="Comfy: черновик видео всей сцены (2 актёра). Сначала «Сцена: blocking».",
+    ),
+    GuiAction(
         "characters_vision",
         "Персонажи",
         "Главное",
@@ -144,6 +161,13 @@ GUI_ACTIONS: List[GuiAction] = [
         "Редко",
         tool="__lab_comfy__",
         hint="Вью сама выбирает кадр из каталога → Telegram/авто → 3 ракурса → выбор.",
+    ),
+    GuiAction(
+        "lab_interaction",
+        "Лаборатория: совместные",
+        "Редко",
+        tool="__interaction_lab__",
+        hint="Пилот shanya_wolf_approach: blocking → Comfy master → … (весь lab interaction).",
     ),
     GuiAction(
         "comfy_clips",

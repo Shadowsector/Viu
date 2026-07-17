@@ -49,23 +49,23 @@ U:\Anabarra\Library\Lab\Creatures\Inbox\textures\   (или wolf_alpha\textures\
 
 ### Шаг B — скан
 
-В чате Вью:
+Кнопка **«Разметить существ»** (скан Inbox подтянется сам).
+
+Или в чате:
 
 ```text
 creature_catalog_scan
 ```
 
-Или кнопка **«Разметить существ»** → скан подтянется сам.
-
 ### Шаг C — размер (обязательно)
 
-Волк = четвероногий средний:
+Волк = четвероногий средний. В **«Разметить существ»** выбери класс **quad_med**, locomotion **quadruped**.
+
+Или в чате:
 
 ```text
 creature_catalog_set_size slug=wolf_alpha size=quad_med locomotion=quadruped
 ```
-
-Или в GUI «Разметить существ» → класс **quad_med**, locomotion **quadruped**.
 
 ### Шаг D — если slug не `wolf_alpha`
 
@@ -84,13 +84,13 @@ creature_catalog_set_size slug=wolf_alpha size=quad_med locomotion=quadruped
 
 ### Шаг E — lineup (рекомендуется)
 
-Нормализует рост и даст `photo_front` / `photo_side` для Comfy:
+Кнопка **«Линейка существ»** — нормализует рост и даст `photo_front` / `photo_side` для Comfy.
+
+Или в чате:
 
 ```text
 creature_lineup
 ```
-
-или кнопка **«Линейка существ»**.
 
 После lineup в каталоге:
 
@@ -105,9 +105,9 @@ creature_lineup
 |---|----------|
 | 1 | `Shanya*.fbx` в CascadeurReady или Inbox |
 | 2 | `wolf_alpha.fbx` в `Lab\Creatures\Inbox\` |
-| 3 | `creature_catalog_scan` выполнен |
+| 3 | **Разметить существ** (скан) выполнен |
 | 4 | у волка `size_class=quad_med`, `slug=wolf_alpha` |
-| 5 | ComfyUI поднят (`comfy_ensure`) — для master draft |
+| 5 | ComfyUI поднят — для master ref кнопка **«Сцена: master ref»** сама вызовет `comfy_ensure` |
 
 Проверить каталог:
 
@@ -119,6 +119,20 @@ creature_catalog_show
 ---
 
 ## 4. Запуск пайплайна
+
+### Кнопки в GUI (рекомендуется)
+
+| Кнопка | Что делает |
+|--------|------------|
+| **Разметить существ** | скан Inbox + разметка размеров |
+| **Линейка существ** | `creature_lineup` |
+| **Сцена: blocking** | `interaction_blocking` (пилот `shanya_wolf_approach`) |
+| **Сцена: master ref** | `comfy_ensure` + `interaction_master_draft` |
+| **Лаборатория: совместные** | весь lab interaction (8 шагов) |
+
+Порядок: **Разметить существ** → **Линейка существ** → **Сцена: blocking** → **Сцена: master ref**.
+
+### Консоль (если нужно)
 
 ```text
 interaction_blocking slug=shanya_wolf_approach

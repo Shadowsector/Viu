@@ -773,6 +773,7 @@ class ViuGUI:
             "__lab_run_all__",
             "__lab_rate__",
             "__lab_comfy__",
+            "__interaction_lab__",
             "__comfy_clips__",
         } or (
             action.tool and action.tool.startswith("lab_")
@@ -819,6 +820,9 @@ class ViuGUI:
             return
         if action.tool == "__lab_comfy__":
             self._lab_comfy_action()
+            return
+        if action.tool == "__interaction_lab__":
+            self._interaction_lab_action()
             return
         if action.tool == "__lab_run_all__":
             self._lab_run_all_action()
@@ -1975,6 +1979,34 @@ class ViuGUI:
             args,
             label="Лаборатория: Comfy MoCap",
             echo_user=not auto,
+        )
+
+    def _interaction_lab_action(self) -> None:
+        """Совместные анимации: lab topic=interaction, пилот wave 1."""
+        from .interaction_catalog import InteractionCatalogStore, interaction_catalog_path
+        from .lab.interaction_pipeline import INTERACTION_TOPIC
+
+        store = InteractionCatalogStore(interaction_catalog_path(self.agent.config)).load()
+        holes = store.holes_for_wave(wave=1)
+        slug = holes[0].slug if holes else "shanya_wolf_approach"
+        title = holes[0].title_ru if holes else "совместная сцена"
+        self._append(
+            "Вью",
+            f"Лаборатория совместных анимаций: `{slug}` — {title}\n"
+            "Шаги: blocking → master draft Comfy → …\n"
+            "Нужны: Shanya.fbx + wolf_alpha в creature_catalog (см. docs/INTERACTION_SETUP.md).",
+            tag="viu",
+        )
+        self._run_tool(
+            "lab_start",
+            {
+                "topic": INTERACTION_TOPIC,
+                "run_all": "1",
+                "reset": "1",
+                "catalog_slug": slug,
+            },
+            label="Лаборатория: совместные",
+            echo_user=True,
         )
 
     def _lab_run_all_action(self, *, reset: bool = False) -> None:
