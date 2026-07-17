@@ -57,7 +57,7 @@ def set_active_model(config: Config, model: str) -> None:
 def get_update_interval_min(config: Config) -> int:
     raw = get(config, "update_interval_min", None)
     if raw is None:
-        return int(float(__import__("os").environ.get("VIU_UPDATE_INTERVAL_MIN", "0") or 0))
+        return int(float(__import__("os").environ.get("VIU_UPDATE_INTERVAL_MIN", "60") or 60))
     try:
         return max(0, int(raw))
     except (TypeError, ValueError):

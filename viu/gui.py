@@ -2363,10 +2363,38 @@ class ViuGUI:
             return
 
         def tick():
-            self._check_updates_async(force=True, apply=False)
+            self._periodic_auto_update()
             self._auto_update_job = self.root.after(minutes * 60_000, tick)
 
         self._auto_update_job = self.root.after(minutes * 60_000, tick)
+
+    def _periodic_auto_update(self) -> None:
+        """Тихая проверка GitHub; при новой версии — zip/git + pip + рестарт."""
+        if os.environ.get("VIU_AUTO_UPDATE", "1") != "1":
+            return
+        if self._tool_busy or self._llm_busy:
+            return
+
+        def work():
+            return auto_update_on_start(
+                branch=self.agent.config.update_branch,
+                allow_zip=True,
+            )
+
+        def done(result):
+            if isinstance(result, Exception):
+                return
+            if result.updated:
+                self._append(
+                    "система",
+                    f"Автообновление: {result.message}",
+                    tag="sys",
+                )
+                self.root.after(1500, self._restart)
+            elif result.has_updates and not result.updated:
+                self._append("система", result.message, tag="sys")
+
+        self._run_bg(work, done)
 
     def _check_updates_on_start(self) -> None:
         """Тихая проверка при старте (только git, без zip)."""

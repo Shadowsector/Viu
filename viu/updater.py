@@ -176,6 +176,35 @@ def running_sha(root: Optional[Path] = None) -> str:
     return read_package_sha(base) or read_local_sha(base)
 
 
+def _version_message(
+    *,
+    branch: str,
+    local: str,
+    remote: str = "",
+    behind: int = 0,
+    up_to_date: bool,
+) -> str:
+    """Человекочитаемая строка: ветка + SHA (zip/git одинаково)."""
+    short_local = (local or "—")[:12]
+    short_remote = (remote or "")[:12]
+    if up_to_date:
+        return f"Уже последняя версия [{branch}] {short_local}."
+    if behind:
+        return (
+            f"Доступно обновление [{branch}]: +{behind} коммит(ов) "
+            f"({short_local} → {short_remote})."
+        )
+    if short_remote:
+        return (
+            f"Доступно обновление [{branch}]: {short_local} → {short_remote}. "
+            "Нажми «Обновить Вью» — скачаю и перезапущу."
+        )
+    return (
+        f"Нужна установка с GitHub [{branch}] (remote={short_remote or '?'}). "
+        "Кнопка «Обновить Вью» или авто при запуске."
+    )
+
+
 def stamp_changed_since(start_sha: str, root: Optional[Path] = None) -> bool:
     """На диске другая метка версии — процессу нужен relaunch (zip/bootstrap)."""
     current = running_sha(root)
@@ -311,17 +340,12 @@ def check_for_update(
                     has_updates=False,
                     local_ref=local[:12],
                     remote_ref=remote[:12],
-                    message=f"Уже последняя версия (GitHub) {local[:12]}.",
-                )
-            if local:
-                msg = (
-                    f"Доступно обновление ({local[:12]} → {remote[:12]}). "
-                    "Нажми «Обновить Вью» или перезапусти — подтяну сама."
-                )
-            else:
-                msg = (
-                    f"Нужна установка/обновление с GitHub (remote={remote[:12]}). "
-                    "Авто при запуске или кнопка «Обновить Вью»."
+                    message=_version_message(
+                        branch=branch,
+                        local=local,
+                        remote=remote,
+                        up_to_date=True,
+                    ),
                 )
             return UpdateResult(
                 ok=True,
@@ -329,7 +353,12 @@ def check_for_update(
                 has_updates=True,
                 local_ref=local[:12] if local else "—",
                 remote_ref=remote[:12],
-                message=msg,
+                message=_version_message(
+                    branch=branch,
+                    local=local,
+                    remote=remote,
+                    up_to_date=False,
+                ),
             )
         except (OSError, RuntimeError) as exc:
             return UpdateResult(
@@ -369,7 +398,12 @@ def check_for_update(
             behind=0,
             local_ref=short_local,
             remote_ref=short_remote,
-            message=f"Уже последняя версия ({short_local}).",
+            message=_version_message(
+                branch=branch,
+                local=local,
+                remote=remote_ref,
+                up_to_date=True,
+            ),
         )
 
     return UpdateResult(
@@ -379,7 +413,13 @@ def check_for_update(
         behind=behind,
         local_ref=short_local,
         remote_ref=short_remote,
-        message=f"Доступно обновление: +{behind} коммит(ов) ({short_local} → {short_remote}).",
+        message=_version_message(
+            branch=branch,
+            local=local,
+            remote=remote_ref,
+            behind=behind,
+            up_to_date=False,
+        ),
     )
 
 
@@ -416,6 +456,9 @@ def apply_git_update(
 
     if code == 0:
         cleanup_obsolete(root)
+        _, full_sha = _run_git(["rev-parse", "HEAD"], root)
+        if full_sha:
+            write_package_sha(root, full_sha)
     new_ref = current_commit(root)
     if code != 0:
         return UpdateResult(
@@ -435,7 +478,7 @@ def apply_git_update(
         behind=0,
         local_ref=new_ref,
         remote_ref=status.remote_ref,
-        message=f"Обновлено до {new_ref}.",
+        message=f"Обновлено до {new_ref} [{branch}].",
     )
 
 

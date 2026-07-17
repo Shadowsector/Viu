@@ -11,6 +11,8 @@ from viu.updater import (
     package_root,
     usable_git_root,
     write_install_stamp,
+    write_package_sha,
+    _version_message,
 )
 
 
@@ -125,6 +127,45 @@ def test_single_instance_guard():
     second = acquire_single_instance(port)
     assert second is None  # второй экземпляр не поднимется
     first.close()
+
+
+def test_version_message_includes_branch():
+    msg = _version_message(
+        branch="cursor/viu-agent-core-65c2",
+        local="eea4d7d",
+        remote="02c07b1",
+        up_to_date=True,
+    )
+    assert "viu-agent-core-65c2" in msg
+    assert "eea4d7d" in msg
+
+
+def test_apply_git_update_writes_package_sha(tmp_path, monkeypatch):
+    from viu import updater
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "viu").mkdir()
+    monkeypatch.setattr(updater, "usable_git_root", lambda start=None: tmp_path)
+    monkeypatch.setattr(
+        updater,
+        "check_for_update",
+        lambda repo=None, branch=updater.DEFAULT_BRANCH, remote="origin": updater.UpdateResult(
+            ok=True,
+            checked=True,
+            has_updates=True,
+            behind=1,
+            local_ref="aaa",
+            remote_ref="bbb",
+            message="update",
+        ),
+    )
+    monkeypatch.setattr(updater, "_run_git", lambda args, cwd, timeout=120.0, retries=1: (0, "ok"))
+    monkeypatch.setattr(updater, "current_commit", lambda repo=None: "deadbeefcafe")
+    monkeypatch.setattr(updater, "cleanup_obsolete", lambda root=None: [])
+
+    result = updater.apply_git_update(tmp_path)
+    assert result.updated
+    assert (tmp_path / "viu" / "package_sha.txt").read_text(encoding="utf-8").startswith("ok")
 
 
 @patch("urllib.request.urlopen")
