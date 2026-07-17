@@ -40,7 +40,7 @@ set VIU_UNITY_PROJECT=U:\Anabarra\Unity\Anabarra
 set VIU_ANIM_STAGING=U:\Anabarra\Animations
 set VIU_QUIET_HOURS=0-7
 set VIU_REFLECT_TEMPERATURE=0.88
-rem Модели — только из .env (VIU_MODEL_REFLECT=viu-cydonia и т.д.)
+rem Модели — из .env (VIU_MODEL_REFLECT=viu-cydonia …). Не форсим coder здесь.
 rem ---------------------------------
 
 echo.
