@@ -26,7 +26,13 @@ from .config import Config
 from .gui_actions import ACTION_GROUPS, GUI_ACTIONS, GuiAction, actions_by_group
 from .pipeline import action_visible, get_pipeline_context
 from .health import ollama_available
-from .llm_roles import model_label
+from .llm_roles import (
+    effective_model,
+    model_label,
+    reflect_combo_labels,
+    reflect_model_from_combo,
+    set_reflect_model,
+)
 from .integrations.unity.watcher import AnimationFolderWatcher
 from .runtime_settings import get_update_interval_min, get_window_geometry, set_window_geometry
 from .updater import (
@@ -69,7 +75,7 @@ class ViuGUI:
         self._heartbeat_notify = False
         self._lab_job: str | None = None
         self._chat_history: deque[str] = deque(maxlen=16)
-        self._llm_turns: deque[dict[str, str]] = deque(maxlen=24)
+        self._llm_turns: deque[dict[str, str]] = deque(maxlen=32)
         self._boot_sha = running_sha(package_root())
         self._geometry_save_job: str | None = None
 
@@ -217,6 +223,19 @@ class ViuGUI:
 
         right = ttk.Frame(bar)
         right.pack(side="right", anchor="e")
+        ttk.Label(right, text="Чат:", font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
+        self._reflect_model_var = tk.StringVar()
+        self._reflect_combo = ttk.Combobox(
+            right,
+            textvariable=self._reflect_model_var,
+            values=reflect_combo_labels(),
+            state="readonly",
+            width=26,
+            font=("Segoe UI", 9),
+        )
+        self._reflect_combo.pack(side="left", padx=(0, 10))
+        self._reflect_combo.bind("<<ComboboxSelected>>", self._on_reflect_model_pick)
+        self._sync_reflect_model_combo()
         ttk.Label(right, text="Ты:", font=("Segoe UI", 9)).pack(side="left", padx=(0, 6))
         self._presence_btn = tk.Button(
             right,
@@ -230,6 +249,30 @@ class ViuGUI:
             command=self._toggle_presence,
         )
         self._presence_btn.pack(side="left")
+        self._refresh_presence_button()
+
+    def _reflect_combo_value_for(self, model_id: str) -> str:
+        mid = (model_id or "").strip()
+        for label in reflect_combo_labels():
+            if label.startswith(mid + " ·"):
+                return label
+        return mid
+
+    def _sync_reflect_model_combo(self) -> None:
+        mid = effective_model(self.agent.config, "reflect")
+        self._reflect_model_var.set(self._reflect_combo_value_for(mid))
+
+    def _on_reflect_model_pick(self, _event=None) -> None:
+        picked = reflect_model_from_combo(self._reflect_model_var.get())
+        if not picked:
+            return
+        set_reflect_model(self.agent.config, picked)
+        self._sync_reflect_model_combo()
+        self._append(
+            "система",
+            f"Reflect-модель: {picked} (чат и Telegram, до перезапуска — в runtime.json).",
+            tag="sys",
+        )
         self._refresh_presence_button()
 
     def _toggle_presence(self) -> None:
@@ -263,19 +306,14 @@ class ViuGUI:
         self._append("Вью", render_open(self.agent.config), tag="tool")
 
     def _refresh_presence_button(self) -> None:
-        from .llm_roles import model_label
         from .presence import is_away
 
         away = is_away(self.agent.config)
-        # Только тег на кнопке — без дубля в статус-баре и без длинного ⚠.
-        short = model_label(self.agent.config, "reflect")
-        if len(short) > 28:
-            short = short[:25] + "…"
         btn = getattr(self, "_presence_btn", None)
         if btn is not None:
             if away:
                 btn.config(
-                    text=f"● Нет дома · {short}",
+                    text="● Нет дома",
                     bg="#c62828",
                     fg="#ffffff",
                     activebackground="#b71c1c",
@@ -283,7 +321,7 @@ class ViuGUI:
                 )
             else:
                 btn.config(
-                    text=f"● Дома · {short}",
+                    text="● Дома",
                     bg="#2e7d32",
                     fg="#ffffff",
                     activebackground="#1b5e20",
@@ -1499,7 +1537,7 @@ class ViuGUI:
         if not clean or clean.startswith("["):
             return
         role = "user" if who in ("ты", "user") else "assistant"
-        self._llm_turns.append({"role": role, "content": clean[:600]})
+        self._llm_turns.append({"role": role, "content": clean[:4000]})
 
     def _run_agent_reflect(self, task: str, *, via_telegram: bool = False, heartbeat: bool = False) -> None:
         if not via_telegram and not heartbeat:

@@ -10,7 +10,7 @@ Ollama **выгружает одну и грузит другую**. Ночью 
 | Роль | Тег | Зачем |
 |------|-----|--------|
 | **Reflect** — чат / NSFW | `viu-cydonia` | Живой ERP (~14 GB) |
-| **Reflect** — сюжет / GDD | `viu-command-r` | `.env` → перезапуск; на кнопке Дома |
+| **Reflect** — сюжет / GDD | `viu-command-r` | Выпадающий список **Чат:** вверху окна (или `.env`) |
 | **Reflect** — литературный | `viu-magnum` | Сцены |
 | **Work** | `viu-qwen32` | JSON / lab |
 | **Code** | `qwen2.5-coder:14b` | Код (без NSFW-обёртки) |
@@ -69,7 +69,11 @@ VIU_LLM_TIMEOUT=1200
 VIU_REFLECT_TEMPERATURE=0.88
 VIU_OLLAMA_KEEP_ALIVE=5m
 VIU_OLLAMA_NUM_CTX=16384
+VIU_OLLAMA_NUM_PREDICT=4096
 ```
+
+Длинные ответы (GDD, квесты): `VIU_OLLAMA_NUM_PREDICT=4096` — иначе JSON/final обрывается.  
+Выбор reflect без правки `.env`: выпадающий список **Чат:** вверху окна (пишет в `.viu/runtime.json`).
 
 ## Контекст (num_ctx)
 

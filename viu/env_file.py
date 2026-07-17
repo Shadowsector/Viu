@@ -29,6 +29,7 @@ _ALWAYS_FROM_FILE = frozenset(
         "VIU_PROVIDER",
         "VIU_BASE_URL",
         "VIU_OLLAMA_NUM_CTX",
+        "VIU_OLLAMA_NUM_PREDICT",
         "VIU_OLLAMA_KEEP_ALIVE",
         "VIU_REFLECT_TEMPERATURE",
         "VIU_REFLECT_PROMPT_HALF",

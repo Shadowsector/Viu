@@ -4,6 +4,28 @@ from viu.config import Config
 from viu.llm_roles import effective_model, model_label, needs_viu_wrap_hint, resolve_model
 
 
+def test_runtime_reflect_override(tmp_path):
+    from viu.runtime_settings import set_reflect_model_override
+
+    cfg = Config(
+        root=tmp_path,
+        data_dir=tmp_path / ".viu",
+        model_reflect="viu-cydonia",
+    ).ensure_dirs()
+    assert effective_model(cfg, "reflect") == "viu-cydonia"
+    set_reflect_model_override(cfg, "viu-command-r")
+    assert effective_model(cfg, "reflect") == "viu-command-r"
+    assert model_label(cfg, "reflect") == "viu-command-r"
+
+
+def test_reflect_combo_labels():
+    from viu.llm_roles import REFLECT_MODEL_IDS, reflect_combo_labels, reflect_model_from_combo
+
+    labels = reflect_combo_labels()
+    assert any("viu-command-r" in x for x in labels)
+    assert reflect_model_from_combo(labels[1]) in REFLECT_MODEL_IDS
+
+
 def test_empty_reflect_defaults_to_viu_cydonia(tmp_path):
     cfg = Config(
         root=tmp_path,

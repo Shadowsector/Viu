@@ -17,6 +17,8 @@ from .config import Config
 
 _STORY_PATH_NAME = "story_memory.json"
 _INGEST_META = "story_ingest.json"
+# Полные реплики для сюжетного RAG (раньше 1200 — обрезало GDD-ответы).
+_STORY_BEAT_MAX = 8000
 
 
 @dataclass
@@ -93,11 +95,11 @@ class StoryMemory:
         # не плодим дубли подряд
         if self._beats:
             last = self._beats[-1]
-            if last.role == role and last.text == clean[:1200]:
+            if last.role == role and last.text == clean[:_STORY_BEAT_MAX]:
                 return last
         beat = StoryBeat(
             role=role,
-            text=clean[:1200],
+            text=clean[:_STORY_BEAT_MAX],
             ts=float(ts if ts is not None else time.time()),
             tags=list(tags or []),
             source=source,
@@ -157,12 +159,12 @@ class StoryMemory:
             lines.append("### Недавние сюжетные реплики (помни и продолжай)")
             for b in recent:
                 who = "Ден" if b.role == "user" else "Вью"
-                lines.append(f"- **{who}:** {b.text[:400]}")
+                lines.append(f"- **{who}:** {b.text[:900]}")
         if extra:
             lines.append("### Похожее из более ранней памяти")
             for b in extra:
                 who = "Ден" if b.role == "user" else "Вью"
-                lines.append(f"- **{who}:** {b.text[:350]}")
+                lines.append(f"- **{who}:** {b.text[:700]}")
         if not lines:
             return ""
         lines.append(
@@ -213,7 +215,7 @@ def _parse_chat_log(path: Path) -> List[StoryBeat]:
         beats.append(
             StoryBeat(
                 role=role,
-                text=body[:1200],
+                text=body[:_STORY_BEAT_MAX],
                 ts=mtime + i * 0.001,
                 tags=["log"],
                 source="log",
