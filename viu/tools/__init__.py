@@ -63,6 +63,7 @@ from .creature_catalog_tool import (
     CreatureCatalogScanTool,
     CreatureCatalogSetSizeTool,
     CreatureCatalogShowTool,
+    CreatureDescribeTool,
     CreatureLineupTool,
 )
 from .building_cascadeur_tool import BuildingWorkflowTool, CascadeurStatusTool
@@ -155,6 +156,7 @@ def build_default_registry() -> ToolRegistry:
         CreatureCatalogShowTool(),
         CreatureCatalogSetSizeTool(),
         CreatureCatalogAutoSizeTool(),
+        CreatureDescribeTool(),
         CreatureLineupTool(),
         LabStartTool(),
         LabStepTool(),

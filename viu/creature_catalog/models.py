@@ -230,6 +230,12 @@ class CreatureEntry:
     prepared_path: str = ""
     photo_front: str = ""
     photo_side: str = ""
+    # Внешность для анимации / Comfy (из VL по скрину или руками).
+    appearance_en: str = ""              # English prompt / tags for Comfy
+    appearance_ru: str = ""              # коротко для чата Вью
+    appearance_tags: List[str] = field(default_factory=list)
+    describe_model: str = ""             # llava / … чем описали
+    described_at: str = ""
     notes: str = ""
     reviewed: bool = False
     tags: List[str] = field(default_factory=list)
@@ -269,6 +275,11 @@ class CreatureEntry:
             prepared_path=str(d.get("prepared_path") or ""),
             photo_front=str(d.get("photo_front") or ""),
             photo_side=str(d.get("photo_side") or ""),
+            appearance_en=str(d.get("appearance_en") or ""),
+            appearance_ru=str(d.get("appearance_ru") or ""),
+            appearance_tags=list(d.get("appearance_tags") or []),
+            describe_model=str(d.get("describe_model") or ""),
+            described_at=str(d.get("described_at") or ""),
             notes=str(d.get("notes") or ""),
             reviewed=bool(d.get("reviewed")),
             tags=list(d.get("tags") or []),

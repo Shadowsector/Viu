@@ -31,6 +31,59 @@ def _cfg(tmp_path: Path, monkeypatch) -> Config:
     ).ensure_dirs()
 
 
+def test_creature_describe_parse_and_store(tmp_path, monkeypatch):
+    from viu.creature_catalog.describe import _parse_vl, describe_creature
+    from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
+
+    en, ru, tags = _parse_vl(
+        "EN: green goblin biped, warty skin\n"
+        "RU: Зеленоватый гоблин, двуногий.\n"
+        "TAGS: biped, goblin, green"
+    )
+    assert "goblin" in en.lower()
+    assert "гоблин" in ru.lower()
+    assert "biped" in tags
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    png = tmp_path / "gob.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+    e = CreatureEntry(
+        id="abc123",
+        path=str(tmp_path / "Goblin.fbx"),
+        name="Goblin",
+        size_class="small",
+        locomotion="biped",
+        status=STATUS_SIZED,
+        photo_front=str(png),
+    )
+    store.upsert(e)
+    store.save()
+
+    def fake_ask(image_path, *, prompt, config, model=""):
+        return True, (
+            "EN: small green goblin warrior\n"
+            "RU: Маленький зелёный гоблин-воин.\n"
+            "TAGS: goblin, biped"
+        )
+
+    monkeypatch.setattr(
+        "viu.creature_catalog.describe.ask_vision", fake_ask
+    )
+    monkeypatch.setattr(
+        "viu.creature_catalog.describe.pick_vision_model", lambda *_a, **_k: "llava"
+    )
+    ok, msg = describe_creature(cfg, "Goblin")
+    assert ok
+    assert "EN:" in msg
+    store2 = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    g = store2.get("abc123")
+    assert g is not None
+    assert "goblin" in g.appearance_en.lower()
+    assert g.appearance_ru
+    assert g.status == "ready"
+
+
 def test_girl_sockets_include_hands_and_cleavage():
     ids = list_girl_socket_ids()
     assert "socket_oral" in ids

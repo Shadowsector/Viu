@@ -146,6 +146,15 @@ def build_reflect_notes(config: Config) -> str:
         pass
 
     try:
+        from .creature_catalog.describe import format_creatures_for_reflect
+
+        creatures = format_creatures_for_reflect(config)
+        if creatures:
+            parts.append(creatures)
+    except OSError:
+        pass
+
+    try:
         from .animation_catalog import AnimationCatalogStore, animation_catalog_path
 
         store = AnimationCatalogStore(animation_catalog_path(config)).load()

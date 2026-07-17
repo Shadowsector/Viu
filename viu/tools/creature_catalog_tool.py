@@ -187,6 +187,37 @@ class CreatureCatalogSetSizeTool(Tool):
         )
 
 
+class CreatureDescribeTool(Tool):
+    name = "creature_describe"
+    description = (
+        "Описать существо по скрину (Ollama VL / llava): EN-промпт + RU для анимации. "
+        "Пишет appearance_* в creature_catalog.json. "
+        "query=имя/slug/id; image=путь к PNG (иначе photo_front или Processed/<slug>/front.png)."
+    )
+    parameters = {
+        "query": "имя, slug или id существа",
+        "image": "опционально путь к PNG скрина",
+        "mark_ready": "1 (по умолчанию) → status=ready если есть size_class",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..creature_catalog.describe import describe_creature
+
+        query = str(args.get("query") or args.get("name") or "").strip()
+        if not query:
+            return ToolResult(False, "Нужен query= имя/slug существа.")
+        image = str(args.get("image") or args.get("path") or "").strip()
+        mark = str(args.get("mark_ready") or "1").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+        )
+        ok, msg = describe_creature(
+            ctx.config, query, image=image, mark_ready=mark
+        )
+        return ToolResult(ok, msg)
+
+
 class CreatureLineupTool(Tool):
     name = "creature_lineup"
     description = (
@@ -253,5 +284,6 @@ __all__ = [
     "CreatureCatalogShowTool",
     "CreatureCatalogSetSizeTool",
     "CreatureCatalogAutoSizeTool",
+    "CreatureDescribeTool",
     "CreatureLineupTool",
 ]

@@ -9,12 +9,12 @@ Ollama **выгружает одну и грузит другую**. Ночью 
 
 | Роль | Тег | Зачем |
 |------|-----|--------|
-| **Reflect** — чат, сюжет, NSFW | `viu-cydonia` ← Cydonia 24B | Живой ERP/проза (~14 GB) |
-| **Reflect** — литературный | `viu-magnum` ← Magnum 32B Q4 | Богатый язык сцен |
-| **Reflect** — GDD / квесты | `viu-command-r` ← Command R | Длинный контекст, таблицы |
-| **Work** — lab, JSON, механика | `viu-qwen32` ← Qwen 2.5 32B | Протокол агента |
-| **Code** | `qwen2.5-coder:14b` | Код (**без** NSFW-обёртки) |
-| **Vision** | `llava` | Только глаза (**не** заворачивать) |
+| **Reflect** — чат / NSFW | `viu-cydonia` | Живой ERP (~14 GB) |
+| **Reflect** — сюжет / GDD | `viu-command-r` | `.env` → перезапуск; на кнопке Дома |
+| **Reflect** — литературный | `viu-magnum` | Сцены |
+| **Work** | `viu-qwen32` | JSON / lab |
+| **Code** | `qwen2.5-coder:14b` | Код (без NSFW-обёртки) |
+| **Vision** | `llava` | Глаза + `creature_describe` |
 
 70B / 72B (Abliterated, Dolphin, Qwen 72B, старые Euryale/Nevoria) — не держим  
 в повседневном наборе: жрут VRAM и дублируют 24–32B.
