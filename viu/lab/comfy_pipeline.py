@@ -284,6 +284,26 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
         save_session(config, session)
         return True, "Промпт ещё не одобрен — жду Telegram.", None
 
+    # Не долбить генерацию, если :8188 мёртв
+    from ..integrations.comfy.client import ComfyClient
+
+    url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
+    ok_ping, ping_msg = ComfyClient(base_url=str(url), timeout=3.0).ping()
+    if not ok_ping:
+        ok_run, run_msg = ensure_comfy_running(
+            config, auto_install=False, wait_seconds=90.0
+        )
+        if not ok_run:
+            session.status = "paused"
+            session.pause_reason = "comfy_offline"
+            save_session(config, session)
+            msg = (
+                f"ComfyUI недоступен ({url}): {ping_msg}\n{run_msg}\n\n"
+                "⏸ Lab на паузе. Запусти Comfy (или comfy_ensure), потом снова Lab."
+            )
+            append_journal(config, COMFY_TOPIC, f"### 3 дубля ¾\n\n{msg}")
+            return False, msg, None
+
     action = str(session.meta.get("approved_action") or session.meta.get("action") or "")
     catalog_slug = str(session.meta.get("catalog_slug") or "").strip()
     if not catalog_slug:
@@ -310,6 +330,15 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
         session.append_artifact(path)
     append_journal(config, COMFY_TOPIC, f"### 3 дубля ¾\n\n{msg}")
     if not ok:
+        # Connection refused / все дубли FAIL — не маскировать под успех
+        if "10061" in msg or "недоступен" in msg.lower() or "refused" in msg.lower():
+            session.status = "paused"
+            session.pause_reason = "comfy_offline"
+            save_session(config, session)
+            msg += (
+                "\n\n⏸ ComfyUI не на :8188. Lab на паузе — запусти Comfy, "
+                "потом Lab (будет RECOVER, не 20 слепых повторов)."
+            )
         return False, msg, None
 
     from ..integrations.comfy.clip_review import (
@@ -497,6 +526,7 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
         session.last_fail_msg = msg[:2000]
         key = str(session.step)
         session.step_fail_counts[key] = session.step_fail_counts.get(key, 0) + 1
+        n = session.step_fail_counts[key]
         save_session(config, session)
         if session.step == 0:
             hint = (
@@ -505,8 +535,12 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
                 "или снова `comfy_ensure`."
             )
         else:
-            hint = "\n\n⏸ Генерация не прошла — поправлю workflow/модели и повторю."
-        return True, msg + hint
+            hint = (
+                "\n\n⏸ Генерация не прошла. "
+                f"Провал ×{n} — следующий Lab = RECOVER (не слепой повтор)."
+            )
+        # ok=False чтобы run_until_done остановился
+        return False, msg + hint
 
     session.last_fail_step = -1
     session.step += 1

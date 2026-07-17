@@ -83,6 +83,17 @@ def _prepare_lab_session_inner(
     if session.status == "awaiting_prompt":
         return session, "continue", "Жду одобрение Comfy-промпта в Telegram."
 
+    if session.status == "paused" and (session.pause_reason or "") in (
+        "comfy_offline",
+        "operator",
+    ):
+        if should_recover_instead_of_retry(session) or session.pause_reason == "comfy_offline":
+            return (
+                session,
+                "recover",
+                f"Пауза ({session.pause_reason}) — recover, не слепой повтор.",
+            )
+
     if session.status == "completed":
         notes.append("Прошлая итерация завершена — новая с шага 1.")
         session = new_session(topic)
@@ -132,12 +143,9 @@ def run_lab_prepared(
             return True, prefix + "Жду одобрение Comfy-промпта в Telegram.", session
 
     if mode == "recover":
-        if topic != "comfy":
-            ok, msg = recover_stuck_step(config, session)
-            session = load_session(config, topic) or session
-            return ok, prefix + msg, session
-        # comfy: просто продолжаем шаг
-        mode = "continue"
+        ok, msg = recover_stuck_step(config, session)
+        session = load_session(config, topic) or session
+        return ok, prefix + msg, session
 
     if run_all:
         ok, msg = run_until_done(config, session)
