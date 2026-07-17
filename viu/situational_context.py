@@ -168,6 +168,15 @@ def build_reflect_notes(config: Config) -> str:
         pass
 
     try:
+        from .interaction_catalog.format_reflect import format_interactions_for_reflect
+
+        interactions = format_interactions_for_reflect(config, max_holes=4)
+        if interactions:
+            parts.append(interactions)
+    except OSError:
+        pass
+
+    try:
         from .lab.comfy_director import invent_next_shot
 
         plan = invent_next_shot(config)

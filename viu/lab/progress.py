@@ -6,8 +6,13 @@ from .session import LabSession
 
 
 def _step_labels(topic: str) -> list[str]:
-    if (topic or "").strip().lower() == "comfy":
+    t = (topic or "").strip().lower()
+    if t == "comfy":
         from .comfy_pipeline import STEP_LABELS as labels
+
+        return list(labels)
+    if t == "interaction":
+        from .interaction_pipeline import STEP_LABELS as labels
 
         return list(labels)
     from .cascadeur_pipeline import STEP_LABELS as labels

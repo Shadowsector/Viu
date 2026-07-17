@@ -55,6 +55,8 @@ def _prepare_lab_session_inner(
         session.viu_build_stamp = current_stamp
         if topic == "comfy":
             session.steps_total = 6
+        if topic == "interaction":
+            session.steps_total = 8
         save_session(config, session)
         return session, "fresh", "\n".join(notes)
 
@@ -63,6 +65,8 @@ def _prepare_lab_session_inner(
         session.viu_build_stamp = current_stamp
         if topic == "comfy":
             session.steps_total = 6
+        if topic == "interaction":
+            session.steps_total = 8
         save_session(config, session)
         return session, "fresh", ""
 
@@ -74,6 +78,8 @@ def _prepare_lab_session_inner(
         session.viu_build_stamp = current_stamp
         if topic == "comfy":
             session.steps_total = 6
+        if topic == "interaction":
+            session.steps_total = 8
         save_session(config, session)
         return session, "fresh", "\n".join(notes)
 
@@ -100,6 +106,8 @@ def _prepare_lab_session_inner(
         session.viu_build_stamp = current_stamp
         if topic == "comfy":
             session.steps_total = 6
+        if topic == "interaction":
+            session.steps_total = 8
         save_session(config, session)
         return session, "fresh", "\n".join(notes)
 
@@ -123,6 +131,8 @@ def run_lab_prepared(
 ) -> Tuple[bool, str, Optional[LabSession]]:
     if topic == "comfy":
         from .comfy_pipeline import ensure_task_file, run_one_step, run_until_done
+    elif topic == "interaction":
+        from .interaction_pipeline import ensure_task_file, run_one_step, run_until_done
     else:
         from .cascadeur_pipeline import run_one_step, run_until_done
 
@@ -141,6 +151,18 @@ def run_lab_prepared(
         save_session(config, session)
         if mode == "continue" and session.status == "awaiting_prompt":
             return True, prefix + "Жду одобрение Comfy-промпта в Telegram.", session
+
+    if topic == "interaction":
+        slug = ""
+        if meta_extra:
+            slug = str(meta_extra.get("catalog_slug") or "").strip()
+        ensure_task_file(config, catalog_slug=slug)
+        if meta_extra:
+            for k, v in meta_extra.items():
+                if v is None or v == "" or v == []:
+                    continue
+                session.meta[k] = v
+        save_session(config, session)
 
     if mode == "recover":
         ok, msg = recover_stuck_step(config, session)

@@ -1,6 +1,6 @@
 # Направление работ сейчас (канон для Вью и Дена)
 
-Обновлено: 2026-07-16. Читай вместе с `COMFY_CASCADEUR_PIPELINE.md`, `CREATURE_PIPELINE.md`, `SHANYA_ANIMATIONS.md`.
+Обновлено: 2026-07-17. Читай вместе с `COMFY_CASCADEUR_PIPELINE.md`, `CREATURE_PIPELINE.md`, `INTERACTION_PIPELINE.md`, `SHANYA_ANIMATIONS.md`.
 
 ## Цель пайплайна анимаций
 
@@ -39,6 +39,7 @@ Native Comfy всегда пишет в свой `output/` — Вью **обяз
 4. Сокеты Шани в Unity **или** Animator по графу wave 1  
 5. I2V-очередь; NSFW Comfy-очередь  
 6. Хвост/щупальца — secondary physics, не MoCap-first (Шняк — Blender/procedural)
+7. **Совместные анимации** — `INTERACTION_PIPELINE.md`, пилот `shanya_wolf_approach`
 
 ## Как Вью общается
 

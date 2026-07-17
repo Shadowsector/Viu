@@ -27,17 +27,18 @@ class LabStartTool(Tool):
     description = (
         "Начать или возобновить лабораторную сессию. "
         "topic=cascadeur — FBX/Cascadeur. topic=comfy — Wan video → Lab/Refs "
-        "(промпт в Telegram, 3 дубля ¾). "
+        "(промпт в Telegram, 3 дубля ¾). topic=interaction — совместные анимации "
+        "(multi-actor; docs/INTERACTION_PIPELINE.md). "
         "run_all=1 — весь цикл. action= для comfy (действие в кадре). "
         "verify=1 — после ручного import Cascadeur."
     )
     parameters = {
-        "topic": "cascadeur | comfy",
+        "topic": "cascadeur | comfy | interaction",
         "reset": "1 = новая сессия",
         "run_all": "1 = выполнить все шаги до отчёта/затыка",
         "verify": "1 = проверить ручной import (скрин + vision)",
         "action": "для comfy: действие персонажа (sit down, walk, …)",
-        "catalog_slug": "slug из каталога анимаций",
+        "catalog_slug": "slug из каталога анимаций или interaction_catalog",
         "enters_from": "через запятую",
         "exits_to": "через запятую",
         "shot_reason": "почему этот кадр",
@@ -66,6 +67,11 @@ class LabStartTool(Tool):
                     args["exits_to"] = ",".join(plan.exits_to)
                     args["shot_reason"] = plan.reason
             ensure_comfy_task(ctx.config, action=action)
+        if topic == "interaction":
+            from ..lab.interaction_pipeline import ensure_task_file as ensure_interaction_task
+
+            slug = str(args.get("catalog_slug") or "").strip()
+            ensure_interaction_task(ctx.config, catalog_slug=slug)
 
         session = None if reset else load_session(ctx.config, topic)
 
@@ -111,7 +117,6 @@ class LabStartTool(Tool):
         def _csv(key: str) -> list:
             return [p.strip() for p in str(args.get(key) or "").split(",") if p.strip()]
 
-        meta_extra = None
         if topic == "comfy":
             meta_extra = {
                 "catalog_slug": str(args.get("catalog_slug") or "").strip(),
@@ -119,6 +124,12 @@ class LabStartTool(Tool):
                 "exits_to": _csv("exits_to"),
                 "shot_reason": str(args.get("shot_reason") or "").strip(),
             }
+        elif topic == "interaction":
+            meta_extra = {
+                "catalog_slug": str(args.get("catalog_slug") or "").strip(),
+            }
+        else:
+            meta_extra = None
 
         ok, msg, session = run_lab_prepared(
             ctx.config,
@@ -140,7 +151,7 @@ class LabStartTool(Tool):
 class LabStepTool(Tool):
     name = "lab_step"
     description = "Выполнить следующий шаг активной лабораторной сессии. run_all=1 — до конца."
-    parameters = {"topic": "cascadeur | comfy", "run_all": "1 = весь оставшийся цикл"}
+    parameters = {"topic": "cascadeur | comfy | interaction", "run_all": "1 = весь оставшийся цикл"}
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         topic = str(args.get("topic") or CASCADEUR_TOPIC).strip().lower()
@@ -177,7 +188,7 @@ class LabRunAllTool(Tool):
     name = "lab_run_all"
     description = "Выполнить все оставшиеся шаги lab до отчёта, паузы или затыка."
     parameters = {
-        "topic": "cascadeur | comfy",
+        "topic": "cascadeur | comfy | interaction",
         "reset": "1 = новая сессия с нуля",
         "action": "для comfy: действие в кадре",
     }
