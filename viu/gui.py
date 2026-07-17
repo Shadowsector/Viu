@@ -27,6 +27,8 @@ from .gui_actions import ACTION_GROUPS, GUI_ACTIONS, GuiAction, actions_by_group
 from .pipeline import action_visible, get_pipeline_context
 from .health import ollama_available
 from .llm_roles import (
+    REFLECT_MODEL_CHOICES,
+    REFLECT_MODEL_IDS,
     effective_model,
     model_label,
     reflect_combo_labels,
@@ -104,6 +106,11 @@ class ViuGUI:
         from .llm_roles import needs_viu_wrap_hint
 
         self._append("система", f"{version_label()}.")
+        self._append(
+            "система",
+            "Модель чата: вторая строка сверху (выпадающий список) или меню «Чат».",
+            tag="sys",
+        )
         if needs_viu_wrap_hint(self.agent.config):
             self._append(
                 "система",
@@ -212,33 +219,47 @@ class ViuGUI:
         self.root.destroy()
 
     def _build_top_status(self) -> None:
-        """Верхняя полоса: статус + переключатель Дома (зелёный) / Нет дома (красный)."""
-        bar = ttk.Frame(self.root)
-        bar.pack(fill="x", padx=8, pady=(6, 0))
+        """Верх: статус + отдельная строка «Модель чата» + Дома."""
+        outer = ttk.Frame(self.root)
+        outer.pack(fill="x", padx=8, pady=(6, 0))
 
+        status_row = ttk.Frame(outer)
+        status_row.pack(fill="x")
         self.top_status_var = tk.StringVar(value="…")
-        ttk.Label(bar, textvariable=self.top_status_var, font=("Segoe UI", 9)).pack(
+        ttk.Label(status_row, textvariable=self.top_status_var, font=("Segoe UI", 9)).pack(
             side="left", anchor="w"
         )
 
-        right = ttk.Frame(bar)
-        right.pack(side="right", anchor="e")
-        ttk.Label(right, text="Чат:", font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
+        tools_row = ttk.Frame(outer)
+        tools_row.pack(fill="x", pady=(5, 2))
+        ttk.Label(
+            tools_row,
+            text="Модель чата:",
+            font=("Segoe UI", 9, "bold"),
+        ).pack(side="left", padx=(0, 6))
         self._reflect_model_var = tk.StringVar()
         self._reflect_combo = ttk.Combobox(
-            right,
+            tools_row,
             textvariable=self._reflect_model_var,
-            values=reflect_combo_labels(),
+            values=list(REFLECT_MODEL_IDS),
             state="readonly",
-            width=26,
-            font=("Segoe UI", 9),
+            width=18,
+            font=("Segoe UI", 10),
         )
-        self._reflect_combo.pack(side="left", padx=(0, 10))
+        self._reflect_combo.pack(side="left")
         self._reflect_combo.bind("<<ComboboxSelected>>", self._on_reflect_model_pick)
+        self._attach_tooltip(
+            self._reflect_combo,
+            "Reflect для чата и Telegram:\n"
+            "viu-cydonia — чат\n"
+            "viu-command-r — GDD/квесты\n"
+            "viu-magnum — лит. NSFW\n"
+            "viu-qwen32 — общая 32B",
+        )
         self._sync_reflect_model_combo()
-        ttk.Label(right, text="Ты:", font=("Segoe UI", 9)).pack(side="left", padx=(0, 6))
+
         self._presence_btn = tk.Button(
-            right,
+            tools_row,
             text="● Дома",
             font=("Segoe UI", 10, "bold"),
             relief="raised",
@@ -248,32 +269,42 @@ class ViuGUI:
             cursor="hand2",
             command=self._toggle_presence,
         )
-        self._presence_btn.pack(side="left")
+        self._presence_btn.pack(side="right")
+        ttk.Label(tools_row, text="Ты:", font=("Segoe UI", 9)).pack(side="right", padx=(0, 6))
         self._refresh_presence_button()
 
     def _reflect_combo_value_for(self, model_id: str) -> str:
         mid = (model_id or "").strip()
+        if mid in REFLECT_MODEL_IDS:
+            return mid
         for label in reflect_combo_labels():
             if label.startswith(mid + " ·"):
-                return label
+                return mid
         return mid
 
     def _sync_reflect_model_combo(self) -> None:
         mid = effective_model(self.agent.config, "reflect")
         self._reflect_model_var.set(self._reflect_combo_value_for(mid))
+        if hasattr(self, "_chat_model_var"):
+            self._chat_model_var.set(mid)
 
-    def _on_reflect_model_pick(self, _event=None) -> None:
-        picked = reflect_model_from_combo(self._reflect_model_var.get())
+    def _pick_reflect_model(self, model_id: str) -> None:
+        picked = (model_id or "").strip()
         if not picked:
             return
         set_reflect_model(self.agent.config, picked)
         self._sync_reflect_model_combo()
         self._append(
             "система",
-            f"Reflect-модель: {picked} (чат и Telegram, до перезапуска — в runtime.json).",
+            f"Модель чата: {picked} (reflect + Telegram, в .viu/runtime.json).",
             tag="sys",
         )
         self._refresh_presence_button()
+
+    def _on_reflect_model_pick(self, _event=None) -> None:
+        raw = self._reflect_model_var.get()
+        picked = reflect_model_from_combo(raw) or raw.strip()
+        self._pick_reflect_model(picked)
 
     def _toggle_presence(self) -> None:
         from .decision_queue import flush_prompt_for_home
@@ -431,7 +462,7 @@ class ViuGUI:
 
         chat_hint = ttk.Label(
             frame,
-            text="Справа — живая Вью (чат).\nДома/Нет дома — сверху.",
+            text="Справа — живая Вью.\nМодель чата — вторая строка сверху или меню «Чат».",
             wraplength=240,
             justify="left",
             font=("Segoe UI", 9),
@@ -449,6 +480,13 @@ class ViuGUI:
             text="Живая Вью",
             font=("Segoe UI", 11, "bold"),
         ).pack(side="left")
+        self._chat_model_var = tk.StringVar(value=effective_model(self.agent.config, "reflect"))
+        ttk.Label(
+            chat_head,
+            textvariable=self._chat_model_var,
+            font=("Segoe UI", 9, "bold"),
+            foreground="#81c784",
+        ).pack(side="left", padx=(10, 0))
         ttk.Label(
             chat_head,
             text="свободный разговор · сюжет · идеи",
@@ -549,6 +587,14 @@ class ViuGUI:
             command=self._show_places_in_chat,
         )
         menubar.add_cascade(label="Места", menu=m_places)
+
+        m_chat = tk.Menu(menubar, tearoff=0)
+        for mid, hint in REFLECT_MODEL_CHOICES:
+            m_chat.add_command(
+                label=f"{mid} — {hint}",
+                command=lambda m=mid: self._pick_reflect_model(m),
+            )
+        menubar.add_cascade(label="Чат", menu=m_chat)
 
         self.root.config(menu=menubar)
 
