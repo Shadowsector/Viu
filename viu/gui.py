@@ -26,7 +26,7 @@ from .config import Config
 from .gui_actions import ACTION_GROUPS, GUI_ACTIONS, GuiAction, actions_by_group
 from .pipeline import action_visible, get_pipeline_context
 from .health import ollama_available
-from .llm_roles import effective_model, model_label
+from .llm_roles import model_label
 from .integrations.unity.watcher import AnimationFolderWatcher
 from .runtime_settings import get_update_interval_min, get_window_geometry, set_window_geometry
 from .updater import (
@@ -95,12 +95,17 @@ class ViuGUI:
             removed = []
 
         self._build_ui()
-        self._append(
-            "система",
-            f"{version_label()}. "
-            f"Чат/reflect: {model_label(self.agent.config, 'reflect')}. "
-            f"Work: {effective_model(self.agent.config, 'work')}.",
-        )
+        from .llm_roles import needs_viu_wrap_hint
+
+        self._append("система", f"{version_label()}.")
+        if needs_viu_wrap_hint(self.agent.config):
+            self._append(
+                "система",
+                "В .env у reflect нет viu-обёртки. Поставь "
+                "VIU_MODEL_REFLECT=viu-cydonia и перезапусти "
+                "(или create_viu_ollama_models.bat, если тега нет).",
+                tag="sys",
+            )
         if getattr(self, "_story_ingest_msg", ""):
             self._append("система", self._story_ingest_msg, tag="sys")
         if removed:
@@ -262,9 +267,10 @@ class ViuGUI:
         from .presence import is_away
 
         away = is_away(self.agent.config)
-        model = model_label(self.agent.config, "reflect")
-        # длинные теги обрежем для кнопки
-        short = model if len(model) <= 36 else model[:33] + "…"
+        # Только тег на кнопке — без дубля в статус-баре и без длинного ⚠.
+        short = model_label(self.agent.config, "reflect")
+        if len(short) > 28:
+            short = short[:25] + "…"
         btn = getattr(self, "_presence_btn", None)
         if btn is not None:
             if away:
@@ -283,11 +289,10 @@ class ViuGUI:
                     activebackground="#1b5e20",
                     activeforeground="#ffffff",
                 )
-        # legacy sidebar button (если ещё есть)
         text = "Режим: меня нет (автономно)" if away else "Режим: я дома (с вопросами)"
         for aid, b in self._action_buttons:
             if aid == "presence_toggle":
-                b.config(text=f"{text}\n{short}")
+                b.config(text=text)
                 break
 
     def _refresh_status(self) -> None:
@@ -295,21 +300,13 @@ class ViuGUI:
 
         def compute() -> str:
             from .decision_queue import count_open
-            from .llm_roles import effective_model, model_label
-            from .presence import is_away
 
             ollama = "Ollama ✓" if ollama_available(cfg.base_url) else "Ollama ✗"
             unity = Path(cfg.unity_project).name if cfg.unity_project else "Unity —"
             git = "git" if usable_git_root() else "zip"
-            mode = "автономно" if is_away(cfg) else "дома"
             qn = count_open(cfg)
             q = f" | вопросов: {qn}" if qn else ""
-            reflect = model_label(cfg, "reflect")
-            work = effective_model(cfg, "work")
-            return (
-                f"{ollama}  |  {mode}{q}  |  {unity}  |  {version_label()} ({git})  |  "
-                f"чат: {reflect}  |  work: {work}"
-            )
+            return f"{ollama}{q}  |  {unity}  |  {version_label()} ({git})"
 
         self._run_bg(compute, self._set_top_status)
         try:

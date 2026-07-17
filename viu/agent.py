@@ -140,9 +140,9 @@ class Agent:
             pass
 
     def _model_for(self, role: str) -> str | None:
-        from .llm_roles import resolve_model
+        from .llm_roles import effective_model
 
-        return resolve_model(self.config, role)  # type: ignore[arg-type]
+        return effective_model(self.config, role)  # type: ignore[arg-type]
 
     def run(
         self,

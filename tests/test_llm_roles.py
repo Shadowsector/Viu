@@ -1,27 +1,45 @@
 """Роли моделей — effective tag для UI."""
 
 from viu.config import Config
-from viu.llm_roles import effective_model, model_label, resolve_model
+from viu.llm_roles import effective_model, model_label, needs_viu_wrap_hint, resolve_model
 
 
-def test_effective_model_falls_back_to_viu_model(tmp_path):
+def test_empty_reflect_defaults_to_viu_cydonia(tmp_path):
     cfg = Config(
         root=tmp_path,
         data_dir=tmp_path / ".viu",
-        model="qwen2.5:32b-instruct-q6_K",
+        model="qwen2.5-coder:14b",
         model_reflect="",
+        model_work="",
+        model_code="qwen2.5-coder:14b",
     )
     assert resolve_model(cfg, "reflect") is None
-    assert effective_model(cfg, "reflect") == "qwen2.5:32b-instruct-q6_K"
-    assert "без viu-обёртки" in model_label(cfg, "reflect")
+    assert effective_model(cfg, "reflect") == "viu-cydonia"
+    assert effective_model(cfg, "work") == "viu-qwen32"
+    assert effective_model(cfg, "code") == "qwen2.5-coder:14b"
+    assert model_label(cfg, "reflect") == "viu-cydonia"
+    assert not needs_viu_wrap_hint(cfg)
 
 
-def test_model_label_viu_wrap_clean(tmp_path):
+def test_explicit_bare_reflect_hint(tmp_path):
+    cfg = Config(
+        root=tmp_path,
+        data_dir=tmp_path / ".viu",
+        model="viu-qwen32",
+        model_reflect="qwen2.5-coder:14b",
+    )
+    assert effective_model(cfg, "reflect") == "qwen2.5-coder:14b"
+    assert needs_viu_wrap_hint(cfg)
+
+
+def test_explicit_viu_wrap_clean(tmp_path):
     cfg = Config(
         root=tmp_path,
         data_dir=tmp_path / ".viu",
         model="qwen2.5:32b",
         model_reflect="viu-cydonia",
+        model_work="viu-qwen32",
     )
     assert effective_model(cfg, "reflect") == "viu-cydonia"
     assert model_label(cfg, "reflect") == "viu-cydonia"
+    assert not needs_viu_wrap_hint(cfg)

@@ -49,11 +49,15 @@ class Config:
     provider: str = field(default_factory=lambda: _env("VIU_PROVIDER", "mock"))
 
     # Параметры OpenAI-совместимого API.
-    model: str = field(default_factory=lambda: _env("VIU_MODEL", "gpt-4o-mini"))
-    # Роли (пусто = VIU_MODEL). Ollama: разные теги, переключение на лету по запросу.
-    model_reflect: str = field(default_factory=lambda: _env("VIU_MODEL_REFLECT", ""))
-    model_work: str = field(default_factory=lambda: _env("VIU_MODEL_WORK", ""))
-    model_code: str = field(default_factory=lambda: _env("VIU_MODEL_CODE", ""))
+    # Пустые роли → viu-обёртки (см. llm_roles.effective_model), не голый coder.
+    model: str = field(default_factory=lambda: _env("VIU_MODEL", "viu-cydonia"))
+    model_reflect: str = field(
+        default_factory=lambda: _env("VIU_MODEL_REFLECT", "viu-cydonia")
+    )
+    model_work: str = field(default_factory=lambda: _env("VIU_MODEL_WORK", "viu-qwen32"))
+    model_code: str = field(
+        default_factory=lambda: _env("VIU_MODEL_CODE", "qwen2.5-coder:14b")
+    )
     api_key: str = field(default_factory=lambda: _env("VIU_API_KEY", ""))
     base_url: str = field(
         default_factory=lambda: _env("VIU_BASE_URL", "https://api.openai.com/v1")
