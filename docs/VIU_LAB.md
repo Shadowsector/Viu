@@ -105,7 +105,7 @@ U:\Viu\.viu\lab\cascadeur\
 ## Настройки
 
 ```env
-VIU_LAB_VRAM_GB=6
+VIU_LAB_VRAM_GB=10
 VIU_LAB_MONITOR=2
 VIU_LAB_INTERVAL_MIN=5
 VIU_LAB_MOUSE=1
@@ -115,7 +115,8 @@ VIU_CASCADEUR_EXE=U:\Cascadeur\App\Cascadeur\cascadeur.exe
 VIU_CASCADEUR_SCRIPTS=   # опционально: папка user-команд (Commands)
 ```
 
-`OLLAMA_MAX_VRAM` подсказывается при lab-шагах с web/LLM.
+`OLLAMA_MAX_VRAM` выставляется при старте Вью и в lab-шагах (дефолт **10 GB**).
+Перезапусти **Ollama из трея**, если менял лимит — иначе старый процесс не подхватит.
 
 ## Мышь — не отбирает
 
@@ -139,7 +140,7 @@ Lab **не захватывает** курсор (нет hook, нет блоки
 | Локально при лимите VRAM | **qwen2.5:14b** / **llama3.1:8b** (Ollama) |
 | Vision по скринам Cascadeur | **llava** / **qwen2-vl** (Ollama) — шаг 8, recover |
 
-Не грузить тяжёлую local + Cascadeur + Unity одновременно на 6 GB VRAM.
+Не грузить тяжёлую local + Cascadeur + Unity одновременно на ~10 GB VRAM.
 
 ## Кнопки / инструменты
 

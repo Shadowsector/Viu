@@ -40,6 +40,9 @@ set VIU_UNITY_PROJECT=U:\Anabarra\Unity\Anabarra
 set VIU_ANIM_STAGING=U:\Anabarra\Animations
 set VIU_QUIET_HOURS=0-7
 set VIU_REFLECT_TEMPERATURE=0.88
+rem Лимит VRAM для Ollama (LLM). Перезапусти Ollama из трея после смены.
+set VIU_LAB_VRAM_GB=10
+set OLLAMA_MAX_VRAM=10737418240
 rem Модели — из .env (VIU_MODEL_REFLECT=viu-cydonia …). Не форсим coder здесь.
 rem ---------------------------------
 

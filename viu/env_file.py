@@ -31,6 +31,7 @@ _ALWAYS_FROM_FILE = frozenset(
         "VIU_OLLAMA_NUM_CTX",
         "VIU_OLLAMA_NUM_PREDICT",
         "VIU_OLLAMA_KEEP_ALIVE",
+        "VIU_LAB_VRAM_GB",
         "VIU_REFLECT_TEMPERATURE",
         "VIU_REFLECT_PROMPT_HALF",
     }
@@ -126,6 +127,12 @@ def bootstrap_env(install_root: Path | None = None) -> Path | None:
     primary = roots[0] if roots else Path.cwd()
     env_path = ensure_env_file(primary)
     load_env_file(*roots)
+    try:
+        from .ollama_vram import apply_ollama_vram_limit
+
+        apply_ollama_vram_limit()
+    except Exception:
+        pass
     return env_path if env_path.is_file() else None
 
 
