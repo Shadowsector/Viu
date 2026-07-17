@@ -58,6 +58,9 @@ class OpenAICompatibleLLM(LLMProvider):
             raw_ctx = (os.environ.get("VIU_OLLAMA_NUM_CTX") or "").strip()
             if raw_ctx.isdigit():
                 options["num_ctx"] = int(raw_ctx)
+            raw_predict = (os.environ.get("VIU_OLLAMA_NUM_PREDICT") or "").strip()
+            if raw_predict.isdigit():
+                options["num_predict"] = int(raw_predict)
             if options:
                 payload["options"] = options
             keep = (os.environ.get("VIU_OLLAMA_KEEP_ALIVE") or "").strip()

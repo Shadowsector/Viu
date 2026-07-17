@@ -55,6 +55,23 @@ class RetrySpeakLLM(LLMProvider):
         )
 
 
+def test_telegram_send_splits_long_message():
+    from viu.integrations.telegram.client import TelegramClient
+
+    sent: list[str] = []
+    c = TelegramClient("fake:token")
+
+    def fake_call(method, payload=None):
+        if method == "sendMessage" and payload:
+            sent.append(str(payload.get("text") or ""))
+        return {}
+
+    c._call = fake_call  # type: ignore[method-assign]
+    c.send_message(1, "а" * 5000)
+    assert len(sent) >= 2
+    assert sum(len(s) for s in sent) >= 5000
+
+
 def test_greeting_is_reflect_not_work():
     assert route_telegram_message("Вьюшка, привет, как ты?") == "reflect"
     assert route_telegram_message("привет, ты супер") == "reflect"

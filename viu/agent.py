@@ -22,14 +22,117 @@ from .prompts import build_system_prompt
 from .tools import AgentContext, ToolRegistry, build_default_registry
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*", re.IGNORECASE)
+
+
+def _strip_code_fences(text: str) -> str:
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = re.sub(r"^```[a-zA-Z]*\s*", "", t)
+        t = re.sub(r"\s*```\s*$", "", t).strip()
+    m = re.search(r"```(?:json)?\s*(\{.*)", t, re.DOTALL | re.IGNORECASE)
+    if m:
+        inner = m.group(1)
+        inner = re.sub(r"\s*```\s*$", "", inner, flags=re.DOTALL).strip()
+        return inner
+    return t
+
+
+def _json_candidate_text(text: str) -> str:
+    t = _strip_code_fences(text)
+    if "{" in t and not t.lstrip().startswith("{"):
+        t = t[t.index("{") :]
+    return t.strip()
+
+
+def looks_like_leaked_protocol(text: str) -> bool:
+    """Сырой протокол агента не должен уходить Дену в Telegram/GUI."""
+    if not (text or "").strip():
+        return False
+    t = text.strip()
+    low = t.lower()
+    if "```json" in low:
+        return True
+    if t.startswith("{") and ('"thought"' in t or '"final"' in t):
+        return True
+    if '"thought"' in t and '"final"' in t:
+        return True
+    if re.search(r'^\s*\{\s*"thought"\s*:', t):
+        return True
+    return False
+
+
+def _unescape_json_string(s: str) -> str:
+    try:
+        return json.loads(f'"{s}"')
+    except json.JSONDecodeError:
+        return (
+            s.replace("\\n", "\n")
+            .replace('\\"', '"')
+            .replace("\\\\", "\\")
+            .replace("\\t", "\t")
+        )
+
+
+def extract_loose_final(text: str) -> tuple[str, bool]:
+    """Достать final из битого JSON. bool — закрыта ли строка кавычкой."""
+    m = re.search(r'"final"\s*:\s*"', text, re.IGNORECASE | re.DOTALL)
+    if not m:
+        return "", False
+    i = m.end()
+    chars: list[str] = []
+    closed = False
+    while i < len(text):
+        c = text[i]
+        if c == "\\" and i + 1 < len(text):
+            chars.append(c)
+            chars.append(text[i + 1])
+            i += 2
+            continue
+        if c == '"':
+            closed = True
+            break
+        chars.append(c)
+        i += 1
+    return _unescape_json_string("".join(chars)).strip(), closed
+
+
+def parse_reflect_response(
+    raw: str,
+) -> tuple[Optional[str], Optional[str], bool, Optional[dict]]:
+    """final, thought, truncated, parsed dict (если JSON целый)."""
+    body = (raw or "").strip()
+    if not body:
+        return None, None, False, None
+
+    candidate = _json_candidate_text(body)
+    parsed = extract_json(body) or extract_json(candidate)
+    loose_final, closed = extract_loose_final(candidate or body)
+
+    if parsed and "final" in parsed and "action" not in parsed:
+        final = str(parsed.get("final") or "").strip()
+        thought = str(parsed.get("thought") or parsed.get("inner") or "").strip()
+        truncated = bool(loose_final) and not closed
+        return final or None, thought or None, truncated, parsed
+
+    if loose_final and closed:
+        return loose_final, None, False, None
+
+    if loose_final and not closed:
+        return None, None, True, None
+
+    if looks_like_leaked_protocol(body):
+        return None, None, True, None
+
+    if not candidate.lstrip().startswith("{") and '"final"' not in body:
+        return body[:2000], None, False, None
+
+    return None, None, True, None
 
 
 def extract_json(text: str) -> Optional[dict]:
     """Извлекает JSON-объект протокола агента из ответа модели."""
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
-        text = re.sub(r"\n?```$", "", text).strip()
+    text = _json_candidate_text(text)
 
     def _valid_agent(obj: Any) -> bool:
         return isinstance(obj, dict) and (
@@ -542,11 +645,35 @@ class Agent:
                 result.completed = True
                 return result
             last_raw = raw or ""
-            parsed = extract_json(raw)
+            text, thought, truncated, parsed = parse_reflect_response(raw)
 
-            if parsed and "final" in parsed and "action" not in parsed:
-                text = str(parsed["final"]).strip()
-                thought = str(parsed.get("thought") or parsed.get("inner") or "").strip()
+            if truncated:
+                last_issues = ["оборванный JSON"]
+                messages.append({"role": "assistant", "content": raw})
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Ответ оборвался на середине — Дену нельзя слать сырой JSON. "
+                            "Верни ОДИН короткий JSON без текста до/после и без ```: "
+                            '{"thought":"…","final":"…"}. '
+                            "final — готовый ответ (можно короче, но цельный)."
+                        ),
+                    }
+                )
+                continue
+
+            if parsed and "action" in parsed:
+                messages.append({"role": "assistant", "content": raw})
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "Сейчас только разговор — без action. Ответь JSON thought+final.",
+                    }
+                )
+                continue
+
+            if text:
                 if is_nsfw_refusal(text):
                     saw_nsfw_refusal = True
                 issues = reflect_reply_issues(
@@ -567,39 +694,7 @@ class Agent:
                         }
                     )
                     continue
-                return _accept_final(text, thought, parsed)
-
-            if parsed and "action" in parsed:
-                messages.append({"role": "assistant", "content": raw})
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": "Сейчас только разговор — без action. Ответь JSON thought+final.",
-                    }
-                )
-                continue
-
-            # Plain-text без JSON — тоже гоняем через фильтр тона (иначе проскакивает цензор)
-            if parsed is None and raw.strip() and not raw.strip().startswith("{"):
-                text = raw.strip()[:800]
-                if is_nsfw_refusal(text):
-                    saw_nsfw_refusal = True
-                issues = reflect_reply_issues(
-                    text, has_history=bool(use_hist and hist), user_text=user_text
-                )
-                if issues:
-                    last_issues = issues
-                    messages.append({"role": "assistant", "content": raw})
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": "Плохой тон: "
-                            + ", ".join(issues)
-                            + ". Ответь JSON thought+final. NSFW у нас разрешён (игра 18+).",
-                        }
-                    )
-                    continue
-                return _accept_final(text, "")
+                return _accept_final(text, thought or "", parsed)
 
             messages.append({"role": "assistant", "content": raw or "{}"})
             messages.append(
@@ -623,14 +718,11 @@ class Agent:
             except RuntimeError as exc:
                 self._log(f"REFLECT_RESCUE fail: {exc}")
                 raw = ""
-            parsed = extract_json(raw) if raw else None
-            text = ""
-            thought = ""
-            if parsed and "final" in parsed:
-                text = str(parsed["final"]).strip()
-                thought = str(parsed.get("thought") or "").strip()
-            elif raw and not raw.strip().startswith("{"):
-                text = raw.strip()[:800]
+            text, thought, truncated, parsed = (
+                parse_reflect_response(raw) if raw else (None, None, False, None)
+            )
+            if truncated:
+                text = ""
             if text and not is_nsfw_refusal(text) and not reflect_reply_issues(
                 text, user_text=user_text
             ):
@@ -661,6 +753,18 @@ class Agent:
             if last_issues
             else "кривой JSON или пустой ответ"
         )
+        if "оборван" in why.lower() or (
+            last_raw and looks_like_leaked_protocol(last_raw)
+        ):
+            wrap = model_label(self.config, "reflect")
+            result.final = (
+                "Ответ модели оборвался на середине — в Telegram ушёл бы сырой JSON, "
+                "я его не отправила. Спроси короче или разбей на части "
+                f"(reflect={wrap}). "
+                "В .env можно поднять VIU_OLLAMA_NUM_PREDICT=4096."
+            )
+            result.completed = True
+            return result
         wrap = model_label(self.config, "reflect")
         result.final = (
             f"Ответ не прошёл ({why}). "
