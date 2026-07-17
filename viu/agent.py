@@ -130,6 +130,19 @@ def parse_reflect_response(
     return None, None, True, None
 
 
+def salvage_partial_final(raw: str, *, min_len: int = 180) -> str:
+    """Если JSON оборван — вернуть осмысленный кусок final, не сырой протокол."""
+    body = (raw or "").strip()
+    if not body:
+        return ""
+    loose, closed = extract_loose_final(_json_candidate_text(body))
+    if not loose or len(loose) < min_len or looks_like_leaked_protocol(loose):
+        return ""
+    if closed:
+        return loose
+    return loose.rstrip() + "\n\n_(ответ оборвался — напиши «продолжай»)_"
+
+
 def extract_json(text: str) -> Optional[dict]:
     """Извлекает JSON-объект протокола агента из ответа модели."""
     text = _json_candidate_text(text)
@@ -632,7 +645,7 @@ class Agent:
                     pass
             return result
 
-        for _ in range(3):
+        for attempt in range(4):
             try:
                 raw = self.llm.complete(
                     messages, temperature=temp, model=reflect_model
@@ -650,17 +663,18 @@ class Agent:
             if truncated:
                 last_issues = ["оборванный JSON"]
                 messages.append({"role": "assistant", "content": raw})
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            "Ответ оборвался на середине — Дену нельзя слать сырой JSON. "
-                            "Верни ОДИН короткий JSON без текста до/после и без ```: "
-                            '{"thought":"…","final":"…"}. '
-                            "final — готовый ответ (можно короче, но цельный)."
-                        ),
-                    }
+                short_hint = (
+                    "Ответ оборвался — Дену нельзя слать сырой JSON или ```json. "
+                    'Верни ОДИН JSON: {"thought":"…","final":"…"} без текста снаружи. '
                 )
+                if attempt >= 1:
+                    short_hint += (
+                        "final сожми до ~1500 символов (короче, но цельный); "
+                        "длинное — «продолжай» отдельным сообщением. "
+                    )
+                else:
+                    short_hint += "final — готовый ответ (можно короче, но законченный). "
+                messages.append({"role": "user", "content": short_hint})
                 continue
 
             if parsed and "action" in parsed:
@@ -674,6 +688,20 @@ class Agent:
                 continue
 
             if text:
+                if looks_like_leaked_protocol(text):
+                    last_issues = ["утёк JSON протокол"]
+                    messages.append({"role": "assistant", "content": raw})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Дену нельзя показывать thought/сырой JSON. "
+                                'Только {"thought":"…","final":"текст Дену"} — '
+                                "final без markdown-ограждений ```."
+                            ),
+                        }
+                    )
+                    continue
                 if is_nsfw_refusal(text):
                     saw_nsfw_refusal = True
                 issues = reflect_reply_issues(
@@ -756,12 +784,16 @@ class Agent:
         if "оборван" in why.lower() or (
             last_raw and looks_like_leaked_protocol(last_raw)
         ):
+            salvaged = salvage_partial_final(last_raw)
+            if salvaged:
+                self._log("REFLECT_SALVAGE: partial final after truncate")
+                return _accept_final(salvaged, "salvage-partial")
             wrap = model_label(self.config, "reflect")
             result.final = (
-                "Ответ модели оборвался на середине — в Telegram ушёл бы сырой JSON, "
-                "я его не отправила. Спроси короче или разбей на части "
+                "Ответ модели оборвался на середине — сырой JSON не отправила. "
+                "Спроси короче или «продолжай сцену» "
                 f"(reflect={wrap}). "
-                "В .env можно поднять VIU_OLLAMA_NUM_PREDICT=4096."
+                "Обнови Вью (нужна версия после eea4d7d) и VIU_OLLAMA_NUM_PREDICT=4096 в .env."
             )
             result.completed = True
             return result

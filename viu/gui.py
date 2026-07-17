@@ -182,6 +182,7 @@ class ViuGUI:
 
         self._build_menu()
         self._build_top_status()
+        self.root.bind_all("<Control-KeyPress>", self._global_ctrl_key, add="+")
 
         body = ttk.Frame(self.root)
         body.pack(fill="both", expand=True)
@@ -503,6 +504,7 @@ class ViuGUI:
             insertbackground="#e6e6e6",
             padx=8,
             pady=8,
+            exportselection=True,
         )
         self.output.pack(fill="both", expand=True, padx=(4, 8), pady=(4, 4))
         for tag, color in (
@@ -634,9 +636,16 @@ class ViuGUI:
                 menu.grab_release()
 
         widget.bind("<Button-3>", show)
-        widget.bind("<Control-KeyPress>", self._ctrl_shortcuts)
+        widget.bind("<Button-3>", show)
 
     def _bind_clipboard(self, widget: tk.Widget) -> None:
+        def _clip(event, virt: str):
+            try:
+                event.widget.event_generate(virt)
+            except tk.TclError:
+                pass
+            return "break"
+
         for seq, virt in (
             ("<Control-c>", "<<Copy>>"),
             ("<Control-C>", "<<Copy>>"),
@@ -647,9 +656,49 @@ class ViuGUI:
             ("<Control-Insert>", "<<Copy>>"),
             ("<Shift-Insert>", "<<Paste>>"),
         ):
-            widget.bind(seq, lambda e, v=virt: (e.widget.event_generate(v), "break"))
+            widget.bind(seq, lambda e, v=virt: _clip(e, v), add="+")
 
     # ---------- события ----------
+
+    def _global_ctrl_key(self, event: tk.Event) -> str | None:
+        """Ctrl+C/V/X/A — в т.ч. русская раскладка (по keycode)."""
+        if not (event.state & 0x0004):
+            return None
+        widget = event.widget
+        if not isinstance(widget, (tk.Text, tk.Entry)):
+            return None
+        kc = int(getattr(event, "keycode", 0) or 0)
+        keysym = (event.keysym or "").lower()
+        # A / ф
+        if kc == 65 or keysym in ("a", "ф"):
+            self._select_all(widget)
+            return "break"
+        # C / с — копировать (из чата тоже)
+        if kc == 67 or keysym in ("c", "с", "cyrillic_es"):
+            try:
+                widget.event_generate("<<Copy>>")
+            except tk.TclError:
+                pass
+            return "break"
+        # V / м — вставить (только поле ввода, не лог)
+        if kc == 86 or keysym in ("v", "м", "cyrillic_em"):
+            if widget is self.output:
+                return "break"
+            try:
+                widget.event_generate("<<Paste>>")
+            except tk.TclError:
+                pass
+            return "break"
+        # X / ч — вырезать (не из лога)
+        if kc == 88 or keysym in ("x", "ч", "cyrillic_che"):
+            if widget is self.output:
+                return "break"
+            try:
+                widget.event_generate("<<Cut>>")
+            except tk.TclError:
+                pass
+            return "break"
+        return None
 
     def _ctrl_shortcuts(self, event):
         if event.keysym.lower() in ("a", "ф") or event.keycode == 38:
@@ -669,7 +718,10 @@ class ViuGUI:
             self._select_all(widget)
 
     def _readonly_guard(self, event):
+        # Ctrl/Shift — не блокировать (копирование, навигация)
         if event.state & 0x0004:
+            return None
+        if event.state & 0x0001:
             return None
         if event.keysym in _NAV_KEYS:
             return None

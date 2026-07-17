@@ -1,6 +1,12 @@
 import json
 
-from viu.agent import Agent, extract_json, looks_like_leaked_protocol, parse_reflect_response
+from viu.agent import (
+    Agent,
+    extract_json,
+    looks_like_leaked_protocol,
+    parse_reflect_response,
+    salvage_partial_final,
+)
 from viu.config import Config
 from viu.demo import demo_script
 from viu.llm import MockLLM
@@ -71,6 +77,24 @@ def test_parse_reflect_complete_fenced_json():
     assert thought == "план"
     assert not truncated
     assert parsed is not None
+
+
+def test_salvage_partial_final_from_truncated_gdd():
+    raw = (
+        '```json\n{\n  "thought": "план",\n  "final": "Я вижу это. Давай разберём по кадрам:\n\n'
+        "## Сцена: Вушка\n"
+        "**Кадр 1:** Ночь. Шаня спит на коврике у стены.\n"
+        "- Освещение: луна\n"
+        "она н"
+    )
+    final, thought, truncated, parsed = parse_reflect_response(raw)
+    assert truncated
+    assert final is None
+    salvaged = salvage_partial_final(raw)
+    assert "Я вижу это" in salvaged
+    assert "thought" not in salvaged.lower() or "вижу" in salvaged
+    assert "продолжай" in salvaged
+    assert not looks_like_leaked_protocol(salvaged)
 
 
 def test_run_reflect_does_not_leak_raw_json_to_final(tmp_path):
