@@ -9,16 +9,15 @@ echo  Create clean Ollama models for Viu
 echo  Folder: %CD%
 echo ========================================
 echo.
-echo Builds NSFW-clean tags (rewrites Ollama SYSTEM):
-echo   viu-magnum       - fluffy/magnum-v3-34b   FAST chat
-echo   viu-euryale      - nchapman euryale 70b
-echo   viu-nevoria      - ScrambieBambie Nevoria 70b
-echo   viu-dolphin      - dolphin-llama3:70b
-echo   viu-abliterated  - huihui llama3.3 abliterated 70b
+echo Recommended daily set:
+echo   viu-cydonia   24B story/NSFW/chat  (pull Cydonia first)
+echo   + qwen2.5:32b-instruct   work
+echo   + qwen2.5-coder:14b      code (fast)
 echo.
-echo Tip: 70B crawling 1 letter / 5s = VRAM swap. Run:
-echo   ollama stop
-echo then use ONE model. For speed try viu-magnum (34B).
+echo Also builds:
+echo   viu-magnum viu-euryale viu-nevoria viu-dolphin viu-abliterated
+echo.
+echo Tip: 70B crawling = VRAM swap. Run: ollama stop
 echo.
 
 where ollama >nul 2>&1
@@ -38,6 +37,7 @@ echo --- ollama list ---
 ollama list
 echo.
 
+call :MAKE viu-cydonia      ollama\Modelfile.viu-cydonia
 call :MAKE viu-magnum       ollama\Modelfile.viu-magnum
 call :MAKE viu-euryale      ollama\Modelfile.viu-euryale
 call :MAKE viu-nevoria      ollama\Modelfile.viu-nevoria
@@ -46,17 +46,14 @@ call :MAKE viu-abliterated  ollama\Modelfile.viu-abliterated
 
 echo.
 echo ----------------------------------------
-echo In U:\Viu\.env set ONE of:
-echo   VIU_MODEL_REFLECT=viu-magnum
-echo   VIU_MODEL_REFLECT=viu-abliterated
-echo   VIU_MODEL_REFLECT=viu-dolphin
-echo   VIU_MODEL_REFLECT=viu-euryale
-echo   VIU_MODEL_REFLECT=viu-nevoria
+echo Recommended .env:
+echo   VIU_MODEL_REFLECT=viu-cydonia
+echo   VIU_MODEL_WORK=qwen2.5:32b-instruct
+echo   VIU_MODEL_CODE=qwen2.5-coder:14b
 echo.
-echo Then restart Viu. Quick test:
-echo   ollama stop
-echo   ollama run viu-magnum
-echo   Ask: can you write NSFW?
+echo Pull Cydonia if missing:
+echo   ollama pull moophlo/Cydonia-24B-v4.3-GGUF:Q4_K_M
+echo Then re-run this bat.
 echo.
 
 :END
@@ -75,7 +72,7 @@ echo.
 echo Creating %TAG% from %MF% ...
 ollama create %TAG% -f "%MF%"
 if errorlevel 1 (
-  echo FAIL: %TAG%  (base model not pulled yet? check FROM in Modelfile)
+  echo FAIL: %TAG%  (base model not pulled? check FROM in Modelfile)
   set "EC=1"
 ) else (
   echo OK: %TAG%
