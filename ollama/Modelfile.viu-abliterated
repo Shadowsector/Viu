@@ -1,4 +1,4 @@
-FROM ScrambieBambie/L3.3-MS-Nevoria-70B:i1-Q4_K_M
+FROM huihui_ai/llama3.3-abliterated:70b
 
 PARAMETER num_ctx 8192
 PARAMETER temperature 0.88

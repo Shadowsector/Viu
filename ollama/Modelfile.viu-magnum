@@ -1,5 +1,6 @@
-FROM ScrambieBambie/L3.3-MS-Nevoria-70B:i1-Q4_K_M
+FROM fluffy/magnum-v3-34b:latest
 
+# 34B — заметно быстрее 70B для живого чата Вью
 PARAMETER num_ctx 8192
 PARAMETER temperature 0.88
 
