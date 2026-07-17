@@ -1,0 +1,15 @@
+{
+  "feetLiftMeters": 0.0,
+  "characterDepthZ": 0.0,
+  "characterHeightMeters": 1.77,
+  "depthBlend": 0.0,
+  "activeLane": "taskbar",
+  "taskbar": {
+    "distanceZ": 14.0,
+    "orthoHalfHeight": 2.15
+  },
+  "attention": {
+    "distanceZ": 14.0,
+    "orthoHalfHeight": 2.15
+  }
+}

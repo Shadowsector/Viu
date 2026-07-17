@@ -1,0 +1,19 @@
+# Секреты (токены) — не коммитить
+.env
+
+# Служебные данные агента (память, планы, логи, уроки)
+.viu/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+.venv/
+venv/
+
+# Пользовательские инструменты, созданные агентом на лету
+viu/tools/custom/*.py
+!viu/tools/custom/__init__.py

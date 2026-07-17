@@ -1,0 +1,9 @@
+# Локальные данные Вью — не для облачных агентов / не коммитить
+.viu/
+.viu/**
+**/CHARACTERS_VISION.md
+**/characters_vision.md
+
+# Секреты
+.env
+**/.env
