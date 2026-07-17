@@ -52,14 +52,21 @@ class OpenAICompatibleLLM(LLMProvider):
             "messages": messages,
             "temperature": temp,
         }
-        # Ollama: не держать 70B в VRAM вечно при смене ролей
-        keep = (os.environ.get("VIU_OLLAMA_KEEP_ALIVE") or "").strip()
-        if keep and ("11434" in self.base_url or "ollama" in self.base_url.lower()):
-            # "5m", "0" (unload сразу), "-1" (держать)
-            if keep.isdigit() or (keep.startswith("-") and keep[1:].isdigit()):
-                payload["keep_alive"] = int(keep)
-            else:
-                payload["keep_alive"] = keep
+        # Ollama-specific knobs (OpenAI-compatible endpoint accepts them)
+        if "11434" in self.base_url or "ollama" in self.base_url.lower():
+            options: dict = {}
+            raw_ctx = (os.environ.get("VIU_OLLAMA_NUM_CTX") or "").strip()
+            if raw_ctx.isdigit():
+                options["num_ctx"] = int(raw_ctx)
+            if options:
+                payload["options"] = options
+            keep = (os.environ.get("VIU_OLLAMA_KEEP_ALIVE") or "").strip()
+            if keep:
+                # "5m", "0" (unload сразу), "-1" (держать)
+                if keep.isdigit() or (keep.startswith("-") and keep[1:].isdigit()):
+                    payload["keep_alive"] = int(keep)
+                else:
+                    payload["keep_alive"] = keep
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             url,
