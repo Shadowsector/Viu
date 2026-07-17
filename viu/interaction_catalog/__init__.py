@@ -2,6 +2,7 @@
 
 from .blocking import build_blocking_job, resolve_actor_asset, run_interaction_blocking
 from .format_reflect import format_interactions_for_reflect
+from .master_comfy import run_interaction_master_draft, snap_wan_length
 from .models import (
     DEFAULT_INTERACTIONS,
     INTERACTION_ROLES,
@@ -38,4 +39,6 @@ __all__ = [
     "interaction_scene_dir",
     "resolve_actor_asset",
     "run_interaction_blocking",
+    "run_interaction_master_draft",
+    "snap_wan_length",
 ]

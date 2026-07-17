@@ -23,7 +23,10 @@ def _cfg(tmp_path):
 
     from viu.config import Config
 
+    anabarra = tmp_path / "Anabarra"
+    (anabarra / "Library").mkdir(parents=True, exist_ok=True)
     os.environ["VIU_DATA_DIR"] = str(tmp_path / ".viu")
+    os.environ["VIU_ANABARRA_ROOT"] = str(anabarra)
     return Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
 
 
@@ -50,10 +53,8 @@ def test_interaction_id_stable():
     assert len(interaction_id("x")) == 16
 
 
-def test_default_interactions_seed(tmp_path, monkeypatch):
-    from viu.config import Config
-
-    cfg = Config(data_dir=tmp_path / ".viu")
+def test_default_interactions_seed(tmp_path):
+    cfg = _cfg(tmp_path)
     path = interaction_catalog_path(cfg)
     store = InteractionCatalogStore(path).load()
     assert len(store.all_wishes()) >= 1
@@ -72,22 +73,15 @@ def test_interaction_wish_roundtrip():
     assert restored.choreography.duration_frames == src.choreography.duration_frames
 
 
-def test_interaction_scene_dir(tmp_path, monkeypatch):
-    from viu.config import Config
-
-    cfg = Config(data_dir=tmp_path / ".viu")
+def test_interaction_scene_dir(tmp_path):
+    cfg = _cfg(tmp_path)
     p = interaction_scene_dir(cfg, "shanya_wolf_approach")
     assert p.is_dir()
     assert "Interactions" in str(p)
 
 
 def test_interaction_lab_one_step(tmp_path, monkeypatch):
-    import os
-
-    from viu.config import Config
-
-    os.environ["VIU_DATA_DIR"] = str(tmp_path / ".viu")
-    cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
+    cfg = _cfg(tmp_path)
     InteractionCatalogStore(interaction_catalog_path(cfg)).load().save()
 
     session = new_session("interaction")
@@ -104,16 +98,12 @@ def test_interaction_lab_one_step(tmp_path, monkeypatch):
 
 
 def test_interaction_catalog_show_tool(tmp_path, monkeypatch):
-    import os
-
-    from viu.config import Config
     from viu.memory import MemoryStore
     from viu.planning import Planner
     from viu.tools import AgentContext, build_default_registry
     from viu.tools.interaction_catalog_tool import InteractionCatalogShowTool
 
-    os.environ["VIU_DATA_DIR"] = str(tmp_path / ".viu")
-    cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
+    cfg = _cfg(tmp_path)
     InteractionCatalogStore(interaction_catalog_path(cfg)).load().save()
     ctx = AgentContext(
         config=cfg,
@@ -202,3 +192,31 @@ def test_run_blocking_mock_blender(tmp_path, monkeypatch):
     assert w is not None
     assert w.blocking_blend
     assert w.status == "blocking_done"
+
+
+def test_snap_wan_length():
+    from viu.interaction_catalog.master_comfy import snap_wan_length
+
+    assert snap_wan_length(72) == 73  # 4*18+1
+    assert snap_wan_length(81) == 81
+    assert (snap_wan_length(49) - 1) % 4 == 0
+
+
+def test_build_master_action(tmp_path):
+    from viu.interaction_catalog.prompts import build_master_action
+
+    cfg = _cfg(tmp_path)
+    wish = InteractionWish.from_dict(DEFAULT_INTERACTIONS[0].to_dict())
+    action = build_master_action(cfg, wish)
+    assert "wolf" in action.lower() or "shanya" in action.lower()
+    assert "white studio" in action.lower()
+
+
+def test_master_draft_requires_blocking(tmp_path):
+    from viu.interaction_catalog.master_comfy import run_interaction_master_draft
+
+    cfg = _cfg(tmp_path)
+    wish = InteractionWish.from_dict(DEFAULT_INTERACTIONS[0].to_dict())
+    ok, msg = run_interaction_master_draft(cfg, wish)
+    assert not ok
+    assert "blocking" in msg.lower()

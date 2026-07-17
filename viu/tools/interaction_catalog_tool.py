@@ -84,3 +84,28 @@ class InteractionBlockingTool(Tool):
         open_result = str(args.get("open", "1")).lower() in ("1", "true", "yes")
         ok, msg = run_interaction_blocking(ctx.config, wish, open_result=open_result)
         return ToolResult(ok, msg)
+
+
+class InteractionMasterDraftTool(Tool):
+    name = "interaction_master_draft"
+    description = (
+        "Comfy Wan: черновой master ref всей сцены (master_draft.mp4). "
+        "Нужен blocking.blend. slug= из interaction_catalog."
+    )
+    parameters = {
+        "slug": "slug сцены (shanya_wolf_approach)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        store = InteractionCatalogStore(interaction_catalog_path(ctx.config)).load()
+        slug = str(args.get("slug") or "").strip()
+        wish = store.get_by_slug(slug) if slug else None
+        if wish is None:
+            holes = store.holes_for_wave(wave=1)
+            wish = holes[0] if holes else None
+        if wish is None:
+            return ToolResult(False, "Нет interaction в каталоге.")
+        from ..interaction_catalog.master_comfy import run_interaction_master_draft
+
+        ok, msg = run_interaction_master_draft(ctx.config, wish)
+        return ToolResult(ok, msg)

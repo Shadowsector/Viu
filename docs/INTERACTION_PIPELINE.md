@@ -3,7 +3,7 @@
 **Автор идеи:** Den (2026-07-17).  
 **Статус:** спецификация + MVP-скелет в коде. Реализация шагов — поэтапно.
 
-Читай вместе с: `COMFY_CASCADEUR_PIPELINE.md`, `CREATURE_PIPELINE.md`, `SHANYA_ANIMATIONS.md`, `VIU_DIRECTION.md`.
+Читай вместе с: `COMFY_CASCADEUR_PIPELINE.md`, `CREATURE_PIPELINE.md`, `INTERACTION_SETUP.md` (куда класть файлы), `SHANYA_ANIMATIONS.md`, `VIU_DIRECTION.md`.
 
 ---
 
@@ -181,7 +181,7 @@ lab_run_all topic=interaction
 |---|-----|--------|
 | 0 | Спека из каталога | ✅ scaffold |
 | 1 | Blocking Blender | ✅ `interaction_blocking` / lab step 2 |
-| 2 | Master draft Comfy | ⏳ |
+| 2 | Master draft Comfy | ✅ `interaction_master_draft` |
 | 3 | Одобрение (Telegram/GUI) | ⏳ |
 | 4 | Per-actor isolated ref | ⏳ |
 | 5 | MoCap / Control Pose | ⏳ |
@@ -200,6 +200,7 @@ VRAM: как у solo — Comfy и Cascadeur **не параллельно** (`VI
 | `lab_start topic=interaction` | начать сессию по slug |
 | `lab_step topic=interaction` | следующий шаг |
 | `interaction_blocking` | Blender blocking (актёры + маркеры + камера) |
+| `interaction_master_draft` | Comfy Wan → master_draft.mp4 |
 | `creature_lineup` | росты в creature_catalog (prerequisite) |
 | `comfy_run` / `comfy_triple` | master и per-actor (позже с lock) |
 | `cascadeur_status` | MoCap humanoid (когда bridge готов) |

@@ -72,7 +72,7 @@ Ollama **llava** уже стоит; WD14 в Comfy — отдельный workflo
 
 Старый чеклист morphs / genital / сокеты — ниже без изменений смысла.
 
-**Совместные анимации (multi-actor):** см. `docs/INTERACTION_PIPELINE.md` и `interaction_catalog.json`.
+**Совместные анимации (multi-actor):** см. `docs/INTERACTION_PIPELINE.md`, `docs/INTERACTION_SETUP.md` (куда класть FBX).
 
 ---
 

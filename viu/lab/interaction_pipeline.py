@@ -143,19 +143,18 @@ def step_blocking(config: Config, session: LabSession) -> StepResult:
 
 
 def step_master_draft(config: Config, session: LabSession) -> StepResult:
+    from ..interaction_catalog.master_comfy import run_interaction_master_draft
+
     wish = load_wish(config, str(session.meta.get("catalog_slug", "")))
     if wish is None:
         return False, "Нет wish для master draft.", None
-    paths = _scene_paths(config, wish)
-    _ensure_dirs(paths)
-    draft = paths["master"] / "master_draft.mp4"
-    msg = (
-        f"MVP: master draft Comfy — scaffold.\n"
-        f"Цель: {draft}\n"
-        f"Правила: studio, 1–3 актёра, разные цвета силуэтов, {wish.choreography.duration_frames}f.\n"
-        f"Используй comfy_run после blocking; не MoCapить master напрямую."
-    )
-    append_journal(config, INTERACTION_TOPIC, "master_draft: scaffold")
+
+    ok, msg = run_interaction_master_draft(config, wish)
+    if not ok:
+        append_journal(config, INTERACTION_TOPIC, f"master_draft fail: {msg[:300]}")
+        return False, msg, None
+
+    append_journal(config, INTERACTION_TOPIC, "master_draft ok")
     return True, msg, None
 
 
