@@ -22,6 +22,14 @@ def test_load_env_file_overrides_llm_timeout(tmp_path, monkeypatch):
     assert os.environ["VIU_LLM_TIMEOUT"] == "1200"
 
 
+def test_load_env_file_overrides_model_reflect(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIU_MODEL_REFLECT", "qwen2.5-coder:14b")
+    env = tmp_path / ".env"
+    env.write_text("VIU_MODEL_REFLECT=viu-cydonia\n", encoding="utf-8")
+    load_env_file(tmp_path)
+    assert os.environ["VIU_MODEL_REFLECT"] == "viu-cydonia"
+
+
 def test_reload_secret_overwrites_empty_env(tmp_path, monkeypatch):
     monkeypatch.setenv("VIU_GITHUB_TOKEN", "")
     env = tmp_path / ".env"
