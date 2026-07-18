@@ -230,6 +230,8 @@ class CreatureEntry:
     prepared_path: str = ""
     photo_front: str = ""
     photo_side: str = ""
+    photo_ok: bool = False          # Ден подтвердил скрины lineup
+    photo_notes: str = ""           # что не так: IK, текстуры, …
     # Внешность для анимации / Comfy (из VL по скрину или руками).
     appearance_en: str = ""              # English prompt / tags for Comfy
     appearance_ru: str = ""              # коротко для чата Вью
@@ -275,6 +277,8 @@ class CreatureEntry:
             prepared_path=str(d.get("prepared_path") or ""),
             photo_front=str(d.get("photo_front") or ""),
             photo_side=str(d.get("photo_side") or ""),
+            photo_ok=bool(d.get("photo_ok")),
+            photo_notes=str(d.get("photo_notes") or ""),
             appearance_en=str(d.get("appearance_en") or ""),
             appearance_ru=str(d.get("appearance_ru") or ""),
             appearance_tags=list(d.get("appearance_tags") or []),
@@ -287,6 +291,26 @@ class CreatureEntry:
         if not e.id and e.path:
             e.id = creature_id_for_path(Path(e.path))
         return e
+
+    def has_photo_files(self) -> bool:
+        for p in (self.photo_front, self.photo_side):
+            if p and Path(p).is_file():
+                return True
+        return False
+
+    def needs_photo_lineup(self) -> bool:
+        """Нужна съёмка в Blender (нет файлов или сброшено после правки)."""
+        if self.status == STATUS_SKIP or not self.size_class:
+            return False
+        if self.photo_ok:
+            return False
+        return not self.has_photo_files()
+
+    def needs_photo_review(self) -> bool:
+        """Есть скрины, но Ден ещё не нажал «Скрины ок»."""
+        if self.status == STATUS_SKIP or not self.size_class or self.photo_ok:
+            return False
+        return self.has_photo_files()
 
     def anim_bucket(self) -> str:
         """Ключ набора анимаций: size × locomotion."""

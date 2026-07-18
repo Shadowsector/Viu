@@ -96,8 +96,28 @@ class CreatureCatalogStore:
         # сброс старого замера — линейка перемерит
         e.measured_height_m = 0.0
         e.scale_applied = 1.0
+        e.photo_ok = False
+        e.photo_notes = ""
         self._items[e.id] = e
         return e
+
+    def mark_photo_ok(self, cid: str, *, ok: bool, notes: str = "") -> Optional[CreatureEntry]:
+        e = self._items.get(cid)
+        if e is None:
+            return None
+        e.photo_ok = bool(ok)
+        if notes:
+            e.photo_notes = notes.strip()
+        elif ok:
+            e.photo_notes = ""
+        self._items[e.id] = e
+        return e
+
+    def needs_photos(self) -> List[CreatureEntry]:
+        return [e for e in self.sized() if e.needs_photo_lineup()]
+
+    def needs_photo_review(self) -> List[CreatureEntry]:
+        return [e for e in self.sized() if e.needs_photo_review()]
 
     def sized(self) -> List[CreatureEntry]:
         return [e for e in self._items.values() if e.size_class and e.status != "skip"]
@@ -119,8 +139,12 @@ class CreatureCatalogStore:
         total = len(self._items)
         pending = len(self.pending())
         sized = sum(1 for e in self._items.values() if e.size_class)
+        need_photos = len(self.needs_photos())
+        need_review = len(self.needs_photo_review())
+        photo_ok = sum(1 for e in self._items.values() if e.photo_ok)
         lines = [
             f"Каталог существ: {total} шт., размечено size: {sized}, ждут разметки: {pending}.",
+            f"Скрины: ок {photo_ok}, ждут съёмки {need_photos}, ждут проверки {need_review}.",
         ]
         by_bucket: Dict[str, int] = {}
         for e in self._items.values():

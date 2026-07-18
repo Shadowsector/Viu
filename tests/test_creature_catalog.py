@@ -187,6 +187,7 @@ def test_lineup_job(tmp_path, monkeypatch):
     assert "import_scene.fbx" in body
     assert "VIU_LINEUP_PHOTO" in body
     assert "render_creature_shots" in body
+    assert "_hide_rig_helpers" in body
 
 
 def test_lineup_parse_photos_and_apply(tmp_path, monkeypatch):
@@ -318,6 +319,85 @@ def test_tools_registered():
     assert "creature_lineup" in names
 
 
+def test_lineup_slug_and_need_photos_filter(tmp_path, monkeypatch):
+    from viu.creature_catalog.lineup import build_lineup_jobs
+    from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    store.upsert(
+        CreatureEntry(
+            id="w1",
+            path=str(tmp_path / "wolf.blend"),
+            name="wolf_alpha",
+            slug="wolf_alpha",
+            size_class="quad_med",
+            locomotion="quadruped",
+            status=STATUS_SIZED,
+            photo_front=str(tmp_path / "wolf_front.png"),
+            photo_side=str(tmp_path / "wolf_side.png"),
+            photo_ok=True,
+        )
+    )
+    store.upsert(
+        CreatureEntry(
+            id="g1",
+            path=str(tmp_path / "goblin.fbx"),
+            name="Goblin",
+            slug="goblin",
+            size_class="small",
+            locomotion="biped",
+            status=STATUS_SIZED,
+        )
+    )
+    store.save()
+    (tmp_path / "wolf_front.png").write_bytes(b"x")
+    (tmp_path / "wolf_side.png").write_bytes(b"x")
+
+    ok, _msg, jobs = build_lineup_jobs(cfg, slug_filter=["wolf_alpha"], need_photos_only=False)
+    assert ok and jobs
+    data = __import__("json").loads(jobs[0].read_text(encoding="utf-8"))
+    assert len(data["creatures"]) == 1
+    assert data["creatures"][0]["slug"] == "wolf_alpha"
+
+    ok2, msg2, jobs2 = build_lineup_jobs(cfg, need_photos_only=True)
+    assert ok2 and jobs2
+    data2 = __import__("json").loads(jobs2[0].read_text(encoding="utf-8"))
+    assert len(data2["creatures"]) == 1
+    assert data2["creatures"][0]["slug"] == "goblin"
+
+    store2 = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    g = store2.get("g1")
+    assert g is not None
+    (tmp_path / "g_front.png").write_bytes(b"x")
+    g.photo_front = str(tmp_path / "g_front.png")
+    store2.upsert(g)
+    store2.save()
+    ok3, msg3, _ = build_lineup_jobs(cfg, need_photos_only=True)
+    assert not ok3
+    assert "без скринов" in msg3
+
+
+def test_photo_ok_model(tmp_path, monkeypatch):
+    from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
+
+    e = CreatureEntry(
+        id="x",
+        path=str(tmp_path / "a.fbx"),
+        name="Wolf",
+        size_class="quad_med",
+        status=STATUS_SIZED,
+    )
+    assert e.needs_photo_lineup()
+    assert not e.needs_photo_review()
+    (tmp_path / "front.png").write_bytes(b"x")
+    e.photo_front = str(tmp_path / "front.png")
+    assert not e.needs_photo_lineup()
+    assert e.needs_photo_review()
+    e.photo_ok = True
+    assert not e.needs_photo_review()
+
+
 def test_gui_action_creature_catalog():
     from viu.gui_actions import GUI_ACTIONS
 
@@ -329,3 +409,4 @@ def test_gui_action_creature_catalog():
     assert action.group == "Главное"
     lineup = next(a for a in GUI_ACTIONS if a.action_id == "creature_lineup")
     assert lineup.tool == "creature_lineup"
+    assert lineup.tool_args.get("need_photos") == "1"

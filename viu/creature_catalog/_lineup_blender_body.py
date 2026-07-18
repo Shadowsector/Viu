@@ -53,6 +53,52 @@ def import_asset(path: Path):
     return [o for o in bpy.data.objects if o not in before]
 
 
+_RIG_HIDE_PARTS = (
+    "ik",
+    "pole",
+    "ctrl",
+    "control",
+    "target",
+    "widget",
+    "wgt",
+    "handle",
+    "gizmo",
+    "helper",
+    "rig_",
+    "_rig",
+    "bone_",
+    "empties",
+    "root_ik",
+    "foot_ik",
+    "hand_ik",
+)
+
+
+def _hide_rig_helpers(objects):
+    """Спрятать IK-empties и вспомогательные объекты перед съёмкой."""
+    for obj in objects:
+        low = (obj.name or "").lower()
+        try:
+            if obj.type == "EMPTY":
+                obj.hide_render = True
+                obj.hide_viewport = True
+                continue
+            if obj.type == "ARMATURE":
+                obj.data.display_type = "STICK"
+                for bone in obj.data.bones:
+                    bone.hide = False
+                continue
+            if obj.type == "MESH" and any(k in low for k in _RIG_HIDE_PARTS):
+                obj.hide_render = True
+                obj.hide_viewport = True
+                continue
+            if obj.type == "CURVE" and any(k in low for k in ("wire", "path", "guide")):
+                obj.hide_render = True
+                obj.hide_viewport = True
+        except (AttributeError, ReferenceError):
+            pass
+
+
 def _skip_mesh_name(name: str) -> bool:
     low = (name or "").lower()
     return any(
@@ -369,6 +415,7 @@ def render_creature_shots(placed, processed_root: Path):
         front_path = out_dir / "front.png"
         side_path = out_dir / "side.png"
         _isolate_creature(root)
+        _hide_rig_helpers(imported)
         try:
             for yaw, path in ((0.0, front_path), (90.0, side_path)):
                 cam = _make_shot_camera(imported, yaw)
@@ -414,6 +461,7 @@ def place_creature(entry, x, y):
         add_text_label("MISSING\n" + name[:40], (x, y - 0.6, 0.5))
         return None
     imported = import_asset(p)
+    _hide_rig_helpers(imported)
     root = wrap_root(imported, name)
     scale, h_before, h_final = scale_root_to_target(root, imported, target)
     place_root(root, imported, x, y=y, ground_z=0.0)

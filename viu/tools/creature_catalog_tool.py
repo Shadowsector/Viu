@@ -222,11 +222,13 @@ class CreatureLineupTool(Tool):
     name = "creature_lineup"
     description = (
         "Линейка существ: Вью сама запускает Blender, собирает .blend рядом с Шаней, "
-        "открывает результат. size= фильтр; open=0 не открывать; split=0 одна сцена; "
-        "all=1 без дедупа имён; prepare_only=1 только JSON без Blender."
+        "front/side PNG в Processed/. По умолчанию только без одобренных скринов. "
+        "slug= один или несколько; need_photos=0 — весь каталог; open=0 не открывать."
     )
     parameters = {
         "size": "фильтр size_class через запятую (пусто = все размеченные)",
+        "slug": "slug или имя (через запятую) — только эти существа",
+        "need_photos": "1 только ждут съёмки/проверки (по умолчанию), 0 весь каталог",
         "shanya_path": "путь к модели Шани",
         "spacing": "метры между фигурами (1.2)",
         "open": "1 открыть .blend/папку (по умолчанию), 0 — нет",
@@ -237,6 +239,13 @@ class CreatureLineupTool(Tool):
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         sizes = [p.strip() for p in str(args.get("size") or "").split(",") if p.strip()]
+        slug_filter = [
+            p.strip()
+            for p in str(args.get("slug") or args.get("slugs") or "").split(",")
+            if p.strip()
+        ]
+        need_raw = str(args.get("need_photos") or "1").strip().lower()
+        need_photos_only = need_raw not in ("0", "false", "no", "all")
         try:
             spacing = float(args.get("spacing") or 1.2)
         except (TypeError, ValueError):
@@ -246,6 +255,8 @@ class CreatureLineupTool(Tool):
             ok, msg, path = build_lineup_job(
                 ctx.config,
                 size_filter=sizes,
+                slug_filter=slug_filter,
+                need_photos_only=need_photos_only,
                 shanya_path=str(args.get("shanya_path") or "").strip(),
                 spacing_m=spacing,
             )
@@ -270,6 +281,8 @@ class CreatureLineupTool(Tool):
         ok, msg = run_creature_lineup(
             ctx.config,
             size_filter=sizes,
+            slug_filter=slug_filter,
+            need_photos_only=need_photos_only,
             shanya_path=str(args.get("shanya_path") or "").strip(),
             spacing_m=spacing,
             split=split,

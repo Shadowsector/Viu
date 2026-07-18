@@ -17,3 +17,4 @@ venv/
 # Пользовательские инструменты, созданные агентом на лету
 viu/tools/custom/*.py
 !viu/tools/custom/__init__.py
+U:/

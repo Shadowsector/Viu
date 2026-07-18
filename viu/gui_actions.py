@@ -75,7 +75,8 @@ GUI_ACTIONS: List[GuiAction] = [
         "Линейка существ",
         "Главное",
         tool="creature_lineup",
-        hint="Вью сама запускает Blender: Шаня + монстры по росту. Откроет .blend.",
+        tool_args={"need_photos": "1", "open": "1"},
+        hint="Только без одобренных скринов. Смотри в «Разметить существ» → переснять одного.",
     ),
     GuiAction(
         "interaction_blocking",

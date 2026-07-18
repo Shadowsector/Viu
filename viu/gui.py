@@ -1156,6 +1156,7 @@ class ViuGUI:
                 open_creature_catalog_review(
                     self.root,
                     store,
+                    config=cfg,
                     on_finished=on_finished,
                 )
             except Exception as exc:

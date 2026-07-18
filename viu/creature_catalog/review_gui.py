@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
+import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 from typing import Callable, Optional
 
+from ..config import Config
 from .auto_size import apply_size_to_same_stem, auto_apply_size_guesses
 from .models import (
     LOCOMOTION,
@@ -37,11 +40,15 @@ class CreatureCatalogReviewWindow:
         master: tk.Misc,
         store: CreatureCatalogStore,
         *,
+        config: Optional[Config] = None,
         on_finished: Optional[Callable[[], None]] = None,
     ) -> None:
         self.store = store
+        self.config = config
         self.on_finished = on_finished
         self._current: Optional[CreatureEntry] = None
+        self._photo_refs: list = []
+        self._lineup_busy = False
 
         self.win = tk.Toplevel(master)
         self.win.title("Вью — разметить существ")
@@ -224,6 +231,35 @@ class CreatureCatalogReviewWindow:
         self.status_lbl = ttk.Label(self.detail, text="", font=("Segoe UI", 9))
         self.status_lbl.pack(anchor="w", pady=(8, 0))
 
+        self.photo_fr = ttk.LabelFrame(
+            self.detail, text="Скрины lineup (front / side) — проверь перед Comfy", padding=6
+        )
+        self.photo_fr.pack(fill="x", pady=(10, 4))
+        self.photo_status = ttk.Label(
+            self.photo_fr, text="Скринов нет — после размера жми «Переснять»", font=("Segoe UI", 9)
+        )
+        self.photo_status.pack(anchor="w", pady=(0, 4))
+        shots = ttk.Frame(self.photo_fr)
+        shots.pack(fill="x")
+        self.photo_front_lbl = ttk.Label(shots, text="front", relief="groove", anchor="center")
+        self.photo_front_lbl.pack(side="left", padx=(0, 8))
+        self.photo_side_lbl = ttk.Label(shots, text="side", relief="groove", anchor="center")
+        self.photo_side_lbl.pack(side="left")
+        photo_btns = ttk.Frame(self.photo_fr)
+        photo_btns.pack(fill="x", pady=(6, 0))
+        ttk.Button(photo_btns, text="Переснять скрины", command=self._reshoot_photos).pack(
+            side="left", padx=(0, 6)
+        )
+        ttk.Button(photo_btns, text="Скрины ок ✓", command=self._mark_photos_ok).pack(
+            side="left", padx=(0, 6)
+        )
+        ttk.Button(photo_btns, text="Плохо — поправлю blend", command=self._mark_photos_bad).pack(
+            side="left", padx=(0, 6)
+        )
+        ttk.Button(photo_btns, text="Открыть папку", command=self._open_photo_folder).pack(
+            side="left"
+        )
+
         self.win.protocol("WM_DELETE_WINDOW", self._finish_and_close)
         self._reload_list()
 
@@ -257,6 +293,10 @@ class CreatureCatalogReviewWindow:
             hint = self._hint_for(e)
             if e.size_class:
                 hint = f"{e.size_class}/{e.target_height_m:.2f}m"
+                if e.photo_ok:
+                    hint += " ✓фото"
+                elif e.has_photo_files():
+                    hint += " ?фото"
             self.tree.insert(
                 "",
                 "end",
@@ -270,9 +310,9 @@ class CreatureCatalogReviewWindow:
             self.done_text.insert(
                 "end",
                 self.store.summary_text()
-                + "\n\nДальше: кнопка «Линейка существ» в Главном — "
-                "Вью сама запустит Blender и откроет .blend рядом с Шаней.\n"
-                "Если рост кривой — включи «Показать уже размеченных» и задай точный рост (м).",
+                + "\n\nДальше: «Линейка существ» — только без одобренных скринов.\n"
+                "Проверка: включи «Показать уже размеченных» → смотри front/side → «Скрины ок».\n"
+                "Полный прогон всего каталога: creature_lineup need_photos=0",
             )
             self._current = None
             return
@@ -321,7 +361,146 @@ class CreatureCatalogReviewWindow:
             self.height_var.set(f"{e.target_height_m:.2f}".rstrip("0").rstrip("."))
         else:
             self.height_var.set("")
+        photo_msg = "Скринов нет — жми «Переснять»"
+        if e.photo_ok:
+            photo_msg = "✓ Скрины одобрены"
+        elif e.has_photo_files():
+            photo_msg = "Скрины есть — проверь и жми «Скрины ок» или «Плохо»"
+        if e.photo_notes:
+            photo_msg += f" · {e.photo_notes[:80]}"
+        self.photo_status.config(text=photo_msg)
+        self._load_photo_previews(e)
         self.status_lbl.config(text="")
+
+    def _load_photo_previews(self, e: CreatureEntry) -> None:
+        self._photo_refs.clear()
+        for lbl, path_s in (
+            (self.photo_front_lbl, e.photo_front),
+            (self.photo_side_lbl, e.photo_side),
+        ):
+            p = Path(path_s) if path_s else None
+            if p and p.is_file() and p.suffix.lower() in (".png", ".gif"):
+                try:
+                    img = tk.PhotoImage(file=str(p))
+                    while img.width() > 220 or img.height() > 220:
+                        img = img.subsample(2, 2)
+                    lbl.config(image=img, text="")
+                    self._photo_refs.append(img)
+                    continue
+                except tk.TclError:
+                    pass
+            lbl.config(image="", text=(p.name if p else "—"))
+
+    def _current_slug(self) -> str:
+        if self._current is None:
+            return ""
+        return (self._current.slug or self._current.name or "").strip()
+
+    def _reshoot_photos(self) -> None:
+        if self._current is None:
+            return
+        if self.config is None:
+            messagebox.showinfo(
+                "Вью",
+                "Пересъёмка из окна разметки недоступна — в чате:\n"
+                f"creature_lineup slug={self._current_slug()} open=0",
+                parent=self.win,
+            )
+            return
+        if self._lineup_busy:
+            messagebox.showinfo("Вью", "Линейка уже запущена…", parent=self.win)
+            return
+        slug = self._current_slug()
+        if not slug:
+            return
+        if not self._current.size_class:
+            messagebox.showwarning(
+                "Вью", "Сначала выбери размер (класс роста).", parent=self.win
+            )
+            return
+        self._lineup_busy = True
+        self.photo_status.config(text=f"Переснимаю {slug}… (Blender в фоне)")
+        cfg = self.config
+        cid = self._current.id
+
+        def worker() -> None:
+            from .lineup import run_creature_lineup
+
+            ok, msg = run_creature_lineup(
+                cfg,
+                slug_filter=[slug],
+                need_photos_only=False,
+                open_result=False,
+                split=False,
+            )
+            self.win.after(0, lambda: self._reshoot_done(cid, ok, msg))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _reshoot_done(self, cid: str, ok: bool, msg: str) -> None:
+        self._lineup_busy = False
+        from .store import CreatureCatalogStore
+        from .paths import creature_catalog_path
+
+        if self.config is not None:
+            self.store = CreatureCatalogStore(creature_catalog_path(self.config)).load()
+        self.status_lbl.config(text=("✓ " if ok else "✗ ") + msg.split("\n")[0][:120])
+        self._reload_list(select_id=cid)
+
+    def _mark_photos_ok(self) -> None:
+        if self._current is None:
+            return
+        updated = self.store.mark_photo_ok(self._current.id, ok=True)
+        if updated is None:
+            return
+        self.store.save()
+        self.status_lbl.config(text=f"✓ Скрины одобрены: {updated.name}")
+        self._reload_list(select_id=self._current.id)
+
+    def _mark_photos_bad(self) -> None:
+        if self._current is None:
+            return
+        note = simpledialog.askstring(
+            "Вью",
+            "Что не так? (IK, текстуры, мечи…)\n"
+            "Поправь .blend в Inbox и жми «Переснять».",
+            parent=self.win,
+            initialvalue=self._current.photo_notes or "",
+        )
+        if note is None:
+            return
+        updated = self.store.mark_photo_ok(
+            self._current.id, ok=False, notes=note.strip() or "нужна правка blend"
+        )
+        if updated is None:
+            return
+        self.store.save()
+        self.status_lbl.config(text="Отмечено: скрины нужно переделать")
+        self._reload_list(select_id=self._current.id)
+
+    def _open_photo_folder(self) -> None:
+        if self._current is None:
+            return
+        slug = self._current_slug()
+        if self.config is None or not slug:
+            return
+        from .paths import creature_processed_slug_dir
+
+        folder = creature_processed_slug_dir(self.config, slug)
+        folder.mkdir(parents=True, exist_ok=True)
+        try:
+            if os.name == "nt":
+                os.startfile(str(folder))  # type: ignore[attr-defined]
+            else:
+                import subprocess
+                import sys
+
+                if sys.platform == "darwin":
+                    subprocess.Popen(["open", str(folder)])
+                else:
+                    subprocess.Popen(["xdg-open", str(folder)])
+        except OSError as exc:
+            messagebox.showerror("Вью", str(exc), parent=self.win)
 
     def _parse_custom_height(self) -> float | None:
         raw = (self.height_var.get() or "").strip().replace(",", ".")
@@ -411,6 +590,7 @@ def open_creature_catalog_review(
     master: tk.Misc,
     store: CreatureCatalogStore,
     *,
+    config: Optional[Config] = None,
     on_finished: Optional[Callable[[], None]] = None,
 ) -> CreatureCatalogReviewWindow:
-    return CreatureCatalogReviewWindow(master, store, on_finished=on_finished)
+    return CreatureCatalogReviewWindow(master, store, config=config, on_finished=on_finished)
