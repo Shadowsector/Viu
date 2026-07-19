@@ -18,7 +18,15 @@
 U:\Anabarra\Library\Lab\Creatures\Inbox\wolf_alpha.blend
 ```
 
+**Единый Inbox** для всех живых существ. `Models\Inbox` — только Шаня/humanoid, не волки.
+
 Имя файла → slug `wolf_alpha`.
+
+### Только WGT в Blender, тела не видно?
+
+Rig-виджеты (`WGT.Foot.L` …) — не тело. На панели Viu: **Показать меши тела** / **Спрятать IK**.
+
+Если тела всё равно нет — в `.blend` нет mesh (только риг). Экспортируй FBX с телом или открой полный blend в `Creatures\Inbox`.
 
 ---
 

@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 1, 0),
+    "version": (0, 1, 1),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Шаня + одно существо: рост, очистка, скрины, эталон",
@@ -90,9 +90,21 @@ def _clear_creature():
     _STATE["body_mesh"] = ""
 
 
+def _is_wgt_name(name: str) -> bool:
+    """Custom bone shapes (WGT.Foot.L и т.п.) — не тело."""
+    if not name:
+        return False
+    n = name.strip()
+    if n.startswith("WGT.") or n.startswith("WGT-") or n.startswith("WGT_"):
+        return True
+    low = n.lower()
+    return low.startswith("wgt.") or low.startswith("wgt-") or low.startswith("wgt_")
+
+
 def _import_asset(path: Path):
     path = Path(path)
     before = set(bpy.data.objects)
+    before_colls = set(bpy.data.collections)
     suf = path.suffix.lower()
     if suf == ".fbx":
         bpy.ops.import_scene.fbx(filepath=str(path), global_scale=1.0)
@@ -102,14 +114,66 @@ def _import_asset(path: Path):
         bpy.ops.import_scene.gltf(filepath=str(path))
     elif suf == ".blend":
         with bpy.data.libraries.load(str(path), link=False) as (data_from, data_to):
+            data_to.collections = list(data_from.collections)
             data_to.objects = list(data_from.objects)
-        for obj in data_to.objects:
-            if obj is not None:
-                bpy.context.collection.objects.link(obj)
+        scene_coll = bpy.context.scene.collection
+        for coll in bpy.data.collections:
+            if coll in before_colls:
+                continue
+            try:
+                scene_coll.children.link(coll)
+            except RuntimeError:
+                pass
+        for obj in bpy.data.objects:
+            if obj in before:
+                continue
+            if obj.users_collection:
+                continue
+            try:
+                scene_coll.objects.link(obj)
+            except RuntimeError:
+                pass
     else:
         raise RuntimeError("unsupported: " + suf)
     bpy.context.view_layer.update()
-    return [o for o in bpy.data.objects if o not in before]
+    imported = [o for o in bpy.data.objects if o not in before]
+    _post_import_visibility(imported)
+    return imported
+
+
+def _post_import_visibility(objects):
+    """Спрятать WGT/empties, показать меши тела."""
+    body = []
+    for obj in objects:
+        if _is_wgt_name(obj.name):
+            obj.hide_set(True)
+            try:
+                obj.hide_viewport = True
+            except AttributeError:
+                pass
+            obj.hide_render = True
+            continue
+        if obj.type == "MESH" and _skip_mesh(obj.name):
+            obj.hide_set(True)
+            obj.hide_render = True
+            continue
+        if obj.type == "MESH":
+            obj.hide_set(False)
+            try:
+                obj.hide_viewport = False
+            except AttributeError:
+                pass
+            obj.hide_render = False
+            vc = len(obj.data.vertices) if obj.data else 0
+            if vc > 32:
+                body.append(obj)
+        elif obj.type == "ARMATURE":
+            obj.hide_set(False)
+            obj.data.display_type = "STICK"
+        elif obj.type == "EMPTY":
+            obj.hide_set(True)
+            obj.hide_render = True
+    return body
 
 
 def _wrap_root(imported, name):
@@ -128,6 +192,8 @@ def _wrap_root(imported, name):
 
 
 def _skip_mesh(name: str) -> bool:
+    if _is_wgt_name(name):
+        return True
     low = (name or "").lower()
     return any(k in low for k in _RIG_HIDE + ("collision", "weapon", "sword", "shadow", "lod3", "lod4"))
 
@@ -180,6 +246,10 @@ def _height_of_objects(objects, body_mesh: str = ""):
 
 def _hide_helpers(objects):
     for obj in objects:
+        if _is_wgt_name(obj.name):
+            obj.hide_set(True)
+            obj.hide_render = True
+            continue
         low = (obj.name or "").lower()
         try:
             if obj.type == "EMPTY":
@@ -256,6 +326,7 @@ def _load_creature_entry(entry: dict):
     imported = _import_asset(path)
     root = _wrap_root(imported, entry.get("name") or "creature")
     _hide_helpers(imported)
+    body_meshes = [o for o in imported if o.type == "MESH" and not o.hide_get()]
     target = float(entry.get("target_height_m") or 1.0)
     offset = float(_SESSION.get("creature_offset_m") or 1.35)
     body = _STATE.get("body_mesh") or "AUTO"
@@ -263,12 +334,17 @@ def _load_creature_entry(entry: dict):
     _place_creature(root, imported, offset, target, bm)
     _STATE["creature_root"] = root
     _STATE["creature_objects"] = imported
-    # авто body mesh
-    meshes = [o for o in imported if o.type == "MESH" and not _skip_mesh(o.name)]
-    if meshes:
-        best = max(meshes, key=lambda o: len(o.data.vertices) if o.data else 0)
+    if body_meshes:
+        best = max(body_meshes, key=lambda o: len(o.data.vertices) if o.data else 0)
         _STATE["body_mesh"] = best.name
-    return f"Загружено: {entry.get('name')}"
+    else:
+        _STATE["body_mesh"] = ""
+    if not body_meshes:
+        return (
+            f"Загружено: {entry.get('name')} — ⚠ только WGT/риг, тела не видно. "
+            "Проверь .blend (коллекция Body) или положи FBX в Creatures/Inbox."
+        )
+    return f"Загружено: {entry.get('name')} (меш: {_STATE['body_mesh']})"
 
 
 def _setup_camera_for_shot(yaw_deg: float, objects):
@@ -329,6 +405,27 @@ def _render_shots(entry: dict) -> tuple[str, str]:
             shanya.hide_set(shanya_hide)
             shanya.hide_render = False
     return str(front), str(side)
+
+
+class VIU_OT_StudioShowBody(bpy.types.Operator):
+    bl_idname = "viu.studio_show_body"
+    bl_label = "Показать меши тела"
+
+    def execute(self, context):
+        objs = _STATE.get("creature_objects") or []
+        shown = 0
+        for obj in objs:
+            if obj.type != "MESH" or _is_wgt_name(obj.name):
+                continue
+            obj.hide_set(False)
+            try:
+                obj.hide_viewport = False
+            except AttributeError:
+                pass
+            obj.hide_render = False
+            shown += 1
+        self.report({"INFO"}, f"Показано мешей: {shown}")
+        return {"FINISHED"}
 
 
 class VIU_OT_StudioPrev(bpy.types.Operator):
@@ -514,6 +611,7 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         col.operator("viu.studio_reload", icon="FILE_REFRESH")
         layout.separator()
         layout.operator("viu.studio_hide_ik", icon="HIDE_ON")
+        layout.operator("viu.studio_show_body", icon="MESH_DATA")
         props = context.scene.viu_creature_studio
         layout.prop(props, "target_height_m")
         layout.label(text=f"Меш: {props.body_mesh or 'AUTO'}")
@@ -544,6 +642,7 @@ _CLASSES = (
     VIU_OT_StudioNext,
     VIU_OT_StudioReload,
     VIU_OT_StudioHideIk,
+    VIU_OT_StudioShowBody,
     VIU_OT_StudioApplyHeight,
     VIU_OT_StudioScreenshot,
     VIU_OT_StudioSave,

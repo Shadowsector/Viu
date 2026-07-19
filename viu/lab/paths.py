@@ -54,9 +54,9 @@ def models_inbox_dir(config: Config) -> Path:
     readme = p / "README.txt"
     if not readme.is_file():
         readme.write_text(
-            "Папка входящих моделей для лаборатории Вью.\n"
-            "Положи сюда .blend или .fbx персонажей.\n"
-            "Вью проверит кости в Blender и попробует случайно в Cascadeur.\n",
+            "Inbox humanoid-моделей для lab Cascadeur (Шаня, rig-check).\n"
+            "Не для монстров — живые существа → Lab/Creatures/Inbox.\n"
+            "Положи .blend или .fbx персонажа.\n",
             encoding="utf-8",
         )
     return p

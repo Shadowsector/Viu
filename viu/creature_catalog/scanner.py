@@ -32,25 +32,16 @@ def _find_textures_nearby(asset: Path) -> Tuple[bool, str]:
 
 
 def scan_creatures_inbox(config: Config) -> Tuple[int, int, str]:
-    """Добавить новые файлы из Creatures/Inbox (+ опционально Lab/Models/Inbox).
+    """Добавить новые файлы из Lab/Creatures/Inbox (единый inbox существ).
 
     Returns: (added, total, message)
 
     Важно: считается **каждый файл** (.fbx/.blend/.glb…), рекурсивно.
-    Одна папка с goblin.fbx + goblin.blend + LOD = три записи — поэтому
-    «в проводнике 66 папок/моделей», а в каталоге может быть ~100+.
-    Также сканируется Lab/Models/Inbox, если он есть.
-    """
+    Models/Inbox — только Шаня / humanoid lab, не сканируется как существо.
+  """
     store = CreatureCatalogStore(creature_catalog_path(config)).load()
     inbox = creatures_inbox_dir(config)
     roots = [inbox]
-    # также lab models — часто туда кладут всё подряд
-    try:
-        from ..lab.paths import models_inbox_dir
-
-        roots.append(models_inbox_dir(config))
-    except Exception:
-        pass
 
     added = 0
     per_root_added: Dict[str, int] = {}

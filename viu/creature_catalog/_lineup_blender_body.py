@@ -34,6 +34,7 @@ def clear_scene():
 def import_asset(path: Path):
     path = Path(path)
     before = set(bpy.data.objects)
+    before_colls = set(bpy.data.collections)
     suf = path.suffix.lower()
     if suf == ".fbx":
         bpy.ops.import_scene.fbx(filepath=str(path), global_scale=1.0)
@@ -43,14 +44,35 @@ def import_asset(path: Path):
         bpy.ops.import_scene.gltf(filepath=str(path))
     elif suf == ".blend":
         with bpy.data.libraries.load(str(path), link=False) as (data_from, data_to):
+            data_to.collections = list(data_from.collections)
             data_to.objects = list(data_from.objects)
-        for obj in data_to.objects:
-            if obj is not None:
-                bpy.context.collection.objects.link(obj)
+        scene_coll = bpy.context.scene.collection
+        for coll in bpy.data.collections:
+            if coll in before_colls:
+                continue
+            try:
+                scene_coll.children.link(coll)
+            except RuntimeError:
+                pass
+        for obj in bpy.data.objects:
+            if obj in before:
+                continue
+            if obj.users_collection:
+                continue
+            try:
+                scene_coll.objects.link(obj)
+            except RuntimeError:
+                pass
     else:
         raise RuntimeError("unsupported: " + suf)
     bpy.context.view_layer.update()
-    return [o for o in bpy.data.objects if o not in before]
+    imported = [o for o in bpy.data.objects if o not in before]
+    for obj in imported:
+        n = obj.name or ""
+        if n.startswith("WGT.") or n.startswith("WGT-") or n.lower().startswith("wgt."):
+            obj.hide_set(True)
+            obj.hide_render = True
+    return imported
 
 
 _RIG_HIDE_PARTS = (

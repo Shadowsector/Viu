@@ -22,7 +22,7 @@ from .base import AgentContext, Tool, ToolResult
 class CreatureCatalogScanTool(Tool):
     name = "creature_catalog_scan"
     description = (
-        "Сканировать Lab/Creatures/Inbox (+ Lab/Models/Inbox) → creature_catalog.json. "
+        "Сканировать Lab/Creatures/Inbox → creature_catalog.json. "
         "Потом авторазметка уверенных имён. Основной UX — кнопка «Разметить существ»."
     )
     parameters: dict = {}

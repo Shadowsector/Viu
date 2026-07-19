@@ -24,9 +24,11 @@ def creatures_inbox_dir(config: Config) -> Path:
     readme = p / "README.txt"
     if not readme.is_file():
         readme.write_text(
-            "Inbox существ (монстры, четвероногие, аморфы).\n"
+            "Единый Inbox живых существ (волки, гоблины, NPC-монстры).\n"
             "Положи .blend / .fbx / .glb. Текстуры — рядом (textures/) или внутри blend.\n"
-            "Вью: creature_catalog_scan → разметка size_class → lineup рядом с Шаней.\n",
+            "Вью: «Разметить существ» → «Студия существ» в Blender.\n"
+            "Не клади сюда пропсы (мебель) — Prop Inbox отдельно.\n"
+            "Models/Inbox — только Шаня / humanoid для Cascadeur lab.\n",
             encoding="utf-8",
         )
     return p
