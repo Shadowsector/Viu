@@ -83,6 +83,25 @@ LOCOMOTION = (
     "unknown",
 )
 
+# Половая разметка → набор NSFW-анимаций (все классы роста).
+GENITAL_PROFILES = ("none", "penis", "vagina", "futa")
+
+GENITAL_PROFILE_LABELS: Dict[str, str] = {
+    "none": "нет половых органов",
+    "penis": "пенис (мужское)",
+    "vagina": "вагина (женское)",
+    "futa": "futa (оба)",
+}
+
+# Контакт без гениталий: мимик (язык), цветок, щупальца…
+CONTACT_MODES = ("oral", "tentacle", "hand")
+
+CONTACT_MODE_LABELS: Dict[str, str] = {
+    "oral": "рот / язык",
+    "tentacle": "щупальца",
+    "hand": "руки / лапы",
+}
+
 STATUS_NEW = "new"
 STATUS_SIZED = "sized"          # Ден выбрал class
 STATUS_NORMALIZED = "normalized"  # scale в Blender сделан
@@ -220,8 +239,10 @@ class CreatureEntry:
     scale_applied: float = 1.0
     textures_external: bool = False
     textures_dir: str = ""
-    nsfw_capable: bool = False
-    genital_rig: str = ""                # none | pending | attached
+    genital_profile: str = "none"          # none | penis | vagina | futa
+    contact_modes: List[str] = field(default_factory=list)  # oral | tentacle | hand
+    nsfw_capable: bool = False            # авто: genital≠none или есть contact_modes
+    genital_rig: str = ""                # none | pending | attached (legacy rig state)
     flaccid_default: bool = True
     # Не трогать при bake/normalize: уши, хвосты, гениталии и пр. часто живут
     # в shape keys / morph targets (в т.ч. «спрятанный» орган → вытянуть morph'ом).
@@ -271,6 +292,10 @@ class CreatureEntry:
             scale_applied=float(d.get("scale_applied") or 1),
             textures_external=bool(d.get("textures_external")),
             textures_dir=str(d.get("textures_dir") or ""),
+            genital_profile=str(d.get("genital_profile") or "none"),
+            contact_modes=[
+                m for m in (d.get("contact_modes") or []) if m in CONTACT_MODES
+            ],
             nsfw_capable=bool(d.get("nsfw_capable")),
             genital_rig=str(d.get("genital_rig") or ""),
             flaccid_default=bool(d.get("flaccid_default", True)),
@@ -294,7 +319,43 @@ class CreatureEntry:
         )
         if not e.id and e.path:
             e.id = creature_id_for_path(Path(e.path))
+        e._migrate_anatomy_from_legacy(d)
+        e.sync_nsfw_capable()
         return e
+
+    def _migrate_anatomy_from_legacy(self, d: Dict[str, Any]) -> None:
+        gp = (self.genital_profile or "none").strip()
+        if gp not in GENITAL_PROFILES:
+            self.genital_profile = "none"
+        if not d.get("genital_profile") and d.get("nsfw_capable"):
+            # старая галочка NSFW — оставляем none, Ден уточнит в разметке
+            pass
+
+    def sync_nsfw_capable(self) -> None:
+        gp = (self.genital_profile or "none").strip()
+        self.nsfw_capable = (gp not in ("", "none")) or bool(self.contact_modes)
+
+    def set_anatomy(
+        self,
+        *,
+        genital_profile: str = "",
+        contact_modes: Optional[List[str]] = None,
+    ) -> None:
+        if genital_profile:
+            gp = genital_profile.strip()
+            self.genital_profile = gp if gp in GENITAL_PROFILES else "none"
+        if contact_modes is not None:
+            self.contact_modes = [m for m in contact_modes if m in CONTACT_MODES]
+        self.sync_nsfw_capable()
+
+    def anatomy_summary(self) -> str:
+        parts: List[str] = []
+        gp = (self.genital_profile or "none").strip()
+        if gp and gp != "none":
+            parts.append(GENITAL_PROFILE_LABELS.get(gp, gp))
+        for m in self.contact_modes or []:
+            parts.append(CONTACT_MODE_LABELS.get(m, m))
+        return " · ".join(parts) if parts else "—"
 
     def has_photo_files(self) -> bool:
         for p in (self.photo_front, self.photo_side):
@@ -317,16 +378,25 @@ class CreatureEntry:
         return self.has_photo_files()
 
     def anim_bucket(self) -> str:
-        """Ключ набора анимаций: size × locomotion."""
+        """Ключ набора анимаций: size × locomotion [× анатомия]."""
         size = self.size_class or "unset"
         loco = self.locomotion or "unknown"
-        return f"{size}__{loco}"
+        base = f"{size}__{loco}"
+        gp = (self.genital_profile or "none").strip()
+        if gp and gp != "none":
+            return f"{base}__{gp}"
+        modes = sorted(set(self.contact_modes or []))
+        if modes:
+            return f"{base}__" + "+".join(modes)
+        return base
 
     def render_line(self) -> str:
         size = self.size_class or "?"
         alt = f"+{','.join(self.size_alt)}" if self.size_alt else ""
         h = f"{self.measured_height_m:.2f}→{self.target_height_m:.2f}m" if self.target_height_m else "—"
+        anat = self.anatomy_summary()
+        anat_bit = f" | {anat}" if anat != "—" else ""
         return (
             f"[{self.status}] {self.name} | {size}{alt} | {self.locomotion} | "
-            f"{h} | {Path(self.path).name}"
+            f"{h}{anat_bit} | {Path(self.path).name}"
         )

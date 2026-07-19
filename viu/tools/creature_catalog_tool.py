@@ -14,7 +14,7 @@ from ..creature_catalog import (
 )
 from ..creature_catalog.auto_size import auto_apply_size_guesses
 from ..creature_catalog.lineup import run_creature_lineup
-from ..creature_catalog.models import ALL_SIZE_IDS, LOCOMOTION
+from ..creature_catalog.models import ALL_SIZE_IDS, CONTACT_MODES, GENITAL_PROFILES, LOCOMOTION
 from ..creature_catalog.studio import open_creature_studio, sync_studio_feedback
 from ..creature_catalog.prep import open_creature_prep, sync_prep_feedback
 from .base import AgentContext, Tool, ToolResult
@@ -112,7 +112,8 @@ class CreatureCatalogSetSizeTool(Tool):
     description = (
         "Проставить size_class существу. id= или slug=; size=mini|small|humanoid|large|huge|"
         "quad_mini|quad_med|quad_large; size_alt= через запятую (dual); "
-        "locomotion=biped|quadruped|amorph|tentacle|mimic|flyer; nsfw=1."
+        "locomotion=biped|quadruped|amorph|tentacle|mimic|flyer; "
+        "genital=none|penis|vagina|futa; contact=oral,tentacle,hand (через запятую)."
     )
     parameters = {
         "id": "id записи",
@@ -120,7 +121,8 @@ class CreatureCatalogSetSizeTool(Tool):
         "size": "size_class",
         "size_alt": "доп. классы через запятую",
         "locomotion": "locomotion",
-        "nsfw": "1 = nsfw_capable",
+        "genital": "genital_profile: none|penis|vagina|futa",
+        "contact": "contact_modes: oral,tentacle,hand",
         "notes": "заметка",
         "height": "точный рост в метрах (иначе из класса)",
     }
@@ -177,15 +179,36 @@ class CreatureCatalogSetSizeTool(Tool):
         )
         if updated is None:
             return ToolResult(False, "Не удалось обновить")
-        if str(args.get("nsfw") or "").strip() in ("1", "true", "yes"):
-            updated.nsfw_capable = True
-            store.upsert(updated)
+        genital = str(args.get("genital") or args.get("genital_profile") or "").strip()
+        contact_raw = str(args.get("contact") or args.get("contact_modes") or "").strip()
+        if genital:
+            if genital not in GENITAL_PROFILES:
+                return ToolResult(
+                    False,
+                    f"genital= один из: {', '.join(GENITAL_PROFILES)}",
+                )
+        modes: List[str] = []
+        if contact_raw:
+            modes = [p.strip() for p in contact_raw.split(",") if p.strip()]
+            bad = [m for m in modes if m not in CONTACT_MODES]
+            if bad:
+                return ToolResult(
+                    False,
+                    f"contact= oral,tentacle,hand — неизвестно: {', '.join(bad)}",
+                )
+        if genital or contact_raw:
+            updated.set_anatomy(
+                genital_profile=genital or updated.genital_profile,
+                contact_modes=modes if contact_raw else None,
+            )
+        store.upsert(updated)
         store.save()
         return ToolResult(
             True,
             f"OK: {updated.render_line()}\n"
             f"anim_bucket=`{updated.anim_bucket()}`\n"
-            "Дальше: creature_lineup — сравнить рост с Шаней в Blender.",
+            f"анатомия: {updated.anatomy_summary()}\n"
+            "Дальше: подготовка → студия существ.",
         )
 
 

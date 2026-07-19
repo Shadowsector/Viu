@@ -4,6 +4,10 @@ from .auto_size import auto_apply_size_guesses
 from .lineup import build_lineup_job, run_creature_lineup
 from .models import (
     ALL_SIZE_IDS,
+    CONTACT_MODE_LABELS,
+    CONTACT_MODES,
+    GENITAL_PROFILE_LABELS,
+    GENITAL_PROFILES,
     GIRL_SOCKETS,
     LOCOMOTION,
     QUAD_SIZE_CLASSES,
@@ -28,6 +32,10 @@ __all__ = [
     "ALL_SIZE_IDS",
     "CreatureCatalogStore",
     "CreatureEntry",
+    "CONTACT_MODE_LABELS",
+    "CONTACT_MODES",
+    "GENITAL_PROFILE_LABELS",
+    "GENITAL_PROFILES",
     "GIRL_SOCKETS",
     "LOCOMOTION",
     "QUAD_SIZE_CLASSES",

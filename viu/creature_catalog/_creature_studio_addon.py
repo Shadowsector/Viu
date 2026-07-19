@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 2, 0),
+    "version": (0, 2, 1),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -17,7 +17,7 @@ import traceback
 from pathlib import Path
 
 import bpy
-from bpy.props import EnumProperty, FloatProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 
 _SESSION: dict = {}
 _STATE = {
@@ -34,6 +34,7 @@ _ROOT = "VIU_CREATURE_ROOT"
 
 _SIZE_ITEMS = [("", "— класс —", "")]
 _LOCO_ITEMS = [("unknown", "— locomotion —", "")]
+_GENITAL_ITEMS = [("none", "нет", "")]
 
 
 def _load_shared():
@@ -216,6 +217,12 @@ def _sync_props_from_entry(entry: dict):
     loco = str(entry.get("locomotion") or "unknown")
     if loco:
         props.locomotion = loco
+    gp = str(entry.get("genital_profile") or "none")
+    props.genital_profile = gp if gp in {i[0] for i in _GENITAL_ITEMS} else "none"
+    modes = set(entry.get("contact_modes") or [])
+    props.contact_oral = "oral" in modes
+    props.contact_tentacle = "tentacle" in modes
+    props.contact_hand = "hand" in modes
 
 
 def _target_from_size(size_id: str) -> float:
@@ -223,6 +230,28 @@ def _target_from_size(size_id: str) -> float:
         if row.get("id") == size_id:
             return float(row.get("target_m") or 1.0)
     return 1.0
+
+
+def _contact_modes_from_props(props) -> list:
+    modes = []
+    if props.contact_oral:
+        modes.append("oral")
+    if props.contact_tentacle:
+        modes.append("tentacle")
+    if props.contact_hand:
+        modes.append("hand")
+    return modes
+
+
+def _markup_fields(props, entry: dict) -> dict:
+    gp = props.genital_profile or entry.get("genital_profile") or "none"
+    modes = _contact_modes_from_props(props)
+    return {
+        "size_class": props.size_class or entry.get("size_class"),
+        "locomotion": props.locomotion or entry.get("locomotion"),
+        "genital_profile": gp,
+        "contact_modes": modes,
+    }
 
 
 class VIU_OT_StudioPrev(bpy.types.Operator):
@@ -304,15 +333,19 @@ class VIU_OT_StudioApplyMarkup(bpy.types.Operator):
         entry["size_class"] = sc
         entry["locomotion"] = loco
         entry["target_height_m"] = target
+        mark = _markup_fields(props, entry)
+        entry.update(mark)
         S.write_feedback_file(
             _feedback_path(),
             entry,
-            size_class=sc,
-            locomotion=loco,
             target_height_m=target,
+            **mark,
         )
         legs = S.legs_hint(loco)
-        self.report({"INFO"}, f"{sc} / {loco} ({legs}), рост {target:.2f}м")
+        anat = mark.get("genital_profile", "none")
+        if mark.get("contact_modes"):
+            anat += " +" + "+".join(mark["contact_modes"])
+        self.report({"INFO"}, f"{sc} / {loco} ({legs}) | {anat}, рост {target:.2f}м")
         return {"FINISHED"}
 
 
@@ -339,8 +372,7 @@ class VIU_OT_StudioApplyHeight(bpy.types.Operator):
             entry,
             target_height_m=target,
             measured_height_m=measured,
-            size_class=props.size_class or entry.get("size_class"),
-            locomotion=props.locomotion or entry.get("locomotion"),
+            **_markup_fields(props, entry),
         )
         self.report({"INFO"}, f"Рост {measured:.2f}м → цель {target:.2f}м")
         return {"FINISHED"}
@@ -366,8 +398,7 @@ class VIU_OT_StudioScreenshot(bpy.types.Operator):
                 photo_ok=False,
                 measured_height_m=measured,
                 target_height_m=float(entry.get("target_height_m") or 0),
-                size_class=props.size_class or entry.get("size_class"),
-                locomotion=props.locomotion or entry.get("locomotion"),
+                **_markup_fields(props, entry),
             )
             self.report({"INFO"}, f"PNG: {front}")
         except Exception as exc:
@@ -405,8 +436,7 @@ class VIU_OT_StudioSaveFbx(bpy.types.Operator):
                 ready_fbx_path=str(fbx),
                 measured_height_m=measured,
                 target_height_m=float(entry.get("target_height_m") or props.target_height_m or 0),
-                size_class=props.size_class or entry.get("size_class"),
-                locomotion=props.locomotion or entry.get("locomotion"),
+                **_markup_fields(props, entry),
             )
             self.report({"INFO"}, f"Эталон FBX: {fbx.name}")
         except Exception as exc:
@@ -458,8 +488,7 @@ class VIU_OT_StudioPhotoOk(bpy.types.Operator):
             entry,
             photo_ok=True,
             photo_notes="",
-            size_class=props.size_class or entry.get("size_class"),
-            locomotion=props.locomotion or entry.get("locomotion"),
+            **_markup_fields(props, entry),
         )
         self.report({"INFO"}, f"OK: {entry.get('name')}")
         return {"FINISHED"}
@@ -513,6 +542,11 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         layout.prop(props, "locomotion", text="Locomotion")
         loco = props.locomotion or entry.get("locomotion") or ""
         layout.label(text=S.legs_hint(loco), icon="INFO")
+        layout.prop(props, "genital_profile", text="Гениталии")
+        row = layout.row(align=True)
+        row.prop(props, "contact_oral", text="Рот")
+        row.prop(props, "contact_tentacle", text="Щуп.")
+        row.prop(props, "contact_hand", text="Руки")
         layout.operator("viu.studio_apply_markup", icon="CHECKMARK")
         layout.separator()
         layout.operator("viu.studio_hide_ik", icon="HIDE_ON")
@@ -531,12 +565,20 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         row2.operator("viu.studio_report_issue", icon="TEXT")
 
 
+def _genital_enum_items(self, context):
+    return _GENITAL_ITEMS
+
+
 class VIU_CreatureStudioProps(bpy.types.PropertyGroup):
     target_height_m: FloatProperty(name="Рост (м)", default=1.0, min=0.05, max=20.0)
     body_mesh: StringProperty(name="Меш роста", default="AUTO")
     photo_notes: StringProperty(name="Заметка", default="")
     size_class: EnumProperty(name="Класс", items=_size_enum_items)
     locomotion: EnumProperty(name="Locomotion", items=_loco_enum_items)
+    genital_profile: EnumProperty(name="Гениталии", items=_genital_enum_items, default=0)
+    contact_oral: BoolProperty(name="Рот/язык", default=False)
+    contact_tentacle: BoolProperty(name="Щупальца", default=False)
+    contact_hand: BoolProperty(name="Руки/лапы", default=False)
 
 
 _CLASSES = (
@@ -558,7 +600,7 @@ _CLASSES = (
 
 
 def load_session(session_path: str) -> None:
-    global _SESSION, _SIZE_ITEMS, _LOCO_ITEMS
+    global _SESSION, _SIZE_ITEMS, _LOCO_ITEMS, _GENITAL_ITEMS
     _SESSION = json.loads(Path(session_path).read_text(encoding="utf-8"))
     _SIZE_ITEMS = [("", "— класс —", "")]
     for row in _SESSION.get("size_classes") or []:
@@ -568,6 +610,12 @@ def load_session(session_path: str) -> None:
     _LOCO_ITEMS = [("unknown", "— locomotion —", "")]
     for loco in _SESSION.get("locomotion_options") or []:
         _LOCO_ITEMS.append((loco, loco, S.legs_hint(loco)))
+    _GENITAL_ITEMS = []
+    for row in _SESSION.get("genital_profiles") or []:
+        gid = row.get("id") or "none"
+        _GENITAL_ITEMS.append((gid, row.get("label") or gid, ""))
+    if not _GENITAL_ITEMS:
+        _GENITAL_ITEMS = [("none", "нет", "")]
     bpy.ops.wm.read_homefile(use_empty=True)
     _ensure_shanya()
     entry = _current_entry()

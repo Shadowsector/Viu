@@ -59,7 +59,8 @@ def _known_block(entry: CreatureEntry) -> str:
     return (
         f"name={entry.name}; size_class={entry.size_class} ({label}){h}; "
         f"locomotion={entry.locomotion}; "
-        f"nsfw_capable={entry.nsfw_capable}; morph_notes={entry.morph_notes or '—'}"
+        f"genital={entry.genital_profile}; contact={','.join(entry.contact_modes or []) or '—'}; "
+        f"morph_notes={entry.morph_notes or '—'}"
     )
 
 

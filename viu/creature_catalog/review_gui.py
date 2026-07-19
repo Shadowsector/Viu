@@ -12,6 +12,10 @@ from typing import Callable, Optional
 from ..config import Config
 from .auto_size import apply_size_to_same_stem, auto_apply_size_guesses
 from .models import (
+    CONTACT_MODE_LABELS,
+    CONTACT_MODES,
+    GENITAL_PROFILE_LABELS,
+    GENITAL_PROFILES,
     LOCOMOTION,
     QUAD_SIZE_CLASSES,
     SIZE_CLASSES,
@@ -161,12 +165,40 @@ class CreatureCatalogReviewWindow:
         self.loco_combo.pack(side="left")
         self.loco_combo.bind("<<ComboboxSelected>>", lambda _e: None)
 
-        self.nsfw_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
+        anat_fr = ttk.LabelFrame(
             self.detail,
-            text="NSFW (есть гениталии / взрослый контент)",
-            variable=self.nsfw_var,
-        ).pack(anchor="w", pady=(4, 4))
+            text="Анатомия для NSFW-анимаций (все классы)",
+            padding=6,
+        )
+        anat_fr.pack(fill="x", pady=(4, 6))
+        self.genital_var = tk.StringVar(value="none")
+        gen_row = ttk.Frame(anat_fr)
+        gen_row.pack(fill="x")
+        for val in GENITAL_PROFILES:
+            ttk.Radiobutton(
+                gen_row,
+                text=GENITAL_PROFILE_LABELS.get(val, val),
+                variable=self.genital_var,
+                value=val,
+            ).pack(side="left", padx=(0, 10))
+        ttk.Label(
+            anat_fr,
+            text="Без гениталий — контакт через (мимик, цветок, осьминог…):",
+            font=("Segoe UI", 8),
+        ).pack(anchor="w", pady=(4, 0))
+        contact_row = ttk.Frame(anat_fr)
+        contact_row.pack(fill="x")
+        self.contact_vars = {
+            "oral": tk.BooleanVar(value=False),
+            "tentacle": tk.BooleanVar(value=False),
+            "hand": tk.BooleanVar(value=False),
+        }
+        for mode in CONTACT_MODES:
+            ttk.Checkbutton(
+                contact_row,
+                text=CONTACT_MODE_LABELS.get(mode, mode),
+                variable=self.contact_vars[mode],
+            ).pack(side="left", padx=(0, 12))
 
         hrow = ttk.Frame(self.detail)
         hrow.pack(anchor="w", fill="x", pady=(0, 8))
@@ -363,7 +395,7 @@ class CreatureCatalogReviewWindow:
             "quadruped" if (guesses and guesses[0].startswith("quad_")) else "biped"
         )
         self._set_loco_display(loco)
-        self.nsfw_var.set(bool(e.nsfw_capable))
+        self._set_anatomy_display(e)
         if e.target_height_m > 0 and e.size_class:
             # показать текущий целевой рост для правки
             self.height_var.set(f"{e.target_height_m:.2f}".rstrip("0").rstrip("."))
@@ -379,6 +411,27 @@ class CreatureCatalogReviewWindow:
         self.photo_status.config(text=photo_msg)
         self._load_photo_previews(e)
         self.status_lbl.config(text="")
+
+    def _set_anatomy_display(self, e: CreatureEntry) -> None:
+        gp = (e.genital_profile or "none").strip()
+        if gp not in GENITAL_PROFILES:
+            gp = "none"
+        self.genital_var.set(gp)
+        modes = set(e.contact_modes or [])
+        for mode, var in self.contact_vars.items():
+            var.set(mode in modes)
+        if e.nsfw_capable and gp == "none" and not modes:
+            self.hint_lbl.config(
+                text=(self.hint_lbl.cget("text") or "")
+                + " · ⚠ старая NSFW-галочка — уточни анатомию"
+            )
+
+    def _anatomy_from_ui(self) -> tuple[str, list[str]]:
+        gp = self.genital_var.get() or "none"
+        if gp not in GENITAL_PROFILES:
+            gp = "none"
+        modes = [m for m, var in self.contact_vars.items() if var.get()]
+        return gp, modes
 
     def _load_photo_previews(self, e: CreatureEntry) -> None:
         self._photo_refs.clear()
@@ -559,19 +612,23 @@ class CreatureCatalogReviewWindow:
         if updated is None:
             messagebox.showerror("Вью", f"Не удалось поставить size={size}", parent=self.win)
             return
-        if self.nsfw_var.get():
-            updated.nsfw_capable = True
-            self.store.upsert(updated)
+        gp, modes = self._anatomy_from_ui()
+        updated.set_anatomy(genital_profile=gp, contact_modes=modes)
+        self.store.upsert(updated)
         extra = apply_size_to_same_stem(
             self.store,
             e.id,
             size,
             locomotion=loco,
-            nsfw=self.nsfw_var.get(),
+            genital_profile=gp,
+            contact_modes=modes,
             target_m=updated.target_height_m,
         )
         self.store.save()
+        anat = updated.anatomy_summary()
         msg = f"✓ {e.name} → {size} / {loco} / {updated.target_height_m:.2f}м"
+        if anat != "—":
+            msg += f" | {anat}"
         if extra:
             msg += f" (+{extra} файл(ов) с тем же именем)"
         self.status_lbl.config(text=msg)

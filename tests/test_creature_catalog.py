@@ -31,6 +31,25 @@ def _cfg(tmp_path: Path, monkeypatch) -> Config:
     ).ensure_dirs()
 
 
+def test_anatomy_markup_and_anim_bucket(tmp_path, monkeypatch):
+    from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
+
+    e = CreatureEntry(
+        id="x",
+        path=str(tmp_path / "goblin.fbx"),
+        name="goblin",
+        size_class="small",
+        locomotion="biped",
+        status=STATUS_SIZED,
+    )
+    e.set_anatomy(genital_profile="penis")
+    assert e.nsfw_capable
+    assert e.anim_bucket() == "small__biped__penis"
+    e.set_anatomy(genital_profile="none", contact_modes=["oral", "tentacle"])
+    assert e.anim_bucket() == "small__biped__oral+tentacle"
+    assert "рот" in e.anatomy_summary()
+
+
 def test_creature_describe_parse_and_store(tmp_path, monkeypatch):
     from viu.creature_catalog.describe import _parse_vl, describe_creature
     from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED

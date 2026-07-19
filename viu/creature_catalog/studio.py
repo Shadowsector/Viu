@@ -12,7 +12,17 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..config import Config
 from .lineup import dedupe_by_stem, resolve_shanya_path
-from .models import ALL_SIZE_IDS, LOCOMOTION, CreatureEntry, STATUS_READY, STATUS_SIZED, size_spec
+from .models import (
+    ALL_SIZE_IDS,
+    CONTACT_MODES,
+    GENITAL_PROFILE_LABELS,
+    GENITAL_PROFILES,
+    LOCOMOTION,
+    CreatureEntry,
+    STATUS_READY,
+    STATUS_SIZED,
+    size_spec,
+)
 from .paths import (
     creature_catalog_path,
     creature_prepared_blend_path,
@@ -78,6 +88,8 @@ def _entry_payload(e: CreatureEntry, config: Config) -> Dict[str, Any]:
         "size_class": e.size_class,
         "target_height_m": e.target_height_m,
         "locomotion": e.locomotion,
+        "genital_profile": e.genital_profile or "none",
+        "contact_modes": list(e.contact_modes or []),
         "photo_ok": e.photo_ok,
         "photo_front": e.photo_front,
         "photo_side": e.photo_side,
@@ -163,6 +175,10 @@ def write_studio_session(
         "creature_offset_m": 1.35,
         "size_classes": size_meta,
         "locomotion_options": [x for x in LOCOMOTION if x != "unknown"],
+        "genital_profiles": [
+            {"id": g, "label": GENITAL_PROFILE_LABELS.get(g, g)} for g in GENITAL_PROFILES
+        ],
+        "contact_modes": list(CONTACT_MODES),
         "index": max(0, min(index, len(creatures) - 1)),
         "queue": [_entry_payload(e, config) for e in creatures],
     }
@@ -205,6 +221,14 @@ def sync_studio_feedback(config: Config) -> Tuple[int, str]:
         loco = str(row.get("locomotion") or "").strip()
         if loco and loco in LOCOMOTION:
             e.locomotion = loco
+        gp = str(row.get("genital_profile") or "").strip()
+        if gp in GENITAL_PROFILES:
+            e.genital_profile = gp
+        if row.get("contact_modes") is not None:
+            e.contact_modes = [
+                m for m in (row.get("contact_modes") or []) if m in CONTACT_MODES
+            ]
+        e.sync_nsfw_capable()
         if row.get("target_height_m"):
             try:
                 e.target_height_m = float(row["target_height_m"])

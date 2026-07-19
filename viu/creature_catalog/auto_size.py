@@ -61,6 +61,8 @@ def apply_size_to_same_stem(
     *,
     locomotion: str = "",
     nsfw: bool = False,
+    genital_profile: str = "",
+    contact_modes: list[str] | None = None,
     target_m: float | None = None,
 ) -> int:
     """Той же разметкой пометить другие файлы с тем же stem (fbx+blend и т.п.)."""
@@ -82,8 +84,13 @@ def apply_size_to_same_stem(
         )
         if updated is None:
             continue
-        if nsfw:
-            updated.nsfw_capable = True
-            store.upsert(updated)
+        if genital_profile or contact_modes is not None:
+            updated.set_anatomy(
+                genital_profile=genital_profile or updated.genital_profile,
+                contact_modes=contact_modes if contact_modes is not None else updated.contact_modes,
+            )
+        elif nsfw:
+            updated.sync_nsfw_capable()
+        store.upsert(updated)
         extra += 1
     return extra
