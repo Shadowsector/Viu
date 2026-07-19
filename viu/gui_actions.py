@@ -64,11 +64,25 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Что Вью отложила, пока тебя не было.",
     ),
     GuiAction(
+        "creature_prep",
+        "Подготовить модели",
+        "Главное",
+        tool="creature_prep_open",
+        hint="Шаг 1: Blender — очистка, Bursting Head, текстуры, A-pose, prepared.blend. Потом «Синхр. подготовки».",
+    ),
+    GuiAction(
+        "creature_prep_sync",
+        "Синхр. подготовки",
+        "Главное",
+        tool="creature_prep_sync",
+        hint="После Blender-prep: забрать prepared_path в каталог.",
+    ),
+    GuiAction(
         "creature_catalog",
         "Разметить существ",
         "Главное",
         tool="__creature_catalog__",
-        hint="Скан Inbox → авто по именам → кнопки размеров (гоблин/волк/…).",
+        hint="Быстрая разметка в окне Вью (опционально — есть и в Blender-студии).",
     ),
     GuiAction(
         "creature_studio",
@@ -76,7 +90,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Главное",
         tool="creature_studio_open",
         tool_args={"all": "0"},
-        hint="Blender: Шаня + одно существо, панель Viu. Чистишь, рост, скрины, Save. Потом «Синхр. студии».",
+        hint="Шаг 2: prepared → разметка + Шаня + рост + скрины + эталон FBX. Потом «Синхр. студии».",
     ),
     GuiAction(
         "creature_lineup",

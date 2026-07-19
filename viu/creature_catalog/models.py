@@ -228,6 +228,8 @@ class CreatureEntry:
     preserve_morphs: bool = True
     morph_notes: str = ""                # что нашли глазами: penis_reveal, ears, tail…
     prepared_path: str = ""
+    prep_ok: bool = False
+    ready_fbx_path: str = ""
     photo_front: str = ""
     photo_side: str = ""
     photo_ok: bool = False          # Ден подтвердил скрины lineup
@@ -275,6 +277,8 @@ class CreatureEntry:
             preserve_morphs=bool(d.get("preserve_morphs", True)),
             morph_notes=str(d.get("morph_notes") or ""),
             prepared_path=str(d.get("prepared_path") or ""),
+            prep_ok=bool(d.get("prep_ok")),
+            ready_fbx_path=str(d.get("ready_fbx_path") or ""),
             photo_front=str(d.get("photo_front") or ""),
             photo_side=str(d.get("photo_side") or ""),
             photo_ok=bool(d.get("photo_ok")),

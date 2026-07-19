@@ -1,0 +1,554 @@
+"""Общие утилиты для Blender Prep / Studio (копируется в Lab/Creatures/)."""
+from __future__ import annotations
+
+import math
+import re
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import bpy
+from mathutils import Vector
+
+_RIG_HIDE = (
+    "ik", "pole", "ctrl", "control", "target", "widget", "wgt", "handle",
+    "gizmo", "helper", "empties", "guide", "wire",
+)
+
+_FACE_BONE_KEYS = (
+    "face", "jaw", "lip", "brow", "cheek", "nose", "eye", "lid", "ear",
+    "tongue", "teeth", "head", "mouth", "chin", "forehead", "temple",
+)
+
+_WIDGET_PREFIXES = ("WGT", "WGT-", "VIS_", "VIS-", "MCH-", "MCH_")
+
+
+def slugify(name: str) -> str:
+    s = re.sub(r"[^a-zA-Z0-9_\-]+", "_", (name or "").strip().lower())
+    return re.sub(r"_+", "_", s).strip("_")[:64] or "creature"
+
+
+def is_wgt_name(name: str) -> bool:
+    if not name:
+        return False
+    n = name.strip()
+    if n.startswith("WGT.") or n.startswith("WGT-") or n.startswith("WGT_"):
+        return True
+    low = n.lower()
+    return low.startswith("wgt.") or low.startswith("wgt-") or low.startswith("wgt_")
+
+
+def skip_mesh(name: str) -> bool:
+    if is_wgt_name(name):
+        return True
+    low = (name or "").lower()
+    return any(k in low for k in _RIG_HIDE + ("collision", "weapon", "sword", "shadow", "lod3", "lod4"))
+
+
+def link_objects_to_collection(objects, coll):
+    for obj in objects:
+        if obj is None:
+            continue
+        for uc in list(obj.users_collection):
+            try:
+                uc.objects.unlink(obj)
+            except RuntimeError:
+                pass
+        if obj.name not in coll.objects:
+            coll.objects.link(obj)
+
+
+def ensure_collection(name: str):
+    coll = bpy.data.collections.get(name)
+    if coll is None:
+        coll = bpy.data.collections.new(name)
+        bpy.context.scene.collection.children.link(coll)
+    return coll
+
+
+def clear_collection_slot(slot_name: str, root_prefix: str = "VIU_CREATURE_ROOT"):
+    coll = bpy.data.collections.get(slot_name)
+    if coll:
+        for obj in list(coll.all_objects):
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+            except ReferenceError:
+                pass
+        if coll.name in bpy.data.collections:
+            bpy.data.collections.remove(coll)
+    for obj in list(bpy.data.objects):
+        if obj.name.startswith(root_prefix):
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+            except ReferenceError:
+                pass
+    for block in (bpy.data.meshes, bpy.data.armatures, bpy.data.materials):
+        for b in list(block):
+            if b.users == 0:
+                try:
+                    block.remove(b)
+                except (AttributeError, ReferenceError):
+                    pass
+
+
+def post_import_visibility(objects):
+    body = []
+    for obj in objects:
+        if is_wgt_name(obj.name):
+            obj.hide_set(True)
+            try:
+                obj.hide_viewport = True
+            except AttributeError:
+                pass
+            obj.hide_render = True
+            continue
+        if obj.type == "MESH" and skip_mesh(obj.name):
+            obj.hide_set(True)
+            obj.hide_render = True
+            continue
+        if obj.type == "MESH":
+            obj.hide_set(False)
+            try:
+                obj.hide_viewport = False
+            except AttributeError:
+                pass
+            obj.hide_render = False
+            vc = len(obj.data.vertices) if obj.data else 0
+            if vc > 32:
+                body.append(obj)
+        elif obj.type == "ARMATURE":
+            obj.hide_set(False)
+            obj.data.display_type = "STICK"
+        elif obj.type == "EMPTY":
+            obj.hide_set(True)
+            obj.hide_render = True
+    return body
+
+
+def hide_helpers(objects):
+    for obj in objects:
+        if is_wgt_name(obj.name):
+            obj.hide_set(True)
+            obj.hide_render = True
+            continue
+        low = (obj.name or "").lower()
+        try:
+            if obj.type == "EMPTY":
+                obj.hide_set(True)
+                obj.hide_render = True
+            elif obj.type == "ARMATURE":
+                obj.data.display_type = "STICK"
+            elif obj.type == "MESH" and any(k in low for k in _RIG_HIDE):
+                obj.hide_set(True)
+                obj.hide_render = True
+            elif obj.type == "CURVE":
+                obj.hide_set(True)
+                obj.hide_render = True
+        except (AttributeError, ReferenceError):
+            pass
+
+
+def import_asset(path: Path, *, for_shanya: bool = False, target_coll=None):
+    path = Path(path)
+    before = set(bpy.data.objects)
+    before_colls = set(bpy.data.collections)
+    suf = path.suffix.lower()
+    if suf == ".fbx":
+        bpy.ops.import_scene.fbx(filepath=str(path), global_scale=1.0)
+    elif suf == ".obj":
+        bpy.ops.wm.obj_import(filepath=str(path))
+    elif suf in (".glb", ".gltf"):
+        bpy.ops.import_scene.gltf(filepath=str(path))
+    elif suf == ".blend":
+        with bpy.data.libraries.load(str(path), link=False) as (data_from, data_to):
+            data_to.collections = list(data_from.collections)
+            data_to.objects = list(data_from.objects)
+        scene_coll = bpy.context.scene.collection
+        for coll in bpy.data.collections:
+            if coll in before_colls:
+                continue
+            try:
+                scene_coll.children.link(coll)
+            except RuntimeError:
+                pass
+        for obj in bpy.data.objects:
+            if obj in before:
+                continue
+            if obj.users_collection:
+                continue
+            try:
+                scene_coll.objects.link(obj)
+            except RuntimeError:
+                pass
+    else:
+        raise RuntimeError("unsupported: " + suf)
+    bpy.context.view_layer.update()
+    imported = [o for o in bpy.data.objects if o not in before]
+    if for_shanya:
+        wgt = [o for o in imported if is_wgt_name(o.name)]
+        for obj in wgt:
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+            except ReferenceError:
+                pass
+        imported = [o for o in imported if o not in wgt]
+        for obj in imported:
+            if obj.type == "MESH":
+                obj.hide_set(False)
+                obj.hide_render = False
+            elif obj.type == "ARMATURE":
+                obj.hide_set(False)
+                obj.data.display_type = "STICK"
+    else:
+        post_import_visibility(imported)
+    if target_coll is not None:
+        link_objects_to_collection(imported, target_coll)
+    return imported
+
+
+def wrap_root(imported, root_name="VIU_CREATURE_ROOT", target_coll=None):
+    root = bpy.data.objects.new(root_name, None)
+    root.empty_display_type = "PLAIN_AXES"
+    root.empty_display_size = 0.2
+    coll = target_coll or bpy.context.collection
+    coll.objects.link(root)
+    imported_set = set(imported)
+    for o in imported:
+        if o.parent is None or o.parent not in imported_set:
+            mw = o.matrix_world.copy()
+            o.parent = root
+            o.matrix_world = mw
+    bpy.context.view_layer.update()
+    return root
+
+
+def mesh_points(obj, depsgraph):
+    if obj.type != "MESH" or skip_mesh(obj.name):
+        return []
+    ev = obj.evaluated_get(depsgraph)
+    try:
+        mesh = ev.to_mesh()
+    except RuntimeError:
+        return []
+    pts = []
+    try:
+        mw = ev.matrix_world
+        for v in mesh.vertices:
+            pts.append(mw @ v.co)
+    finally:
+        ev.to_mesh_clear()
+    return pts
+
+
+def aabb_pts(pts):
+    if not pts:
+        return Vector((0, 0, 0)), Vector((0, 0, 1))
+    mins = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
+    maxs = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
+    return mins, maxs
+
+
+def height_of_objects(objects, body_mesh: str = ""):
+    deps = bpy.context.evaluated_depsgraph_get()
+    if body_mesh:
+        obj = bpy.data.objects.get(body_mesh)
+        if obj:
+            pts = mesh_points(obj, deps)
+            if pts:
+                _, maxs = aabb_pts(pts)
+                mins, _ = aabb_pts(pts)
+                return float(maxs.z - mins.z)
+    meshes = [o for o in objects if o.type == "MESH" and not skip_mesh(o.name)]
+    if not meshes:
+        return 0.0
+    best = max(meshes, key=lambda o: len(o.data.vertices) if o.data else 0)
+    pts = mesh_points(best, deps)
+    if not pts:
+        return 0.0
+    mins, maxs = aabb_pts(pts)
+    return float(maxs.z - mins.z)
+
+
+def gather_under_root(root) -> List:
+    if root is None:
+        return []
+    out = []
+
+    def walk(o):
+        out.append(o)
+        for ch in o.children:
+            walk(ch)
+
+    walk(root)
+    return out
+
+
+def save_objects_blend(filepath: Path, objects: Sequence) -> bool:
+    if not objects:
+        return False
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    if filepath.is_file():
+        filepath.unlink()
+    bpy.data.libraries.write(str(filepath), list(objects), path_remap="RELATIVE", fake_user=True)
+    return filepath.is_file()
+
+
+def _is_face_bone(name: str) -> bool:
+    low = (name or "").lower()
+    return any(k in low for k in _FACE_BONE_KEYS)
+
+
+def _scale_near_zero(scale) -> bool:
+    return any(abs(float(s)) < 1e-4 for s in scale)
+
+
+def _remove_pose_scale_drivers(arm_obj, bone_name: str) -> int:
+    ad = arm_obj.animation_data
+    if not ad:
+        return 0
+    removed = 0
+    prefix = f'pose.bones["{bone_name}"].scale'
+    for drv in list(getattr(ad, "drivers", []) or []):
+        if drv.data_path.startswith(prefix):
+            ad.drivers.remove(drv)
+            removed += 1
+    return removed
+
+
+def repair_bursting_head(objects: Sequence) -> Tuple[int, int, str]:
+    """Diffeomorphic / Blender 4+: facial bone scale=0 + drivers."""
+    arms = [o for o in objects if o.type == "ARMATURE"]
+    if not arms:
+        return 0, 0, "Нет armature в сцене"
+    fixed_bones = 0
+    removed_drivers = 0
+    for arm_obj in arms:
+        view_layer = bpy.context.view_layer
+        view_layer.objects.active = arm_obj
+        arm_obj.select_set(True)
+        try:
+            bpy.ops.object.mode_set(mode="POSE")
+        except RuntimeError:
+            continue
+        for pb in arm_obj.pose.bones:
+            name = pb.name
+            if _is_face_bone(name) or _scale_near_zero(pb.scale):
+                removed_drivers += _remove_pose_scale_drivers(arm_obj, name)
+                pb.scale = (1.0, 1.0, 1.0)
+                fixed_bones += 1
+        for pb in arm_obj.pose.bones:
+            for c in pb.constraints:
+                if c.type != "COPY_SCALE":
+                    continue
+                tgt = c.target
+                sub = getattr(c, "subtarget", "") or ""
+                if tgt and tgt.type == "ARMATURE" and sub in tgt.pose.bones:
+                    tpb = tgt.pose.bones[sub]
+                    if _scale_near_zero(tpb.scale):
+                        removed_drivers += _remove_pose_scale_drivers(tgt, sub)
+                        tpb.scale = (1.0, 1.0, 1.0)
+                        fixed_bones += 1
+        try:
+            bpy.ops.object.mode_set(mode="OBJECT")
+        except RuntimeError:
+            pass
+        arm_obj.select_set(False)
+    msg = f"костей: {fixed_bones}, драйверов scale: {removed_drivers}"
+    return fixed_bones, removed_drivers, msg
+
+
+def check_textures(objects: Sequence) -> Tuple[int, int, List[str]]:
+    """Вернуть (ok, missing, lines)."""
+    ok = 0
+    missing = 0
+    lines: List[str] = []
+    for obj in objects:
+        if obj.type != "MESH" or not obj.data:
+            continue
+        for slot in getattr(obj.data, "materials", []) or []:
+            if slot is None:
+                continue
+            nt = slot.node_tree
+            if not nt:
+                continue
+            for node in nt.nodes:
+                if node.type != "TEX_IMAGE":
+                    continue
+                img = node.image
+                if img is None:
+                    missing += 1
+                    lines.append(f"{obj.name}: пустой TEX_IMAGE")
+                    continue
+                if not img.filepath and not getattr(img, "packed_file", None):
+                    missing += 1
+                    lines.append(f"{obj.name}: {img.name} без файла")
+                    continue
+                fp = bpy.path.abspath(img.filepath)
+                if fp and not Path(fp).is_file() and not getattr(img, "packed_file", None):
+                    missing += 1
+                    lines.append(f"{obj.name}: нет {fp}")
+                else:
+                    ok += 1
+    return ok, missing, lines[:12]
+
+
+def clear_pose_transforms(objects: Sequence) -> int:
+    """Сброс позы на rest (ручная A-pose — правь после)."""
+    n = 0
+    for arm_obj in [o for o in objects if o.type == "ARMATURE"]:
+        view_layer = bpy.context.view_layer
+        view_layer.objects.active = arm_obj
+        arm_obj.select_set(True)
+        try:
+            bpy.ops.object.mode_set(mode="POSE")
+            for pb in arm_obj.pose.bones:
+                pb.location = (0.0, 0.0, 0.0)
+                pb.rotation_quaternion = (1.0, 0.0, 0.0, 0.0)
+                pb.rotation_euler = (0.0, 0.0, 0.0)
+                pb.scale = (1.0, 1.0, 1.0)
+                n += 1
+            bpy.ops.object.mode_set(mode="OBJECT")
+        except RuntimeError:
+            pass
+        arm_obj.select_set(False)
+    return n
+
+
+def _is_widget_mesh(obj, arm_obj) -> bool:
+    if obj.type != "MESH":
+        return False
+    name = obj.name
+    if name in {"Circle", "Sphere", "Cube", "Plane"}:
+        return True
+    for pref in _WIDGET_PREFIXES:
+        if name.startswith(pref):
+            return True
+    low = name.lower()
+    if "widget" in low or low.endswith("_rig") or "_ctrl" in low:
+        return True
+    if is_wgt_name(name):
+        return True
+    return False
+
+
+def _mesh_for_character(obj, arm_obj) -> bool:
+    if obj.type != "MESH" or _is_widget_mesh(obj, arm_obj):
+        return False
+    for mod in obj.modifiers:
+        if mod.type == "ARMATURE" and mod.object == arm_obj:
+            return True
+    if obj.vertex_groups:
+        bones = {b.name for b in arm_obj.data.bones}
+        for vg in obj.vertex_groups:
+            if vg.name in bones:
+                return True
+    par = obj.parent
+    while par is not None:
+        if par == arm_obj:
+            return True
+        par = par.parent
+    return False
+
+
+def _pick_armature(objects: Sequence):
+    arms = [o for o in objects if o.type == "ARMATURE"]
+    if not arms:
+        arms = [o for o in bpy.data.objects if o.type == "ARMATURE"]
+    if not arms:
+        return None
+    if len(arms) == 1:
+        return arms[0]
+
+    def score(arm_obj):
+        deform = sum(1 for b in arm_obj.data.bones if b.use_deform)
+        meshes = sum(1 for o in bpy.data.objects if _mesh_for_character(o, arm_obj))
+        return deform * 10 + meshes
+
+    return max(arms, key=score)
+
+
+def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str]:
+    filepath = Path(filepath)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    arm = _pick_armature(objects)
+    if arm is None:
+        return False, "Нет armature"
+    scene = bpy.context.scene
+    view_layer = bpy.context.view_layer
+    for obj in bpy.data.objects:
+        try:
+            obj.select_set(False)
+        except RuntimeError:
+            pass
+    selected = []
+    try:
+        if arm.hide_get():
+            arm.hide_set(False)
+        arm.select_set(True)
+        selected.append(arm.name)
+    except RuntimeError as exc:
+        return False, f"armature: {exc}"
+    for obj in list(bpy.data.objects):
+        if obj.type != "MESH" or not _mesh_for_character(obj, arm):
+            continue
+        try:
+            if obj.hide_get():
+                obj.hide_set(False)
+            obj.select_set(True)
+            selected.append(obj.name)
+        except RuntimeError:
+            pass
+    if len(selected) < 2:
+        return False, "Нет skinned mesh для FBX"
+    view_layer.objects.active = arm
+    try:
+        if bpy.context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+    except RuntimeError:
+        pass
+    with bpy.context.temp_override(scene=scene, view_layer=view_layer, active_object=arm):
+        bpy.ops.export_scene.fbx(
+            filepath=str(filepath),
+            use_selection=True,
+            object_types={"ARMATURE", "MESH"},
+            use_mesh_modifiers=True,
+            use_armature_deform_only=True,
+            bake_anim=False,
+            add_leaf_bones=False,
+            mesh_smooth_type="FACE",
+            apply_scale_options="FBX_SCALE_ALL",
+        )
+    if not filepath.is_file():
+        return False, "FBX не записан"
+    return True, f"FBX: {filepath.name} ({len(selected)} obj)"
+
+
+def legs_hint(locomotion: str) -> str:
+    m = {
+        "biped": "2 ноги",
+        "quadruped": "4 ноги",
+        "flyer": "2+крылья",
+        "tentacle": "щупальца",
+        "amorph": "без ног",
+        "mimic": "мимик",
+    }
+    return m.get(locomotion or "", "?")
+
+
+def write_feedback_file(path: Path, entry: dict, **extra) -> None:
+    import json
+
+    data = {"entries": []}
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = {"entries": []}
+    rows = {r.get("id"): r for r in data.get("entries") or [] if isinstance(r, dict)}
+    row = dict(rows.get(entry.get("id"), entry))
+    row.update(extra)
+    row["id"] = entry.get("id")
+    row["slug"] = entry.get("slug")
+    rows[entry.get("id")] = row
+    data["entries"] = list(rows.values())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

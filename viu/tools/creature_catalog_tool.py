@@ -16,6 +16,7 @@ from ..creature_catalog.auto_size import auto_apply_size_guesses
 from ..creature_catalog.lineup import run_creature_lineup
 from ..creature_catalog.models import ALL_SIZE_IDS, LOCOMOTION
 from ..creature_catalog.studio import open_creature_studio, sync_studio_feedback
+from ..creature_catalog.prep import open_creature_prep, sync_prep_feedback
 from .base import AgentContext, Tool, ToolResult
 
 
@@ -293,11 +294,37 @@ class CreatureLineupTool(Tool):
         return ToolResult(ok, msg)
 
 
+class CreaturePrepOpenTool(Tool):
+    name = "creature_prep_open"
+    description = (
+        "Blender — подготовка моделей (шаг 1): очистка, Bursting Head, текстуры, prepared.blend."
+    )
+    parameters = {
+        "slug": "один slug/имя",
+        "all": "1 все из Inbox, 0 только без prepared (по умолчанию)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        slug_filter = [p.strip() for p in str(args.get("slug") or "").split(",") if p.strip()]
+        only_unprepared = str(args.get("all") or "").strip().lower() not in ("1", "true", "yes", "all")
+        ok, msg = open_creature_prep(ctx.config, slug_filter=slug_filter, only_unprepared=only_unprepared)
+        return ToolResult(ok, msg)
+
+
+class CreaturePrepSyncTool(Tool):
+    name = "creature_prep_sync"
+    description = "Считать prep_feedback.json → prepared_path, prep_ok в каталог."
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        n, msg = sync_prep_feedback(ctx.config)
+        return ToolResult(n > 0, msg)
+
+
 class CreatureStudioOpenTool(Tool):
     name = "creature_studio_open"
     description = (
-        "Blender-студия существ: Шаня + одно существо, панель Viu. "
-        "Очистка, рост, скрины, эталон. slug= один; all=1 вся очередь размеченных."
+        "Blender-студия (шаг 2): разметка + Шаня + рост + скрины + эталон FBX. "
+        "Нужен prepared.blend. slug= один; all=1 вся очередь."
     )
     parameters = {
         "slug": "один slug/имя (пусто = очередь без photo_ok)",
@@ -327,8 +354,7 @@ class CreatureStudioOpenTool(Tool):
 class CreatureStudioSyncTool(Tool):
     name = "creature_studio_sync"
     description = (
-        "Считать studio_feedback.json из Blender → обновить creature_catalog "
-        "(рост, скрины, photo_ok, эталонный blend)."
+        "Считать studio_feedback.json → разметка, рост, скрины, photo_ok, эталон FBX."
     )
     parameters: dict = {}
 
@@ -344,6 +370,8 @@ __all__ = [
     "CreatureCatalogAutoSizeTool",
     "CreatureDescribeTool",
     "CreatureLineupTool",
+    "CreaturePrepOpenTool",
+    "CreaturePrepSyncTool",
     "CreatureStudioOpenTool",
     "CreatureStudioSyncTool",
 ]

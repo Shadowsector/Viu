@@ -313,6 +313,7 @@ def test_suggest_facehug_and_croc():
 
 def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
     from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
+    from viu.creature_catalog.paths import creature_prepared_blend_path
     from viu.creature_catalog.studio import (
         build_studio_queue,
         sync_studio_feedback,
@@ -320,6 +321,9 @@ def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
     )
 
     cfg = _cfg(tmp_path, monkeypatch)
+    prep = creature_prepared_blend_path(cfg, "wolf_alpha")
+    prep.parent.mkdir(parents=True, exist_ok=True)
+    prep.write_bytes(b"prep")
     store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
     store.upsert(
         CreatureEntry(
@@ -330,10 +334,11 @@ def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
             size_class="quad_med",
             locomotion="quadruped",
             status=STATUS_SIZED,
+            prep_ok=True,
+            prepared_path=str(prep),
         )
     )
     store.save()
-    (tmp_path / "wolf.blend").write_bytes(b"blend")
 
     ok, msg, queue = build_studio_queue(cfg, slug_filter=["wolf_alpha"])
     assert ok and len(queue) == 1
@@ -341,7 +346,9 @@ def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
     assert session.is_file()
     data = __import__("json").loads(session.read_text(encoding="utf-8"))
     assert data["queue"][0]["slug"] == "wolf_alpha"
+    assert data["queue"][0]["path"] == str(prep)
     assert (session.parent / "viu_creature_studio.py").is_file()
+    assert (session.parent / "viu_creature_blender_shared.py").is_file()
 
     fb = session.parent / "studio_feedback.json"
     fb.write_text(
@@ -355,6 +362,9 @@ def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
                         "photo_side": str(tmp_path / "side.png"),
                         "photo_ok": True,
                         "target_height_m": 0.96,
+                        "size_class": "quad_med",
+                        "locomotion": "quadruped",
+                        "ready_fbx_path": str(tmp_path / "wolf_alpha_ready.fbx"),
                     }
                 ]
             }
@@ -367,6 +377,82 @@ def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
     assert w is not None
     assert w.photo_ok
     assert w.target_height_m == 0.96
+    assert w.ready_fbx_path.endswith("wolf_alpha_ready.fbx")
+
+
+def test_creature_prep_session_and_sync(tmp_path, monkeypatch):
+    from viu.creature_catalog.models import CreatureEntry
+    from viu.creature_catalog.paths import creature_prepared_blend_path
+    from viu.creature_catalog.prep import (
+        build_prep_queue,
+        sync_prep_feedback,
+        write_prep_session,
+    )
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    inbox = tmp_path / "wolf.blend"
+    inbox.write_bytes(b"inbox")
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    store.upsert(
+        CreatureEntry(
+            id="w1",
+            path=str(inbox),
+            name="wolf_alpha",
+            slug="wolf_alpha",
+        )
+    )
+    store.save()
+
+    ok, msg, queue = build_prep_queue(cfg, slug_filter=["wolf_alpha"])
+    assert ok and len(queue) == 1
+    session = write_prep_session(cfg, queue)
+    assert (session.parent / "viu_creature_prep.py").is_file()
+
+    prep_out = creature_prepared_blend_path(cfg, "wolf_alpha")
+    prep_out.parent.mkdir(parents=True, exist_ok=True)
+    prep_out.write_bytes(b"prepared")
+    fb = session.parent / "prep_feedback.json"
+    fb.write_text(
+        __import__("json").dumps(
+            {
+                "entries": [
+                    {
+                        "id": "w1",
+                        "prepared_path": str(prep_out),
+                        "prep_ok": True,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    n, _ = sync_prep_feedback(cfg)
+    assert n == 1
+    w = CreatureCatalogStore(creature_catalog_path(cfg)).load().get("w1")
+    assert w is not None
+    assert w.prep_ok
+    assert w.prepared_path == str(prep_out)
+
+
+def test_studio_queue_requires_prepared(tmp_path, monkeypatch):
+    from viu.creature_catalog.models import CreatureEntry
+    from viu.creature_catalog.studio import build_studio_queue
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    store.upsert(
+        CreatureEntry(
+            id="w1",
+            path=str(tmp_path / "wolf.blend"),
+            name="wolf_alpha",
+            slug="wolf_alpha",
+        )
+    )
+    store.save()
+    (tmp_path / "wolf.blend").write_bytes(b"x")
+    ok, msg, queue = build_studio_queue(cfg)
+    assert not ok
+    assert "подготов" in msg.lower()
 
 
 def test_unified_living_inbox(tmp_path, monkeypatch):
@@ -378,8 +464,15 @@ def test_unified_living_inbox(tmp_path, monkeypatch):
 
 
 def test_creature_studio_tool_imports():
-    from viu.tools.creature_catalog_tool import CreatureStudioOpenTool, CreatureStudioSyncTool
+    from viu.tools.creature_catalog_tool import (
+        CreaturePrepOpenTool,
+        CreaturePrepSyncTool,
+        CreatureStudioOpenTool,
+        CreatureStudioSyncTool,
+    )
 
+    assert CreaturePrepOpenTool().name == "creature_prep_open"
+    assert CreaturePrepSyncTool().name == "creature_prep_sync"
     assert CreatureStudioOpenTool().name == "creature_studio_open"
     assert CreatureStudioSyncTool().name == "creature_studio_sync"
 
@@ -390,6 +483,8 @@ def test_tools_registered():
     assert "creature_catalog_set_size" in names
     assert "creature_catalog_auto_size" in names
     assert "creature_lineup" in names
+    assert "creature_prep_open" in names
+    assert "creature_prep_sync" in names
     assert "creature_studio_open" in names
     assert "creature_studio_sync" in names
 
@@ -482,6 +577,8 @@ def test_gui_action_creature_catalog():
     action = next(a for a in GUI_ACTIONS if a.action_id == "creature_catalog")
     assert action.tool == "__creature_catalog__"
     assert action.group == "Главное"
+    assert any(a.action_id == "creature_prep" and a.tool == "creature_prep_open" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_prep_sync" for a in GUI_ACTIONS)
     assert any(a.action_id == "creature_studio" and a.tool == "creature_studio_open" for a in GUI_ACTIONS)
     assert any(a.action_id == "creature_studio_sync" for a in GUI_ACTIONS)
     lineup = next(a for a in GUI_ACTIONS if a.action_id == "creature_lineup")

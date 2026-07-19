@@ -1,29 +1,23 @@
-"""Viu Creature Studio — панель в Blender для разметки существ по одному."""
+"""Viu Creature Studio — разметка + Шаня + рост + эталон FBX."""
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 1, 3),
+    "version": (0, 2, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
-    "description": "Шаня + одно существо: рост, очистка, скрины, эталон",
+    "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
     "category": "Animation",
 }
 
+import importlib.util
 import json
 import math
-import re
+import sys
 import traceback
 from pathlib import Path
 
 import bpy
-from bpy.props import (
-    BoolProperty,
-    EnumProperty,
-    FloatProperty,
-    IntProperty,
-    StringProperty,
-)
-from mathutils import Vector
+from bpy.props import EnumProperty, FloatProperty, StringProperty
 
 _SESSION: dict = {}
 _STATE = {
@@ -34,18 +28,29 @@ _STATE = {
     "body_mesh": "",
 }
 
-_SLOT_NAME = "VIU_CreatureSlot"
+_SLOT = "VIU_CreatureSlot"
 _SHANYA_COLL = "VIU_ShanyaRef"
+_ROOT = "VIU_CREATURE_ROOT"
 
-_RIG_HIDE = (
-    "ik", "pole", "ctrl", "control", "target", "widget", "wgt", "handle",
-    "gizmo", "helper", "empties", "guide", "wire",
-)
+_SIZE_ITEMS = [("", "— класс —", "")]
+_LOCO_ITEMS = [("unknown", "— locomotion —", "")]
 
 
-def _slugify(name: str) -> str:
-    s = re.sub(r"[^a-zA-Z0-9_\-]+", "_", (name or "").strip().lower())
-    return re.sub(r"_+", "_", s).strip("_")[:64] or "creature"
+def _load_shared():
+    p = Path(__file__).resolve().parent / "viu_creature_blender_shared.py"
+    name = "viu_creature_blender_shared"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, str(p))
+    if spec is None or spec.loader is None:
+        raise RuntimeError("shared missing")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+S = _load_shared()
 
 
 def _current_entry() -> dict:
@@ -57,307 +62,42 @@ def _current_entry() -> dict:
     return q[idx]
 
 
-def _write_feedback(entry: dict, **extra) -> None:
-    path = Path(str(_SESSION.get("feedback_path") or ""))
-    if not path.parent:
-        return
-    data = {"entries": []}
-    if path.is_file():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            data = {"entries": []}
-    rows = {r.get("id"): r for r in data.get("entries") or [] if isinstance(r, dict)}
-    row = dict(rows.get(entry.get("id"), entry))
-    row.update(extra)
-    row["id"] = entry.get("id")
-    row["slug"] = entry.get("slug")
-    rows[entry.get("id")] = row
-    data["entries"] = list(rows.values())
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+def _feedback_path() -> Path:
+    return Path(str(_SESSION.get("feedback_path") or ""))
 
 
 def _clear_creature():
-    """Убрать только текущее существо (Шаню не трогаем)."""
     root = _STATE.get("creature_root")
     if root and root.name in bpy.data.objects:
         try:
             bpy.data.objects.remove(root, do_unlink=True)
         except ReferenceError:
             pass
-    coll = bpy.data.collections.get(_SLOT_NAME)
-    if coll:
-        for obj in list(coll.all_objects):
-            try:
-                bpy.data.objects.remove(obj, do_unlink=True)
-            except ReferenceError:
-                pass
-        if coll.name in bpy.data.collections:
-            bpy.data.collections.remove(coll)
-    for obj in list(bpy.data.objects):
-        if obj.name.startswith("VIU_CREATURE_ROOT"):
-            try:
-                bpy.data.objects.remove(obj, do_unlink=True)
-            except ReferenceError:
-                pass
+    S.clear_collection_slot(_SLOT, _ROOT)
     _STATE["creature_root"] = None
     _STATE["creature_objects"] = []
     _STATE["body_mesh"] = ""
-    for block in (bpy.data.meshes, bpy.data.armatures, bpy.data.materials):
-        for b in list(block):
-            if b.users == 0:
-                try:
-                    block.remove(b)
-                except (AttributeError, ReferenceError):
-                    pass
-
-
-def _creature_slot():
-    coll = bpy.data.collections.get(_SLOT_NAME)
-    if coll is None:
-        coll = bpy.data.collections.new(_SLOT_NAME)
-        bpy.context.scene.collection.children.link(coll)
-    return coll
-
-
-def _shanya_slot():
-    coll = bpy.data.collections.get(_SHANYA_COLL)
-    if coll is None:
-        coll = bpy.data.collections.new(_SHANYA_COLL)
-        bpy.context.scene.collection.children.link(coll)
-    return coll
-
-
-def _link_objects_to_collection(objects, coll):
-    for obj in objects:
-        if obj is None:
-            continue
-        for uc in list(obj.users_collection):
-            try:
-                uc.objects.unlink(obj)
-            except RuntimeError:
-                pass
-        if obj.name not in coll.objects:
-            coll.objects.link(obj)
-
-
-def _is_wgt_name(name: str) -> bool:
-    """Custom bone shapes (WGT.Foot.L и т.п.) — не тело."""
-    if not name:
-        return False
-    n = name.strip()
-    if n.startswith("WGT.") or n.startswith("WGT-") or n.startswith("WGT_"):
-        return True
-    low = n.lower()
-    return low.startswith("wgt.") or low.startswith("wgt-") or low.startswith("wgt_")
-
-
-def _import_asset(path: Path, *, for_shanya: bool = False, target_coll=None):
-    path = Path(path)
-    before = set(bpy.data.objects)
-    before_colls = set(bpy.data.collections)
-    suf = path.suffix.lower()
-    if suf == ".fbx":
-        bpy.ops.import_scene.fbx(filepath=str(path), global_scale=1.0)
-    elif suf == ".obj":
-        bpy.ops.wm.obj_import(filepath=str(path))
-    elif suf in (".glb", ".gltf"):
-        bpy.ops.import_scene.gltf(filepath=str(path))
-    elif suf == ".blend":
-        with bpy.data.libraries.load(str(path), link=False) as (data_from, data_to):
-            data_to.collections = list(data_from.collections)
-            data_to.objects = list(data_from.objects)
-        scene_coll = bpy.context.scene.collection
-        for coll in bpy.data.collections:
-            if coll in before_colls:
-                continue
-            try:
-                scene_coll.children.link(coll)
-            except RuntimeError:
-                pass
-        for obj in bpy.data.objects:
-            if obj in before:
-                continue
-            if obj.users_collection:
-                continue
-            try:
-                scene_coll.objects.link(obj)
-            except RuntimeError:
-                pass
-    else:
-        raise RuntimeError("unsupported: " + suf)
-    bpy.context.view_layer.update()
-    imported = [o for o in bpy.data.objects if o not in before]
-    if for_shanya:
-        wgt = [o for o in imported if _is_wgt_name(o.name)]
-        for obj in wgt:
-            try:
-                bpy.data.objects.remove(obj, do_unlink=True)
-            except ReferenceError:
-                pass
-        imported = [o for o in imported if o not in wgt]
-        for obj in imported:
-            if obj.type == "MESH":
-                obj.hide_set(False)
-                obj.hide_render = False
-            elif obj.type == "ARMATURE":
-                obj.hide_set(False)
-                obj.data.display_type = "STICK"
-    else:
-        _post_import_visibility(imported)
-    if target_coll is not None:
-        _link_objects_to_collection(imported, target_coll)
-    return imported
-
-
-def _post_import_visibility(objects):
-    """Спрятать WGT/empties, показать меши тела."""
-    body = []
-    for obj in objects:
-        if _is_wgt_name(obj.name):
-            obj.hide_set(True)
-            try:
-                obj.hide_viewport = True
-            except AttributeError:
-                pass
-            obj.hide_render = True
-            continue
-        if obj.type == "MESH" and _skip_mesh(obj.name):
-            obj.hide_set(True)
-            obj.hide_render = True
-            continue
-        if obj.type == "MESH":
-            obj.hide_set(False)
-            try:
-                obj.hide_viewport = False
-            except AttributeError:
-                pass
-            obj.hide_render = False
-            vc = len(obj.data.vertices) if obj.data else 0
-            if vc > 32:
-                body.append(obj)
-        elif obj.type == "ARMATURE":
-            obj.hide_set(False)
-            obj.data.display_type = "STICK"
-        elif obj.type == "EMPTY":
-            obj.hide_set(True)
-            obj.hide_render = True
-    return body
-
-
-def _wrap_root(imported, name, root_name="VIU_CREATURE_ROOT", target_coll=None):
-    root = bpy.data.objects.new(root_name, None)
-    root.empty_display_type = "PLAIN_AXES"
-    root.empty_display_size = 0.2
-    coll = target_coll or bpy.context.collection
-    coll.objects.link(root)
-    imported_set = set(imported)
-    for o in imported:
-        if o.parent is None or o.parent not in imported_set:
-            mw = o.matrix_world.copy()
-            o.parent = root
-            o.matrix_world = mw
-    bpy.context.view_layer.update()
-    return root
-
-
-def _skip_mesh(name: str) -> bool:
-    if _is_wgt_name(name):
-        return True
-    low = (name or "").lower()
-    return any(k in low for k in _RIG_HIDE + ("collision", "weapon", "sword", "shadow", "lod3", "lod4"))
-
-
-def _mesh_points(obj, depsgraph):
-    if obj.type != "MESH" or _skip_mesh(obj.name):
-        return []
-    ev = obj.evaluated_get(depsgraph)
-    try:
-        mesh = ev.to_mesh()
-    except RuntimeError:
-        return []
-    pts = []
-    try:
-        mw = ev.matrix_world
-        for v in mesh.vertices:
-            pts.append(mw @ v.co)
-    finally:
-        ev.to_mesh_clear()
-    return pts
-
-
-def _aabb_pts(pts):
-    if not pts:
-        return Vector((0, 0, 0)), Vector((0, 0, 1))
-    mins = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
-    maxs = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
-    return mins, maxs
-
-
-def _height_of_objects(objects, body_mesh: str = ""):
-    deps = bpy.context.evaluated_depsgraph_get()
-    if body_mesh:
-        obj = bpy.data.objects.get(body_mesh)
-        if obj:
-            pts = _mesh_points(obj, deps)
-            if pts:
-                mins, maxs = _aabb_pts(pts)
-                return float(maxs.z - mins.z)
-    meshes = [o for o in objects if o.type == "MESH" and not _skip_mesh(o.name)]
-    if not meshes:
-        return 0.0
-    best = max(meshes, key=lambda o: len(o.data.vertices) if o.data else 0)
-    pts = _mesh_points(best, deps)
-    if not pts:
-        return 0.0
-    mins, maxs = _aabb_pts(pts)
-    return float(maxs.z - mins.z)
-
-
-def _hide_helpers(objects):
-    for obj in objects:
-        if _is_wgt_name(obj.name):
-            obj.hide_set(True)
-            obj.hide_render = True
-            continue
-        low = (obj.name or "").lower()
-        try:
-            if obj.type == "EMPTY":
-                obj.hide_set(True)
-                obj.hide_render = True
-            elif obj.type == "ARMATURE":
-                obj.data.display_type = "STICK"
-            elif obj.type == "MESH" and any(k in low for k in _RIG_HIDE):
-                obj.hide_set(True)
-                obj.hide_render = True
-            elif obj.type == "CURVE":
-                obj.hide_set(True)
-                obj.hide_render = True
-        except (AttributeError, ReferenceError):
-            pass
 
 
 def _place_creature(root, objects, x_offset: float, target_h: float, body_mesh: str = ""):
     bpy.context.view_layer.update()
-    h = _height_of_objects(objects, body_mesh)
+    h = S.height_of_objects(objects, body_mesh)
     if h > 1e-6 and target_h > 0:
         if h > 20 and target_h < 10:
             root.scale *= 0.01
             bpy.context.view_layer.update()
-            h = _height_of_objects(objects, body_mesh)
+            h = S.height_of_objects(objects, body_mesh)
         s = target_h / h
         root.scale *= s
         bpy.context.view_layer.update()
-    # лицом в +Y как Шаня, рядом по X
     root.location = (x_offset, 0.0, 0.0)
     root.rotation_euler = (0.0, 0.0, 0.0)
     deps = bpy.context.evaluated_depsgraph_get()
     pts = []
     for o in objects:
-        pts.extend(_mesh_points(o, deps))
+        pts.extend(S.mesh_points(o, deps))
     if pts:
-        mins, _ = _aabb_pts(pts)
+        mins, _ = S.aabb_pts(pts)
         root.location.z -= mins.z
     bpy.context.view_layer.update()
 
@@ -368,29 +108,16 @@ def _ensure_shanya():
     path = Path(str(_SESSION.get("shanya_path") or ""))
     if not path.is_file():
         return
-    slot = _shanya_slot()
-    imported = _import_asset(path, for_shanya=True, target_coll=slot)
+    slot = S.ensure_collection(_SHANYA_COLL)
+    imported = S.import_asset(path, for_shanya=True, target_coll=slot)
     _STATE["shanya_objects"] = imported
-    root = _wrap_root(imported, "Shanya", root_name="VIU_SHANYA_ROOT", target_coll=slot)
+    root = S.wrap_root(imported, root_name="VIU_SHANYA_ROOT", target_coll=slot)
     target = float(_SESSION.get("shanya_target_m") or 1.70)
-    h = _height_of_objects(imported)
+    h = S.height_of_objects(imported)
     if h > 1e-6:
         root.scale *= target / h
     root.location = (0.0, 0.0, 0.0)
     _STATE["shanya_root"] = root
-    for obj in imported:
-        if _is_wgt_name(obj.name):
-            obj.hide_set(True)
-            obj.hide_render = True
-
-
-def _mesh_enum_items(self, context):
-    items = [("AUTO", "Авто (крупнейший меш)", "")]
-    for o in _STATE.get("creature_objects") or []:
-        if o.type == "MESH" and not _skip_mesh(o.name):
-            vc = len(o.data.vertices) if o.data else 0
-            items.append((o.name, f"{o.name} ({vc}v)", ""))
-    return items
 
 
 def _load_creature_entry(entry: dict):
@@ -398,15 +125,15 @@ def _load_creature_entry(entry: dict):
     path = Path(str(entry.get("path") or ""))
     if not path.is_file():
         return f"Нет файла: {path}"
-    slot = _creature_slot()
-    imported = _import_asset(path, for_shanya=False, target_coll=slot)
-    root = _wrap_root(imported, entry.get("name") or "creature", target_coll=slot)
-    _hide_helpers(imported)
+    slot = S.ensure_collection(_SLOT)
+    imported = S.import_asset(path, target_coll=slot)
+    root = S.wrap_root(imported, root_name=_ROOT, target_coll=slot)
+    S.hide_helpers(imported)
     body_meshes = [o for o in imported if o.type == "MESH" and not o.hide_get()]
     target = float(entry.get("target_height_m") or 1.0)
     offset = float(_SESSION.get("creature_offset_m") or 1.35)
-    body = _STATE.get("body_mesh") or "AUTO"
-    bm = "" if body == "AUTO" else body
+    props = bpy.context.scene.viu_creature_studio
+    bm = props.body_mesh if props.body_mesh and props.body_mesh != "AUTO" else ""
     _place_creature(root, imported, offset, target, bm)
     _STATE["creature_root"] = root
     _STATE["creature_objects"] = imported
@@ -416,10 +143,7 @@ def _load_creature_entry(entry: dict):
     else:
         _STATE["body_mesh"] = ""
     if not body_meshes:
-        return (
-            f"Загружено: {entry.get('name')} — ⚠ только WGT/риг, тела не видно. "
-            "Проверь .blend (коллекция Body) или положи FBX в Creatures/Inbox."
-        )
+        return f"Загружено: {entry.get('name')} — ⚠ тела не видно"
     return f"Загружено: {entry.get('name')} (меш: {_STATE['body_mesh']})"
 
 
@@ -427,10 +151,10 @@ def _setup_camera_for_shot(yaw_deg: float, objects):
     deps = bpy.context.evaluated_depsgraph_get()
     pts = []
     for o in objects:
-        pts.extend(_mesh_points(o, deps))
+        pts.extend(S.mesh_points(o, deps))
     if not pts:
         return None
-    mins, maxs = _aabb_pts(pts)
+    mins, maxs = S.aabb_pts(pts)
     center = (mins + maxs) * 0.5
     span = max(maxs.x - mins.x, maxs.y - mins.y, maxs.z - mins.z, 0.25)
     dist = max(span * 2.2, 1.0)
@@ -450,7 +174,7 @@ def _setup_camera_for_shot(yaw_deg: float, objects):
 
 
 def _render_shots(entry: dict) -> tuple[str, str]:
-    slug = str(entry.get("slug") or _slugify(entry.get("name")))
+    slug = str(entry.get("slug") or S.slugify(entry.get("name")))
     out_dir = Path(str(_SESSION.get("processed_root") or "")) / slug
     out_dir.mkdir(parents=True, exist_ok=True)
     front = out_dir / "front.png"
@@ -460,7 +184,6 @@ def _render_shots(entry: dict) -> tuple[str, str]:
     scene.render.resolution_y = 768
     scene.render.image_settings.file_format = "PNG"
     objs = list(_STATE.get("creature_objects") or [])
-    # спрятать Шаню на время съёмки
     shanya = _STATE.get("shanya_root")
     shanya_hide = False
     if shanya:
@@ -483,51 +206,23 @@ def _render_shots(entry: dict) -> tuple[str, str]:
     return str(front), str(side)
 
 
-def _gather_creature_objects():
-    root = _STATE.get("creature_root")
-    if root is None:
-        return []
-    out = []
-
-    def walk(o):
-        out.append(o)
-        for ch in o.children:
-            walk(ch)
-
-    walk(root)
-    return out
+def _sync_props_from_entry(entry: dict):
+    props = bpy.context.scene.viu_creature_studio
+    props.target_height_m = float(entry.get("target_height_m") or 1.0)
+    props.photo_notes = str(entry.get("photo_notes") or "")
+    sc = str(entry.get("size_class") or "")
+    if sc:
+        props.size_class = sc
+    loco = str(entry.get("locomotion") or "unknown")
+    if loco:
+        props.locomotion = loco
 
 
-def _save_creature_blend(filepath: Path) -> bool:
-    objs = _gather_creature_objects()
-    if not objs:
-        return False
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-    if filepath.is_file():
-        filepath.unlink()
-    bpy.data.libraries.write(str(filepath), objs, path_remap="RELATIVE", fake_user=True)
-    return filepath.is_file()
-
-
-class VIU_OT_StudioShowBody(bpy.types.Operator):
-    bl_idname = "viu.studio_show_body"
-    bl_label = "Показать меши тела"
-
-    def execute(self, context):
-        objs = _STATE.get("creature_objects") or []
-        shown = 0
-        for obj in objs:
-            if obj.type != "MESH" or _is_wgt_name(obj.name):
-                continue
-            obj.hide_set(False)
-            try:
-                obj.hide_viewport = False
-            except AttributeError:
-                pass
-            obj.hide_render = False
-            shown += 1
-        self.report({"INFO"}, f"Показано мешей: {shown}")
-        return {"FINISHED"}
+def _target_from_size(size_id: str) -> float:
+    for row in _SESSION.get("size_classes") or []:
+        if row.get("id") == size_id:
+            return float(row.get("target_m") or 1.0)
+    return 1.0
 
 
 class VIU_OT_StudioPrev(bpy.types.Operator):
@@ -539,7 +234,9 @@ class VIU_OT_StudioPrev(bpy.types.Operator):
         if not q:
             return {"CANCELLED"}
         _SESSION["index"] = (int(_SESSION.get("index") or 0) - 1) % len(q)
-        _load_creature_entry(_current_entry())
+        entry = _current_entry()
+        _load_creature_entry(entry)
+        _sync_props_from_entry(entry)
         return {"FINISHED"}
 
 
@@ -552,7 +249,9 @@ class VIU_OT_StudioNext(bpy.types.Operator):
         if not q:
             return {"CANCELLED"}
         _SESSION["index"] = (int(_SESSION.get("index") or 0) + 1) % len(q)
-        _load_creature_entry(_current_entry())
+        entry = _current_entry()
+        _load_creature_entry(entry)
+        _sync_props_from_entry(entry)
         return {"FINISHED"}
 
 
@@ -573,8 +272,47 @@ class VIU_OT_StudioHideIk(bpy.types.Operator):
     bl_label = "Спрятать IK"
 
     def execute(self, context):
-        _hide_helpers(_STATE.get("creature_objects") or [])
-        self.report({"INFO"}, "IK / empties скрыты")
+        S.hide_helpers(_STATE.get("creature_objects") or [])
+        return {"FINISHED"}
+
+
+class VIU_OT_StudioBurstingHead(bpy.types.Operator):
+    bl_idname = "viu.studio_bursting_head"
+    bl_label = "Bursting Head Repair"
+
+    def execute(self, context):
+        _, _, msg = S.repair_bursting_head(_STATE.get("creature_objects") or [])
+        self.report({"INFO"}, msg)
+        return {"FINISHED"}
+
+
+class VIU_OT_StudioApplyMarkup(bpy.types.Operator):
+    bl_idname = "viu.studio_apply_markup"
+    bl_label = "Применить разметку"
+
+    def execute(self, context):
+        entry = _current_entry()
+        props = context.scene.viu_creature_studio
+        if not entry:
+            return {"CANCELLED"}
+        sc = props.size_class or ""
+        loco = props.locomotion or "unknown"
+        if not sc:
+            self.report({"ERROR"}, "Выбери size_class")
+            return {"CANCELLED"}
+        target = float(props.target_height_m or _target_from_size(sc))
+        entry["size_class"] = sc
+        entry["locomotion"] = loco
+        entry["target_height_m"] = target
+        S.write_feedback_file(
+            _feedback_path(),
+            entry,
+            size_class=sc,
+            locomotion=loco,
+            target_height_m=target,
+        )
+        legs = S.legs_hint(loco)
+        self.report({"INFO"}, f"{sc} / {loco} ({legs}), рост {target:.2f}м")
         return {"FINISHED"}
 
 
@@ -594,9 +332,16 @@ class VIU_OT_StudioApplyHeight(bpy.types.Operator):
         bpy.context.view_layer.update()
         bm = props.body_mesh if props.body_mesh and props.body_mesh != "AUTO" else (_STATE.get("body_mesh") or "")
         _place_creature(root, objs, float(_SESSION.get("creature_offset_m") or 1.35), target, bm)
-        measured = _height_of_objects(objs, bm if bm else "")
+        measured = S.height_of_objects(objs, bm if bm else "")
         entry["target_height_m"] = target
-        _write_feedback(entry, target_height_m=target, measured_height_m=measured)
+        S.write_feedback_file(
+            _feedback_path(),
+            entry,
+            target_height_m=target,
+            measured_height_m=measured,
+            size_class=props.size_class or entry.get("size_class"),
+            locomotion=props.locomotion or entry.get("locomotion"),
+        )
         self.report({"INFO"}, f"Рост {measured:.2f}м → цель {target:.2f}м")
         return {"FINISHED"}
 
@@ -611,17 +356,18 @@ class VIU_OT_StudioScreenshot(bpy.types.Operator):
             return {"CANCELLED"}
         try:
             front, side = _render_shots(entry)
-            measured = _height_of_objects(
-                _STATE.get("creature_objects") or [],
-                _STATE.get("body_mesh") or "",
-            )
-            _write_feedback(
+            measured = S.height_of_objects(_STATE.get("creature_objects") or [], _STATE.get("body_mesh") or "")
+            props = context.scene.viu_creature_studio
+            S.write_feedback_file(
+                _feedback_path(),
                 entry,
                 photo_front=front,
                 photo_side=side,
                 photo_ok=False,
                 measured_height_m=measured,
                 target_height_m=float(entry.get("target_height_m") or 0),
+                size_class=props.size_class or entry.get("size_class"),
+                locomotion=props.locomotion or entry.get("locomotion"),
             )
             self.report({"INFO"}, f"PNG: {front}")
         except Exception as exc:
@@ -631,33 +377,38 @@ class VIU_OT_StudioScreenshot(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class VIU_OT_StudioSave(bpy.types.Operator):
+class VIU_OT_StudioSaveFbx(bpy.types.Operator):
     bl_idname = "viu.studio_save"
-    bl_label = "Сохранить эталон"
+    bl_label = "Сохранить эталон FBX"
 
     def execute(self, context):
         entry = _current_entry()
         if not entry:
             return {"CANCELLED"}
-        slug = str(entry.get("slug") or _slugify(entry.get("name")))
+        props = context.scene.viu_creature_studio
+        if not (props.size_class or entry.get("size_class")):
+            self.report({"ERROR"}, "Сначала разметка (класс + locomotion)")
+            return {"CANCELLED"}
+        slug = str(entry.get("slug") or S.slugify(entry.get("name")))
         out_dir = Path(str(_SESSION.get("processed_root") or "")) / slug
-        out_dir.mkdir(parents=True, exist_ok=True)
-        ready = out_dir / f"{slug}_ready.blend"
+        fbx = out_dir / f"{slug}_ready.fbx"
+        objs = S.gather_under_root(_STATE.get("creature_root"))
         try:
-            if not _save_creature_blend(ready):
-                self.report({"ERROR"}, "Нет существа для сохранения")
+            ok, msg = S.export_creature_fbx(fbx, objs)
+            if not ok:
+                self.report({"ERROR"}, msg)
                 return {"CANCELLED"}
-            measured = _height_of_objects(
-                _STATE.get("creature_objects") or [],
-                _STATE.get("body_mesh") or "",
-            )
-            _write_feedback(
+            measured = S.height_of_objects(_STATE.get("creature_objects") or [], _STATE.get("body_mesh") or "")
+            S.write_feedback_file(
+                _feedback_path(),
                 entry,
-                prepared_path=str(ready),
+                ready_fbx_path=str(fbx),
                 measured_height_m=measured,
-                target_height_m=float(entry.get("target_height_m") or 0),
+                target_height_m=float(entry.get("target_height_m") or props.target_height_m or 0),
+                size_class=props.size_class or entry.get("size_class"),
+                locomotion=props.locomotion or entry.get("locomotion"),
             )
-            self.report({"INFO"}, f"Эталон (только {slug}): {ready.name}")
+            self.report({"INFO"}, f"Эталон FBX: {fbx.name}")
         except Exception as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
@@ -674,9 +425,9 @@ class VIU_OT_StudioReportIssue(bpy.types.Operator):
             return {"CANCELLED"}
         note = (context.scene.viu_creature_studio.photo_notes or "").strip()
         if not note:
-            self.report({"ERROR"}, "Напиши заметку выше")
+            self.report({"ERROR"}, "Напиши заметку")
             return {"CANCELLED"}
-        slug = str(entry.get("slug") or _slugify(entry.get("name")))
+        slug = str(entry.get("slug") or S.slugify(entry.get("name")))
         reports = Path(str(_SESSION.get("reports_dir") or ""))
         reports.mkdir(parents=True, exist_ok=True)
         viewport = reports / f"{slug}_viewport.png"
@@ -688,25 +439,8 @@ class VIU_OT_StudioReportIssue(bpy.types.Operator):
         except Exception:
             viewport = Path("")
         scene.render.filepath = old_path
-        mesh_names = [
-            o.name
-            for o in (_STATE.get("creature_objects") or [])
-            if o.type == "MESH" and not o.hide_get()
-        ]
-        payload = {
-            "slug": slug,
-            "name": entry.get("name"),
-            "source_path": entry.get("path"),
-            "note": note,
-            "viewport": str(viewport) if viewport else "",
-            "visible_meshes": mesh_names,
-        }
-        report_file = reports / f"{slug}_issue.json"
-        report_file.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
-        _write_feedback(entry, issue_report=note, photo_notes=note, photo_ok=False)
-        self.report({"INFO"}, f"Отчёт: {report_file.name}")
+        S.write_feedback_file(_feedback_path(), entry, issue_report=note, photo_notes=note, photo_ok=False)
+        self.report({"INFO"}, "Отчёт записан")
         return {"FINISHED"}
 
 
@@ -716,9 +450,17 @@ class VIU_OT_StudioPhotoOk(bpy.types.Operator):
 
     def execute(self, context):
         entry = _current_entry()
+        props = context.scene.viu_creature_studio
         if not entry:
             return {"CANCELLED"}
-        _write_feedback(entry, photo_ok=True, photo_notes="")
+        S.write_feedback_file(
+            _feedback_path(),
+            entry,
+            photo_ok=True,
+            photo_notes="",
+            size_class=props.size_class or entry.get("size_class"),
+            locomotion=props.locomotion or entry.get("locomotion"),
+        )
         self.report({"INFO"}, f"OK: {entry.get('name')}")
         return {"FINISHED"}
 
@@ -732,13 +474,20 @@ class VIU_OT_StudioPhotoBad(bpy.types.Operator):
         if not entry:
             return {"CANCELLED"}
         note = context.scene.viu_creature_studio.photo_notes or "нужна правка"
-        _write_feedback(entry, photo_ok=False, photo_notes=note)
-        self.report({"INFO"}, "Отмечено — поправь и пересними")
+        S.write_feedback_file(_feedback_path(), entry, photo_ok=False, photo_notes=note)
         return {"FINISHED"}
 
 
+def _size_enum_items(self, context):
+    return _SIZE_ITEMS
+
+
+def _loco_enum_items(self, context):
+    return _LOCO_ITEMS
+
+
 class VIU_PT_CreatureStudio(bpy.types.Panel):
-    bl_label = "Viu — студия существ"
+    bl_label = "Viu — студия"
     bl_idname = "VIU_PT_creature_studio"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -752,41 +501,42 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         if not entry:
             layout.label(text="Очередь пуста")
             return
-        layout.label(text=f"{idx + 1}/{len(q)}: {entry.get('name')}", icon="OUTLINER_OB_ARMATURE")
-        layout.label(text=f"slug: {entry.get('slug')}")
-        layout.label(text=f"{entry.get('size_class')} / {entry.get('locomotion')}")
+        layout.label(text=f"{idx + 1}/{len(q)}: {entry.get('name')}")
         col = layout.column(align=True)
         col.operator("viu.studio_prev", icon="TRIA_LEFT")
         col.operator("viu.studio_next", icon="TRIA_RIGHT")
         col.operator("viu.studio_reload", icon="FILE_REFRESH")
         layout.separator()
-        layout.operator("viu.studio_hide_ik", icon="HIDE_ON")
-        layout.operator("viu.studio_show_body", icon="MESH_DATA")
+        layout.label(text="Разметка", icon="OUTLINER_OB_ARMATURE")
         props = context.scene.viu_creature_studio
+        layout.prop(props, "size_class", text="Класс")
+        layout.prop(props, "locomotion", text="Locomotion")
+        loco = props.locomotion or entry.get("locomotion") or ""
+        layout.label(text=S.legs_hint(loco), icon="INFO")
+        layout.operator("viu.studio_apply_markup", icon="CHECKMARK")
+        layout.separator()
+        layout.operator("viu.studio_hide_ik", icon="HIDE_ON")
+        layout.operator("viu.studio_bursting_head", icon="MODIFIER")
         layout.prop(props, "target_height_m")
-        layout.label(text=f"Меш: {props.body_mesh or 'AUTO'}")
-        meshes = [o.name for o in (_STATE.get('creature_objects') or []) if o.type == 'MESH']
-        if meshes:
-            layout.label(text=", ".join(meshes[:4])[:60], icon="MESH_DATA")
         layout.operator("viu.studio_apply_height", icon="ARROW_LEFTRIGHT")
         layout.separator()
-        layout.label(text="Save = только текущее существо", icon="INFO")
-        layout.separator()
+        layout.label(text="Эталон = FBX (только существо)", icon="INFO")
         layout.operator("viu.studio_screenshot", icon="RENDER_STILL")
         layout.operator("viu.studio_save", icon="EXPORT")
         layout.prop(props, "photo_notes")
-        layout.operator("viu.studio_report_issue", icon="TEXT")
         row = layout.row(align=True)
         row.operator("viu.studio_photo_ok", icon="CHECKMARK")
         row.operator("viu.studio_photo_bad", icon="CANCEL")
-        if entry.get("photo_front"):
-            layout.label(text="front.png есть", icon="IMAGE_DATA")
+        row2 = layout.row(align=True)
+        row2.operator("viu.studio_report_issue", icon="TEXT")
 
 
 class VIU_CreatureStudioProps(bpy.types.PropertyGroup):
     target_height_m: FloatProperty(name="Рост (м)", default=1.0, min=0.05, max=20.0)
-    body_mesh: StringProperty(name="Меш роста", default="AUTO", description="AUTO или имя меша")
+    body_mesh: StringProperty(name="Меш роста", default="AUTO")
     photo_notes: StringProperty(name="Заметка", default="")
+    size_class: EnumProperty(name="Класс", items=_size_enum_items)
+    locomotion: EnumProperty(name="Locomotion", items=_loco_enum_items)
 
 
 _CLASSES = (
@@ -795,10 +545,11 @@ _CLASSES = (
     VIU_OT_StudioNext,
     VIU_OT_StudioReload,
     VIU_OT_StudioHideIk,
-    VIU_OT_StudioShowBody,
+    VIU_OT_StudioBurstingHead,
+    VIU_OT_StudioApplyMarkup,
     VIU_OT_StudioApplyHeight,
     VIU_OT_StudioScreenshot,
-    VIU_OT_StudioSave,
+    VIU_OT_StudioSaveFbx,
     VIU_OT_StudioReportIssue,
     VIU_OT_StudioPhotoOk,
     VIU_OT_StudioPhotoBad,
@@ -807,19 +558,23 @@ _CLASSES = (
 
 
 def load_session(session_path: str) -> None:
-    global _SESSION
-    path = Path(session_path)
-    _SESSION = json.loads(path.read_text(encoding="utf-8"))
-    # новая сцена
+    global _SESSION, _SIZE_ITEMS, _LOCO_ITEMS
+    _SESSION = json.loads(Path(session_path).read_text(encoding="utf-8"))
+    _SIZE_ITEMS = [("", "— класс —", "")]
+    for row in _SESSION.get("size_classes") or []:
+        sid = row.get("id") or ""
+        label = row.get("label") or sid
+        _SIZE_ITEMS.append((sid, f"{sid} — {label}", ""))
+    _LOCO_ITEMS = [("unknown", "— locomotion —", "")]
+    for loco in _SESSION.get("locomotion_options") or []:
+        _LOCO_ITEMS.append((loco, loco, S.legs_hint(loco)))
     bpy.ops.wm.read_homefile(use_empty=True)
     _ensure_shanya()
     entry = _current_entry()
     if entry:
         msg = _load_creature_entry(entry)
         print("VIU_STUDIO_LOAD", msg)
-        props = bpy.context.scene.viu_creature_studio
-        props.target_height_m = float(entry.get("target_height_m") or 1.0)
-        props.photo_notes = str(entry.get("photo_notes") or "")
+        _sync_props_from_entry(entry)
 
 
 def register():

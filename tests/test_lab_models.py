@@ -16,9 +16,16 @@ from viu.lab.notify import notify_lab_awaiting_rating, notify_lab_step
 def _cfg(tmp_path: Path) -> Config:
     import os
 
+    lib = tmp_path / "Library"
+    lib.mkdir(parents=True, exist_ok=True)
     os.environ["VIU_DATA_DIR"] = str(tmp_path / ".viu")
+    os.environ["VIU_LIBRARY_ROOT"] = str(lib)
     os.environ["VIU_LAB_MODELS_INBOX"] = str(tmp_path / "models_inbox")
-    return Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
+    return Config(
+        root=tmp_path,
+        data_dir=tmp_path / ".viu",
+        library_root=str(lib),
+    ).ensure_dirs()
 
 
 def test_grade_thresholds():

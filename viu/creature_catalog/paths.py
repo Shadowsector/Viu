@@ -26,7 +26,7 @@ def creatures_inbox_dir(config: Config) -> Path:
         readme.write_text(
             "Единый Inbox живых существ (волки, гоблины, humanoid, …).\n"
             "Положи .blend / .fbx / .glb. Текстуры — рядом (textures/) или внутри blend.\n"
-            "Вью: «Разметить существ» → «Студия существ» в Blender.\n"
+            "Вью: «Подготовить модели» → «Студия существ» в Blender.\n"
             "Пропсы (мебель) — отдельный Prop Inbox.\n"
             "Шаня для студии: лучше Shanya.fbx в CascadeurReady (не rig-.blend).\n",
             encoding="utf-8",
@@ -52,6 +52,31 @@ def creatures_studio_dir(config: Config) -> Path:
     p = library_root(config) / "Lab" / "Creatures" / "Studio"
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def creatures_prep_dir(config: Config) -> Path:
+    p = library_root(config) / "Lab" / "Creatures" / "Prep"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def creatures_prepared_dir(config: Config) -> Path:
+    p = library_root(config) / "Lab" / "Creatures" / "Prepared"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def creature_prepared_blend_path(config: Config, slug: str) -> Path:
+    s = (slug or "creature").strip().strip("/\\") or "creature"
+    d = creatures_prepared_dir(config) / s
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{s}_prepared.blend"
+
+
+def creature_ready_fbx_path(config: Config, slug: str) -> Path:
+    d = creature_processed_slug_dir(config, slug)
+    s = (slug or "creature").strip().strip("/\\") or "creature"
+    return d / f"{s}_ready.fbx"
 
 
 def creature_ready_blend_path(config: Config, slug: str) -> Path:

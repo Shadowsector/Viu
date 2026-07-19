@@ -1,4 +1,4 @@
-"""Студия существ в Blender — по одному рядом с Шаней."""
+"""Студия существ в Blender — разметка + Шаня + эталон FBX."""
 
 from __future__ import annotations
 
@@ -12,9 +12,10 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..config import Config
 from .lineup import dedupe_by_stem, resolve_shanya_path
-from .models import CreatureEntry
+from .models import ALL_SIZE_IDS, LOCOMOTION, CreatureEntry, STATUS_READY, STATUS_SIZED, size_spec
 from .paths import (
     creature_catalog_path,
+    creature_prepared_blend_path,
     creature_processed_slug_dir,
     creatures_processed_dir,
     creatures_studio_dir,
@@ -23,32 +24,57 @@ from .store import CreatureCatalogStore
 
 ADDON_NAME = "viu_creature_studio.py"
 BOOTSTRAP_NAME = "viu_creature_studio_bootstrap.py"
+SHARED_NAME = "viu_creature_blender_shared.py"
 SESSION_NAME = "studio_session.json"
 FEEDBACK_NAME = "studio_feedback.json"
 
 _ADDON_BODY = Path(__file__).resolve().parent / "_creature_studio_addon.py"
 _BOOTSTRAP_BODY = Path(__file__).resolve().parent / "_creature_studio_bootstrap.py"
+_SHARED_BODY = Path(__file__).resolve().parent / "_creature_blender_shared.py"
 
 
 def _install_studio_files(out_dir: Path) -> Tuple[Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     addon = out_dir / ADDON_NAME
     bootstrap = out_dir / BOOTSTRAP_NAME
-    if not _ADDON_BODY.is_file():
-        raise FileNotFoundError(f"Нет аддона студии: {_ADDON_BODY}")
-    if not _BOOTSTRAP_BODY.is_file():
-        raise FileNotFoundError(f"Нет bootstrap студии: {_BOOTSTRAP_BODY}")
-    shutil.copyfile(_ADDON_BODY, addon)
-    shutil.copyfile(_BOOTSTRAP_BODY, bootstrap)
+    shared = out_dir / SHARED_NAME
+    for src, dst in (
+        (_ADDON_BODY, addon),
+        (_BOOTSTRAP_BODY, bootstrap),
+        (_SHARED_BODY, shared),
+    ):
+        if not src.is_file():
+            raise FileNotFoundError(f"Нет файла студии: {src}")
+        shutil.copyfile(src, dst)
     return addon, bootstrap
 
 
-def _entry_payload(e: CreatureEntry) -> Dict[str, Any]:
+def _prepared_path_for(e: CreatureEntry, config: Config) -> Optional[Path]:
+    if e.prepared_path:
+        p = Path(e.prepared_path)
+        if p.is_file():
+            return p
+    cand = creature_prepared_blend_path(config, e.slug)
+    if cand.is_file():
+        return cand
+    return None
+
+
+def is_prepared_for_studio(e: CreatureEntry, config: Config) -> bool:
+    if e.prep_ok:
+        return _prepared_path_for(e, config) is not None
+    return _prepared_path_for(e, config) is not None
+
+
+def _entry_payload(e: CreatureEntry, config: Config) -> Dict[str, Any]:
+    prep = _prepared_path_for(e, config)
+    load_path = str(prep) if prep else e.path
     return {
         "id": e.id,
         "slug": e.slug,
         "name": e.name,
-        "path": e.path,
+        "path": load_path,
+        "source_inbox": e.path,
         "size_class": e.size_class,
         "target_height_m": e.target_height_m,
         "locomotion": e.locomotion,
@@ -56,7 +82,8 @@ def _entry_payload(e: CreatureEntry) -> Dict[str, Any]:
         "photo_front": e.photo_front,
         "photo_side": e.photo_side,
         "photo_notes": e.photo_notes,
-        "prepared_path": e.prepared_path,
+        "prepared_path": str(prep) if prep else "",
+        "ready_fbx_path": e.ready_fbx_path,
         "notes": (e.notes or "").split("\n")[0][:200],
     }
 
@@ -69,7 +96,8 @@ def build_studio_queue(
     only_missing_photos: bool = False,
 ) -> Tuple[bool, str, List[CreatureEntry]]:
     store = CreatureCatalogStore(creature_catalog_path(config)).load()
-    creatures = dedupe_by_stem(store.sized())
+    creatures = dedupe_by_stem(store.all())
+    creatures = [e for e in creatures if is_prepared_for_studio(e, config)]
     if slug_filter:
         want = {s.strip().lower() for s in slug_filter if s.strip()}
         creatures = [
@@ -83,9 +111,13 @@ def build_studio_queue(
         creatures = [e for e in creatures if not e.photo_ok]
     if only_missing_photos:
         creatures = [e for e in creatures if e.needs_photo_lineup()]
-    creatures = sorted(creatures, key=lambda e: (e.size_class or "", e.name.lower()))
+    creatures = sorted(creatures, key=lambda e: (e.size_class or "zzz", e.name.lower()))
     if not creatures:
-        return False, "Очередь студии пуста — разметь size_class или сними фильтр.", []
+        return (
+            False,
+            "Очередь студии пуста — сначала «Подготовить модели» (prepared.blend).",
+            [],
+        )
     return True, f"В очереди студии: {len(creatures)}.", creatures
 
 
@@ -116,6 +148,11 @@ def write_studio_session(
     studio_dir = creatures_studio_dir(config)
     _install_studio_files(studio_dir)
     shanya = resolve_shanya_studio_path(config)
+    size_meta = []
+    for sid in ALL_SIZE_IDS:
+        spec = size_spec(sid) or {}
+        label = spec.get("label_ru") or sid
+        size_meta.append({"id": sid, "label": label, "target_m": spec.get("target_m", 1.0)})
     session = {
         "catalog_path": str(creature_catalog_path(config)),
         "feedback_path": str(studio_dir / FEEDBACK_NAME),
@@ -124,8 +161,10 @@ def write_studio_session(
         "shanya_path": str(shanya) if shanya else "",
         "shanya_target_m": 1.70,
         "creature_offset_m": 1.35,
+        "size_classes": size_meta,
+        "locomotion_options": [x for x in LOCOMOTION if x != "unknown"],
         "index": max(0, min(index, len(creatures) - 1)),
-        "queue": [_entry_payload(e) for e in creatures],
+        "queue": [_entry_payload(e, config) for e in creatures],
     }
     path = studio_dir / SESSION_NAME
     path.write_text(json.dumps(session, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -155,6 +194,17 @@ def sync_studio_feedback(config: Config) -> Tuple[int, str]:
         e = store.get(cid)
         if e is None:
             continue
+        sc = str(row.get("size_class") or "").strip()
+        if sc and sc in ALL_SIZE_IDS:
+            spec = size_spec(sc)
+            e.size_class = sc
+            e.status = STATUS_SIZED
+            e.reviewed = True
+            if spec and not row.get("target_height_m"):
+                e.target_height_m = float(spec["target_m"])
+        loco = str(row.get("locomotion") or "").strip()
+        if loco and loco in LOCOMOTION:
+            e.locomotion = loco
         if row.get("target_height_m"):
             try:
                 e.target_height_m = float(row["target_height_m"])
@@ -165,7 +215,7 @@ def sync_studio_feedback(config: Config) -> Tuple[int, str]:
                 e.measured_height_m = float(row["measured_height_m"])
             except (TypeError, ValueError):
                 pass
-        for key in ("photo_front", "photo_side", "prepared_path", "photo_notes"):
+        for key in ("photo_front", "photo_side", "prepared_path", "photo_notes", "ready_fbx_path"):
             if row.get(key):
                 setattr(e, key, str(row[key]))
         issue = str(row.get("issue_report") or "").strip()
@@ -174,12 +224,11 @@ def sync_studio_feedback(config: Config) -> Tuple[int, str]:
         if "photo_ok" in row:
             e.photo_ok = bool(row["photo_ok"])
         if e.photo_ok and e.size_class:
-            from .models import STATUS_READY
-
             e.status = STATUS_READY
         store.upsert(e)
         n += 1
-        lines.append(f"  • {e.name}: " + ("скрины ок" if e.photo_ok else "обновлено"))
+        tag = "скрины ок" if e.photo_ok else (e.size_class or "обновлено")
+        lines.append(f"  • {e.name}: {tag}")
     if n:
         store.save()
     return n, f"Синхронизировано из Blender: {n}\n" + "\n".join(lines[:30])
@@ -222,11 +271,12 @@ def open_creature_studio(
     more = f" … +{len(queue) - 8}" if len(queue) > 8 else ""
     return (
         True,
-        f"{msg}\nОткрываю Blender-студию.\n"
-        f"Панель: 3D View → боковая панель (N) → вкладка **Viu**.\n"
+        f"{msg}\nОткрываю Blender — **студия + разметка**.\n"
+        f"Панель: N → Viu → «Viu — студия».\n"
         f"Очередь: {names}{more}\n"
         f"Session: {session}\n"
-        "После правок в Blender вернись во Вью → «Синхронизировать студию».",
+        "Разметка (класс/ноги), рост vs Шаня, скрины, **эталон FBX**.\n"
+        "Потом во Вью → «Синхр. студии».",
     )
 
 
