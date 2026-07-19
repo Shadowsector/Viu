@@ -280,6 +280,19 @@ def hide_helpers(objects):
             pass
 
 
+def hide_rig_viewport(objects) -> None:
+    """IK/WGT/cs_ + armature целиком — для wardrobe / работы с одеждой."""
+    hide_helpers(objects)
+    for obj in objects:
+        try:
+            if obj.type == "ARMATURE":
+                obj.hide_set(True)
+                obj.hide_render = True
+                obj.show_in_front = False
+        except (AttributeError, ReferenceError):
+            pass
+
+
 def import_asset(path: Path, *, for_shanya: bool = False, target_coll=None):
     path = Path(path)
     before = set(bpy.data.objects)

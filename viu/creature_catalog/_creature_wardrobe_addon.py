@@ -2,10 +2,10 @@
 bl_info = {
     "name": "Viu Creature Wardrobe",
     "author": "Viu",
-    "version": (0, 1, 1),
+    "version": (0, 2, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
-    "description": "Наборы одежды: casual, swim, nsfw, bath",
+    "description": "Наборы одежды: Casual/Fitness/Swimsuit… + вариант 1–3",
     "category": "Animation",
 }
 
@@ -15,13 +15,25 @@ import sys
 from pathlib import Path
 
 import bpy
-from bpy.props import BoolProperty, CollectionProperty, StringProperty
-from bpy.types import PropertyGroup
+from bpy.props import BoolProperty, EnumProperty, StringProperty
 
 _SESSION: dict = {}
 _STATE = {"root": None, "objects": [], "import_colls": []}
 _SLOT = "VIU_WardrobeSlot"
 _ROOT = "VIU_WARDROBE_ROOT"
+
+_OUTFIT_TYPE_ITEMS = [
+    ("casual", "Casual", ""),
+    ("fitness", "Fitness", ""),
+    ("swimsuit", "Swimsuit", ""),
+    ("pajama", "Pajama", ""),
+    ("undies", "Undies", ""),
+    ("lingerie", "Lingerie", ""),
+    ("half_nude", "Half-nude", ""),
+    ("nude", "Nude", ""),
+]
+_OUTFIT_LABEL = {k: v for k, v, _ in _OUTFIT_TYPE_ITEMS}
+_OUTFIT_VARIANT_ITEMS = [("01", "1", ""), ("02", "2", ""), ("03", "3", "")]
 
 
 def _load_shared():
@@ -73,6 +85,15 @@ def _save_outfit_doc(entry: dict, data: dict) -> Path:
     return path
 
 
+def _outfit_set_id(type_id: str, variant: str) -> str:
+    v = (variant or "01").strip()
+    if v.isdigit() and len(v) == 1:
+        v = f"0{v}"
+    if v not in ("01", "02", "03"):
+        v = "01"
+    return f"{type_id}_{v}"
+
+
 def _clear():
     S.clear_collection_slot(
         _SLOT,
@@ -94,11 +115,11 @@ def _load_entry(entry: dict) -> str:
     slot = S.ensure_collection(_SLOT)
     imported, import_colls = S.import_asset(path, target_coll=slot)
     root = S.wrap_root(imported, root_name=_ROOT, target_coll=slot)
-    S.hide_helpers(imported)
+    S.hide_rig_viewport(imported)
     _STATE["root"] = root
     _STATE["objects"] = imported
     _STATE["import_colls"] = import_colls
-    meshes = [o.name for o in imported if o.type == "MESH" and not S.skip_mesh(o.name)]
+    meshes = [o for o in imported if o.type == "MESH" and not S.skip_mesh(o.name)]
     return f"Wardrobe: {entry.get('name')} ({len(meshes)} мешей)"
 
 
@@ -106,8 +127,24 @@ def _mesh_objects():
     return [o for o in (_STATE.get("objects") or []) if o.type == "MESH" and not S.skip_mesh(o.name)]
 
 
-class VIU_WardrobeMeshItem(PropertyGroup):
-    name: StringProperty(name="Mesh")
+def _categorized_meshes():
+    clothing, body, other = [], [], []
+    for obj in _mesh_objects():
+        if S.is_clothing_mesh(obj.name):
+            clothing.append(obj)
+        elif S.is_body_mesh_name(obj.name):
+            body.append(obj)
+        else:
+            other.append(obj)
+    return clothing, body, other
+
+
+def _draw_mesh_buttons(layout, objects, *, prefix: str = ""):
+    for obj in objects:
+        icon = "HIDE_OFF" if not obj.hide_get() else "HIDE_ON"
+        label = (prefix + obj.name)[:36]
+        op = layout.operator("viu.wardrobe_toggle_mesh", text=label, icon=icon)
+        op.mesh_name = obj.name
 
 
 class VIU_OT_WardrobePrev(bpy.types.Operator):
@@ -118,7 +155,11 @@ class VIU_OT_WardrobePrev(bpy.types.Operator):
         q = _SESSION.get("queue") or []
         if not q:
             return {"CANCELLED"}
-        _SESSION["index"] = (int(_SESSION.get("index") or 0) - 1) % len(q)
+        idx = int(_SESSION.get("index") or 0)
+        if idx <= 0:
+            self.report({"INFO"}, "Уже первая модель")
+            return {"FINISHED"}
+        _SESSION["index"] = idx - 1
         _load_entry(_current_entry())
         return {"FINISHED"}
 
@@ -131,8 +172,25 @@ class VIU_OT_WardrobeNext(bpy.types.Operator):
         q = _SESSION.get("queue") or []
         if not q:
             return {"CANCELLED"}
-        _SESSION["index"] = (int(_SESSION.get("index") or 0) + 1) % len(q)
+        idx = int(_SESSION.get("index") or 0)
+        if idx >= len(q) - 1:
+            self.report(
+                {"INFO"},
+                "Конец очереди. Синхр. wardrobe во Вью и открой снова для оставшихся.",
+            )
+            return {"FINISHED"}
+        _SESSION["index"] = idx + 1
         _load_entry(_current_entry())
+        return {"FINISHED"}
+
+
+class VIU_OT_WardrobeHideRig(bpy.types.Operator):
+    bl_idname = "viu.wardrobe_hide_rig"
+    bl_label = "Спрятать риг / IK / cs_"
+
+    def execute(self, context):
+        S.hide_rig_viewport(_STATE.get("objects") or [])
+        self.report({"INFO"}, "Риг и хелперы скрыты")
         return {"FINISHED"}
 
 
@@ -210,16 +268,18 @@ class VIU_OT_WardrobeSaveSet(bpy.types.Operator):
     def execute(self, context):
         entry = _current_entry()
         props = context.scene.viu_creature_wardrobe
-        set_id = (props.set_id or "").strip()
-        if not set_id:
-            self.report({"ERROR"}, "Укажи id набора (casual_01, swim_01…)")
-            return {"CANCELLED"}
+        type_id = props.outfit_type or "casual"
+        variant = props.outfit_variant or "01"
+        set_id = _outfit_set_id(type_id, variant)
+        label = _OUTFIT_LABEL.get(type_id, type_id)
         snap = S.mesh_visibility_snapshot(_STATE.get("objects") or [])
         data = _load_outfit_doc(entry)
         rows = {s.get("id"): s for s in data.get("sets") or [] if isinstance(s, dict)}
         rows[set_id] = {
             "id": set_id,
-            "label": (props.set_label or set_id).strip(),
+            "label": label,
+            "variant": variant,
+            "outfit_type": type_id,
             "confirmed": bool(props.set_confirmed),
             "show_meshes": snap["show_meshes"],
             "hide_meshes": snap["hide_meshes"],
@@ -242,17 +302,18 @@ class VIU_OT_WardrobeSaveSet(bpy.types.Operator):
             genital_rig=genital_rig,
             wardrobe_notes=props.set_notes or "",
         )
-        self.report({"INFO"}, f"Набор {set_id} → {out.name}")
+        self.report({"INFO"}, f"Сохранено {label} {int(variant)} → {set_id}")
         return {"FINISHED"}
 
 
 class VIU_OT_WardrobeLoadSet(bpy.types.Operator):
     bl_idname = "viu.wardrobe_load_set"
     bl_label = "Загрузить набор"
+    set_id: StringProperty(default="")
 
     def execute(self, context):
         entry = _current_entry()
-        set_id = (context.scene.viu_creature_wardrobe.set_id or "").strip()
+        set_id = (self.set_id or context.scene.viu_creature_wardrobe.outfit_type_variant_id()).strip()
         data = _load_outfit_doc(entry)
         row = next((s for s in data.get("sets") or [] if s.get("id") == set_id), None)
         if not row:
@@ -265,10 +326,15 @@ class VIU_OT_WardrobeLoadSet(bpy.types.Operator):
         )
         if row.get("hide_genital_mesh"):
             S.set_genital_meshes_visible(_STATE.get("objects") or [], False)
-        context.scene.viu_creature_wardrobe.clip_warning = S.clothing_genital_clipping_warning(
-            _STATE.get("objects") or []
-        )
-        self.report({"INFO"}, f"Загружен {set_id}")
+        props = context.scene.viu_creature_wardrobe
+        type_id = str(row.get("outfit_type") or "")
+        variant = str(row.get("variant") or "")
+        if type_id:
+            props.outfit_type = type_id
+        if variant:
+            props.outfit_variant = variant
+        props.clip_warning = S.clothing_genital_clipping_warning(_STATE.get("objects") or [])
+        self.report({"INFO"}, f"Загружен {row.get('label')} ({set_id})")
         return {"FINISHED"}
 
 
@@ -292,6 +358,7 @@ class VIU_PT_CreatureWardrobe(bpy.types.Panel):
         col.operator("viu.wardrobe_prev", icon="TRIA_LEFT")
         col.operator("viu.wardrobe_next", icon="TRIA_RIGHT")
         layout.separator()
+        layout.operator("viu.wardrobe_hide_rig", icon="HIDE_ON")
         layout.operator("viu.wardrobe_body_only", icon="ARMATURE_DATA")
         layout.operator("viu.wardrobe_hide_clothes", icon="HIDE_ON")
         row = layout.row(align=True)
@@ -300,37 +367,76 @@ class VIU_PT_CreatureWardrobe(bpy.types.Panel):
         props = context.scene.viu_creature_wardrobe
         if props.clip_warning:
             layout.label(text=props.clip_warning, icon="ERROR")
+
+        clothing, body, other = _categorized_meshes()
         layout.separator()
-        layout.label(text="Меши (клик — видимость):")
-        meshes = _mesh_objects()[:16]
-        for obj in meshes:
-            icon = "HIDE_OFF" if not obj.hide_get() else "HIDE_ON"
-            op = layout.operator("viu.wardrobe_toggle_mesh", text=obj.name[:28], icon=icon)
-            op.mesh_name = obj.name
-        if len(_mesh_objects()) > 16:
-            layout.label(text=f"… +{len(_mesh_objects()) - 16} мешей")
+        box = layout.box()
+        box.label(text=f"Одежда ({len(clothing)}) — клик вкл/выкл:", icon="MOD_CLOTH")
+        col = box.column(align=True)
+        _draw_mesh_buttons(col, clothing)
+
+        if body:
+            box = layout.box()
+            box.label(text=f"Тело ({len(body)}):", icon="OUTLINER_OB_MESH")
+            col = box.column(align=True)
+            _draw_mesh_buttons(col, body)
+
+        if other:
+            box = layout.box()
+            box.label(text=f"Прочее ({len(other)}):", icon="MESH_DATA")
+            col = box.column(align=True)
+            _draw_mesh_buttons(col, other)
+
         layout.separator()
-        layout.prop(props, "set_id")
-        layout.prop(props, "set_label")
+        saved = _load_outfit_doc(entry).get("sets") or []
+        if saved:
+            layout.label(text="Сохранённые наборы:", icon="FILE_TICK")
+            for row in saved[:12]:
+                if not isinstance(row, dict):
+                    continue
+                r = layout.row(align=True)
+                mark = "✓" if row.get("confirmed") else "·"
+                r.label(text=f"{mark} {row.get('label', '?')} {row.get('variant', '')[:2]}")
+                op = r.operator("viu.wardrobe_load_set", text="", icon="IMPORT")
+                op.set_id = str(row.get("id") or "")
+
+        layout.separator()
+        row = layout.row(align=True)
+        row.prop(props, "outfit_type", text="")
+        row.prop(props, "outfit_variant", text="")
+        type_id = props.outfit_type or "casual"
+        variant = props.outfit_variant or "01"
+        label = _OUTFIT_LABEL.get(type_id, type_id)
+        layout.label(text=f"→ {label} · вариант {int(variant)}  ({_outfit_set_id(type_id, variant)})")
         layout.prop(props, "set_notes")
         layout.prop(props, "set_confirmed")
-        layout.operator("viu.wardrobe_save_set", icon="EXPORT")
-        layout.operator("viu.wardrobe_load_set", icon="IMPORT")
+        layout.operator("viu.wardrobe_save_set", text=f"Сохранить {label} {int(variant)}", icon="EXPORT")
 
 
 class VIU_CreatureWardrobeProps(bpy.types.PropertyGroup):
-    set_id: StringProperty(name="ID набора", default="casual_01")
-    set_label: StringProperty(name="Название", default="Casual")
+    outfit_type: EnumProperty(
+        name="Тип",
+        items=_OUTFIT_TYPE_ITEMS,
+        default="casual",
+    )
+    outfit_variant: EnumProperty(
+        name="Вариант",
+        items=_OUTFIT_VARIANT_ITEMS,
+        default="01",
+    )
     set_notes: StringProperty(name="Заметка", default="")
-    set_confirmed: BoolProperty(name="Подтверждён ✓", default=False)
+    set_confirmed: BoolProperty(name="Подтверждён ✓", default=True)
     clip_warning: StringProperty(name="", default="")
+
+    def outfit_type_variant_id(self) -> str:
+        return _outfit_set_id(self.outfit_type or "casual", self.outfit_variant or "01")
 
 
 _CLASSES = (
-    VIU_WardrobeMeshItem,
     VIU_CreatureWardrobeProps,
     VIU_OT_WardrobePrev,
     VIU_OT_WardrobeNext,
+    VIU_OT_WardrobeHideRig,
     VIU_OT_WardrobeToggleMesh,
     VIU_OT_WardrobeBodyOnly,
     VIU_OT_WardrobeHideClothes,

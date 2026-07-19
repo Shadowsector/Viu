@@ -643,6 +643,19 @@ def test_gui_action_creature_catalog():
     assert lineup.group == "Редко"
 
 
+def test_outfit_types_ids():
+    from viu.creature_catalog.outfit_types import (
+        outfit_set_id,
+        outfit_type_label,
+        parse_outfit_set_id,
+    )
+
+    assert outfit_set_id("casual", "02") == "casual_02"
+    assert outfit_set_id("swimsuit", "2") == "swimsuit_02"
+    assert outfit_type_label("half_nude") == "Half-nude"
+    assert parse_outfit_set_id("lingerie_03") == ("lingerie", "03")
+
+
 def test_creature_identity_from_subfolder(tmp_path):
     from viu.creature_catalog.models import creature_identity_from_inbox_path
 

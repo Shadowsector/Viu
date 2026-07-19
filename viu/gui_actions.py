@@ -68,7 +68,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Подготовить модели",
         "Главное",
         tool="creature_prep_open",
-        hint="Шаг 1: Blender — очистка, Bursting Head, текстуры, A-pose, prepared.blend. Потом «Синхр. подготовки».",
+        hint="Шаг 1: очистка, текстуры, prepared.blend → «Синхр. подготовки» → «Разметка одежды».",
     ),
     GuiAction(
         "creature_prep_sync",
@@ -82,7 +82,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Разметка одежды",
         "Главное",
         tool="creature_wardrobe_open",
-        hint="После prep: наборы casual/swim/nsfw, genital mesh. → «Синхр. wardrobe».",
+        hint="Шаг 2: prepared.blend → наборы одежды (Casual + 1/2/3). Потом «Синхр. wardrobe».",
     ),
     GuiAction(
         "creature_wardrobe_sync",
@@ -104,7 +104,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Главное",
         tool="creature_studio_open",
         tool_args={"all": "0"},
-        hint="Шаг 2: prepared → разметка + Шаня + рост + скрины + эталон FBX. Потом «Синхр. студии».",
+        hint="Шаг 3: рост vs Шаня, скрины, эталон FBX. После «Синхр. wardrobe».",
     ),
     GuiAction(
         "creature_lineup",

@@ -9,14 +9,16 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..config import Config
-from .lineup import dedupe_by_stem
+from .lineup import dedupe_by_inbox_folder
 from .models import CreatureEntry
 from .paths import (
     creature_catalog_path,
     creature_outfit_sets_path,
     creature_prepared_blend_path,
+    creatures_inbox_dir,
     creatures_wardrobe_dir,
 )
+from .scanner import scan_creatures_inbox
 from .studio import is_prepared_for_studio
 from .store import CreatureCatalogStore
 
@@ -64,9 +66,13 @@ def build_wardrobe_queue(
     config: Config,
     *,
     slug_filter: Sequence[str] = (),
+    rescan_inbox: bool = False,
 ) -> Tuple[bool, str, List[CreatureEntry]]:
+    if rescan_inbox:
+        scan_creatures_inbox(config)
     store = CreatureCatalogStore(creature_catalog_path(config)).load()
-    creatures = dedupe_by_stem(store.all())
+    inbox = creatures_inbox_dir(config)
+    creatures = dedupe_by_inbox_folder(store.all(), inbox)
     creatures = [e for e in creatures if is_prepared_for_studio(e, config)]
     if slug_filter:
         want = {s.strip().lower() for s in slug_filter if s.strip()}
@@ -169,5 +175,5 @@ def open_creature_wardrobe(
         True,
         f"{msg}\nBlender → N → Viu → **Wardrobe**.\n"
         f"Очередь: {names}\n"
-        "Наборы → outfit_sets.json → «Синхр. wardrobe».",
+        "Тип (Casual…) + вариант 1–3 → Сохранить. Потом «Синхр. wardrobe» → «Студия существ».",
     )
