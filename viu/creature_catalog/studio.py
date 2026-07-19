@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..config import Config
-from .lineup import dedupe_by_stem, resolve_shanya_path
+from .lineup import dedupe_by_inbox_folder, resolve_shanya_path
 from .models import (
     ALL_SIZE_IDS,
     CONTACT_MODES,
@@ -27,9 +27,11 @@ from .paths import (
     creature_catalog_path,
     creature_prepared_blend_path,
     creature_processed_slug_dir,
+    creatures_inbox_dir,
     creatures_processed_dir,
     creatures_studio_dir,
 )
+from .scanner import scan_creatures_inbox
 from .store import CreatureCatalogStore
 
 ADDON_NAME = "viu_creature_studio.py"
@@ -106,9 +108,13 @@ def build_studio_queue(
     slug_filter: Sequence[str] = (),
     only_unapproved: bool = False,
     only_missing_photos: bool = False,
+    rescan_inbox: bool = True,
 ) -> Tuple[bool, str, List[CreatureEntry]]:
+    if rescan_inbox:
+        scan_creatures_inbox(config)
     store = CreatureCatalogStore(creature_catalog_path(config)).load()
-    creatures = dedupe_by_stem(store.all())
+    inbox = creatures_inbox_dir(config)
+    creatures = dedupe_by_inbox_folder(store.all(), inbox)
     creatures = [e for e in creatures if is_prepared_for_studio(e, config)]
     if slug_filter:
         want = {s.strip().lower() for s in slug_filter if s.strip()}

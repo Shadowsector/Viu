@@ -10,14 +10,16 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..config import Config
-from .lineup import dedupe_by_stem
+from .lineup import dedupe_by_inbox_folder
 from .models import CreatureEntry, STATUS_NORMALIZED
 from .paths import (
     creature_catalog_path,
     creature_prepared_blend_path,
+    creatures_inbox_dir,
     creatures_prepared_dir,
     creatures_prep_dir,
 )
+from .scanner import scan_creatures_inbox
 from .store import CreatureCatalogStore
 
 ADDON_NAME = "viu_creature_prep.py"
@@ -75,9 +77,18 @@ def build_prep_queue(
     *,
     slug_filter: Sequence[str] = (),
     only_unprepared: bool = True,
+    rescan_inbox: bool = True,
 ) -> Tuple[bool, str, List[CreatureEntry]]:
+    scan_line = ""
+    if rescan_inbox:
+        added, catalog_total, scan_summary = scan_creatures_inbox(config)
+        scan_line = (
+            f"Скан Inbox: +{added} новых, в каталоге {catalog_total} файлов "
+            f"(рекурсивно по подпапкам)."
+        )
     store = CreatureCatalogStore(creature_catalog_path(config)).load()
-    creatures = dedupe_by_stem(store.all())
+    inbox = creatures_inbox_dir(config)
+    creatures = dedupe_by_inbox_folder(store.all(), inbox)
     if slug_filter:
         want = {s.strip().lower() for s in slug_filter if s.strip()}
         creatures = [
@@ -91,8 +102,12 @@ def build_prep_queue(
         creatures = [e for e in creatures if needs_prep_entry(e, config)]
     creatures = sorted(creatures, key=lambda e: e.name.lower())
     if not creatures:
-        return False, "Очередь подготовки пуста — все уже prepared или Inbox пуст.", []
-    return True, f"К подготовке: {len(creatures)}.", creatures
+        tail = f"\n{scan_line}" if scan_line else ""
+        return False, "Очередь подготовки пуста — все уже prepared или Inbox пуст." + tail, []
+    head = f"К подготовке: {len(creatures)}."
+    if scan_line:
+        head = f"{head} {scan_line}"
+    return True, head, creatures
 
 
 def write_prep_session(

@@ -93,6 +93,27 @@ def dedupe_by_stem(creatures: Sequence[CreatureEntry]) -> List[CreatureEntry]:
     return sorted(best.values(), key=lambda e: (e.size_class or "", e.name.lower()))
 
 
+def dedupe_by_inbox_folder(
+    creatures: Sequence[CreatureEntry],
+    inbox_root: Path,
+) -> List[CreatureEntry]:
+    """Один asset на папку в Inbox; внутри папки .blend → .glb → .fbx."""
+    best: Dict[str, CreatureEntry] = {}
+    for e in creatures:
+        if not e.path:
+            continue
+        path = Path(e.path)
+        try:
+            rel = path.resolve().relative_to(inbox_root.resolve())
+            key = str(rel.parent / rel.stem).lower().replace("\\", "/")
+        except ValueError:
+            key = str(path.resolve()).lower()
+        prev = best.get(key)
+        if prev is None or _ext_rank(e.path) < _ext_rank(prev.path):
+            best[key] = e
+    return sorted(best.values(), key=lambda e: e.name.lower())
+
+
 def _write_job_files(
     out_dir: Path,
     *,

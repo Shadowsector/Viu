@@ -11,6 +11,7 @@ from .models import (
     STATUS_NEW,
     CreatureEntry,
     creature_id_for_path,
+    creature_identity_from_inbox_path,
     suggest_locomotion_from_name,
     suggest_size_from_name,
 )
@@ -67,18 +68,27 @@ def scan_creatures_inbox(config: Config) -> Tuple[int, int, str]:
             except OSError:
                 continue
             per_root_seen[root_key] = per_root_seen.get(root_key, 0) + 1
+            cid = creature_id_for_path(resolved)
+            existing = store.get(cid)
+            if existing:
+                if not existing.prep_ok:
+                    name, slug = creature_identity_from_inbox_path(resolved, inbox)
+                    existing.name = name
+                    existing.slug = slug
+                    store.upsert(existing)
+                seen_paths.add(resolved)
+                continue
             if resolved in seen_paths:
                 continue
-            cid = creature_id_for_path(resolved)
-            if store.get(cid):
-                continue
             ext_tex, tex_dir = _find_textures_nearby(resolved)
-            guesses = suggest_size_from_name(resolved.stem)
-            loco = suggest_locomotion_from_name(resolved.stem)
+            display_name, slug = creature_identity_from_inbox_path(resolved, inbox)
+            guesses = suggest_size_from_name(display_name)
+            loco = suggest_locomotion_from_name(display_name)
             entry = CreatureEntry(
                 id=cid,
                 path=str(resolved),
-                name=resolved.stem,
+                name=display_name,
+                slug=slug,
                 locomotion=loco,
                 textures_external=ext_tex,
                 textures_dir=tex_dir,

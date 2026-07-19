@@ -72,27 +72,27 @@ def creatures_wardrobe_dir(config: Config) -> Path:
     return p
 
 
-def creature_prepared_slug_dir(config: Config, slug: str) -> Path:
+def creature_prepared_slug_dir(config: Config, slug: str, *, ensure: bool = False) -> Path:
     s = (slug or "creature").strip().strip("/\\") or "creature"
     d = creatures_prepared_dir(config) / s
-    d.mkdir(parents=True, exist_ok=True)
+    if ensure:
+        d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def creature_texture_manifest_path(config: Config, slug: str, *, stage: str = "prepared") -> Path:
     if stage == "processed":
         return creature_processed_slug_dir(config, slug) / "texture_manifest.json"
-    return creature_prepared_slug_dir(config, slug) / "texture_manifest.json"
+    return creature_prepared_slug_dir(config, slug, ensure=True) / "texture_manifest.json"
 
 
 def creature_outfit_sets_path(config: Config, slug: str) -> Path:
-    return creature_prepared_slug_dir(config, slug) / "outfit_sets.json"
+    return creature_prepared_slug_dir(config, slug, ensure=True) / "outfit_sets.json"
 
 
-def creature_prepared_blend_path(config: Config, slug: str) -> Path:
+def creature_prepared_blend_path(config: Config, slug: str, *, ensure_dir: bool = False) -> Path:
     s = (slug or "creature").strip().strip("/\\") or "creature"
-    d = creatures_prepared_dir(config) / s
-    d.mkdir(parents=True, exist_ok=True)
+    d = creature_prepared_slug_dir(config, s, ensure=ensure_dir)
     return d / f"{s}_prepared.blend"
 
 

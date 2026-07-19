@@ -456,7 +456,7 @@ def test_creature_prep_session_and_sync(tmp_path, monkeypatch):
     session = write_prep_session(cfg, queue)
     assert (session.parent / "viu_creature_prep.py").is_file()
 
-    prep_out = creature_prepared_blend_path(cfg, "wolf_alpha")
+    prep_out = creature_prepared_blend_path(cfg, "wolf_alpha", ensure_dir=True)
     prep_out.parent.mkdir(parents=True, exist_ok=True)
     prep_out.write_bytes(b"prepared")
     fb = session.parent / "prep_feedback.json"
@@ -641,3 +641,57 @@ def test_gui_action_creature_catalog():
     assert any(a.action_id == "creature_studio_sync" for a in GUI_ACTIONS)
     lineup = next(a for a in GUI_ACTIONS if a.action_id == "creature_lineup")
     assert lineup.group == "Редко"
+
+
+def test_creature_identity_from_subfolder(tmp_path):
+    from viu.creature_catalog.models import creature_identity_from_inbox_path
+
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    blend = inbox / "Erisa" / "Erisa.blend"
+    blend.parent.mkdir(parents=True)
+    blend.write_bytes(b"x")
+    name, slug = creature_identity_from_inbox_path(blend, inbox)
+    assert name == "Erisa"
+    assert slug == "erisa"
+
+
+def test_dedupe_by_inbox_folder_keeps_subfolders(tmp_path):
+    from viu.creature_catalog.lineup import dedupe_by_inbox_folder
+    from viu.creature_catalog.models import CreatureEntry
+
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    a = CreatureEntry(id="a", path=str(inbox / "GirlA" / "model.blend"), name="GirlA", slug="girla")
+    b = CreatureEntry(id="b", path=str(inbox / "GirlB" / "model.blend"), name="GirlB", slug="girlb")
+    out = dedupe_by_inbox_folder([a, b], inbox)
+    assert len(out) == 2
+
+
+def test_prep_queue_scans_subfolders_and_no_empty_prepared_dir(tmp_path, monkeypatch):
+    from viu.creature_catalog.paths import creature_prepared_blend_path, creatures_prepared_dir
+    from viu.creature_catalog.prep import build_prep_queue, needs_prep_entry
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    inbox = cfg.library_root
+    from viu.creature_catalog.paths import creatures_inbox_dir
+
+    root = creatures_inbox_dir(cfg)
+    (root / "Tiki").mkdir(parents=True)
+    (root / "Tiki" / "Tiki.blend").write_bytes(b"blend")
+    (root / "Renekton").mkdir(parents=True)
+    (root / "Renekton" / "Renekton.fbx").write_bytes(b"fbx")
+
+    ok, msg, queue = build_prep_queue(cfg)
+    assert ok
+    assert len(queue) == 2
+    assert "Скан Inbox" in msg
+
+    needs_prep_entry(queue[0], cfg)
+    prepared_root = creatures_prepared_dir(cfg)
+    assert not any(prepared_root.iterdir()), "needs_prep не должен создавать пустые папки Prepared"
+
+    path = creature_prepared_blend_path(cfg, queue[0].slug)
+    assert not path.parent.is_dir()
+    path = creature_prepared_blend_path(cfg, queue[0].slug, ensure_dir=True)
+    assert path.parent.is_dir()

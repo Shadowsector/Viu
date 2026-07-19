@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 2, 2),
+    "version": (0, 2, 3),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -265,7 +265,11 @@ class VIU_OT_StudioPrev(bpy.types.Operator):
         q = _SESSION.get("queue") or []
         if not q:
             return {"CANCELLED"}
-        _SESSION["index"] = (int(_SESSION.get("index") or 0) - 1) % len(q)
+        idx = int(_SESSION.get("index") or 0)
+        if idx <= 0:
+            self.report({"INFO"}, "Уже первое существо в очереди")
+            return {"FINISHED"}
+        _SESSION["index"] = idx - 1
         entry = _current_entry()
         _load_creature_entry(entry)
         _sync_props_from_entry(entry)
@@ -280,7 +284,14 @@ class VIU_OT_StudioNext(bpy.types.Operator):
         q = _SESSION.get("queue") or []
         if not q:
             return {"CANCELLED"}
-        _SESSION["index"] = (int(_SESSION.get("index") or 0) + 1) % len(q)
+        idx = int(_SESSION.get("index") or 0)
+        if idx >= len(q) - 1:
+            self.report(
+                {"INFO"},
+                "Конец очереди студии. Синхр. студии во Вью и открой снова для оставшихся.",
+            )
+            return {"FINISHED"}
+        _SESSION["index"] = idx + 1
         entry = _current_entry()
         _load_creature_entry(entry)
         _sync_props_from_entry(entry)

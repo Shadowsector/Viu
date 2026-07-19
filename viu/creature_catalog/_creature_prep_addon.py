@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Prep",
     "author": "Viu",
-    "version": (0, 1, 4),
+    "version": (0, 1, 5),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Подготовка существ: очистка, Bursting Head, текстуры, save blend",
@@ -94,7 +94,11 @@ class VIU_OT_PrepPrev(bpy.types.Operator):
         q = _SESSION.get("queue") or []
         if not q:
             return {"CANCELLED"}
-        _SESSION["index"] = (int(_SESSION.get("index") or 0) - 1) % len(q)
+        idx = int(_SESSION.get("index") or 0)
+        if idx <= 0:
+            self.report({"INFO"}, "Уже первая модель в очереди")
+            return {"FINISHED"}
+        _SESSION["index"] = idx - 1
         _load_entry(_current_entry())
         return {"FINISHED"}
 
@@ -107,7 +111,14 @@ class VIU_OT_PrepNext(bpy.types.Operator):
         q = _SESSION.get("queue") or []
         if not q:
             return {"CANCELLED"}
-        _SESSION["index"] = (int(_SESSION.get("index") or 0) + 1) % len(q)
+        idx = int(_SESSION.get("index") or 0)
+        if idx >= len(q) - 1:
+            self.report(
+                {"INFO"},
+                "Конец очереди. Синхр. подготовки во Вью и снова «Подготовить» для оставшихся.",
+            )
+            return {"FINISHED"}
+        _SESSION["index"] = idx + 1
         _load_entry(_current_entry())
         return {"FINISHED"}
 

@@ -222,6 +222,29 @@ def slugify(name: str) -> str:
     return re.sub(r"_+", "_", s).strip("_")[:64] or "creature"
 
 
+def creature_identity_from_inbox_path(path: Path, inbox: Path) -> Tuple[str, str]:
+    """Имя и slug с учётом подпапки Inbox (Tiki/Tiki.blend → Tiki, tiki)."""
+    try:
+        rel = path.resolve().relative_to(inbox.resolve())
+    except ValueError:
+        stem = path.stem
+        return stem, slugify(stem)
+
+    parts = list(rel.parts)
+    if len(parts) <= 1:
+        stem = path.stem
+        return stem, slugify(stem)
+
+    folder_parts = parts[:-1]
+    stem = path.stem
+    inner = folder_parts[-1]
+    if inner.lower() == stem.lower() or slugify(inner) == slugify(stem):
+        return inner, slugify(inner)
+    display = "/".join(folder_parts + (stem,))
+    slug = slugify("_".join(folder_parts + (stem,)))
+    return display, slug or slugify(stem)
+
+
 @dataclass
 class CreatureEntry:
     """Одна модель существа в каталоге."""
