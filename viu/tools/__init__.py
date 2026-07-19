@@ -67,6 +67,8 @@ from .creature_catalog_tool import (
     CreatureLineupTool,
     CreaturePrepOpenTool,
     CreaturePrepSyncTool,
+    CreatureWardrobeOpenTool,
+    CreatureWardrobeSyncTool,
     CreatureStudioOpenTool,
     CreatureStudioSyncTool,
 )
@@ -169,6 +171,8 @@ def build_default_registry() -> ToolRegistry:
         CreatureLineupTool(),
         CreaturePrepOpenTool(),
         CreaturePrepSyncTool(),
+        CreatureWardrobeOpenTool(),
+        CreatureWardrobeSyncTool(),
         CreatureStudioOpenTool(),
         CreatureStudioSyncTool(),
         LabStartTool(),

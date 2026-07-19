@@ -1,0 +1,173 @@
+"""Wardrobe в Blender — наборы одежды и видимость мешей."""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+
+from ..config import Config
+from .lineup import dedupe_by_stem
+from .models import CreatureEntry
+from .paths import (
+    creature_catalog_path,
+    creature_outfit_sets_path,
+    creature_prepared_blend_path,
+    creatures_wardrobe_dir,
+)
+from .studio import is_prepared_for_studio
+from .store import CreatureCatalogStore
+
+ADDON_NAME = "viu_creature_wardrobe.py"
+BOOTSTRAP_NAME = "viu_creature_wardrobe_bootstrap.py"
+SHARED_NAME = "viu_creature_blender_shared.py"
+SESSION_NAME = "wardrobe_session.json"
+FEEDBACK_NAME = "wardrobe_feedback.json"
+
+_ADDON_BODY = Path(__file__).resolve().parent / "_creature_wardrobe_addon.py"
+_BOOTSTRAP_BODY = Path(__file__).resolve().parent / "_creature_wardrobe_bootstrap.py"
+_SHARED_BODY = Path(__file__).resolve().parent / "_creature_blender_shared.py"
+
+
+def _install_wardrobe_files(out_dir: Path) -> Tuple[Path, Path]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    addon = out_dir / ADDON_NAME
+    bootstrap = out_dir / BOOTSTRAP_NAME
+    shared = out_dir / SHARED_NAME
+    for src, dst in (
+        (_ADDON_BODY, addon),
+        (_BOOTSTRAP_BODY, bootstrap),
+        (_SHARED_BODY, shared),
+    ):
+        if not src.is_file():
+            raise FileNotFoundError(f"Нет файла wardrobe: {src}")
+        shutil.copyfile(src, dst)
+    return addon, bootstrap
+
+
+def _entry_payload(e: CreatureEntry, config: Config) -> Dict[str, Any]:
+    prep = e.prepared_path or str(creature_prepared_blend_path(config, e.slug))
+    return {
+        "id": e.id,
+        "slug": e.slug,
+        "name": e.name,
+        "path": prep,
+        "outfit_sets_path": str(creature_outfit_sets_path(config, e.slug)),
+        "genital_profile": e.genital_profile or "none",
+        "genital_rig": e.genital_rig or "none",
+    }
+
+
+def build_wardrobe_queue(
+    config: Config,
+    *,
+    slug_filter: Sequence[str] = (),
+) -> Tuple[bool, str, List[CreatureEntry]]:
+    store = CreatureCatalogStore(creature_catalog_path(config)).load()
+    creatures = dedupe_by_stem(store.all())
+    creatures = [e for e in creatures if is_prepared_for_studio(e, config)]
+    if slug_filter:
+        want = {s.strip().lower() for s in slug_filter if s.strip()}
+        creatures = [
+            e
+            for e in creatures
+            if (e.slug or "").lower() in want
+            or e.name.lower() in want
+        ]
+    creatures = sorted(creatures, key=lambda e: e.name.lower())
+    if not creatures:
+        return False, "Очередь wardrobe пуста — сначала prepared.blend.", []
+    return True, f"К wardrobe: {len(creatures)}.", creatures
+
+
+def write_wardrobe_session(
+    config: Config,
+    creatures: Sequence[CreatureEntry],
+    *,
+    index: int = 0,
+) -> Path:
+    wardrobe_dir = creatures_wardrobe_dir(config)
+    _install_wardrobe_files(wardrobe_dir)
+    session = {
+        "catalog_path": str(creature_catalog_path(config)),
+        "feedback_path": str(wardrobe_dir / FEEDBACK_NAME),
+        "index": max(0, min(index, len(creatures) - 1)),
+        "queue": [_entry_payload(e, config) for e in creatures],
+    }
+    path = wardrobe_dir / SESSION_NAME
+    path.write_text(json.dumps(session, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def sync_wardrobe_feedback(config: Config) -> Tuple[int, str]:
+    fb = creatures_wardrobe_dir(config) / FEEDBACK_NAME
+    if not fb.is_file():
+        return 0, "Нет wardrobe_feedback.json."
+    try:
+        data = json.loads(fb.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return 0, f"Битый wardrobe feedback: {exc}"
+    rows = data.get("entries") or []
+    if not rows:
+        return 0, "Wardrobe feedback пуст."
+
+    store = CreatureCatalogStore(creature_catalog_path(config)).load()
+    n = 0
+    lines: List[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        e = store.get(str(row.get("id") or ""))
+        if e is None:
+            continue
+        if row.get("outfit_sets_path"):
+            e.outfit_sets_path = str(row["outfit_sets_path"])
+        gr = str(row.get("genital_rig") or "").strip()
+        if gr in ("none", "pending", "attached"):
+            e.genital_rig = gr
+        if row.get("wardrobe_notes"):
+            e.notes = ((e.notes or "") + "\n[wardrobe] " + str(row["wardrobe_notes"])).strip()
+        store.upsert(e)
+        n += 1
+        confirmed = row.get("outfit_sets_confirmed") or 0
+        lines.append(f"  • {e.name}: наборов {confirmed}")
+    if n:
+        store.save()
+    return n, f"Синхронизировано wardrobe: {n}\n" + "\n".join(lines[:30])
+
+
+def open_creature_wardrobe(
+    config: Config,
+    *,
+    slug_filter: Sequence[str] = (),
+    runner: Callable[..., subprocess.Popen] = subprocess.Popen,
+) -> Tuple[bool, str]:
+    ok, msg, queue = build_wardrobe_queue(config, slug_filter=slug_filter)
+    if not ok:
+        return False, msg
+    session = write_wardrobe_session(config, queue)
+    wardrobe_dir = creatures_wardrobe_dir(config)
+    _, bootstrap = _install_wardrobe_files(wardrobe_dir)
+
+    from ..integrations.blender.exe import resolve_blender_exe
+
+    try:
+        exe = resolve_blender_exe(config)
+    except FileNotFoundError as exc:
+        return False, str(exc)
+
+    cmd = [str(exe), "--python", str(bootstrap), "--", str(session)]
+    try:
+        runner(cmd, start_new_session=True)
+    except OSError as exc:
+        return False, f"Не удалось открыть Blender: {exc}"
+
+    names = ", ".join(e.name for e in queue[:8])
+    return (
+        True,
+        f"{msg}\nBlender → N → Viu → **Wardrobe**.\n"
+        f"Очередь: {names}\n"
+        "Наборы → outfit_sets.json → «Синхр. wardrobe».",
+    )

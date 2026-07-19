@@ -430,15 +430,24 @@ class VIU_OT_StudioSaveFbx(bpy.types.Operator):
                 self.report({"ERROR"}, msg)
                 return {"CANCELLED"}
             measured = S.height_of_objects(_STATE.get("creature_objects") or [], _STATE.get("body_mesh") or "")
+            rows = S.audit_textures(objs)
+            manifest = S.write_texture_manifest(
+                out_dir,
+                stage="processed",
+                images=rows,
+                packed_in_blend=False,
+                source_inbox=str(entry.get("prepared_path") or entry.get("path") or ""),
+            )
             S.write_feedback_file(
                 _feedback_path(),
                 entry,
                 ready_fbx_path=str(fbx),
+                texture_manifest_path=str(manifest),
                 measured_height_m=measured,
                 target_height_m=float(entry.get("target_height_m") or props.target_height_m or 0),
                 **_markup_fields(props, entry),
             )
-            self.report({"INFO"}, f"Эталон FBX: {fbx.name}")
+            self.report({"INFO"}, f"Эталон FBX: {fbx.name}; manifest OK")
         except Exception as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}

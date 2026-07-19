@@ -23,6 +23,34 @@ U:\Anabarra\Library\Lab\Creatures\Inbox\
 
 ---
 
+## Пайплайн папок (текстуры)
+
+| Стадия | Папка | Текстуры |
+|--------|--------|----------|
+| Сырое | `Inbox/<slug>/` | `textures/` рядом — **только импорт** |
+| Prepared | `Prepared/<slug>/` | packed в blend + `texture_manifest.json` |
+| Игра | `Processed/<slug>/` | `<slug>_ready.fbx` + `texture_manifest.json` |
+
+В prep: **Упаковать текстуры** или автоматически при Save prepared.
+
+Unity/Cascadeur читают **только** `Processed/<slug>/`.
+
+---
+
+## Wardrobe (наборы одежды)
+
+Между prep и студией: **Разметка одежды** → панель **Viu — wardrobe**.
+
+- Переключай меши (накидка, штаны, купальник…)
+- **Сохранить набор** → `Prepared/<slug>/outfit_sets.json`
+- Пресеты: только тело, снять одежду, показать/спрятать genital mesh
+- ⚠ предупреждение если genital + штаны (clipping)
+- **Синхр. wardrobe** → каталог (`outfit_sets_path`, `genital_rig`)
+
+Примеры id: `casual_01`, `swim_01`, `swim_02`, `nsfw_partial`, `nsfw_full`, `bath`
+
+---
+
 ## Шаг 1 — Подготовка (`prepared.blend`)
 
 1. Положи модель в **Creatures/Inbox**

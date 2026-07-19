@@ -31,6 +31,35 @@ def _cfg(tmp_path: Path, monkeypatch) -> Config:
     ).ensure_dirs()
 
 
+def test_outfit_sets_upsert():
+    from viu.creature_catalog.outfit_sets import empty_outfit_doc, upsert_outfit_set
+
+    data = empty_outfit_doc("shanya", "Shanya")
+    snap = {
+        "show_meshes": ["Body", "Pants"],
+        "hide_meshes": ["Bikini"],
+        "genital_mesh_visible": False,
+        "clothing_visible": True,
+    }
+    upsert_outfit_set(data, set_id="casual_01", label="Casual", snapshot=snap, confirmed=True)
+    assert len(data["sets"]) == 1
+    assert data["sets"][0]["hide_genital_mesh"] is True
+
+
+def test_texture_manifest_paths(tmp_path, monkeypatch):
+    from viu.creature_catalog.paths import (
+        creature_outfit_sets_path,
+        creature_texture_manifest_path,
+    )
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    m = creature_texture_manifest_path(cfg, "wolf", stage="prepared")
+    assert m.parent.name == "wolf"
+    assert m.name == "texture_manifest.json"
+    o = creature_outfit_sets_path(cfg, "wolf")
+    assert o.name == "outfit_sets.json"
+
+
 def test_anatomy_markup_and_anim_bucket(tmp_path, monkeypatch):
     from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
 
@@ -486,12 +515,16 @@ def test_creature_studio_tool_imports():
     from viu.tools.creature_catalog_tool import (
         CreaturePrepOpenTool,
         CreaturePrepSyncTool,
+        CreatureWardrobeOpenTool,
+        CreatureWardrobeSyncTool,
         CreatureStudioOpenTool,
         CreatureStudioSyncTool,
     )
 
     assert CreaturePrepOpenTool().name == "creature_prep_open"
     assert CreaturePrepSyncTool().name == "creature_prep_sync"
+    assert CreatureWardrobeOpenTool().name == "creature_wardrobe_open"
+    assert CreatureWardrobeSyncTool().name == "creature_wardrobe_sync"
     assert CreatureStudioOpenTool().name == "creature_studio_open"
     assert CreatureStudioSyncTool().name == "creature_studio_sync"
 
@@ -504,6 +537,8 @@ def test_tools_registered():
     assert "creature_lineup" in names
     assert "creature_prep_open" in names
     assert "creature_prep_sync" in names
+    assert "creature_wardrobe_open" in names
+    assert "creature_wardrobe_sync" in names
     assert "creature_studio_open" in names
     assert "creature_studio_sync" in names
 
@@ -598,6 +633,10 @@ def test_gui_action_creature_catalog():
     assert action.group == "Главное"
     assert any(a.action_id == "creature_prep" and a.tool == "creature_prep_open" for a in GUI_ACTIONS)
     assert any(a.action_id == "creature_prep_sync" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_wardrobe" and a.tool == "creature_wardrobe_open" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_wardrobe_sync" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_wardrobe" and a.tool == "creature_wardrobe_open" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_wardrobe_sync" for a in GUI_ACTIONS)
     assert any(a.action_id == "creature_studio" and a.tool == "creature_studio_open" for a in GUI_ACTIONS)
     assert any(a.action_id == "creature_studio_sync" for a in GUI_ACTIONS)
     lineup = next(a for a in GUI_ACTIONS if a.action_id == "creature_lineup")

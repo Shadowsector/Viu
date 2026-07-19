@@ -221,9 +221,18 @@ def sync_studio_feedback(config: Config) -> Tuple[int, str]:
         loco = str(row.get("locomotion") or "").strip()
         if loco and loco in LOCOMOTION:
             e.locomotion = loco
+        if row.get("outfit_sets_path"):
+            e.outfit_sets_path = str(row["outfit_sets_path"])
+        if row.get("texture_manifest_path"):
+            e.texture_manifest_path = str(row["texture_manifest_path"])
+        if "textures_packed" in row:
+            e.textures_packed = bool(row["textures_packed"])
         gp = str(row.get("genital_profile") or "").strip()
         if gp in GENITAL_PROFILES:
             e.genital_profile = gp
+        gr = str(row.get("genital_rig") or "").strip()
+        if gr in ("none", "pending", "attached"):
+            e.genital_rig = gr
         if row.get("contact_modes") is not None:
             e.contact_modes = [
                 m for m in (row.get("contact_modes") or []) if m in CONTACT_MODES
@@ -239,7 +248,7 @@ def sync_studio_feedback(config: Config) -> Tuple[int, str]:
                 e.measured_height_m = float(row["measured_height_m"])
             except (TypeError, ValueError):
                 pass
-        for key in ("photo_front", "photo_side", "prepared_path", "photo_notes", "ready_fbx_path"):
+        for key in ("photo_front", "photo_side", "prepared_path", "photo_notes", "ready_fbx_path", "texture_manifest_path"):
             if row.get(key):
                 setattr(e, key, str(row[key]))
         issue = str(row.get("issue_report") or "").strip()

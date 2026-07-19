@@ -53,6 +53,7 @@ def _entry_payload(e: CreatureEntry) -> Dict[str, Any]:
         "slug": e.slug,
         "name": e.name,
         "path": e.path,
+        "source_inbox": e.path,
         "prepared_path": e.prepared_path,
         "prep_ok": bool(e.prep_ok),
         "notes": (e.notes or "").split("\n")[0][:200],
@@ -140,6 +141,10 @@ def sync_prep_feedback(config: Config) -> Tuple[int, str]:
         if row.get("prep_ok"):
             e.prep_ok = True
             e.status = STATUS_NORMALIZED
+        if row.get("texture_manifest_path"):
+            e.texture_manifest_path = str(row["texture_manifest_path"])
+        if "textures_packed" in row:
+            e.textures_packed = bool(row["textures_packed"])
         if row.get("prep_notes"):
             e.notes = ((e.notes or "") + "\n[prep] " + str(row["prep_notes"])).strip()
         store.upsert(e)

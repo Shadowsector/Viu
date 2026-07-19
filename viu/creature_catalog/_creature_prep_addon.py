@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Prep",
     "author": "Viu",
-    "version": (0, 1, 0),
+    "version": (0, 1, 1),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Подготовка существ: очистка, Bursting Head, текстуры, save blend",
@@ -171,6 +171,32 @@ class VIU_OT_PrepCheckTextures(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class VIU_OT_PrepPackTextures(bpy.types.Operator):
+    bl_idname = "viu.prep_pack_textures"
+    bl_label = "Упаковать текстуры"
+
+    def execute(self, context):
+        entry = _current_entry()
+        if not entry:
+            return {"CANCELLED"}
+        slug = str(entry.get("slug") or S.slugify(entry.get("name")))
+        out_dir = Path(str(_SESSION.get("prepared_root") or "")) / slug
+        manifest, msg = S.prepare_textures_for_prepared(
+            _STATE.get("objects") or [],
+            out_dir,
+            source_inbox=str(entry.get("source_inbox") or entry.get("path") or ""),
+        )
+        context.scene.viu_creature_prep.texture_report = msg
+        S.write_feedback_file(
+            _feedback_path(),
+            entry,
+            texture_manifest_path=str(manifest),
+            textures_packed=True,
+        )
+        self.report({"INFO"}, msg)
+        return {"FINISHED"}
+
+
 class VIU_OT_PrepClearPose(bpy.types.Operator):
     bl_idname = "viu.prep_clear_pose"
     bl_label = "Сбросить позу (rest)"
@@ -194,6 +220,11 @@ class VIU_OT_PrepSave(bpy.types.Operator):
         out = out_dir / f"{slug}_prepared.blend"
         objs = S.gather_under_root(_STATE.get("root"))
         try:
+            manifest, tmsg = S.prepare_textures_for_prepared(
+                objs,
+                out_dir,
+                source_inbox=str(entry.get("source_inbox") or entry.get("path") or ""),
+            )
             if not S.save_objects_blend(out, objs):
                 self.report({"ERROR"}, "Не удалось сохранить blend")
                 return {"CANCELLED"}
@@ -204,8 +235,10 @@ class VIU_OT_PrepSave(bpy.types.Operator):
                 prepared_path=str(out),
                 prep_ok=True,
                 prep_notes=note,
+                texture_manifest_path=str(manifest),
+                textures_packed=True,
             )
-            self.report({"INFO"}, f"Prepared: {out.name}")
+            self.report({"INFO"}, f"Prepared: {out.name}; {tmsg}")
         except Exception as exc:
             self.report({"ERROR"}, str(exc))
             traceback.print_exc()
@@ -256,6 +289,7 @@ class VIU_PT_CreaturePrep(bpy.types.Panel):
         layout.operator("viu.prep_show_body", icon="MESH_DATA")
         layout.operator("viu.prep_bursting_head", icon="MODIFIER")
         layout.operator("viu.prep_check_textures", icon="TEXTURE")
+        layout.operator("viu.prep_pack_textures", icon="PACKAGE")
         layout.operator("viu.prep_clear_pose", icon="ARMATURE_DATA")
         props = context.scene.viu_creature_prep
         if props.texture_report:
@@ -281,6 +315,7 @@ _CLASSES = (
     VIU_OT_PrepShowBody,
     VIU_OT_PrepBurstingHead,
     VIU_OT_PrepCheckTextures,
+    VIU_OT_PrepPackTextures,
     VIU_OT_PrepClearPose,
     VIU_OT_PrepSave,
     VIU_OT_PrepReport,

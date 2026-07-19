@@ -239,6 +239,9 @@ class CreatureEntry:
     scale_applied: float = 1.0
     textures_external: bool = False
     textures_dir: str = ""
+    textures_packed: bool = False
+    texture_manifest_path: str = ""
+    outfit_sets_path: str = ""
     genital_profile: str = "none"          # none | penis | vagina | futa
     contact_modes: List[str] = field(default_factory=list)  # oral | tentacle | hand
     nsfw_capable: bool = False            # авто: genital≠none или есть contact_modes
@@ -292,6 +295,9 @@ class CreatureEntry:
             scale_applied=float(d.get("scale_applied") or 1),
             textures_external=bool(d.get("textures_external")),
             textures_dir=str(d.get("textures_dir") or ""),
+            textures_packed=bool(d.get("textures_packed")),
+            texture_manifest_path=str(d.get("texture_manifest_path") or ""),
+            outfit_sets_path=str(d.get("outfit_sets_path") or ""),
             genital_profile=str(d.get("genital_profile") or "none"),
             contact_modes=[
                 m for m in (d.get("contact_modes") or []) if m in CONTACT_MODES

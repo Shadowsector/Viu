@@ -1,8 +1,10 @@
 """Общие утилиты для Blender Prep / Studio (копируется в Lab/Creatures/)."""
 from __future__ import annotations
 
+import json
 import math
 import re
+import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -20,6 +22,17 @@ _FACE_BONE_KEYS = (
 )
 
 _WIDGET_PREFIXES = ("WGT", "WGT-", "VIS_", "VIS-", "MCH-", "MCH_")
+
+_GENITAL_MESH_KEYS = ("penis", "genital", "cock", "dick", "phallus", "penetrator")
+_CLOTHING_MESH_KEYS = (
+    "cloth", "outfit", "dress", "shirt", "skirt", "pant", "trouser", "jean",
+    "sock", "shoe", "boot", "jacket", "coat", "cloak", "cape", "hat", "hood",
+    "bikini", "swim", "bra", "under", "top", "bottom", "armor", "vest",
+)
+_BODY_MESH_KEYS = (
+    "body", "hair", "eye", "ear", "lash", "brow", "teeth", "tongue", "head",
+    "face", "skin", "nipple", "breast",
+)
 
 
 def slugify(name: str) -> str:
@@ -357,38 +370,263 @@ def repair_bursting_head(objects: Sequence) -> Tuple[int, int, str]:
 
 
 def check_textures(objects: Sequence) -> Tuple[int, int, List[str]]:
-    """Вернуть (ok, missing, lines)."""
-    ok = 0
-    missing = 0
-    lines: List[str] = []
+    """Вернуть (ok, missing, lines) — краткий отчёт."""
+    rows = audit_textures(objects)
+    ok = sum(1 for r in rows if r.get("ok"))
+    missing = sum(1 for r in rows if not r.get("ok"))
+    lines = [
+        f"{r.get('mesh')}: {r.get('image')} → {r.get('resolved')}"
+        for r in rows[:12]
+    ]
+    return ok, missing, lines
+
+
+def audit_textures(objects: Sequence) -> List[dict]:
+    """Полный аудит TEX_IMAGE: source, resolved, ok."""
+    rows: List[dict] = []
+    seen = set()
     for obj in objects:
         if obj.type != "MESH" or not obj.data:
             continue
         for slot in getattr(obj.data, "materials", []) or []:
-            if slot is None:
+            if slot is None or not slot.node_tree:
                 continue
-            nt = slot.node_tree
-            if not nt:
-                continue
-            for node in nt.nodes:
+            for node in slot.node_tree.nodes:
                 if node.type != "TEX_IMAGE":
                     continue
                 img = node.image
                 if img is None:
-                    missing += 1
-                    lines.append(f"{obj.name}: пустой TEX_IMAGE")
+                    rows.append({
+                        "mesh": obj.name,
+                        "material": slot.name,
+                        "image": "",
+                        "source": "",
+                        "resolved": "missing",
+                        "ok": False,
+                    })
                     continue
-                if not img.filepath and not getattr(img, "packed_file", None):
-                    missing += 1
-                    lines.append(f"{obj.name}: {img.name} без файла")
+                key = (img.name, obj.name)
+                if key in seen:
                     continue
-                fp = bpy.path.abspath(img.filepath)
-                if fp and not Path(fp).is_file() and not getattr(img, "packed_file", None):
-                    missing += 1
-                    lines.append(f"{obj.name}: нет {fp}")
+                seen.add(key)
+                packed = bool(getattr(img, "packed_file", None))
+                raw_fp = (img.filepath or "").strip()
+                abs_fp = bpy.path.abspath(raw_fp) if raw_fp else ""
+                if packed:
+                    resolved = "packed"
+                    ok = True
+                    source = f"packed:{img.name}"
+                elif abs_fp and Path(abs_fp).is_file():
+                    resolved = "local"
+                    ok = True
+                    source = abs_fp
+                elif raw_fp:
+                    resolved = "external"
+                    ok = False
+                    source = abs_fp or raw_fp
                 else:
-                    ok += 1
-    return ok, missing, lines[:12]
+                    resolved = "missing"
+                    ok = False
+                    source = ""
+                rows.append({
+                    "mesh": obj.name,
+                    "material": slot.name,
+                    "image": img.name,
+                    "source": source,
+                    "resolved": resolved,
+                    "ok": ok,
+                })
+    return rows
+
+
+def pack_all_textures() -> int:
+    """Упаковать внешние изображения в .blend."""
+    before = sum(1 for img in bpy.data.images if getattr(img, "packed_file", None))
+    try:
+        bpy.ops.file.pack_all()
+    except RuntimeError:
+        pass
+    after = sum(1 for img in bpy.data.images if getattr(img, "packed_file", None))
+    return max(0, after - before)
+
+
+def relocate_external_textures(dest_textures_dir: Path, prepared_root: Path) -> int:
+    """Скопировать внешние текстуры в Prepared/<slug>/textures/ и перепривязать."""
+    dest_textures_dir = Path(dest_textures_dir)
+    dest_textures_dir.mkdir(parents=True, exist_ok=True)
+    prepared_root = Path(prepared_root).resolve()
+    moved = 0
+    for img in bpy.data.images:
+        if getattr(img, "packed_file", None):
+            continue
+        raw = (img.filepath or "").strip()
+        if not raw:
+            continue
+        src = Path(bpy.path.abspath(raw))
+        if not src.is_file():
+            continue
+        try:
+            src.resolve().relative_to(prepared_root)
+            continue
+        except ValueError:
+            pass
+        dest = dest_textures_dir / src.name
+        if not dest.is_file() or dest.stat().st_size != src.stat().st_size:
+            shutil.copy2(src, dest)
+        img.filepath = str(dest)
+        moved += 1
+    return moved
+
+
+def write_texture_manifest(
+    out_dir: Path,
+    *,
+    stage: str,
+    images: Sequence[dict],
+    packed_in_blend: bool,
+    source_inbox: str = "",
+) -> Path:
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rows = list(images)
+    summary = {
+        "ok": sum(1 for r in rows if r.get("ok")),
+        "missing": sum(1 for r in rows if not r.get("ok")),
+        "external": sum(1 for r in rows if r.get("resolved") == "external"),
+        "packed": sum(1 for r in rows if r.get("resolved") == "packed"),
+        "local": sum(1 for r in rows if r.get("resolved") == "local"),
+    }
+    payload = {
+        "stage": stage,
+        "packed_in_blend": packed_in_blend,
+        "source_inbox": source_inbox,
+        "summary": summary,
+        "images": rows,
+    }
+    path = out_dir / "texture_manifest.json"
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def prepare_textures_for_prepared(
+    objects: Sequence,
+    prepared_dir: Path,
+    *,
+    source_inbox: str = "",
+) -> Tuple[Path, str]:
+    """Pack + relocate + texture_manifest.json в Prepared/<slug>/."""
+    prepared_dir = Path(prepared_dir)
+    packed_n = pack_all_textures()
+    relocated = relocate_external_textures(prepared_dir / "textures", prepared_dir)
+    rows = audit_textures(objects)
+    packed_in_blend = all(
+        r.get("resolved") in ("packed", "local") for r in rows
+    ) if rows else True
+    manifest = write_texture_manifest(
+        prepared_dir,
+        stage="prepared",
+        images=rows,
+        packed_in_blend=packed_in_blend,
+        source_inbox=source_inbox,
+    )
+    s = manifest.read_text(encoding="utf-8")
+    data = json.loads(s).get("summary") or {}
+    msg = (
+        f"manifest: {manifest.name}; packed+={packed_n}; relocated={relocated}; "
+        f"ok={data.get('ok', 0)} missing={data.get('missing', 0)}"
+    )
+    return manifest, msg
+
+
+def is_genital_mesh(name: str) -> bool:
+    low = (name or "").lower()
+    return any(k in low for k in _GENITAL_MESH_KEYS)
+
+
+def is_clothing_mesh(name: str) -> bool:
+    if is_wgt_name(name) or is_genital_mesh(name):
+        return False
+    low = (name or "").lower()
+    return any(k in low for k in _CLOTHING_MESH_KEYS)
+
+
+def is_body_mesh_name(name: str) -> bool:
+    if is_wgt_name(name) or is_genital_mesh(name):
+        return False
+    low = (name or "").lower()
+    if is_clothing_mesh(name):
+        return False
+    return any(k in low for k in _BODY_MESH_KEYS)
+
+
+def mesh_visibility_snapshot(objects: Sequence) -> dict:
+    """Снимок видимости мешей для outfit set."""
+    show: List[str] = []
+    hide: List[str] = []
+    for obj in objects:
+        if obj.type != "MESH" or is_wgt_name(obj.name):
+            continue
+        if obj.hide_get():
+            hide.append(obj.name)
+        else:
+            show.append(obj.name)
+    genital_visible = any(
+        is_genital_mesh(o.name) and not o.hide_get()
+        for o in objects
+        if o.type == "MESH"
+    )
+    clothing_visible = any(
+        is_clothing_mesh(o.name) and not o.hide_get()
+        for o in objects
+        if o.type == "MESH"
+    )
+    return {
+        "show_meshes": sorted(show),
+        "hide_meshes": sorted(hide),
+        "genital_mesh_visible": genital_visible,
+        "clothing_visible": clothing_visible,
+    }
+
+
+def set_genital_meshes_visible(objects: Sequence, visible: bool) -> int:
+    n = 0
+    for obj in objects:
+        if obj.type != "MESH" or not is_genital_mesh(obj.name):
+            continue
+        obj.hide_set(not visible)
+        obj.hide_render = not visible
+        n += 1
+    return n
+
+
+def apply_mesh_visibility(objects: Sequence, show_names: Sequence[str], hide_names: Sequence[str]) -> None:
+    show = set(show_names or [])
+    hide = set(hide_names or [])
+    for obj in objects:
+        if obj.type != "MESH":
+            continue
+        if obj.name in hide:
+            obj.hide_set(True)
+            obj.hide_render = True
+        elif obj.name in show:
+            obj.hide_set(False)
+            obj.hide_render = False
+
+
+def clothing_genital_clipping_warning(objects: Sequence) -> str:
+    genital_on = any(
+        is_genital_mesh(o.name) and not o.hide_get()
+        for o in objects
+        if o.type == "MESH"
+    )
+    pants_on = any(
+        is_clothing_mesh(o.name) and not o.hide_get() and "pant" in o.name.lower()
+        for o in objects
+        if o.type == "MESH"
+    )
+    if genital_on and pants_on:
+        return "⚠ genital mesh + штаны — будет clipping"
+    return ""
 
 
 def clear_pose_transforms(objects: Sequence) -> int:

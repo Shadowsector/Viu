@@ -75,7 +75,21 @@ GUI_ACTIONS: List[GuiAction] = [
         "Синхр. подготовки",
         "Главное",
         tool="creature_prep_sync",
-        hint="После Blender-prep: забрать prepared_path в каталог.",
+        hint="После Blender-prep: prepared_path, texture_manifest в каталог.",
+    ),
+    GuiAction(
+        "creature_wardrobe",
+        "Разметка одежды",
+        "Главное",
+        tool="creature_wardrobe_open",
+        hint="После prep: наборы casual/swim/nsfw, genital mesh. → «Синхр. wardrobe».",
+    ),
+    GuiAction(
+        "creature_wardrobe_sync",
+        "Синхр. wardrobe",
+        "Главное",
+        tool="creature_wardrobe_sync",
+        hint="Забрать outfit_sets.json и genital_rig в каталог.",
     ),
     GuiAction(
         "creature_catalog",

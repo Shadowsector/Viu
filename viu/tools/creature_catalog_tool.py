@@ -17,6 +17,7 @@ from ..creature_catalog.lineup import run_creature_lineup
 from ..creature_catalog.models import ALL_SIZE_IDS, CONTACT_MODES, GENITAL_PROFILES, LOCOMOTION
 from ..creature_catalog.studio import open_creature_studio, sync_studio_feedback
 from ..creature_catalog.prep import open_creature_prep, sync_prep_feedback
+from ..creature_catalog.wardrobe import open_creature_wardrobe, sync_wardrobe_feedback
 from .base import AgentContext, Tool, ToolResult
 
 
@@ -317,6 +318,26 @@ class CreatureLineupTool(Tool):
         return ToolResult(ok, msg)
 
 
+class CreatureWardrobeOpenTool(Tool):
+    name = "creature_wardrobe_open"
+    description = "Blender Wardrobe: наборы одежды, genital visibility. Нужен prepared.blend."
+    parameters = {"slug": "один slug/имя"}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        slug_filter = [p.strip() for p in str(args.get("slug") or "").split(",") if p.strip()]
+        ok, msg = open_creature_wardrobe(ctx.config, slug_filter=slug_filter)
+        return ToolResult(ok, msg)
+
+
+class CreatureWardrobeSyncTool(Tool):
+    name = "creature_wardrobe_sync"
+    description = "Считать wardrobe_feedback → outfit_sets.json, genital_rig в каталог."
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        n, msg = sync_wardrobe_feedback(ctx.config)
+        return ToolResult(n > 0, msg)
+
+
 class CreaturePrepOpenTool(Tool):
     name = "creature_prep_open"
     description = (
@@ -393,6 +414,8 @@ __all__ = [
     "CreatureCatalogAutoSizeTool",
     "CreatureDescribeTool",
     "CreatureLineupTool",
+    "CreatureWardrobeOpenTool",
+    "CreatureWardrobeSyncTool",
     "CreaturePrepOpenTool",
     "CreaturePrepSyncTool",
     "CreatureStudioOpenTool",

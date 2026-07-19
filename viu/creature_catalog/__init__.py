@@ -23,6 +23,7 @@ from .paths import (
 )
 from .review_gui import open_creature_catalog_review
 from .prep import open_creature_prep, sync_prep_feedback
+from .wardrobe import open_creature_wardrobe, sync_wardrobe_feedback
 from .studio import open_creature_studio, sync_studio_feedback
 from .scanner import list_size_classes_text, scan_creatures_inbox
 from .sockets import ensure_girl_sockets_doc, list_girl_socket_ids
@@ -50,9 +51,11 @@ __all__ = [
     "list_girl_socket_ids",
     "list_size_classes_text",
     "open_creature_catalog_review",
+    "open_creature_wardrobe",
     "open_creature_prep",
     "open_creature_studio",
     "sync_prep_feedback",
+    "sync_wardrobe_feedback",
     "sync_studio_feedback",
     "run_creature_lineup",
     "scan_creatures_inbox",
