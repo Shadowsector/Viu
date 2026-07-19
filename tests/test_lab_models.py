@@ -63,7 +63,9 @@ def test_build_models_summary_empty(tmp_path):
 
 def test_list_model_files(tmp_path):
     cfg = _cfg(tmp_path)
-    inbox = Path(cfg.root) / "models_inbox"
+    from viu.creature_catalog.paths import creatures_inbox_dir
+
+    inbox = creatures_inbox_dir(cfg)
     inbox.mkdir(parents=True, exist_ok=True)
     (inbox / "hero.blend").write_bytes(b"fake")
     (inbox / "npc.fbx").write_bytes(b"fake")

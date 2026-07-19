@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 1, 1),
+    "version": (0, 1, 3),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Шаня + одно существо: рост, очистка, скрины, эталон",
@@ -30,8 +30,12 @@ _STATE = {
     "creature_root": None,
     "creature_objects": [],
     "shanya_root": None,
+    "shanya_objects": [],
     "body_mesh": "",
 }
+
+_SLOT_NAME = "VIU_CreatureSlot"
+_SHANYA_COLL = "VIU_ShanyaRef"
 
 _RIG_HIDE = (
     "ik", "pole", "ctrl", "control", "target", "widget", "wgt", "handle",
@@ -75,19 +79,67 @@ def _write_feedback(entry: dict, **extra) -> None:
 
 
 def _clear_creature():
-    for key in ("creature_root",):
-        obj = _STATE.get(key)
-        if obj and obj.name in bpy.data.objects:
-            bpy.data.objects.remove(obj, do_unlink=True)
-    for obj in list(_STATE.get("creature_objects") or []):
+    """Убрать только текущее существо (Шаню не трогаем)."""
+    root = _STATE.get("creature_root")
+    if root and root.name in bpy.data.objects:
         try:
-            if obj and obj.name in bpy.data.objects:
-                bpy.data.objects.remove(obj, do_unlink=True)
+            bpy.data.objects.remove(root, do_unlink=True)
         except ReferenceError:
             pass
+    coll = bpy.data.collections.get(_SLOT_NAME)
+    if coll:
+        for obj in list(coll.all_objects):
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+            except ReferenceError:
+                pass
+        if coll.name in bpy.data.collections:
+            bpy.data.collections.remove(coll)
+    for obj in list(bpy.data.objects):
+        if obj.name.startswith("VIU_CREATURE_ROOT"):
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+            except ReferenceError:
+                pass
     _STATE["creature_root"] = None
     _STATE["creature_objects"] = []
     _STATE["body_mesh"] = ""
+    for block in (bpy.data.meshes, bpy.data.armatures, bpy.data.materials):
+        for b in list(block):
+            if b.users == 0:
+                try:
+                    block.remove(b)
+                except (AttributeError, ReferenceError):
+                    pass
+
+
+def _creature_slot():
+    coll = bpy.data.collections.get(_SLOT_NAME)
+    if coll is None:
+        coll = bpy.data.collections.new(_SLOT_NAME)
+        bpy.context.scene.collection.children.link(coll)
+    return coll
+
+
+def _shanya_slot():
+    coll = bpy.data.collections.get(_SHANYA_COLL)
+    if coll is None:
+        coll = bpy.data.collections.new(_SHANYA_COLL)
+        bpy.context.scene.collection.children.link(coll)
+    return coll
+
+
+def _link_objects_to_collection(objects, coll):
+    for obj in objects:
+        if obj is None:
+            continue
+        for uc in list(obj.users_collection):
+            try:
+                uc.objects.unlink(obj)
+            except RuntimeError:
+                pass
+        if obj.name not in coll.objects:
+            coll.objects.link(obj)
 
 
 def _is_wgt_name(name: str) -> bool:
@@ -101,7 +153,7 @@ def _is_wgt_name(name: str) -> bool:
     return low.startswith("wgt.") or low.startswith("wgt-") or low.startswith("wgt_")
 
 
-def _import_asset(path: Path):
+def _import_asset(path: Path, *, for_shanya: bool = False, target_coll=None):
     path = Path(path)
     before = set(bpy.data.objects)
     before_colls = set(bpy.data.collections)
@@ -137,7 +189,25 @@ def _import_asset(path: Path):
         raise RuntimeError("unsupported: " + suf)
     bpy.context.view_layer.update()
     imported = [o for o in bpy.data.objects if o not in before]
-    _post_import_visibility(imported)
+    if for_shanya:
+        wgt = [o for o in imported if _is_wgt_name(o.name)]
+        for obj in wgt:
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+            except ReferenceError:
+                pass
+        imported = [o for o in imported if o not in wgt]
+        for obj in imported:
+            if obj.type == "MESH":
+                obj.hide_set(False)
+                obj.hide_render = False
+            elif obj.type == "ARMATURE":
+                obj.hide_set(False)
+                obj.data.display_type = "STICK"
+    else:
+        _post_import_visibility(imported)
+    if target_coll is not None:
+        _link_objects_to_collection(imported, target_coll)
     return imported
 
 
@@ -176,11 +246,12 @@ def _post_import_visibility(objects):
     return body
 
 
-def _wrap_root(imported, name):
-    root = bpy.data.objects.new("VIU_CREATURE_ROOT", None)
+def _wrap_root(imported, name, root_name="VIU_CREATURE_ROOT", target_coll=None):
+    root = bpy.data.objects.new(root_name, None)
     root.empty_display_type = "PLAIN_AXES"
     root.empty_display_size = 0.2
-    bpy.context.collection.objects.link(root)
+    coll = target_coll or bpy.context.collection
+    coll.objects.link(root)
     imported_set = set(imported)
     for o in imported:
         if o.parent is None or o.parent not in imported_set:
@@ -294,19 +365,23 @@ def _place_creature(root, objects, x_offset: float, target_h: float, body_mesh: 
 def _ensure_shanya():
     if _STATE.get("shanya_root") and _STATE["shanya_root"].name in bpy.data.objects:
         return
-    path = str(_SESSION.get("shanya_path") or "")
-    if not path or not Path(path).is_file():
+    path = Path(str(_SESSION.get("shanya_path") or ""))
+    if not path.is_file():
         return
-    imported = _import_asset(Path(path))
-    root = _wrap_root(imported, "Shanya")
-    root.name = "VIU_SHANYA_ROOT"
+    slot = _shanya_slot()
+    imported = _import_asset(path, for_shanya=True, target_coll=slot)
+    _STATE["shanya_objects"] = imported
+    root = _wrap_root(imported, "Shanya", root_name="VIU_SHANYA_ROOT", target_coll=slot)
     target = float(_SESSION.get("shanya_target_m") or 1.70)
     h = _height_of_objects(imported)
     if h > 1e-6:
         root.scale *= target / h
     root.location = (0.0, 0.0, 0.0)
     _STATE["shanya_root"] = root
-    _hide_helpers(imported)
+    for obj in imported:
+        if _is_wgt_name(obj.name):
+            obj.hide_set(True)
+            obj.hide_render = True
 
 
 def _mesh_enum_items(self, context):
@@ -323,8 +398,9 @@ def _load_creature_entry(entry: dict):
     path = Path(str(entry.get("path") or ""))
     if not path.is_file():
         return f"Нет файла: {path}"
-    imported = _import_asset(path)
-    root = _wrap_root(imported, entry.get("name") or "creature")
+    slot = _creature_slot()
+    imported = _import_asset(path, for_shanya=False, target_coll=slot)
+    root = _wrap_root(imported, entry.get("name") or "creature", target_coll=slot)
     _hide_helpers(imported)
     body_meshes = [o for o in imported if o.type == "MESH" and not o.hide_get()]
     target = float(entry.get("target_height_m") or 1.0)
@@ -405,6 +481,32 @@ def _render_shots(entry: dict) -> tuple[str, str]:
             shanya.hide_set(shanya_hide)
             shanya.hide_render = False
     return str(front), str(side)
+
+
+def _gather_creature_objects():
+    root = _STATE.get("creature_root")
+    if root is None:
+        return []
+    out = []
+
+    def walk(o):
+        out.append(o)
+        for ch in o.children:
+            walk(ch)
+
+    walk(root)
+    return out
+
+
+def _save_creature_blend(filepath: Path) -> bool:
+    objs = _gather_creature_objects()
+    if not objs:
+        return False
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    if filepath.is_file():
+        filepath.unlink()
+    bpy.data.libraries.write(str(filepath), objs, path_remap="RELATIVE", fake_user=True)
+    return filepath.is_file()
 
 
 class VIU_OT_StudioShowBody(bpy.types.Operator):
@@ -542,7 +644,9 @@ class VIU_OT_StudioSave(bpy.types.Operator):
         out_dir.mkdir(parents=True, exist_ok=True)
         ready = out_dir / f"{slug}_ready.blend"
         try:
-            bpy.ops.wm.save_as_mainfile(filepath=str(ready), copy=True)
+            if not _save_creature_blend(ready):
+                self.report({"ERROR"}, "Нет существа для сохранения")
+                return {"CANCELLED"}
             measured = _height_of_objects(
                 _STATE.get("creature_objects") or [],
                 _STATE.get("body_mesh") or "",
@@ -553,10 +657,56 @@ class VIU_OT_StudioSave(bpy.types.Operator):
                 measured_height_m=measured,
                 target_height_m=float(entry.get("target_height_m") or 0),
             )
-            self.report({"INFO"}, f"Эталон: {ready.name}")
+            self.report({"INFO"}, f"Эталон (только {slug}): {ready.name}")
         except Exception as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
+        return {"FINISHED"}
+
+
+class VIU_OT_StudioReportIssue(bpy.types.Operator):
+    bl_idname = "viu.studio_report_issue"
+    bl_label = "Заметка для Вью"
+
+    def execute(self, context):
+        entry = _current_entry()
+        if not entry:
+            return {"CANCELLED"}
+        note = (context.scene.viu_creature_studio.photo_notes or "").strip()
+        if not note:
+            self.report({"ERROR"}, "Напиши заметку выше")
+            return {"CANCELLED"}
+        slug = str(entry.get("slug") or _slugify(entry.get("name")))
+        reports = Path(str(_SESSION.get("reports_dir") or ""))
+        reports.mkdir(parents=True, exist_ok=True)
+        viewport = reports / f"{slug}_viewport.png"
+        scene = context.scene
+        old_path = scene.render.filepath
+        scene.render.filepath = str(viewport)
+        try:
+            bpy.ops.render.opengl(write_still=True)
+        except Exception:
+            viewport = Path("")
+        scene.render.filepath = old_path
+        mesh_names = [
+            o.name
+            for o in (_STATE.get("creature_objects") or [])
+            if o.type == "MESH" and not o.hide_get()
+        ]
+        payload = {
+            "slug": slug,
+            "name": entry.get("name"),
+            "source_path": entry.get("path"),
+            "note": note,
+            "viewport": str(viewport) if viewport else "",
+            "visible_meshes": mesh_names,
+        }
+        report_file = reports / f"{slug}_issue.json"
+        report_file.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        _write_feedback(entry, issue_report=note, photo_notes=note, photo_ok=False)
+        self.report({"INFO"}, f"Отчёт: {report_file.name}")
         return {"FINISHED"}
 
 
@@ -620,9 +770,12 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
             layout.label(text=", ".join(meshes[:4])[:60], icon="MESH_DATA")
         layout.operator("viu.studio_apply_height", icon="ARROW_LEFTRIGHT")
         layout.separator()
+        layout.label(text="Save = только текущее существо", icon="INFO")
+        layout.separator()
         layout.operator("viu.studio_screenshot", icon="RENDER_STILL")
         layout.operator("viu.studio_save", icon="EXPORT")
         layout.prop(props, "photo_notes")
+        layout.operator("viu.studio_report_issue", icon="TEXT")
         row = layout.row(align=True)
         row.operator("viu.studio_photo_ok", icon="CHECKMARK")
         row.operator("viu.studio_photo_bad", icon="CANCEL")
@@ -646,6 +799,7 @@ _CLASSES = (
     VIU_OT_StudioApplyHeight,
     VIU_OT_StudioScreenshot,
     VIU_OT_StudioSave,
+    VIU_OT_StudioReportIssue,
     VIU_OT_StudioPhotoOk,
     VIU_OT_StudioPhotoBad,
     VIU_PT_CreatureStudio,

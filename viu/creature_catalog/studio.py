@@ -89,6 +89,24 @@ def build_studio_queue(
     return True, f"В очереди студии: {len(creatures)}.", creatures
 
 
+def resolve_shanya_studio_path(config: Config) -> Optional[Path]:
+    """Для студии: FBX с телом, не rig-.blend с WGT."""
+    p = resolve_shanya_path(config)
+    if p is None:
+        return None
+    if p.suffix.lower() == ".fbx":
+        return p
+    if p.suffix.lower() == ".blend":
+        fbx = p.with_suffix(".fbx")
+        if fbx.is_file():
+            return fbx
+        for cand in sorted(p.parent.glob("*Shanya*.fbx")) + sorted(
+            p.parent.glob("*shanya*.fbx")
+        ):
+            return cand
+    return p
+
+
 def write_studio_session(
     config: Config,
     creatures: Sequence[CreatureEntry],
@@ -97,10 +115,11 @@ def write_studio_session(
 ) -> Path:
     studio_dir = creatures_studio_dir(config)
     _install_studio_files(studio_dir)
-    shanya = resolve_shanya_path(config)
+    shanya = resolve_shanya_studio_path(config)
     session = {
         "catalog_path": str(creature_catalog_path(config)),
         "feedback_path": str(studio_dir / FEEDBACK_NAME),
+        "reports_dir": str(studio_dir / "reports"),
         "processed_root": str(creatures_processed_dir(config)),
         "shanya_path": str(shanya) if shanya else "",
         "shanya_target_m": 1.70,
@@ -149,6 +168,9 @@ def sync_studio_feedback(config: Config) -> Tuple[int, str]:
         for key in ("photo_front", "photo_side", "prepared_path", "photo_notes"):
             if row.get(key):
                 setattr(e, key, str(row[key]))
+        issue = str(row.get("issue_report") or "").strip()
+        if issue:
+            e.photo_notes = issue
         if "photo_ok" in row:
             e.photo_ok = bool(row["photo_ok"])
         if e.photo_ok and e.size_class:

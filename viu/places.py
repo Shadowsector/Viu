@@ -163,18 +163,18 @@ def all_places() -> List[Place]:
         ),
         Place(
             "models_inbox",
-            "Шаня / humanoid → Lab Inbox",
+            "Живые существа → Inbox",
             "folder",
             "Входы",
-            "Только Шаня и humanoid для Cascadeur lab. Монстры — Creatures/Inbox.",
+            "Тот же Inbox, что Creatures (волки, гоблины, humanoid).",
             models_inbox_dir,
         ),
         Place(
             "creatures_inbox",
-            "Существа → Inbox (единый)",
+            "Живые существа → Inbox",
             "folder",
             "Входы",
-            "Все живые существа: волки, гоблины, … → «Разметить существ» / «Студия».",
+            "Единая папка: Lab/Creatures/Inbox → «Разметить» / «Студия».",
             creatures_inbox_dir,
         ),
         Place(

@@ -369,6 +369,14 @@ def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
     assert w.target_height_m == 0.96
 
 
+def test_unified_living_inbox(tmp_path, monkeypatch):
+    from viu.creature_catalog.paths import creatures_inbox_dir
+    from viu.lab.paths import models_inbox_dir
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    assert models_inbox_dir(cfg) == creatures_inbox_dir(cfg)
+
+
 def test_creature_studio_tool_imports():
     from viu.tools.creature_catalog_tool import CreatureStudioOpenTool, CreatureStudioSyncTool
 

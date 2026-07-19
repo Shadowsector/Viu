@@ -40,7 +40,14 @@ def artifacts_dir(config: Config, topic: str) -> Path:
 
 
 def models_inbox_dir(config: Config) -> Path:
-    """Входящие модели для lab: rig-check и случайные прогоны в Cascadeur."""
+    """Единый Inbox живых существ (то же, что Creatures/Inbox)."""
+    from ..creature_catalog.paths import creatures_inbox_dir
+
+    return creatures_inbox_dir(config)
+
+
+def _models_inbox_dir_legacy(config: Config) -> Path:
+    """Старый путь — только если задан VIU_LAB_MODELS_INBOX."""
     import os
 
     from ..anabarra_layout import library_root
@@ -48,17 +55,10 @@ def models_inbox_dir(config: Config) -> Path:
     env = os.environ.get("VIU_LAB_MODELS_INBOX", "").strip()
     if env:
         p = Path(env).expanduser()
-    else:
-        p = library_root(config) / "Lab" / "Models" / "Inbox"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    p = library_root(config) / "Lab" / "Models" / "Inbox"
     p.mkdir(parents=True, exist_ok=True)
-    readme = p / "README.txt"
-    if not readme.is_file():
-        readme.write_text(
-            "Inbox humanoid-моделей для lab Cascadeur (Шаня, rig-check).\n"
-            "Не для монстров — живые существа → Lab/Creatures/Inbox.\n"
-            "Положи .blend или .fbx персонажа.\n",
-            encoding="utf-8",
-        )
     return p
 
 
