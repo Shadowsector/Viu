@@ -114,6 +114,45 @@ def dedupe_by_inbox_folder(
     return sorted(best.values(), key=lambda e: e.name.lower())
 
 
+def _catalog_entry_rank(e: CreatureEntry) -> int:
+    """Выше = предпочтительнее при дедупе по slug."""
+    score = 0
+    if e.prep_ok:
+        score += 32
+    if e.prepared_path:
+        score += 16
+    if e.outfit_sets_path:
+        score += 8
+    if (e.path or "").lower().endswith(".blend"):
+        score += 4
+    if e.photo_ok:
+        score += 2
+    return score
+
+
+def dedupe_by_slug(creatures: Sequence[CreatureEntry]) -> List[CreatureEntry]:
+    """Одна запись каталога на slug (Tiki.fbx + Tiki.blend → одна строка в очереди)."""
+    from .models import slugify
+
+    best: Dict[str, CreatureEntry] = {}
+    for e in creatures:
+        slug = (e.slug or slugify(e.name) or "").strip().lower()
+        if not slug:
+            slug = (e.name or e.id or "creature").lower()
+        prev = best.get(slug)
+        if prev is None or _catalog_entry_rank(e) > _catalog_entry_rank(prev):
+            best[slug] = e
+    return sorted(best.values(), key=lambda e: e.name.lower())
+
+
+def queue_creatures_from_catalog(
+    creatures: Sequence[CreatureEntry],
+    inbox_root: Path,
+) -> List[CreatureEntry]:
+    """Inbox-папка → slug: без повторов в Blender-очереди."""
+    return dedupe_by_slug(dedupe_by_inbox_folder(list(creatures), inbox_root))
+
+
 def _write_job_files(
     out_dir: Path,
     *,

@@ -676,7 +676,30 @@ def test_creature_identity_from_subfolder(tmp_path):
     assert slug2 == "girls_erisa_rig"
 
 
-def test_dedupe_by_inbox_folder_keeps_subfolders(tmp_path):
+def test_dedupe_by_slug_merges_same_creature(tmp_path):
+    from viu.creature_catalog.lineup import dedupe_by_slug
+    from viu.creature_catalog.models import CreatureEntry
+
+    a = CreatureEntry(
+        id="a",
+        path=str(tmp_path / "tiki.fbx"),
+        name="Tiki",
+        slug="tiki",
+        prep_ok=False,
+    )
+    b = CreatureEntry(
+        id="b",
+        path=str(tmp_path / "Tiki" / "Tiki.blend"),
+        name="Tiki",
+        slug="tiki",
+        prep_ok=True,
+        prepared_path=str(tmp_path / "prepared" / "tiki_prepared.blend"),
+    )
+    out = dedupe_by_slug([a, b])
+    assert len(out) == 1
+    assert out[0].id == "b"
+
+
     from viu.creature_catalog.lineup import dedupe_by_inbox_folder
     from viu.creature_catalog.models import CreatureEntry
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..config import Config
-from .lineup import dedupe_by_inbox_folder
+from .lineup import queue_creatures_from_catalog
 from .models import CreatureEntry, STATUS_NORMALIZED
 from .paths import (
     creature_catalog_path,
@@ -88,7 +88,7 @@ def build_prep_queue(
         )
     store = CreatureCatalogStore(creature_catalog_path(config)).load()
     inbox = creatures_inbox_dir(config)
-    creatures = dedupe_by_inbox_folder(store.all(), inbox)
+    creatures = queue_creatures_from_catalog(store.all(), inbox)
     if slug_filter:
         want = {s.strip().lower() for s in slug_filter if s.strip()}
         creatures = [
@@ -165,6 +165,8 @@ def sync_prep_feedback(config: Config) -> Tuple[int, str]:
         store.upsert(e)
         n += 1
         lines.append(f"  • {e.name}: " + ("prepared ✓" if e.prep_ok else "заметка"))
+        if row.get("prep_notes"):
+            lines.append(f"      [prep] {str(row['prep_notes'])[:120]}")
     if n:
         store.save()
     return n, f"Синхронизировано prep: {n}\n" + "\n".join(lines[:30])

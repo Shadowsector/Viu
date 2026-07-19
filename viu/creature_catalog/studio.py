@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..config import Config
-from .lineup import dedupe_by_inbox_folder, resolve_shanya_path
+from .lineup import queue_creatures_from_catalog, resolve_shanya_path
 from .models import (
     ALL_SIZE_IDS,
     CONTACT_MODES,
@@ -114,7 +114,7 @@ def build_studio_queue(
         scan_creatures_inbox(config)
     store = CreatureCatalogStore(creature_catalog_path(config)).load()
     inbox = creatures_inbox_dir(config)
-    creatures = dedupe_by_inbox_folder(store.all(), inbox)
+    creatures = queue_creatures_from_catalog(store.all(), inbox)
     creatures = [e for e in creatures if is_prepared_for_studio(e, config)]
     if slug_filter:
         want = {s.strip().lower() for s in slug_filter if s.strip()}

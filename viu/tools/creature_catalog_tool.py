@@ -407,6 +407,16 @@ class CreatureStudioSyncTool(Tool):
         return ToolResult(n > 0, msg)
 
 
+class CreaturePipelineNotesTool(Tool):
+    name = "creature_pipeline_notes"
+    description = "Показать заметки [prep]/[wardrobe]/[studio] из creature_catalog.json."
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        store = CreatureCatalogStore(creature_catalog_path(ctx.config)).load()
+        text = store.pipeline_notes_text()
+        return ToolResult(True, text)
+
+
 __all__ = [
     "CreatureCatalogScanTool",
     "CreatureCatalogShowTool",
@@ -420,4 +430,5 @@ __all__ = [
     "CreaturePrepSyncTool",
     "CreatureStudioOpenTool",
     "CreatureStudioSyncTool",
+    "CreaturePipelineNotesTool",
 ]

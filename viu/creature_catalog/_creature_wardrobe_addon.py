@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Wardrobe",
     "author": "Viu",
-    "version": (0, 2, 0),
+    "version": (0, 2, 1),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Наборы одежды: Casual/Fitness/Swimsuit… + вариант 1–3",
@@ -261,6 +261,45 @@ class VIU_OT_WardrobeHideGenital(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def _write_outfit_set(entry: dict, props, type_id: str, variant: str, snap: dict) -> str:
+    set_id = _outfit_set_id(type_id, variant)
+    label = _OUTFIT_LABEL.get(type_id, type_id)
+    data = _load_outfit_doc(entry)
+    rows = {s.get("id"): s for s in data.get("sets") or [] if isinstance(s, dict)}
+    rows[set_id] = {
+        "id": set_id,
+        "label": label,
+        "variant": variant,
+        "outfit_type": type_id,
+        "confirmed": bool(props.set_confirmed),
+        "show_meshes": snap["show_meshes"],
+        "hide_meshes": snap["hide_meshes"],
+        "hide_genital_mesh": not snap["genital_mesh_visible"],
+        "genital_mesh_visible": snap["genital_mesh_visible"],
+        "clothing_visible": snap["clothing_visible"],
+        "notes": (props.set_notes or "").strip(),
+    }
+    data["sets"] = sorted(rows.values(), key=lambda s: s.get("id") or "")
+    _save_outfit_doc(entry, data)
+    return set_id
+
+
+def _sync_feedback(entry: dict, data: dict, snap: dict, props) -> None:
+    genital_rig = "attached" if snap["genital_mesh_visible"] else (
+        "pending" if any(S.is_genital_mesh(o.name) for o in _mesh_objects()) else "none"
+    )
+    confirmed_n = sum(1 for s in data.get("sets") or [] if isinstance(s, dict) and s.get("confirmed"))
+    out = _outfit_path(entry)
+    S.write_feedback_file(
+        _feedback_path(),
+        entry,
+        outfit_sets_path=str(out),
+        outfit_sets_confirmed=confirmed_n,
+        genital_rig=genital_rig,
+        wardrobe_notes=props.set_notes or "",
+    )
+
+
 class VIU_OT_WardrobeSaveSet(bpy.types.Operator):
     bl_idname = "viu.wardrobe_save_set"
     bl_label = "Сохранить набор"
@@ -270,39 +309,29 @@ class VIU_OT_WardrobeSaveSet(bpy.types.Operator):
         props = context.scene.viu_creature_wardrobe
         type_id = props.outfit_type or "casual"
         variant = props.outfit_variant or "01"
-        set_id = _outfit_set_id(type_id, variant)
-        label = _OUTFIT_LABEL.get(type_id, type_id)
         snap = S.mesh_visibility_snapshot(_STATE.get("objects") or [])
+        set_id = _write_outfit_set(entry, props, type_id, variant, snap)
         data = _load_outfit_doc(entry)
-        rows = {s.get("id"): s for s in data.get("sets") or [] if isinstance(s, dict)}
-        rows[set_id] = {
-            "id": set_id,
-            "label": label,
-            "variant": variant,
-            "outfit_type": type_id,
-            "confirmed": bool(props.set_confirmed),
-            "show_meshes": snap["show_meshes"],
-            "hide_meshes": snap["hide_meshes"],
-            "hide_genital_mesh": not snap["genital_mesh_visible"],
-            "genital_mesh_visible": snap["genital_mesh_visible"],
-            "clothing_visible": snap["clothing_visible"],
-            "notes": (props.set_notes or "").strip(),
-        }
-        data["sets"] = sorted(rows.values(), key=lambda s: s.get("id") or "")
-        out = _save_outfit_doc(entry, data)
-        genital_rig = "attached" if snap["genital_mesh_visible"] else (
-            "pending" if any(S.is_genital_mesh(o.name) for o in _mesh_objects()) else "none"
-        )
-        confirmed_n = sum(1 for s in data["sets"] if s.get("confirmed"))
-        S.write_feedback_file(
-            _feedback_path(),
-            entry,
-            outfit_sets_path=str(out),
-            outfit_sets_confirmed=confirmed_n,
-            genital_rig=genital_rig,
-            wardrobe_notes=props.set_notes or "",
-        )
+        _sync_feedback(entry, data, snap, props)
+        label = _OUTFIT_LABEL.get(type_id, type_id)
         self.report({"INFO"}, f"Сохранено {label} {int(variant)} → {set_id}")
+        return {"FINISHED"}
+
+
+class VIU_OT_WardrobeSaveBare(bpy.types.Operator):
+    bl_idname = "viu.wardrobe_save_bare"
+    bl_label = "Без одежды: Casual 1 + Nude 1"
+
+    def execute(self, context):
+        entry = _current_entry()
+        props = context.scene.viu_creature_wardrobe
+        snap = S.mesh_visibility_snapshot(_STATE.get("objects") or [])
+        ids = []
+        for type_id in ("casual", "nude"):
+            ids.append(_write_outfit_set(entry, props, type_id, "01", snap))
+        data = _load_outfit_doc(entry)
+        _sync_feedback(entry, data, snap, props)
+        self.report({"INFO"}, f"Сохранено для существа без одежды: {', '.join(ids)}")
         return {"FINISHED"}
 
 
@@ -410,6 +439,7 @@ class VIU_PT_CreatureWardrobe(bpy.types.Panel):
         layout.label(text=f"→ {label} · вариант {int(variant)}  ({_outfit_set_id(type_id, variant)})")
         layout.prop(props, "set_notes")
         layout.prop(props, "set_confirmed")
+        layout.operator("viu.wardrobe_save_bare", icon="OUTLINER_OB_MESH")
         layout.operator("viu.wardrobe_save_set", text=f"Сохранить {label} {int(variant)}", icon="EXPORT")
 
 
@@ -442,6 +472,7 @@ _CLASSES = (
     VIU_OT_WardrobeHideClothes,
     VIU_OT_WardrobeShowGenital,
     VIU_OT_WardrobeHideGenital,
+    VIU_OT_WardrobeSaveBare,
     VIU_OT_WardrobeSaveSet,
     VIU_OT_WardrobeLoadSet,
     VIU_PT_CreatureWardrobe,

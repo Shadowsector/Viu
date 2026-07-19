@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..config import Config
-from .lineup import dedupe_by_inbox_folder
+from .lineup import queue_creatures_from_catalog
 from .models import CreatureEntry
 from .paths import (
     creature_catalog_path,
@@ -72,7 +72,7 @@ def build_wardrobe_queue(
         scan_creatures_inbox(config)
     store = CreatureCatalogStore(creature_catalog_path(config)).load()
     inbox = creatures_inbox_dir(config)
-    creatures = dedupe_by_inbox_folder(store.all(), inbox)
+    creatures = queue_creatures_from_catalog(store.all(), inbox)
     creatures = [e for e in creatures if is_prepared_for_studio(e, config)]
     if slug_filter:
         want = {s.strip().lower() for s in slug_filter if s.strip()}
@@ -139,6 +139,8 @@ def sync_wardrobe_feedback(config: Config) -> Tuple[int, str]:
         n += 1
         confirmed = row.get("outfit_sets_confirmed") or 0
         lines.append(f"  • {e.name}: наборов {confirmed}")
+        if row.get("wardrobe_notes"):
+            lines.append(f"      [wardrobe] {str(row['wardrobe_notes'])[:120]}")
     if n:
         store.save()
     return n, f"Синхронизировано wardrobe: {n}\n" + "\n".join(lines[:30])

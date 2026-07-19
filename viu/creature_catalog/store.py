@@ -161,3 +161,21 @@ class CreatureCatalogStore:
             if pending > 15:
                 lines.append(f"  … +{pending - 15}")
         return "\n".join(lines)
+
+    def pipeline_notes_text(self, *, limit: int = 40) -> str:
+        """Заметки [prep] / [wardrobe] / [studio] из каталога для обзора Дена."""
+        rows: List[CreatureEntry] = []
+        for e in self._items.values():
+            n = e.notes or ""
+            if "[prep]" in n or "[wardrobe]" in n or "[studio]" in n:
+                rows.append(e)
+        if not rows:
+            return "Заметок по пайплайну (prep/wardrobe/studio) в каталоге нет."
+        rows.sort(key=lambda e: e.name.lower())
+        lines = [f"Заметки по существам ({len(rows)}):"]
+        for e in rows[:limit]:
+            lines.append(f"\n### {e.name} (`{e.slug}`)")
+            lines.append(e.notes.strip())
+        if len(rows) > limit:
+            lines.append(f"\n… ещё {len(rows) - limit} с заметками.")
+        return "\n".join(lines)
