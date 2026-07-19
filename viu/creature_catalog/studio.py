@@ -95,6 +95,7 @@ def _entry_payload(e: CreatureEntry, config: Config) -> Dict[str, Any]:
         "photo_ok": e.photo_ok,
         "photo_front": e.photo_front,
         "photo_side": e.photo_side,
+        "photo_three_quarter": e.photo_three_quarter,
         "photo_notes": e.photo_notes,
         "prepared_path": str(prep) if prep else "",
         "ready_fbx_path": e.ready_fbx_path,
@@ -260,7 +261,15 @@ def sync_studio_feedback(config: Config) -> Tuple[int, str]:
                 e.measured_height_m = float(row["measured_height_m"])
             except (TypeError, ValueError):
                 pass
-        for key in ("photo_front", "photo_side", "prepared_path", "photo_notes", "ready_fbx_path", "texture_manifest_path"):
+        for key in (
+            "photo_front",
+            "photo_three_quarter",
+            "photo_side",
+            "prepared_path",
+            "photo_notes",
+            "ready_fbx_path",
+            "texture_manifest_path",
+        ):
             if row.get(key):
                 setattr(e, key, str(row[key]))
         issue = str(row.get("issue_report") or "").strip()

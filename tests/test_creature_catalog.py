@@ -437,6 +437,7 @@ def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
                         "id": "w1",
                         "slug": "wolf_alpha",
                         "photo_front": str(tmp_path / "front.png"),
+                        "photo_three_quarter": str(tmp_path / "three_quarter.png"),
                         "photo_side": str(tmp_path / "side.png"),
                         "photo_ok": True,
                         "target_height_m": 0.96,
@@ -454,6 +455,7 @@ def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
     w = CreatureCatalogStore(creature_catalog_path(cfg)).load().get("w1")
     assert w is not None
     assert w.photo_ok
+    assert w.photo_three_quarter.endswith("three_quarter.png")
     assert w.target_height_m == 0.96
     assert w.ready_fbx_path.endswith("wolf_alpha_ready.fbx")
 

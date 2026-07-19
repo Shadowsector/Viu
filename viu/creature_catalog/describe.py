@@ -94,14 +94,14 @@ def resolve_photo(
         if p.is_file():
             return p, str(p)
         return None, f"Нет файла: {p}"
-    for key in (entry.photo_front, entry.photo_side):
+    for key in (entry.photo_three_quarter, entry.photo_front, entry.photo_side):
         if key:
             p = Path(key).expanduser()
             if p.is_file():
                 return p, str(p)
     # sidecar рядом с processed
     proc = creatures_processed_dir(config) / entry.slug
-    for name in ("front.png", "side.png", "preview.png", "shot.png"):
+    for name in ("three_quarter.png", "front.png", "side.png", "preview.png", "shot.png"):
         p = proc / name
         if p.is_file():
             return p, str(p)

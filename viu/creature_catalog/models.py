@@ -279,6 +279,7 @@ class CreatureEntry:
     ready_fbx_path: str = ""
     photo_front: str = ""
     photo_side: str = ""
+    photo_three_quarter: str = ""
     photo_ok: bool = False          # Ден подтвердил скрины lineup
     photo_notes: str = ""           # что не так: IK, текстуры, …
     # Внешность для анимации / Comfy (из VL по скрину или руками).
@@ -335,6 +336,7 @@ class CreatureEntry:
             ready_fbx_path=str(d.get("ready_fbx_path") or ""),
             photo_front=str(d.get("photo_front") or ""),
             photo_side=str(d.get("photo_side") or ""),
+            photo_three_quarter=str(d.get("photo_three_quarter") or ""),
             photo_ok=bool(d.get("photo_ok")),
             photo_notes=str(d.get("photo_notes") or ""),
             appearance_en=str(d.get("appearance_en") or ""),
@@ -387,7 +389,7 @@ class CreatureEntry:
         return " · ".join(parts) if parts else "—"
 
     def has_photo_files(self) -> bool:
-        for p in (self.photo_front, self.photo_side):
+        for p in (self.photo_front, self.photo_side, self.photo_three_quarter):
             if p and Path(p).is_file():
                 return True
         return False

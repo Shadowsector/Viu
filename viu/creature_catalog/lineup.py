@@ -72,8 +72,6 @@ def _shanya_candidates(config: Config) -> List[Path]:
 
 
 def resolve_shanya_path(config: Config, explicit: str = "") -> Optional[Path]:
-    import os
-
     if explicit:
         p = Path(explicit).expanduser()
         return p if p.is_file() else None

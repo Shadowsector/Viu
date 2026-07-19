@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 2, 5),
+    "version": (0, 2, 6),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -198,25 +198,22 @@ def _setup_camera_for_shot(yaw_deg: float, objects):
     return cam
 
 
-def _render_shots(entry: dict) -> tuple[str, str]:
+def _render_shots(entry: dict) -> tuple[str, str, str]:
     slug = str(entry.get("slug") or S.slugify(entry.get("name")))
     out_dir = Path(str(_SESSION.get("processed_root") or "")) / slug
     out_dir.mkdir(parents=True, exist_ok=True)
     front = out_dir / "front.png"
+    three_quarter = out_dir / "three_quarter.png"
     side = out_dir / "side.png"
     scene = bpy.context.scene
     S.setup_shot_render(scene, res=768)
     S.ensure_shot_lights()
     objs = list(_STATE.get("creature_objects") or [])
     S.hide_helpers(objs)
-    shanya = _STATE.get("shanya_root")
-    shanya_hide = False
-    if shanya:
-        shanya_hide = shanya.hide_get()
-        shanya.hide_set(True)
-        shanya.hide_render = True
+    creature_root = _STATE.get("creature_root")
+    hidden = S.isolate_creature_for_render(creature_root)
     try:
-        for yaw, path in ((0.0, front), (90.0, side)):
+        for yaw, path in ((0.0, front), (45.0, three_quarter), (90.0, side)):
             cam = _setup_camera_for_shot(yaw, objs)
             if cam is None:
                 continue
@@ -225,10 +222,8 @@ def _render_shots(entry: dict) -> tuple[str, str]:
             bpy.ops.render.render(write_still=True)
             bpy.data.objects.remove(cam, do_unlink=True)
     finally:
-        if shanya:
-            shanya.hide_set(shanya_hide)
-            shanya.hide_render = False
-    return str(front), str(side)
+        S.restore_render_visibility(hidden)
+    return str(front), str(three_quarter), str(side)
 
 
 def _sync_props_from_entry(entry: dict):
@@ -450,20 +445,21 @@ class VIU_OT_StudioScreenshot(bpy.types.Operator):
         if not entry:
             return {"CANCELLED"}
         try:
-            front, side = _render_shots(entry)
+            front, three_quarter, side = _render_shots(entry)
             measured = S.height_of_objects(_STATE.get("creature_objects") or [], _STATE.get("body_mesh") or "")
             props = context.scene.viu_creature_studio
             S.write_feedback_file(
                 _feedback_path(),
                 entry,
                 photo_front=front,
+                photo_three_quarter=three_quarter,
                 photo_side=side,
                 photo_ok=False,
                 measured_height_m=measured,
                 target_height_m=float(entry.get("target_height_m") or 0),
                 **_markup_fields(props, entry),
             )
-            self.report({"INFO"}, f"PNG: {front}")
+            self.report({"INFO"}, f"PNG: front + ¾ + side → {Path(front).parent.name}")
         except Exception as exc:
             self.report({"ERROR"}, str(exc))
             traceback.print_exc()

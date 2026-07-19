@@ -507,6 +507,42 @@ def ensure_shot_lights() -> List:
     return created
 
 
+_RENDER_KEEP_TYPES = frozenset({"CAMERA", "LIGHT"})
+
+
+def isolate_creature_for_render(creature_root) -> List[Tuple]:
+    """Спрятать всё кроме существа, камер и ламп. Возвращает список для restore."""
+    keep = set()
+
+    def walk(obj):
+        keep.add(obj)
+        for ch in obj.children:
+            walk(ch)
+
+    if creature_root is not None:
+        walk(creature_root)
+    restore: List[Tuple] = []
+    for obj in bpy.data.objects:
+        if obj in keep or obj.type in _RENDER_KEEP_TYPES:
+            continue
+        try:
+            restore.append((obj, obj.hide_get(), obj.hide_render))
+            obj.hide_set(True)
+            obj.hide_render = True
+        except (ReferenceError, AttributeError):
+            pass
+    return restore
+
+
+def restore_render_visibility(restore: Sequence[Tuple]) -> None:
+    for obj, hv, hr in restore:
+        try:
+            obj.hide_set(hv)
+            obj.hide_render = hr
+        except ReferenceError:
+            pass
+
+
 def gather_under_root(root) -> List:
     if root is None:
         return []

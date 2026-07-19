@@ -278,6 +278,8 @@ class CreatureCatalogReviewWindow:
         shots.pack(fill="x")
         self.photo_front_lbl = ttk.Label(shots, text="front", relief="groove", anchor="center")
         self.photo_front_lbl.pack(side="left", padx=(0, 8))
+        self.photo_three_quarter_lbl = ttk.Label(shots, text="¾", relief="groove", anchor="center")
+        self.photo_three_quarter_lbl.pack(side="left", padx=(0, 8))
         self.photo_side_lbl = ttk.Label(shots, text="side", relief="groove", anchor="center")
         self.photo_side_lbl.pack(side="left")
         photo_btns = ttk.Frame(self.photo_fr)
@@ -437,6 +439,7 @@ class CreatureCatalogReviewWindow:
         self._photo_refs.clear()
         for lbl, path_s in (
             (self.photo_front_lbl, e.photo_front),
+            (self.photo_three_quarter_lbl, e.photo_three_quarter),
             (self.photo_side_lbl, e.photo_side),
         ):
             p = Path(path_s) if path_s else None
