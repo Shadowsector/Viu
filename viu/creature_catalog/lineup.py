@@ -72,9 +72,17 @@ def _shanya_candidates(config: Config) -> List[Path]:
 
 
 def resolve_shanya_path(config: Config, explicit: str = "") -> Optional[Path]:
+    import os
+
     if explicit:
         p = Path(explicit).expanduser()
         return p if p.is_file() else None
+    for env_key in ("VIU_SHANYA_FBX", "VIU_SHANYA_PATH"):
+        env = os.environ.get(env_key, "").strip()
+        if env:
+            p = Path(env).expanduser()
+            if p.is_file():
+                return p
     cands = _shanya_candidates(config)
     return cands[0] if cands else None
 

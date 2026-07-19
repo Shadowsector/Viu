@@ -147,6 +147,36 @@ def test_suggest_size_goblin():
     assert suggest_locomotion_from_name("mimic_chest") == "mimic"
 
 
+def test_resolve_shanya_path_env(tmp_path, monkeypatch):
+    from viu.creature_catalog.lineup import resolve_shanya_path
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    shanya = tmp_path / "Library" / "Lab" / "Models" / "CascadeurReady" / "Shanya.fbx"
+    shanya.parent.mkdir(parents=True, exist_ok=True)
+    shanya.write_bytes(b"fbx")
+    override = tmp_path / "custom" / "Shanya_ref.fbx"
+    override.parent.mkdir()
+    override.write_bytes(b"fbx")
+    monkeypatch.setenv("VIU_SHANYA_FBX", str(override))
+    assert resolve_shanya_path(cfg) == override
+    monkeypatch.delenv("VIU_SHANYA_FBX", raising=False)
+    assert resolve_shanya_path(cfg) == shanya
+
+
+def test_resolve_shanya_studio_prefers_fbx(tmp_path, monkeypatch):
+    from viu.creature_catalog.studio import resolve_shanya_studio_path
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    d = tmp_path / "Library" / "Lab" / "Models" / "CascadeurReady"
+    d.mkdir(parents=True, exist_ok=True)
+    blend = d / "Shanya_rig.blend"
+    fbx = d / "Shanya.fbx"
+    blend.write_bytes(b"blend")
+    fbx.write_bytes(b"fbx")
+    monkeypatch.setenv("VIU_SHANYA_FBX", str(blend))
+    assert resolve_shanya_studio_path(cfg) == fbx
+
+
 def test_scan_and_set_size(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     inbox = creatures_inbox_dir(cfg)

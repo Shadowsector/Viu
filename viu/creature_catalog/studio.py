@@ -166,6 +166,12 @@ def write_studio_session(
     studio_dir = creatures_studio_dir(config)
     _install_studio_files(studio_dir)
     shanya = resolve_shanya_studio_path(config)
+    if not shanya:
+        print(
+            "VIU_STUDIO_SHANYA WARN: Shanya.fbx не найден — "
+            "положите в Lab/Models/CascadeurReady/ или задайте VIU_SHANYA_FBX",
+            flush=True,
+        )
     size_meta = []
     for sid in ALL_SIZE_IDS:
         spec = size_spec(sid) or {}
@@ -292,6 +298,7 @@ def open_creature_studio(
     session = write_studio_session(config, queue)
     studio_dir = creatures_studio_dir(config)
     _, bootstrap = _install_studio_files(studio_dir)
+    shanya = resolve_shanya_studio_path(config)
 
     from ..integrations.blender.exe import resolve_blender_exe
 
@@ -308,9 +315,16 @@ def open_creature_studio(
 
     names = ", ".join(e.name for e in queue[:8])
     more = f" … +{len(queue) - 8}" if len(queue) > 8 else ""
+    shanya_line = (
+        f"Шаня: {shanya}\n"
+        if shanya
+        else "⚠ Шаня не найдена — положите Shanya.fbx в Lab/Models/CascadeurReady/ "
+        "или задайте VIU_SHANYA_FBX перед запуском.\n"
+    )
     return (
         True,
-        f"{msg}\nОткрываю Blender — **студия + разметка**.\n"
+        f"{msg}\n{shanya_line}"
+        f"Открываю Blender — **студия + разметка**.\n"
         f"Панель: N → Viu → «Viu — студия».\n"
         f"Очередь: {names}{more}\n"
         f"Session: {session}\n"

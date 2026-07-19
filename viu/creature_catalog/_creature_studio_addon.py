@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 2, 3),
+    "version": (0, 2, 4),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -26,6 +26,7 @@ _STATE = {
     "creature_import_colls": [],
     "shanya_root": None,
     "shanya_objects": [],
+    "shanya_status": "",
     "body_mesh": "",
 }
 
@@ -105,14 +106,30 @@ def _place_creature(root, objects, x_offset: float, target_h: float, body_mesh: 
     bpy.context.view_layer.update()
 
 
-def _ensure_shanya():
-    if _STATE.get("shanya_root") and _STATE["shanya_root"].name in bpy.data.objects:
-        return
+def _ensure_shanya() -> str:
+    root = _STATE.get("shanya_root")
+    if root is not None:
+        try:
+            if root.name in bpy.data.objects:
+                return f"Шаня уже в сцене ({root.name})"
+        except ReferenceError:
+            _STATE["shanya_root"] = None
+            _STATE["shanya_objects"] = []
+
     path = Path(str(_SESSION.get("shanya_path") or ""))
     if not path.is_file():
-        return
+        return f"⚠ Шаня: файл не найден — {path or '(путь пуст в session)'}"
+
     slot = S.ensure_collection(_SHANYA_COLL)
-    imported, _ = S.import_asset(path, for_shanya=True, target_coll=slot)
+    try:
+        imported, _ = S.import_asset(path, for_shanya=True, target_coll=slot)
+    except Exception as exc:
+        return f"⚠ Шаня: ошибка импорта {path.name}: {exc}"
+
+    meshes = [o for o in imported if o.type == "MESH"]
+    if not meshes:
+        return f"⚠ Шаня: импорт пустой (0 мешей) из {path.name} — нужен FBX с телом"
+
     _STATE["shanya_objects"] = imported
     root = S.wrap_root(imported, root_name="VIU_SHANYA_ROOT", target_coll=slot)
     target = float(_SESSION.get("shanya_target_m") or 1.70)
@@ -121,6 +138,7 @@ def _ensure_shanya():
         root.scale *= target / h
     root.location = (0.0, 0.0, 0.0)
     _STATE["shanya_root"] = root
+    return f"Шаня: {path.name} ({len(meshes)} мешей, h≈{target:.2f}m)"
 
 
 def _load_creature_entry(entry: dict):
@@ -255,6 +273,34 @@ def _markup_fields(props, entry: dict) -> dict:
         "genital_profile": gp,
         "contact_modes": modes,
     }
+
+
+class VIU_OT_StudioReloadShanya(bpy.types.Operator):
+    bl_idname = "viu.studio_reload_shanya"
+    bl_label = "Перезагрузить Шаню"
+
+    def execute(self, context):
+        coll = bpy.data.collections.get(_SHANYA_COLL)
+        if coll:
+            for obj in list(coll.all_objects):
+                name = S._safe_object_name(obj) if hasattr(S, "_safe_object_name") else getattr(obj, "name", "")
+                if name and name in bpy.data.objects:
+                    try:
+                        bpy.data.objects.remove(bpy.data.objects[name], do_unlink=True)
+                    except (ReferenceError, RuntimeError):
+                        pass
+            try:
+                bpy.data.collections.remove(coll)
+            except ReferenceError:
+                pass
+        _STATE["shanya_root"] = None
+        _STATE["shanya_objects"] = []
+        msg = _ensure_shanya()
+        _STATE["shanya_status"] = msg
+        context.scene.viu_creature_studio.shanya_status = msg
+        level = {"INFO"} if msg.startswith("Шаня:") else {"WARNING"}
+        self.report(level, msg)
+        return {"FINISHED"}
 
 
 class VIU_OT_StudioPrev(bpy.types.Operator):
@@ -554,6 +600,12 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
             layout.label(text="Очередь пуста")
             return
         layout.label(text=f"{idx + 1}/{len(q)}: {entry.get('name')}")
+        props = context.scene.viu_creature_studio
+        shanya_msg = props.shanya_status or _STATE.get("shanya_status") or ""
+        if shanya_msg:
+            icon = "CHECKMARK" if shanya_msg.startswith("Шаня:") else "ERROR"
+            layout.label(text=shanya_msg[:72], icon=icon)
+        layout.operator("viu.studio_reload_shanya", icon="FILE_REFRESH")
         col = layout.column(align=True)
         col.operator("viu.studio_prev", icon="TRIA_LEFT")
         col.operator("viu.studio_next", icon="TRIA_RIGHT")
@@ -596,6 +648,7 @@ class VIU_CreatureStudioProps(bpy.types.PropertyGroup):
     target_height_m: FloatProperty(name="Рост (м)", default=1.0, min=0.05, max=20.0)
     body_mesh: StringProperty(name="Меш роста", default="AUTO")
     photo_notes: StringProperty(name="Заметка", default="")
+    shanya_status: StringProperty(name="Шаня", default="")
     size_class: EnumProperty(name="Класс", items=_size_enum_items)
     locomotion: EnumProperty(name="Locomotion", items=_loco_enum_items)
     genital_profile: EnumProperty(name="Гениталии", items=_genital_enum_items, default=0)
@@ -606,6 +659,7 @@ class VIU_CreatureStudioProps(bpy.types.PropertyGroup):
 
 _CLASSES = (
     VIU_CreatureStudioProps,
+    VIU_OT_StudioReloadShanya,
     VIU_OT_StudioPrev,
     VIU_OT_StudioNext,
     VIU_OT_StudioReload,
@@ -640,12 +694,16 @@ def load_session(session_path: str) -> None:
     if not _GENITAL_ITEMS:
         _GENITAL_ITEMS = [("none", "нет", "")]
     bpy.ops.wm.read_homefile(use_empty=True)
-    _ensure_shanya()
+    shanya_msg = _ensure_shanya()
+    _STATE["shanya_status"] = shanya_msg
+    print("VIU_STUDIO_SHANYA", shanya_msg)
     entry = _current_entry()
     if entry:
         msg = _load_creature_entry(entry)
         print("VIU_STUDIO_LOAD", msg)
         _sync_props_from_entry(entry)
+        if bpy.context.scene.viu_creature_studio:
+            bpy.context.scene.viu_creature_studio.shanya_status = shanya_msg
 
 
 def register():
