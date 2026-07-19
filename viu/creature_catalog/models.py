@@ -240,8 +240,8 @@ def creature_identity_from_inbox_path(path: Path, inbox: Path) -> Tuple[str, str
     inner = folder_parts[-1]
     if inner.lower() == stem.lower() or slugify(inner) == slugify(stem):
         return inner, slugify(inner)
-    display = "/".join(folder_parts + (stem,))
-    slug = slugify("_".join(folder_parts + (stem,)))
+    display = "/".join([*folder_parts, stem])
+    slug = slugify("_".join([*folder_parts, stem]))
     return display, slug or slugify(stem)
 
 

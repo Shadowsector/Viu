@@ -655,6 +655,13 @@ def test_creature_identity_from_subfolder(tmp_path):
     assert name == "Erisa"
     assert slug == "erisa"
 
+    rig = inbox / "Girls" / "Erisa" / "rig.blend"
+    rig.parent.mkdir(parents=True, exist_ok=True)
+    rig.write_bytes(b"x")
+    name2, slug2 = creature_identity_from_inbox_path(rig, inbox)
+    assert name2 == "Girls/Erisa/rig"
+    assert slug2 == "girls_erisa_rig"
+
 
 def test_dedupe_by_inbox_folder_keeps_subfolders(tmp_path):
     from viu.creature_catalog.lineup import dedupe_by_inbox_folder
