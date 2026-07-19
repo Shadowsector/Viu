@@ -292,6 +292,50 @@ class CreatureLineupTool(Tool):
         return ToolResult(ok, msg)
 
 
+class CreatureStudioOpenTool(Tool):
+    name = "creature_studio_open"
+    description = (
+        "Blender-студия существ: Шаня + одно существо, панель Viu. "
+        "Очистка, рост, скрины, эталон. slug= один; all=1 вся очередь размеченных."
+    )
+    parameters = {
+        "slug": "один slug/имя (пусто = очередь без photo_ok)",
+        "all": "1 все размеченные, 0 только без одобренных скринов (по умолчанию)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        slug_filter = [
+            p.strip()
+            for p in str(args.get("slug") or "").split(",")
+            if p.strip()
+        ]
+        only_unapproved = str(args.get("all") or "").strip().lower() not in (
+            "1",
+            "true",
+            "yes",
+            "all",
+        )
+        ok, msg = open_creature_studio(
+            ctx.config,
+            slug_filter=slug_filter,
+            only_unapproved=only_unapproved,
+        )
+        return ToolResult(ok, msg)
+
+
+class CreatureStudioSyncTool(Tool):
+    name = "creature_studio_sync"
+    description = (
+        "Считать studio_feedback.json из Blender → обновить creature_catalog "
+        "(рост, скрины, photo_ok, эталонный blend)."
+    )
+    parameters: dict = {}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        n, msg = sync_studio_feedback(ctx.config)
+        return ToolResult(n > 0, msg)
+
+
 __all__ = [
     "CreatureCatalogScanTool",
     "CreatureCatalogShowTool",
@@ -299,4 +343,6 @@ __all__ = [
     "CreatureCatalogAutoSizeTool",
     "CreatureDescribeTool",
     "CreatureLineupTool",
+    "CreatureStudioOpenTool",
+    "CreatureStudioSyncTool",
 ]

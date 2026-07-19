@@ -311,12 +311,72 @@ def test_suggest_facehug_and_croc():
     assert "large" in suggest_size_from_name("Bareoth_Werewolf_1")
 
 
+def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
+    from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
+    from viu.creature_catalog.studio import (
+        build_studio_queue,
+        sync_studio_feedback,
+        write_studio_session,
+    )
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    store.upsert(
+        CreatureEntry(
+            id="w1",
+            path=str(tmp_path / "wolf.blend"),
+            name="wolf_alpha",
+            slug="wolf_alpha",
+            size_class="quad_med",
+            locomotion="quadruped",
+            status=STATUS_SIZED,
+        )
+    )
+    store.save()
+    (tmp_path / "wolf.blend").write_bytes(b"blend")
+
+    ok, msg, queue = build_studio_queue(cfg, slug_filter=["wolf_alpha"])
+    assert ok and len(queue) == 1
+    session = write_studio_session(cfg, queue)
+    assert session.is_file()
+    data = __import__("json").loads(session.read_text(encoding="utf-8"))
+    assert data["queue"][0]["slug"] == "wolf_alpha"
+    assert (session.parent / "viu_creature_studio.py").is_file()
+
+    fb = session.parent / "studio_feedback.json"
+    fb.write_text(
+        __import__("json").dumps(
+            {
+                "entries": [
+                    {
+                        "id": "w1",
+                        "slug": "wolf_alpha",
+                        "photo_front": str(tmp_path / "front.png"),
+                        "photo_side": str(tmp_path / "side.png"),
+                        "photo_ok": True,
+                        "target_height_m": 0.96,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    n, sync_msg = sync_studio_feedback(cfg)
+    assert n == 1
+    w = CreatureCatalogStore(creature_catalog_path(cfg)).load().get("w1")
+    assert w is not None
+    assert w.photo_ok
+    assert w.target_height_m == 0.96
+
+
 def test_tools_registered():
     names = build_default_registry().names()
     assert "creature_catalog_scan" in names
     assert "creature_catalog_set_size" in names
     assert "creature_catalog_auto_size" in names
     assert "creature_lineup" in names
+    assert "creature_studio_open" in names
+    assert "creature_studio_sync" in names
 
 
 def test_lineup_slug_and_need_photos_filter(tmp_path, monkeypatch):
@@ -407,6 +467,7 @@ def test_gui_action_creature_catalog():
     action = next(a for a in GUI_ACTIONS if a.action_id == "creature_catalog")
     assert action.tool == "__creature_catalog__"
     assert action.group == "Главное"
+    assert any(a.action_id == "creature_studio" and a.tool == "creature_studio_open" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_studio_sync" for a in GUI_ACTIONS)
     lineup = next(a for a in GUI_ACTIONS if a.action_id == "creature_lineup")
-    assert lineup.tool == "creature_lineup"
-    assert lineup.tool_args.get("need_photos") == "1"
+    assert lineup.group == "Редко"

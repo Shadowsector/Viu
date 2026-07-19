@@ -65,6 +65,8 @@ from .creature_catalog_tool import (
     CreatureCatalogShowTool,
     CreatureDescribeTool,
     CreatureLineupTool,
+    CreatureStudioOpenTool,
+    CreatureStudioSyncTool,
 )
 from .building_cascadeur_tool import BuildingWorkflowTool, CascadeurStatusTool
 from .export_asset_tool import ExportUnityAssetTool
@@ -163,6 +165,8 @@ def build_default_registry() -> ToolRegistry:
         CreatureCatalogAutoSizeTool(),
         CreatureDescribeTool(),
         CreatureLineupTool(),
+        CreatureStudioOpenTool(),
+        CreatureStudioSyncTool(),
         LabStartTool(),
         LabStepTool(),
         LabRunAllTool(),

@@ -70,7 +70,8 @@ class CreatureCatalogReviewWindow:
         ttk.Label(
             left,
             text="Жми размер справа — сохранится само.\n"
-            "Одинаковые имена (fbx+blend) размечаются вместе.",
+            "Уже размеченные (волк и т.п.) — галочка ниже.\n"
+            "Скрины и очистка — кнопка «Студия существ» в Вью.",
             font=("Segoe UI", 8),
             wraplength=320,
         ).pack(anchor="w", pady=(0, 4))
@@ -232,7 +233,9 @@ class CreatureCatalogReviewWindow:
         self.status_lbl.pack(anchor="w", pady=(8, 0))
 
         self.photo_fr = ttk.LabelFrame(
-            self.detail, text="Скрины lineup (front / side) — проверь перед Comfy", padding=6
+            self.detail,
+            text="Скрины — лучше через Blender-студию (кнопка ниже)",
+            padding=6,
         )
         self.photo_fr.pack(fill="x", pady=(10, 4))
         self.photo_status = ttk.Label(
@@ -247,7 +250,12 @@ class CreatureCatalogReviewWindow:
         self.photo_side_lbl.pack(side="left")
         photo_btns = ttk.Frame(self.photo_fr)
         photo_btns.pack(fill="x", pady=(6, 0))
-        ttk.Button(photo_btns, text="Переснять скрины", command=self._reshoot_photos).pack(
+        ttk.Button(
+            photo_btns,
+            text="Открыть Blender-студию",
+            command=self._open_studio_current,
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(photo_btns, text="Переснять (headless)", command=self._reshoot_photos).pack(
             side="left", padx=(0, 6)
         )
         ttk.Button(photo_btns, text="Скрины ок ✓", command=self._mark_photos_ok).pack(
@@ -395,6 +403,27 @@ class CreatureCatalogReviewWindow:
         if self._current is None:
             return ""
         return (self._current.slug or self._current.name or "").strip()
+
+    def _open_studio_current(self) -> None:
+        if self._current is None:
+            return
+        if self.config is None:
+            messagebox.showinfo(
+                "Вью",
+                f"В чате: creature_studio_open slug={self._current_slug()}",
+                parent=self.win,
+            )
+            return
+        from .studio import open_creature_studio
+
+        slug = self._current_slug()
+        ok, msg = open_creature_studio(
+            self.config, slug_filter=[slug], only_unapproved=False
+        )
+        if ok:
+            messagebox.showinfo("Вью", msg.split("\n")[0] + "\n…", parent=self.win)
+        else:
+            messagebox.showerror("Вью", msg, parent=self.win)
 
     def _reshoot_photos(self) -> None:
         if self._current is None:

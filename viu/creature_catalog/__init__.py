@@ -18,6 +18,7 @@ from .paths import (
     creatures_processed_dir,
 )
 from .review_gui import open_creature_catalog_review
+from .studio import open_creature_studio, sync_studio_feedback
 from .scanner import list_size_classes_text, scan_creatures_inbox
 from .sockets import ensure_girl_sockets_doc, list_girl_socket_ids
 from .store import CreatureCatalogStore
@@ -40,6 +41,8 @@ __all__ = [
     "list_girl_socket_ids",
     "list_size_classes_text",
     "open_creature_catalog_review",
+    "open_creature_studio",
+    "sync_studio_feedback",
     "run_creature_lineup",
     "scan_creatures_inbox",
     "size_spec",

@@ -46,6 +46,19 @@ def creature_processed_slug_dir(config: Config, slug: str) -> Path:
     return p
 
 
+def creatures_studio_dir(config: Config) -> Path:
+    p = library_root(config) / "Lab" / "Creatures" / "Studio"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def creature_ready_blend_path(config: Config, slug: str) -> Path:
+    """Эталонный очищенный .blend после ручной правки в студии."""
+    d = creature_processed_slug_dir(config, slug)
+    s = (slug or "creature").strip().strip("/\\") or "creature"
+    return d / f"{s}_ready.blend"
+
+
 def creatures_lineup_dir(config: Config) -> Path:
     p = library_root(config) / "Lab" / "Creatures" / "Lineup"
     p.mkdir(parents=True, exist_ok=True)

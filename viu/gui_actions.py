@@ -71,12 +71,20 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Скан Inbox → авто по именам → кнопки размеров (гоблин/волк/…).",
     ),
     GuiAction(
+        "creature_studio",
+        "Студия существ",
+        "Главное",
+        tool="creature_studio_open",
+        tool_args={"all": "0"},
+        hint="Blender: Шаня + одно существо, панель Viu. Чистишь, рост, скрины, Save. Потом «Синхр. студии».",
+    ),
+    GuiAction(
         "creature_lineup",
         "Линейка существ",
-        "Главное",
+        "Редко",
         tool="creature_lineup",
-        tool_args={"need_photos": "1", "open": "1"},
-        hint="Только без одобренных скринов. Смотри в «Разметить существ» → переснять одного.",
+        tool_args={"need_photos": "1", "open": "0"},
+        hint="Массово headless (старый путь). Лучше «Студия существ» по одному.",
     ),
     GuiAction(
         "interaction_blocking",
@@ -94,6 +102,13 @@ GUI_ACTIONS: List[GuiAction] = [
             ("interaction_master_draft", {}),
         ),
         hint="Comfy: черновик видео всей сцены (2 актёра). Сначала «Сцена: blocking».",
+    ),
+    GuiAction(
+        "creature_studio_sync",
+        "Синхр. студии",
+        "Главное",
+        tool="creature_studio_sync",
+        hint="После Blender-студии: забрать скрины, рост, photo_ok в каталог.",
     ),
     GuiAction(
         "characters_vision",
