@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 2, 4),
+    "version": (0, 2, 5),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -182,6 +182,9 @@ def _setup_camera_for_shot(yaw_deg: float, objects):
     dist = max(span * 2.2, 1.0)
     rad = math.radians(yaw_deg)
     cam_data = bpy.data.cameras.new("VIU_StudioCam")
+    cam_data.lens = 50.0
+    cam_data.clip_start = 0.01
+    cam_data.clip_end = max(dist * 4.0, maxs.z - mins.z + 10.0)
     cam = bpy.data.objects.new("VIU_StudioCam", cam_data)
     bpy.context.collection.objects.link(cam)
     cam.location = (
@@ -202,10 +205,10 @@ def _render_shots(entry: dict) -> tuple[str, str]:
     front = out_dir / "front.png"
     side = out_dir / "side.png"
     scene = bpy.context.scene
-    scene.render.resolution_x = 768
-    scene.render.resolution_y = 768
-    scene.render.image_settings.file_format = "PNG"
+    S.setup_shot_render(scene, res=768)
+    S.ensure_shot_lights()
     objs = list(_STATE.get("creature_objects") or [])
+    S.hide_helpers(objs)
     shanya = _STATE.get("shanya_root")
     shanya_hide = False
     if shanya:
@@ -694,6 +697,8 @@ def load_session(session_path: str) -> None:
     if not _GENITAL_ITEMS:
         _GENITAL_ITEMS = [("none", "нет", "")]
     bpy.ops.wm.read_homefile(use_empty=True)
+    S.setup_shot_render(bpy.context.scene, res=768)
+    S.ensure_shot_lights()
     shanya_msg = _ensure_shanya()
     _STATE["shanya_status"] = shanya_msg
     print("VIU_STUDIO_SHANYA", shanya_msg)

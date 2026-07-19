@@ -426,6 +426,87 @@ def height_of_objects(objects, body_mesh: str = ""):
     return float(maxs.z - mins.z)
 
 
+def set_render_engine(scene) -> str:
+    for eng in ("BLENDER_EEVEE_NEXT", "BLENDER_EEVEE", "CYCLES", "BLENDER_WORKBENCH"):
+        try:
+            scene.render.engine = eng
+            return eng
+        except TypeError:
+            continue
+    return str(scene.render.engine)
+
+
+def setup_shot_world(
+    scene,
+    *,
+    strength: float = 1.0,
+    color: Tuple[float, float, float, float] = (0.55, 0.55, 0.58, 1.0),
+) -> None:
+    world = scene.world
+    if world is None:
+        world = bpy.data.worlds.new("VIU_ShotWorld")
+        scene.world = world
+    try:
+        world.use_nodes = True
+        nt = world.node_tree
+        nodes = nt.nodes
+        links = nt.links
+        nodes.clear()
+        out = nodes.new("ShaderNodeOutputWorld")
+        bg = nodes.new("ShaderNodeBackground")
+        bg.inputs["Color"].default_value = color
+        bg.inputs["Strength"].default_value = strength
+        links.new(bg.outputs["Background"], out.inputs["Surface"])
+    except (AttributeError, TypeError, RuntimeError):
+        pass
+
+
+def setup_shot_render(scene, *, res: int = 768) -> str:
+    engine = set_render_engine(scene)
+    scene.render.resolution_x = int(res)
+    scene.render.resolution_y = int(res)
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.film_transparent = False
+    setup_shot_world(scene)
+    return engine
+
+
+def ensure_shot_lights() -> List:
+    """Ключ + заполняющий + контровой — для EEVEE/Cycles скринов студии."""
+    if bpy.data.objects.get("VIU_ShotSun"):
+        return []
+    coll = bpy.context.scene.collection
+    created = []
+
+    sun_data = bpy.data.lights.new("VIU_ShotSun", type="SUN")
+    sun_data.energy = 3.0
+    sun = bpy.data.objects.new("VIU_ShotSun", sun_data)
+    coll.objects.link(sun)
+    sun.location = (2.0, -3.0, 5.0)
+    sun.rotation_euler = (math.radians(55), 0, math.radians(25))
+    created.append(sun)
+
+    fill_data = bpy.data.lights.new("VIU_ShotFill", type="AREA")
+    fill_data.energy = 250.0
+    fill_data.size = 5.0
+    fill = bpy.data.objects.new("VIU_ShotFill", fill_data)
+    coll.objects.link(fill)
+    fill.location = (-2.5, 2.0, 3.0)
+    fill.rotation_euler = (math.radians(70), 0, math.radians(-35))
+    created.append(fill)
+
+    rim_data = bpy.data.lights.new("VIU_ShotRim", type="AREA")
+    rim_data.energy = 140.0
+    rim_data.size = 3.5
+    rim = bpy.data.objects.new("VIU_ShotRim", rim_data)
+    coll.objects.link(rim)
+    rim.location = (0.0, 3.5, 4.0)
+    rim.rotation_euler = (math.radians(115), 0, math.radians(180))
+    created.append(rim)
+
+    return created
+
+
 def gather_under_root(root) -> List:
     if root is None:
         return []
