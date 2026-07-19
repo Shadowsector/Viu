@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..config import Config
+from .catalog_dedupe import catalog_entry_rank
 from .models import CreatureEntry, STATUS_NORMALIZED
 from .paths import creature_catalog_path, creatures_lineup_dir, creatures_processed_dir
 from .store import CreatureCatalogStore
@@ -115,19 +116,7 @@ def dedupe_by_inbox_folder(
 
 
 def _catalog_entry_rank(e: CreatureEntry) -> int:
-    """Выше = предпочтительнее при дедупе по slug."""
-    score = 0
-    if e.prep_ok:
-        score += 32
-    if e.prepared_path:
-        score += 16
-    if e.outfit_sets_path:
-        score += 8
-    if (e.path or "").lower().endswith(".blend"):
-        score += 4
-    if e.photo_ok:
-        score += 2
-    return score
+    return catalog_entry_rank(e)
 
 
 def dedupe_by_slug(creatures: Sequence[CreatureEntry]) -> List[CreatureEntry]:
@@ -140,7 +129,7 @@ def dedupe_by_slug(creatures: Sequence[CreatureEntry]) -> List[CreatureEntry]:
         if not slug:
             slug = (e.name or e.id or "creature").lower()
         prev = best.get(slug)
-        if prev is None or _catalog_entry_rank(e) > _catalog_entry_rank(prev):
+        if prev is None or catalog_entry_rank(e) > catalog_entry_rank(prev):
             best[slug] = e
     return sorted(best.values(), key=lambda e: e.name.lower())
 

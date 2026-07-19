@@ -20,6 +20,7 @@ from .paths import (
 )
 from .scanner import scan_creatures_inbox
 from .studio import is_prepared_for_studio
+from .note_utils import append_pipeline_note
 from .store import CreatureCatalogStore
 
 ADDON_NAME = "viu_creature_wardrobe.py"
@@ -134,7 +135,7 @@ def sync_wardrobe_feedback(config: Config) -> Tuple[int, str]:
         if gr in ("none", "pending", "attached"):
             e.genital_rig = gr
         if row.get("wardrobe_notes"):
-            e.notes = ((e.notes or "") + "\n[wardrobe] " + str(row["wardrobe_notes"])).strip()
+            e.notes = append_pipeline_note(e.notes or "", "wardrobe", str(row["wardrobe_notes"]))
         store.upsert(e)
         n += 1
         confirmed = row.get("outfit_sets_confirmed") or 0

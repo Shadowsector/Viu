@@ -20,6 +20,7 @@ from .paths import (
     creatures_prep_dir,
 )
 from .scanner import scan_creatures_inbox
+from .note_utils import append_pipeline_note
 from .store import CreatureCatalogStore
 
 ADDON_NAME = "viu_creature_prep.py"
@@ -161,7 +162,7 @@ def sync_prep_feedback(config: Config) -> Tuple[int, str]:
         if "textures_packed" in row:
             e.textures_packed = bool(row["textures_packed"])
         if row.get("prep_notes"):
-            e.notes = ((e.notes or "") + "\n[prep] " + str(row["prep_notes"])).strip()
+            e.notes = append_pipeline_note(e.notes or "", "prep", str(row["prep_notes"]))
         store.upsert(e)
         n += 1
         lines.append(f"  • {e.name}: " + ("prepared ✓" if e.prep_ok else "заметка"))

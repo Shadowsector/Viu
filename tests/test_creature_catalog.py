@@ -676,6 +676,40 @@ def test_creature_identity_from_subfolder(tmp_path):
     assert slug2 == "girls_erisa_rig"
 
 
+def test_append_pipeline_note_dedupes():
+    from viu.creature_catalog.note_utils import append_pipeline_note
+
+    n = append_pipeline_note("", "prep", "нет текстур")
+    n2 = append_pipeline_note(n, "prep", "нет текстур")
+    assert n == n2
+    assert n.count("нет текстур") == 1
+
+
+def test_merge_duplicate_slugs(tmp_path, monkeypatch):
+    from viu.creature_catalog.models import CreatureEntry
+    from viu.creature_catalog.store import CreatureCatalogStore
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    store.upsert(
+        CreatureEntry(id="a", path=str(tmp_path / "a.fbx"), name="Dennis", slug="dennis")
+    )
+    store.upsert(
+        CreatureEntry(
+            id="b",
+            path=str(tmp_path / "b.blend"),
+            name="Dennis",
+            slug="dennis",
+            prep_ok=True,
+            notes="[wardrobe] test",
+        )
+    )
+    removed, _ = store.merge_duplicate_slugs()
+    assert removed == 1
+    assert len(store.all()) == 1
+    assert store.all()[0].prep_ok
+
+
 def test_dedupe_by_slug_merges_same_creature(tmp_path):
     from viu.creature_catalog.lineup import dedupe_by_slug
     from viu.creature_catalog.models import CreatureEntry
@@ -700,6 +734,7 @@ def test_dedupe_by_slug_merges_same_creature(tmp_path):
     assert out[0].id == "b"
 
 
+def test_dedupe_by_inbox_folder_keeps_subfolders(tmp_path):
     from viu.creature_catalog.lineup import dedupe_by_inbox_folder
     from viu.creature_catalog.models import CreatureEntry
 

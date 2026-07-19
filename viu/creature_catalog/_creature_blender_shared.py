@@ -23,7 +23,10 @@ _FACE_BONE_KEYS = (
 
 _WIDGET_PREFIXES = ("WGT", "WGT-", "VIS_", "VIS-", "MCH-", "MCH_")
 
-_GENITAL_MESH_KEYS = ("penis", "genital", "cock", "dick", "phallus", "penetrator")
+_GENITAL_MESH_KEYS = (
+    "penis", "genital", "cock", "dick", "phallus", "penetrator", "peen",
+    "scrotum", "testicle", "balls", "groin", "member", "intimat",
+)
 _CLOTHING_MESH_KEYS = (
     "cloth", "outfit", "dress", "shirt", "skirt", "pant", "trouser", "jean",
     "sock", "shoe", "boot", "jacket", "coat", "cloak", "cape", "hat", "hood",
@@ -62,8 +65,16 @@ def is_control_shape_name(name: str) -> bool:
     return False
 
 
+def is_gzm_name(name: str) -> bool:
+    """GZM_ — gizmo/helper части (часто у сложных CC/DAZ моделей)."""
+    if not name:
+        return False
+    low = name.strip().lower()
+    return low.startswith("gzm_") or low.startswith("gzm.")
+
+
 def is_rig_helper_mesh_name(name: str) -> bool:
-    if is_wgt_name(name) or is_control_shape_name(name):
+    if is_wgt_name(name) or is_control_shape_name(name) or is_gzm_name(name):
         return True
     low = (name or "").lower()
     return any(k in low for k in _RIG_HIDE + ("collision", "weapon", "sword", "shadow", "lod3", "lod4"))
@@ -678,14 +689,14 @@ def is_genital_mesh(name: str) -> bool:
 
 
 def is_clothing_mesh(name: str) -> bool:
-    if is_wgt_name(name) or is_genital_mesh(name):
+    if is_wgt_name(name) or is_genital_mesh(name) or is_gzm_name(name):
         return False
     low = (name or "").lower()
     return any(k in low for k in _CLOTHING_MESH_KEYS)
 
 
 def is_body_mesh_name(name: str) -> bool:
-    if is_wgt_name(name) or is_genital_mesh(name):
+    if is_wgt_name(name) or is_genital_mesh(name) or is_gzm_name(name):
         return False
     low = (name or "").lower()
     if is_clothing_mesh(name):
@@ -722,13 +733,38 @@ def mesh_visibility_snapshot(objects: Sequence) -> dict:
     }
 
 
+def set_mesh_viewport_visible(obj, visible: bool) -> None:
+    """Viewport + render flags (в т.ч. «Disable in Renders» у импорта)."""
+    if obj is None or obj.type != "MESH":
+        return
+    hidden = not visible
+    try:
+        obj.hide_set(hidden)
+        obj.hide_render = hidden
+        try:
+            obj.hide_viewport = hidden
+        except AttributeError:
+            pass
+        for attr in (
+            "visible_camera",
+            "visible_diffuse",
+            "visible_glossy",
+            "visible_transmission",
+            "visible_volume_scatter",
+            "visible_shadow",
+        ):
+            if hasattr(obj, attr):
+                setattr(obj, attr, visible)
+    except (AttributeError, ReferenceError):
+        pass
+
+
 def set_genital_meshes_visible(objects: Sequence, visible: bool) -> int:
     n = 0
     for obj in objects:
         if obj.type != "MESH" or not is_genital_mesh(obj.name):
             continue
-        obj.hide_set(not visible)
-        obj.hide_render = not visible
+        set_mesh_viewport_visible(obj, visible)
         n += 1
     return n
 
@@ -740,11 +776,9 @@ def apply_mesh_visibility(objects: Sequence, show_names: Sequence[str], hide_nam
         if obj.type != "MESH":
             continue
         if obj.name in hide:
-            obj.hide_set(True)
-            obj.hide_render = True
+            set_mesh_viewport_visible(obj, False)
         elif obj.name in show:
-            obj.hide_set(False)
-            obj.hide_render = False
+            set_mesh_viewport_visible(obj, True)
 
 
 def clothing_genital_clipping_warning(objects: Sequence) -> str:

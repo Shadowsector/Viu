@@ -417,6 +417,21 @@ class CreaturePipelineNotesTool(Tool):
         return ToolResult(True, text)
 
 
+class CreatureCatalogMergeTool(Tool):
+    name = "creature_catalog_merge"
+    description = "Слить дубли каталога с одним slug (Dennis дважды и т.п.)."
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        store = CreatureCatalogStore(creature_catalog_path(ctx.config)).load()
+        removed, merged = store.merge_duplicate_slugs()
+        if removed:
+            store.save()
+        return ToolResult(
+            True,
+            f"Каталог: удалено дублей {removed}, объединено заметок {merged}.",
+        )
+
+
 __all__ = [
     "CreatureCatalogScanTool",
     "CreatureCatalogShowTool",
@@ -431,4 +446,5 @@ __all__ = [
     "CreatureStudioOpenTool",
     "CreatureStudioSyncTool",
     "CreaturePipelineNotesTool",
+    "CreatureCatalogMergeTool",
 ]

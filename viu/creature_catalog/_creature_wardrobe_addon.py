@@ -203,8 +203,7 @@ class VIU_OT_WardrobeToggleMesh(bpy.types.Operator):
         obj = bpy.data.objects.get(self.mesh_name)
         if obj and obj.type == "MESH":
             hide = not obj.hide_get()
-            obj.hide_set(hide)
-            obj.hide_render = hide
+            S.set_mesh_viewport_visible(obj, not hide)
         warn = S.clothing_genital_clipping_warning(_STATE.get("objects") or [])
         context.scene.viu_creature_wardrobe.clip_warning = warn
         return {"FINISHED"}
@@ -217,11 +216,9 @@ class VIU_OT_WardrobeBodyOnly(bpy.types.Operator):
     def execute(self, context):
         for obj in _mesh_objects():
             if S.is_body_mesh_name(obj.name):
-                obj.hide_set(False)
-                obj.hide_render = False
+                S.set_mesh_viewport_visible(obj, True)
             else:
-                obj.hide_set(True)
-                obj.hide_render = True
+                S.set_mesh_viewport_visible(obj, False)
         S.set_genital_meshes_visible(_STATE.get("objects") or [], False)
         return {"FINISHED"}
 
@@ -233,8 +230,7 @@ class VIU_OT_WardrobeHideClothes(bpy.types.Operator):
     def execute(self, context):
         for obj in _mesh_objects():
             if S.is_clothing_mesh(obj.name):
-                obj.hide_set(True)
-                obj.hide_render = True
+                S.set_mesh_viewport_visible(obj, False)
         return {"FINISHED"}
 
 
