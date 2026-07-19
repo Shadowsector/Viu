@@ -94,18 +94,45 @@ def ensure_collection(name: str):
     return coll
 
 
+def _safe_object_name(obj) -> Optional[str]:
+    if obj is None:
+        return None
+    try:
+        return obj.name
+    except ReferenceError:
+        return None
+
+
+def _safe_collection_name(coll) -> Optional[str]:
+    if coll is None:
+        return None
+    try:
+        return coll.name
+    except ReferenceError:
+        return None
+
+
 def _remove_object_subtree(root) -> None:
-    if root is None or root.name not in bpy.data.objects:
+    root_name = _safe_object_name(root)
+    if not root_name or root_name not in bpy.data.objects:
         return
-    stack = [root]
-    ordered: List = []
+    stack = [bpy.data.objects[root_name]]
+    ordered: List[str] = []
     while stack:
         obj = stack.pop()
-        ordered.append(obj)
-        stack.extend(list(obj.children))
-    for obj in reversed(ordered):
+        name = _safe_object_name(obj)
+        if not name:
+            continue
+        ordered.append(name)
         try:
-            bpy.data.objects.remove(obj, do_unlink=True)
+            stack.extend(list(obj.children))
+        except ReferenceError:
+            pass
+    for name in reversed(ordered):
+        if name not in bpy.data.objects:
+            continue
+        try:
+            bpy.data.objects.remove(bpy.data.objects[name], do_unlink=True)
         except (ReferenceError, RuntimeError):
             pass
 
@@ -127,18 +154,20 @@ def _purge_orphan_import_collections(import_collections: Optional[Sequence] = No
         if child not in candidates:
             candidates.append(child)
     for coll in candidates:
-        if coll is None or coll.name not in bpy.data.collections:
+        coll_name = _safe_collection_name(coll)
+        if not coll_name or coll_name not in bpy.data.collections:
             continue
-        if coll.name in _VIU_MANAGED_COLLECTIONS:
+        if coll_name in _VIU_MANAGED_COLLECTIONS:
             continue
+        coll = bpy.data.collections[coll_name]
         if len(coll.all_objects) > 0:
             continue
         try:
-            if coll.name in scene_coll.children:
+            if coll_name in scene_coll.children:
                 scene_coll.children.unlink(coll)
         except RuntimeError:
             pass
-        if coll.name in bpy.data.collections:
+        if coll_name in bpy.data.collections:
             try:
                 bpy.data.collections.remove(coll)
             except ReferenceError:
@@ -156,20 +185,22 @@ def clear_collection_slot(
     if root is not None:
         _remove_object_subtree(root)
     if tracked_objects:
-        seen = set()
+        seen: set = set()
         for obj in tracked_objects:
-            if obj is None or obj.name in seen or obj.name not in bpy.data.objects:
+            name = _safe_object_name(obj)
+            if not name or name in seen or name not in bpy.data.objects:
                 continue
-            seen.add(obj.name)
-            _remove_object_subtree(bpy.data.objects[obj.name])
+            seen.add(name)
+            _remove_object_subtree(bpy.data.objects[name])
 
     coll = bpy.data.collections.get(slot_name)
     if coll:
         for obj in list(coll.all_objects):
-            if obj.name not in bpy.data.objects:
+            name = _safe_object_name(obj)
+            if not name or name not in bpy.data.objects:
                 continue
             try:
-                bpy.data.objects.remove(obj, do_unlink=True)
+                bpy.data.objects.remove(bpy.data.objects[name], do_unlink=True)
             except (ReferenceError, RuntimeError):
                 pass
         try:

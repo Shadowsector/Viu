@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Prep",
     "author": "Viu",
-    "version": (0, 1, 3),
+    "version": (0, 1, 4),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Подготовка существ: очистка, Bursting Head, текстуры, save blend",
