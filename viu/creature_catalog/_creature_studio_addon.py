@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 2, 1),
+    "version": (0, 2, 2),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -23,6 +23,7 @@ _SESSION: dict = {}
 _STATE = {
     "creature_root": None,
     "creature_objects": [],
+    "creature_import_colls": [],
     "shanya_root": None,
     "shanya_objects": [],
     "body_mesh": "",
@@ -68,15 +69,16 @@ def _feedback_path() -> Path:
 
 
 def _clear_creature():
-    root = _STATE.get("creature_root")
-    if root and root.name in bpy.data.objects:
-        try:
-            bpy.data.objects.remove(root, do_unlink=True)
-        except ReferenceError:
-            pass
-    S.clear_collection_slot(_SLOT, _ROOT)
+    S.clear_collection_slot(
+        _SLOT,
+        _ROOT,
+        tracked_objects=_STATE.get("creature_objects"),
+        root=_STATE.get("creature_root"),
+        import_collections=_STATE.get("creature_import_colls"),
+    )
     _STATE["creature_root"] = None
     _STATE["creature_objects"] = []
+    _STATE["creature_import_colls"] = []
     _STATE["body_mesh"] = ""
 
 
@@ -110,7 +112,7 @@ def _ensure_shanya():
     if not path.is_file():
         return
     slot = S.ensure_collection(_SHANYA_COLL)
-    imported = S.import_asset(path, for_shanya=True, target_coll=slot)
+    imported, _ = S.import_asset(path, for_shanya=True, target_coll=slot)
     _STATE["shanya_objects"] = imported
     root = S.wrap_root(imported, root_name="VIU_SHANYA_ROOT", target_coll=slot)
     target = float(_SESSION.get("shanya_target_m") or 1.70)
@@ -127,7 +129,7 @@ def _load_creature_entry(entry: dict):
     if not path.is_file():
         return f"Нет файла: {path}"
     slot = S.ensure_collection(_SLOT)
-    imported = S.import_asset(path, target_coll=slot)
+    imported, import_colls = S.import_asset(path, target_coll=slot)
     root = S.wrap_root(imported, root_name=_ROOT, target_coll=slot)
     S.hide_helpers(imported)
     body_meshes = [o for o in imported if o.type == "MESH" and not o.hide_get()]
@@ -138,6 +140,7 @@ def _load_creature_entry(entry: dict):
     _place_creature(root, imported, offset, target, bm)
     _STATE["creature_root"] = root
     _STATE["creature_objects"] = imported
+    _STATE["creature_import_colls"] = import_colls
     if body_meshes:
         best = max(body_meshes, key=lambda o: len(o.data.vertices) if o.data else 0)
         _STATE["body_mesh"] = best.name

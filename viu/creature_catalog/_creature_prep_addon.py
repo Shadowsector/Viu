@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Prep",
     "author": "Viu",
-    "version": (0, 1, 2),
+    "version": (0, 1, 3),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Подготовка существ: очистка, Bursting Head, текстуры, save blend",
@@ -19,7 +19,7 @@ import bpy
 from bpy.props import StringProperty
 
 _SESSION: dict = {}
-_STATE = {"root": None, "objects": []}
+_STATE = {"root": None, "objects": [], "import_colls": []}
 
 _SLOT = "VIU_PrepSlot"
 _ROOT = "VIU_PREP_ROOT"
@@ -56,9 +56,16 @@ def _feedback_path() -> Path:
 
 
 def _clear():
-    S.clear_collection_slot(_SLOT, _ROOT)
+    S.clear_collection_slot(
+        _SLOT,
+        _ROOT,
+        tracked_objects=_STATE.get("objects"),
+        root=_STATE.get("root"),
+        import_collections=_STATE.get("import_colls"),
+    )
     _STATE["root"] = None
     _STATE["objects"] = []
+    _STATE["import_colls"] = []
 
 
 def _load_entry(entry: dict) -> str:
@@ -67,11 +74,12 @@ def _load_entry(entry: dict) -> str:
     if not src.is_file():
         return f"Нет файла: {src}"
     slot = S.ensure_collection(_SLOT)
-    imported = S.import_asset(src, target_coll=slot)
+    imported, import_colls = S.import_asset(src, target_coll=slot)
     root = S.wrap_root(imported, root_name=_ROOT, target_coll=slot)
     S.hide_helpers(imported)
     _STATE["root"] = root
     _STATE["objects"] = imported
+    _STATE["import_colls"] = import_colls
     body = [o for o in imported if o.type == "MESH" and not o.hide_get()]
     if not body:
         return f"Загружено: {entry.get('name')} — ⚠ тела не видно (только WGT/риг?)"
@@ -133,7 +141,7 @@ class VIU_OT_PrepShowBody(bpy.types.Operator):
     def execute(self, context):
         shown = 0
         for obj in _STATE.get("objects") or []:
-            if obj.type != "MESH" or S.is_wgt_name(obj.name):
+            if obj.type != "MESH" or S.skip_mesh(obj.name):
                 continue
             obj.hide_set(False)
             obj.hide_render = False

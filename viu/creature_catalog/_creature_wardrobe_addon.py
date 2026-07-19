@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Wardrobe",
     "author": "Viu",
-    "version": (0, 1, 0),
+    "version": (0, 1, 1),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Наборы одежды: casual, swim, nsfw, bath",
@@ -19,7 +19,7 @@ from bpy.props import BoolProperty, CollectionProperty, StringProperty
 from bpy.types import PropertyGroup
 
 _SESSION: dict = {}
-_STATE = {"root": None, "objects": []}
+_STATE = {"root": None, "objects": [], "import_colls": []}
 _SLOT = "VIU_WardrobeSlot"
 _ROOT = "VIU_WARDROBE_ROOT"
 
@@ -74,9 +74,16 @@ def _save_outfit_doc(entry: dict, data: dict) -> Path:
 
 
 def _clear():
-    S.clear_collection_slot(_SLOT, _ROOT)
+    S.clear_collection_slot(
+        _SLOT,
+        _ROOT,
+        tracked_objects=_STATE.get("objects"),
+        root=_STATE.get("root"),
+        import_collections=_STATE.get("import_colls"),
+    )
     _STATE["root"] = None
     _STATE["objects"] = []
+    _STATE["import_colls"] = []
 
 
 def _load_entry(entry: dict) -> str:
@@ -85,17 +92,18 @@ def _load_entry(entry: dict) -> str:
     if not path.is_file():
         return f"Нет prepared: {path}"
     slot = S.ensure_collection(_SLOT)
-    imported = S.import_asset(path, target_coll=slot)
+    imported, import_colls = S.import_asset(path, target_coll=slot)
     root = S.wrap_root(imported, root_name=_ROOT, target_coll=slot)
     S.hide_helpers(imported)
     _STATE["root"] = root
     _STATE["objects"] = imported
-    meshes = [o.name for o in imported if o.type == "MESH" and not S.is_wgt_name(o.name)]
+    _STATE["import_colls"] = import_colls
+    meshes = [o.name for o in imported if o.type == "MESH" and not S.skip_mesh(o.name)]
     return f"Wardrobe: {entry.get('name')} ({len(meshes)} мешей)"
 
 
 def _mesh_objects():
-    return [o for o in (_STATE.get("objects") or []) if o.type == "MESH" and not S.is_wgt_name(o.name)]
+    return [o for o in (_STATE.get("objects") or []) if o.type == "MESH" and not S.skip_mesh(o.name)]
 
 
 class VIU_WardrobeMeshItem(PropertyGroup):

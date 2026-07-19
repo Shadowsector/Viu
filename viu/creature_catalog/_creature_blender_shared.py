@@ -50,11 +50,27 @@ def is_wgt_name(name: str) -> bool:
     return low.startswith("wgt.") or low.startswith("wgt-") or low.startswith("wgt_")
 
 
-def skip_mesh(name: str) -> bool:
-    if is_wgt_name(name):
+def is_control_shape_name(name: str) -> bool:
+    """cs_ / *_cs — custom bone shapes (стрелки и кружки контроллеров рига)."""
+    if not name:
+        return False
+    low = name.strip().lower()
+    if low.startswith("cs_") or low.startswith("cs."):
+        return True
+    if low.endswith("_cs") or low.endswith(".cs"):
+        return True
+    return False
+
+
+def is_rig_helper_mesh_name(name: str) -> bool:
+    if is_wgt_name(name) or is_control_shape_name(name):
         return True
     low = (name or "").lower()
     return any(k in low for k in _RIG_HIDE + ("collision", "weapon", "sword", "shadow", "lod3", "lod4"))
+
+
+def skip_mesh(name: str) -> bool:
+    return is_rig_helper_mesh_name(name)
 
 
 def link_objects_to_collection(objects, coll):
@@ -78,23 +94,96 @@ def ensure_collection(name: str):
     return coll
 
 
-def clear_collection_slot(slot_name: str, root_prefix: str = "VIU_CREATURE_ROOT"):
+def _remove_object_subtree(root) -> None:
+    if root is None or root.name not in bpy.data.objects:
+        return
+    stack = [root]
+    ordered: List = []
+    while stack:
+        obj = stack.pop()
+        ordered.append(obj)
+        stack.extend(list(obj.children))
+    for obj in reversed(ordered):
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except (ReferenceError, RuntimeError):
+            pass
+
+
+_VIU_MANAGED_COLLECTIONS = frozenset({
+    "VIU_PrepSlot",
+    "VIU_CreatureSlot",
+    "VIU_WardrobeSlot",
+    "VIU_ShanyaRef",
+})
+
+
+def _purge_orphan_import_collections(import_collections: Optional[Sequence] = None) -> None:
+    scene_coll = bpy.context.scene.collection
+    candidates = list(import_collections or [])
+    for child in list(scene_coll.children):
+        if child.name in _VIU_MANAGED_COLLECTIONS or child.name.startswith("VIU_"):
+            continue
+        if child not in candidates:
+            candidates.append(child)
+    for coll in candidates:
+        if coll is None or coll.name not in bpy.data.collections:
+            continue
+        if coll.name in _VIU_MANAGED_COLLECTIONS:
+            continue
+        if len(coll.all_objects) > 0:
+            continue
+        try:
+            if coll.name in scene_coll.children:
+                scene_coll.children.unlink(coll)
+        except RuntimeError:
+            pass
+        if coll.name in bpy.data.collections:
+            try:
+                bpy.data.collections.remove(coll)
+            except ReferenceError:
+                pass
+
+
+def clear_collection_slot(
+    slot_name: str,
+    root_prefix: str = "VIU_CREATURE_ROOT",
+    *,
+    tracked_objects: Optional[Sequence] = None,
+    root=None,
+    import_collections: Optional[Sequence] = None,
+):
+    if root is not None:
+        _remove_object_subtree(root)
+    if tracked_objects:
+        seen = set()
+        for obj in tracked_objects:
+            if obj is None or obj.name in seen or obj.name not in bpy.data.objects:
+                continue
+            seen.add(obj.name)
+            _remove_object_subtree(bpy.data.objects[obj.name])
+
     coll = bpy.data.collections.get(slot_name)
     if coll:
         for obj in list(coll.all_objects):
+            if obj.name not in bpy.data.objects:
+                continue
             try:
                 bpy.data.objects.remove(obj, do_unlink=True)
-            except ReferenceError:
+            except (ReferenceError, RuntimeError):
                 pass
-        if coll.name in bpy.data.collections:
+        try:
             bpy.data.collections.remove(coll)
+        except ReferenceError:
+            pass
+
     for obj in list(bpy.data.objects):
         if obj.name.startswith(root_prefix):
-            try:
-                bpy.data.objects.remove(obj, do_unlink=True)
-            except ReferenceError:
-                pass
-    for block in (bpy.data.meshes, bpy.data.armatures, bpy.data.materials):
+            _remove_object_subtree(obj)
+
+    _purge_orphan_import_collections(import_collections)
+
+    for block in (bpy.data.meshes, bpy.data.armatures, bpy.data.materials, bpy.data.images):
         for b in list(block):
             if b.users == 0:
                 try:
@@ -106,7 +195,7 @@ def clear_collection_slot(slot_name: str, root_prefix: str = "VIU_CREATURE_ROOT"
 def post_import_visibility(objects):
     body = []
     for obj in objects:
-        if is_wgt_name(obj.name):
+        if is_wgt_name(obj.name) or is_control_shape_name(obj.name):
             obj.hide_set(True)
             try:
                 obj.hide_viewport = True
@@ -139,7 +228,7 @@ def post_import_visibility(objects):
 
 def hide_helpers(objects):
     for obj in objects:
-        if is_wgt_name(obj.name):
+        if is_wgt_name(obj.name) or is_control_shape_name(obj.name):
             obj.hide_set(True)
             obj.hide_render = True
             continue
@@ -196,8 +285,9 @@ def import_asset(path: Path, *, for_shanya: bool = False, target_coll=None):
         raise RuntimeError("unsupported: " + suf)
     bpy.context.view_layer.update()
     imported = [o for o in bpy.data.objects if o not in before]
+    new_colls = [c for c in bpy.data.collections if c not in before_colls]
     if for_shanya:
-        wgt = [o for o in imported if is_wgt_name(o.name)]
+        wgt = [o for o in imported if is_wgt_name(o.name) or is_control_shape_name(o.name)]
         for obj in wgt:
             try:
                 bpy.data.objects.remove(obj, do_unlink=True)
@@ -215,7 +305,7 @@ def import_asset(path: Path, *, for_shanya: bool = False, target_coll=None):
         post_import_visibility(imported)
     if target_coll is not None:
         link_objects_to_collection(imported, target_coll)
-    return imported
+    return imported, new_colls
 
 
 def wrap_root(imported, root_name="VIU_CREATURE_ROOT", target_coll=None):
@@ -664,6 +754,8 @@ def _is_widget_mesh(obj, arm_obj) -> bool:
     if "widget" in low or low.endswith("_rig") or "_ctrl" in low:
         return True
     if is_wgt_name(name):
+        return True
+    if is_control_shape_name(name):
         return True
     return False
 
