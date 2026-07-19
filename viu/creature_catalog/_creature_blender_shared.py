@@ -301,7 +301,7 @@ def save_objects_blend(filepath: Path, objects: Sequence) -> bool:
     filepath.parent.mkdir(parents=True, exist_ok=True)
     if filepath.is_file():
         filepath.unlink()
-    bpy.data.libraries.write(str(filepath), list(objects), path_remap="RELATIVE", fake_user=True)
+    bpy.data.libraries.write(str(filepath), set(objects), path_remap="RELATIVE", fake_user=True)
     return filepath.is_file()
 
 
