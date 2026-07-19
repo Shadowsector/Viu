@@ -369,6 +369,13 @@ def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
     assert w.target_height_m == 0.96
 
 
+def test_creature_studio_tool_imports():
+    from viu.tools.creature_catalog_tool import CreatureStudioOpenTool, CreatureStudioSyncTool
+
+    assert CreatureStudioOpenTool().name == "creature_studio_open"
+    assert CreatureStudioSyncTool().name == "creature_studio_sync"
+
+
 def test_tools_registered():
     names = build_default_registry().names()
     assert "creature_catalog_scan" in names

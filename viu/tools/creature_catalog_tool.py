@@ -15,6 +15,7 @@ from ..creature_catalog import (
 from ..creature_catalog.auto_size import auto_apply_size_guesses
 from ..creature_catalog.lineup import run_creature_lineup
 from ..creature_catalog.models import ALL_SIZE_IDS, LOCOMOTION
+from ..creature_catalog.studio import open_creature_studio, sync_studio_feedback
 from .base import AgentContext, Tool, ToolResult
 
 
