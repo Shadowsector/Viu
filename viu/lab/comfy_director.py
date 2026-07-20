@@ -260,6 +260,50 @@ def pending_review_count(config: Config) -> int:
     return sum(1 for c in store.clips if c.status == "candidate")
 
 
+def action_for_slug(
+    config: Config,
+    slug: str,
+    *,
+    paraphrase_i: int = 0,
+) -> str:
+    """EN-промпт по catalog_slug (не оставлять stale idle stand при lie_down)."""
+    from ..integrations.comfy.clip_review import normalize_catalog_slug
+
+    slug = normalize_catalog_slug(slug)
+    if not slug:
+        return _SLUG_ACTION_EN.get("idle", "idle stand")
+    cat = AnimationCatalogStore(animation_catalog_path(config)).load()
+    wish = cat.get_by_slug(slug)
+    if wish is not None:
+        return _wish_to_action(wish, paraphrase_i=paraphrase_i)
+    if slug in _SLUG_ACTION_EN:
+        return _SLUG_ACTION_EN[slug]
+    return slug.replace("_", " ")
+
+
+def sync_session_shot_from_slug(config: Config, session) -> str:
+    """Подтянуть action/граф из catalog_slug. Возвращает итоговый action."""
+    from ..integrations.comfy.clip_review import normalize_catalog_slug
+
+    slug = normalize_catalog_slug(str(session.meta.get("catalog_slug") or ""))
+    if not slug:
+        return str(session.meta.get("approved_action") or session.meta.get("action") or "")
+    kept_n = kept_count_for_slug(config, slug)
+    action = action_for_slug(config, slug, paraphrase_i=kept_n)
+    cat = AnimationCatalogStore(animation_catalog_path(config)).load()
+    wish = cat.get_by_slug(slug)
+    session.meta["catalog_slug"] = slug
+    session.meta["action"] = action
+    session.meta["approved_action"] = action
+    session.meta["looped"] = wish_is_looped(wish) if wish else bool(session.meta.get("looped"))
+    if wish:
+        if wish.enters_from:
+            session.meta["enters_from"] = list(wish.enters_from)
+        if wish.exits_to:
+            session.meta["exits_to"] = list(wish.exits_to)
+    return action
+
+
 def invent_next_shot(config: Config, *, barn_cycle: Optional[bool] = None) -> MocapShotPlan:
     """Следующий клип по каталогу и графу. Без LLM."""
     from ..integrations.comfy.scene_choice import (

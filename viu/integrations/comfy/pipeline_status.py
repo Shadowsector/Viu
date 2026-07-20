@@ -34,6 +34,10 @@ def comfy_pipeline_status(config: Config) -> str:
             lines.append(f"  catalog_slug: {slug}")
         if action:
             lines.append(f"  промпт: {action}")
+        if slug and action and slug.replace("_", " ") not in action.lower() and "idle stand" in action.lower() and slug != "idle":
+            lines.append(
+                f"  ⚠ промпт не совпадает с slug ({slug}) — будет пересинхронизирован при генерации"
+            )
         if session.status == "running" and session.step == 4:
             lines.append("  → **сейчас генерирует** 3 дубля (¾) в ComfyUI")
         elif session.status == "awaiting_prompt":
@@ -46,8 +50,22 @@ def comfy_pipeline_status(config: Config) -> str:
             lines.append("  → итерация завершена; away запустит следующую, если нет паузы")
 
     url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
-    ok, ping = ComfyClient(base_url=str(url), timeout=3.0).ping()
+    client = ComfyClient(base_url=str(url), timeout=3.0)
+    ok, ping = client.ping()
     lines.append(f"ComfyUI :8188: {'онлайн' if ok else 'НЕ ОТВЕЧАЕТ — ' + ping}")
+    if ok:
+        try:
+            q = client.get_queue()
+            running = len(q.get("queue_running") or [])
+            pending = len(q.get("queue_pending") or [])
+            lines.append(f"  очередь Comfy: running={running}, pending={pending}")
+            if running or pending:
+                lines.append(
+                    "  (viu_mocap_*.mp4 в ComfyUI/output — сырой вывод; "
+                    "после скачивания → Girl_* в ComfyOut/Refs)"
+                )
+        except Exception:
+            pass
 
     store = ComfyClipStore(clip_review_path(config)).load()
     cand = sum(1 for c in store.clips if c.status == "candidate")

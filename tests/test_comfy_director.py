@@ -38,6 +38,24 @@ def test_normalize_idle_stand_slug():
     assert normalize_catalog_slug("sit_down") == "sit_down"
 
 
+def test_sync_session_shot_from_slug(tmp_path, monkeypatch):
+    from viu.lab.comfy_pipeline import COMFY_TOPIC
+    from viu.lab.comfy_director import sync_session_shot_from_slug
+    from viu.lab.session import LabSession, save_session
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    session = LabSession(id="t1", topic=COMFY_TOPIC)
+    session.meta = {
+        "catalog_slug": "lie_down",
+        "approved_action": "idle stand, subtle breathing",
+        "action": "idle stand, subtle breathing",
+    }
+    action = sync_session_shot_from_slug(cfg, session)
+    assert "lying" in action.lower()
+    assert "idle stand" not in action.lower()
+    assert session.meta["approved_action"] == action
+
+
 def test_missing_excludes_ref_video(tmp_path, monkeypatch):
     from viu.animation_catalog import AnimationCatalogStore, animation_catalog_path
 

@@ -311,13 +311,17 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
 
         plan = invent_next_shot(config)
         catalog_slug = plan.catalog_slug
-        if not action:
-            action = plan.action
+        action = plan.action
         session.meta["catalog_slug"] = catalog_slug
         session.meta["enters_from"] = list(plan.enters_from)
         session.meta["exits_to"] = list(plan.exits_to)
         session.meta["shot_reason"] = plan.reason
         session.meta["looped"] = plan.looped
+        save_session(config, session)
+    else:
+        from .comfy_director import sync_session_shot_from_slug
+
+        action = sync_session_shot_from_slug(config, session)
         save_session(config, session)
     # Никогда не slugify EN-action («idle stand…» → idle_stand)
     from ..integrations.comfy.clip_review import normalize_catalog_slug
