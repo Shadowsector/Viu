@@ -64,6 +64,10 @@ python -m viu tool comfy_ensure
 В cmd сразу должны появляться строки `[comfy_install] …` — установка долгая (git, pip).
 Если «моргает и тишина» — обнови Viu до свежей версии или используй `comfy_install.bat`.
 
+**Имена видео:** читаемые `Girl_Idle_to_Sit_down_take_b_03.mp4` лежат в  
+`U:\Anabarra\Library\Lab\Refs\` и `Lab\ComfyOut\` — не в `ComfyUI\output\`  
+(там может остаться `viu_mocap_00001_.mp4` — это нормально, смотри Lab).
+
 В окне Вью в чате тоже можно: `comfy_install reactor=1`.
 
 ### Torch / CUDA (RTX)
