@@ -44,16 +44,25 @@ I2V 14B — опционально: `comfy_install i2v=1` (десятки GB).
 `comfy_install` — **инструмент Вью**, не отдельная программа. Из `U:\Viu\`:
 
 ```bat
-comfy_install.bat reactor=1
+comfy_install.bat reactor=1 models=0
 comfy_ensure.bat
 ```
 
-Или напрямую:
+Только ReActor (без скачивания Wan-моделей, быстрее):
+
+```bat
+python -m viu tool comfy_install --args "{\"reactor\":\"1\",\"models\":\"0\"}"
+```
+
+Или полная установка + ReActor:
 
 ```bat
 python -m viu tool comfy_install --args "{\"reactor\":\"1\"}"
 python -m viu tool comfy_ensure
 ```
+
+В cmd сразу должны появляться строки `[comfy_install] …` — установка долгая (git, pip).
+Если «моргает и тишина» — обнови Viu до свежей версии или используй `comfy_install.bat`.
 
 В окне Вью в чате тоже можно: `comfy_install reactor=1`.
 

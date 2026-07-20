@@ -21,7 +21,7 @@ echo   viu-qwen32      Qwen 2.5 32B    work + design
 echo.
 echo NEVER builds: viu-euryale / viu-nevoria / viu-dolphin / viu-abliterated
 echo Not wrapped:  qwen2.5-coder:14b , llava
-echo Tip: ollama stop before switching heavy models.
+echo Tip: jailbreak — правь ollama\Modelfile.viu-* БЕЗ .example, см. ollama\README.txt
 echo.
 
 where ollama >nul 2>&1
@@ -98,6 +98,7 @@ if not exist "%MF%" (
 )
 echo.
 echo Creating %TAG% from %MF% ...
+for %%F in ("%MF%") do echo   файл: %%~fF
 ollama create %TAG% -f "%MF%"
 if errorlevel 1 (
   echo FAIL: %TAG%  ^(base not pulled? check FROM in Modelfile^)

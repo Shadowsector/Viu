@@ -169,18 +169,28 @@ def apply_zip(data: bytes) -> None:
             raise RuntimeError("Пустой zip-архив")
         src_root = roots[0]
         log(f"Распаковка в {dest} …")
-        for item in src_root.iterdir():
-            if item.name in PRESERVE_DIRS and (dest / item.name).exists():
-                continue
-            if item.name in PRESERVE_FILES and (dest / item.name).exists():
-                continue
-            target = dest / item.name
-            if item.is_dir():
-                if target.exists():
-                    shutil.rmtree(target)
-                shutil.copytree(item, target)
-            else:
-                shutil.copy2(item, target)
+        try:
+            from viu.ollama_layout import copy_install_tree_item as _copy_item
+
+            for item in src_root.iterdir():
+                if item.name in PRESERVE_DIRS and (dest / item.name).exists():
+                    continue
+                if item.name in PRESERVE_FILES and (dest / item.name).exists():
+                    continue
+                _copy_item(item, dest)
+        except ImportError:
+            for item in src_root.iterdir():
+                if item.name in PRESERVE_DIRS and (dest / item.name).exists():
+                    continue
+                if item.name in PRESERVE_FILES and (dest / item.name).exists():
+                    continue
+                target = dest / item.name
+                if item.is_dir():
+                    if target.exists():
+                        shutil.rmtree(target)
+                    shutil.copytree(item, target)
+                else:
+                    shutil.copy2(item, target)
 
 
 OBSOLETE_FILES = (

@@ -115,7 +115,9 @@ class ComfyInstallTool(Tool):
 
         def progress(msg: str) -> None:
             notes.append(msg)
+            print(f"[comfy_install] {msg}", flush=True)
 
+        print("[comfy_install] старт…", flush=True)
         ok, msg = ensure_comfy_installed(
             ctx.config,
             with_models=with_models,

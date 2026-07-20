@@ -109,7 +109,7 @@ def cmd_tool(args: argparse.Namespace) -> int:
         print(f"Неверный JSON в --args: {exc}")
         return 1
     result = tool.run(params, agent.ctx)
-    print(result.render())
+    print(result.render(), flush=True)
     return 0 if result.ok else 1
 
 
