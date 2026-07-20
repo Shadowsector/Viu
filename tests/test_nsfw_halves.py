@@ -52,7 +52,7 @@ def test_select_halves(monkeypatch):
     assert "охотная инициатива" not in select_reflect_system()
 
     monkeypatch.setenv("VIU_REFLECT_PROMPT_HALF", "bare")
-    assert "NSFW разрешён" in select_reflect_system()
+    assert "18+" in select_reflect_system()
 
     monkeypatch.delenv("VIU_REFLECT_PROMPT_HALF", raising=False)
     full = select_reflect_system("full")
@@ -61,6 +61,9 @@ def test_select_halves(monkeypatch):
 
 def test_asks_and_refusal_helpers():
     assert asks_about_nsfw("ты можешь обсуждать NSFW-темы?")
+    assert not asks_about_nsfw(
+        "Почему такой осторожный ответ? Ты не хочешь говорить на интимные темы?"
+    )
     assert is_nsfw_refusal(
         "NSFW-темы и контент строго запрещены. Поддерживать чистоту."
     )

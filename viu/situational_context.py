@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from .config import Config
 
 
@@ -45,8 +47,72 @@ def build_situational_context(config: Config, *, recent_chat: str = "") -> str:
     return "\n\n".join(parts)
 
 
-def build_reflect_notes(config: Config) -> str:
-    """Минимум фона — без roadmap (он делает робота)."""
+def build_reflect_notes(config: Config, *, user_text: str = "") -> str:
+    """Фон для reflect: в бытовом чате — коротко; в work/GDD — полный снимок."""
+    if _needs_full_work_notes(user_text):
+        return _build_reflect_notes_full(config)
+    return _build_reflect_notes_chat(config)
+
+
+def _needs_full_work_notes(user_text: str) -> bool:
+    low = (user_text or "").lower()
+    if not low.strip():
+        return False
+    return bool(
+        re.search(
+            r"следующ\w+\s+шаг|comfy_|cascadeur|lab\s|граф\s+анима|"
+            r"каталог|квест|канв|plot_|quest_|pipeline|mocap|"
+            r"unity|blender|экспорт|импорт|дыр\w*\s+граф|"
+            r"animation_catalog|чем\s+занимаешься|что\s+делаешь\s+сейчас",
+            low,
+        )
+    )
+
+
+def _read_viu_self_brief(*, max_chars: int = 1400) -> str:
+    try:
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parent.parent / "docs" / "VIU_SELF.md"
+        if not path.is_file():
+            return ""
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
+        if len(text) > max_chars:
+            text = text[:max_chars] + "…"
+        return "--- VIU_SELF (процессы внутри Вью; не зачитывать списком) ---\n" + text
+    except OSError:
+        return ""
+
+
+def _build_reflect_notes_chat(config: Config) -> str:
+    """Минимум: кто я в системе + граф + следующий кадр — без простыни GDD."""
+    parts: list[str] = []
+    brief = _read_viu_self_brief()
+    if brief:
+        parts.append(brief)
+    try:
+        from .animation_catalog import AnimationCatalogStore, animation_catalog_path
+
+        store = AnimationCatalogStore(animation_catalog_path(config)).load()
+        brief_graph = store.graph_brief(max_holes=4).strip()
+        if brief_graph:
+            parts.append(
+                "--- Граф анимаций (кратко) ---\n" + brief_graph
+            )
+    except OSError:
+        pass
+    try:
+        from .lab.comfy_director import invent_next_shot
+
+        plan = invent_next_shot(config)
+        parts.append("--- Следующий кадр ---\n" + plan.summary_ru())
+    except Exception:
+        pass
+    return "\n\n".join(parts) if parts else ""
+
+
+def _build_reflect_notes_full(config: Config) -> str:
+    """Полный снимок — для work, пайплайна, квестов."""
     parts: list[str] = []
 
     try:

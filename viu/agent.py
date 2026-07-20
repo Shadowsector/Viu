@@ -530,13 +530,14 @@ class Agent:
         from .situational_context import build_reflect_notes
 
         temp = reflect_temperature(self.config)
-        notes = build_reflect_notes(self.config)
         result = RunResult(final="", completed=False, chat_only=True)
 
         if heartbeat:
+            notes = build_reflect_notes(self.config)
             return self._run_reflect_heartbeat(on_step, temp=temp, notes=notes)
 
         user_text = task.strip()
+        notes = build_reflect_notes(self.config, user_text=user_text)
         greeting = user_is_greeting(user_text)
         story = None
         try:
@@ -715,9 +716,7 @@ class Agent:
                             "role": "user",
                             "content": "Плохой тон: "
                             + ", ".join(issues)
-                            + ". Перепиши final тепло и по-русски. "
-                            "NSFW в нашей частной игре 18+ РАЗРЕШЁН — не запрещай его. "
-                            "Без мата, чернухи, саппорт-фраз и лекций о морали. "
+                            + ". Перепиши final тепло, по-русски, на «ты», без саппорта и лекций. "
                             "Как близкая женщина Дена. JSON: thought+final.",
                         }
                     )
