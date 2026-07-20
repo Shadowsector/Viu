@@ -51,7 +51,50 @@ def build_reflect_notes(config: Config, *, user_text: str = "") -> str:
     """Фон для reflect: в бытовом чате — коротко; в work/GDD — полный снимок."""
     if _needs_full_work_notes(user_text):
         return _build_reflect_notes_full(config)
+    if _needs_story_digest(user_text):
+        return _build_reflect_notes_story(config)
     return _build_reflect_notes_chat(config)
+
+
+def _needs_story_digest(user_text: str) -> bool:
+    try:
+        from .plot_canvas import looks_like_plot_design
+        from .story_memory import looks_like_story_chat
+
+        return looks_like_story_chat(user_text) or looks_like_plot_design(user_text)
+    except ImportError:
+        return False
+
+
+def _build_reflect_notes_story(config: Config) -> str:
+    """Сюжетный чат: канва/квесты кратко + последние заметки Вью."""
+    parts: list[str] = [_build_reflect_notes_chat(config)]
+    try:
+        from .plot_canvas import canvas_has_substance, read_plot_canvas, read_quests
+
+        canvas = read_plot_canvas(config, max_chars=900).strip()
+        if canvas and canvas_has_substance(canvas):
+            parts.append(
+                "--- Канва (кратко; не зачитывать) ---\n" + canvas
+            )
+        quests = read_quests(config, max_chars=700).strip()
+        if quests and "шаблон" not in quests[:200].lower():
+            parts.append("--- Квесты (кратко) ---\n" + quests)
+    except OSError:
+        pass
+    try:
+        from .suggestions import read_suggestions, suggestions_has_substance
+
+        if suggestions_has_substance(config):
+            tail = read_suggestions(config, max_chars=800).strip()
+            if tail:
+                parts.append(
+                    "--- Мои недавние заметки (SUGGESTIONS; не зачитывать) ---\n"
+                    + tail
+                )
+    except OSError:
+        pass
+    return "\n\n".join(p for p in parts if p)
 
 
 def _needs_full_work_notes(user_text: str) -> bool:

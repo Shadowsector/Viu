@@ -144,8 +144,8 @@ def test_comfy_run_downloads(tmp_path, monkeypatch):
         )
     assert res.ok, res.content
     assert "prompt_id=pid-1" in res.content
-    refs = list(comfy_refs_dir(cfg).glob("test_sit_*"))
-    assert refs
+    refs = list(comfy_refs_dir(cfg).glob("Girl_Test_sit*"))
+    assert refs, list(comfy_refs_dir(cfg).iterdir())
     assert refs[0].read_bytes() == b"png"
 
 

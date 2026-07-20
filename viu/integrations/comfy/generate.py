@@ -25,9 +25,9 @@ from .workflows import (
 )
 
 
-def _client(config: Config) -> ComfyClient:
+def _client(config: Config, *, timeout: float = 900.0) -> ComfyClient:
     url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
-    return ComfyClient(base_url=str(url))
+    return ComfyClient(base_url=str(url), timeout=timeout)
 
 
 def _seed_for(action: str, take_id: str, *, salt: str = "") -> int:
@@ -143,6 +143,9 @@ def run_single_angle(
         ext = Path(meta["filename"]).suffix or ".mp4"
         name = f"{display_stem}{ext}" if i == 0 else f"{display_stem}_{i}{ext}"
         dest_out = out_dir / name
+        dest_ref = refs / name
+        copied = False
+        download_err = ""
         try:
             client.download_view(
                 meta["filename"],
@@ -150,18 +153,17 @@ def run_single_angle(
                 folder_type=meta.get("type") or "output",
                 dest=dest_out,
             )
+            if dest_out.is_file():
+                try:
+                    shutil.copy2(dest_out, dest_ref)
+                    copied = dest_ref.is_file()
+                except OSError as exc:
+                    copy_notes.append(f"copy Lab/ComfyOut→Refs fail: {exc}")
         except ComfyError as exc:
-            return False, str(exc), saved
+            download_err = str(exc)
+            copy_notes.append(f"download_view: {exc}")
 
-        dest_ref = refs / name
-        copied = False
-        try:
-            shutil.copy2(dest_out, dest_ref)
-            copied = dest_ref.is_file()
-        except OSError as exc:
-            copy_notes.append(f"copy Lab/ComfyOut→Refs fail: {exc}")
-
-        # Fallback: взять файл прямо из U:\Viu\ComfyUI\output\ (native SaveVideo)
+        # Fallback: native ComfyUI/output (или свежий mp4 по префиксу)
         if not copied:
             from .paths import resolve_comfy_root
 
@@ -174,7 +176,21 @@ def run_single_angle(
                 if sub:
                     candidates.append(base / sub / native_name)
                 candidates.append(base / native_name)
-            candidates.append(dest_out)
+                # Свежий mp4 с тем же префиксом или любой новый в output
+                try:
+                    mp4s = sorted(
+                        base.rglob("*.mp4"),
+                        key=lambda p: p.stat().st_mtime if p.is_file() else 0,
+                        reverse=True,
+                    )[:12]
+                    for mp4 in mp4s:
+                        low = mp4.name.lower()
+                        if file_prefix.lower() in low or low.startswith("viu_mocap"):
+                            candidates.append(mp4)
+                except OSError:
+                    pass
+            if dest_out.is_file():
+                candidates.append(dest_out)
             for src in candidates:
                 if not src.is_file():
                     continue
@@ -183,7 +199,7 @@ def run_single_angle(
                     shutil.copy2(src, dest_ref)
                     if dest_ref.is_file():
                         copied = True
-                        copy_notes.append(f"ComfyOut+Refs ← {src}")
+                        copy_notes.append(f"Lab ← {src.name}")
                         break
                 except OSError as exc:
                     copy_notes.append(f"native copy fail {src.name}: {exc}")
@@ -192,8 +208,10 @@ def run_single_angle(
             return (
                 False,
                 f"не скопировать в Lab/Refs ({dest_ref}). "
-                f"Native Comfy: output/; staging: {dest_out}. "
-                + "; ".join(copy_notes),
+                f"prefix={file_prefix}; native={native_name or '?'}. "
+                + (download_err or "")
+                + " "
+                + "; ".join(copy_notes[:4]),
                 saved,
             )
         saved.append(str(dest_ref))

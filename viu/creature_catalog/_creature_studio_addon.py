@@ -183,7 +183,13 @@ def _setup_camera_for_shot(yaw_deg: float, objects):
     dist = max(span * 2.2, 1.0)
     rad = math.radians(yaw_deg)
     cam_data = bpy.data.cameras.new("VIU_StudioCam")
-    cam_data.lens = 50.0
+    # Фронт и бок — ортография (эталон каталога); ¾ — перспектива.
+    if abs(yaw_deg - 90.0) < 1.0 or abs(yaw_deg) < 1.0:
+        cam_data.type = "ORTHO"
+        cam_data.ortho_scale = max(span * 1.12, 0.5)
+    else:
+        cam_data.type = "PERSP"
+        cam_data.lens = 50.0
     cam_data.clip_start = 0.01
     cam_data.clip_end = max(dist * 4.0, maxs.z - mins.z + 10.0)
     cam = bpy.data.objects.new("VIU_StudioCam", cam_data)

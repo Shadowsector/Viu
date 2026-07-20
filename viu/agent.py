@@ -595,8 +595,12 @@ class Agent:
         def _accept_final(
             text: str, thought: str, parsed: Optional[Dict[str, str]] = None
         ) -> RunResult:
+            aside = str((parsed or {}).get("aside") or "").strip()
+            from .prompts.reflect_mode import merge_display_aside
+
+            display = merge_display_aside(text, aside, user_text=user_text)
             result.inner_thought = thought
-            result.final = text
+            result.final = display
             result.completed = True
             if thought and on_step:
                 on_step(Step(kind="think", thought=thought))
@@ -612,17 +616,26 @@ class Agent:
                         self._log(f"PLOT: {note}")
                 except OSError:
                     pass
+                try:
+                    from .suggestions import apply_suggestion_updates
+
+                    for note in apply_suggestion_updates(
+                        self.config, parsed, thought=thought, user_text=user_text
+                    ):
+                        self._log(f"SUGGEST: {note}")
+                except OSError:
+                    pass
             try:
                 from .story_memory import get_story_memory
 
                 get_story_memory(self.config).add_exchange(
                     user_text,
-                    text,
+                    display,
                     source="chat",
                     tags=["story"] if looks_like_story_chat(user_text) else [],
                 )
                 self.memory.add(
-                    f"Ден: {user_text[:200]} | Вью: {text[:200]}",
+                    f"Ден: {user_text[:200]} | Вью: {display[:200]}",
                     tags=["dialog", "story"]
                     if looks_like_story_chat(user_text)
                     else ["dialog"],
@@ -636,7 +649,7 @@ class Agent:
                     append_vision(
                         self.config,
                         "Диалог",
-                        f"**Ден:** {user_text[:500]}\n**Вью:** {text[:800]}",
+                        f"**Ден:** {user_text[:500]}\n**Вью:** {display[:800]}",
                     )
                 except OSError:
                     pass

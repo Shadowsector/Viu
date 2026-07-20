@@ -431,9 +431,11 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
     )
     from ..integrations.comfy.clip_review import harvest_comfy_native_output
 
-    h_n, h_msg = harvest_comfy_native_output(config)
-    if h_n:
-        msg += "\n" + h_msg
+    saved_files = list(results.get("files") or [])
+    if not saved_files:
+        h_n, h_msg = harvest_comfy_native_output(config)
+        if h_n:
+            msg += "\n" + h_msg
     session.meta["triple"] = results
     for path in results.get("files") or []:
         session.append_artifact(path)

@@ -95,6 +95,12 @@ def _quests(config: Config) -> Path:
     return ensure_quests(config)
 
 
+def _suggestions(config: Config) -> Path:
+    from .suggestions import ensure_suggestions
+
+    return ensure_suggestions(config)
+
+
 def _comfy_native_output(config: Config) -> Path:
     from .integrations.comfy.paths import resolve_comfy_root
 
@@ -308,6 +314,14 @@ def all_places() -> List[Place]:
             "Файлы",
             "Отдельные квесты — локально в .viu/.",
             _quests,
+        ),
+        Place(
+            "suggestions",
+            "Заметки Вью (SUGGESTIONS)",
+            "file",
+            "Файлы",
+            "Внутренний дневник: мысли о сюжете, квестах, Дене — .viu/SUGGESTIONS.md",
+            _suggestions,
         ),
         Place(
             "girl_sockets",

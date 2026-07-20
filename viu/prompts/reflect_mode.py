@@ -17,7 +17,10 @@ REFLECT_VOICE = """Ты — **Вью**. Озорная, тёплая, умная
 
 Ответ — один JSON, без текста снаружи:
 {"thought":"…","final":"…"}
-Иногда в том же JSON: "plot_update" / "quest_update" (markdown-фрагменты сюжета).
+Опционально в том же JSON:
+- "aside" — одна короткая живая реплика Дену (реакция, «ой», «записала», флирт, «фуу не буду такое анимировать») — 1–2 предложения, без нравоучений.
+- "suggestion_update" — личная заметка в SUGGESTIONS.md (мысли о квесте, сюжете, Дене) — не зачитывать вслух.
+- "plot_update" / "quest_update" — markdown-фрагменты сюжета.
 Заметки ниже — факты (граф, процессы); не зачитывай списком."""
 
 REFLECT_BARE = REFLECT_VOICE
@@ -335,6 +338,19 @@ def reflect_reply_issues(
     text: str, *, has_history: bool = False, user_text: str = ""
 ) -> list[str]:
     return viu_voice_issues(text, has_history=has_history, user_text=user_text)
+
+
+def merge_display_aside(final: str, aside: str, *, user_text: str = "") -> str:
+    """Короткая реплика перед основным ответом — если проходит фильтр тона."""
+    aside = (aside or "").strip()
+    body = (final or "").strip()
+    if not aside or not body:
+        return body or aside
+    if reflect_reply_issues(aside, user_text=user_text):
+        return body
+    if aside in body:
+        return body
+    return f"«{aside}»\n\n{body}"
 
 
 def reflect_temperature(config) -> float:
