@@ -449,10 +449,21 @@ def apply_git_update(
             message=status.message,
         )
 
-    if hard_reset:
-        code, out = _run_git(["reset", "--hard", f"{remote}/{branch}"], root, timeout=300.0)
-    else:
-        code, out = _run_git(["pull", "--ff-only", remote, branch], root, timeout=300.0)
+    def _do_pull(ff_only: bool) -> Tuple[int, str]:
+        if hard_reset or not ff_only:
+            return _run_git(["reset", "--hard", f"{remote}/{branch}"], root, timeout=300.0)
+        return _run_git(["pull", "--ff-only", remote, branch], root, timeout=300.0)
+
+    code, out = _do_pull(ff_only=True)
+    used_reset = False
+    if code != 0 and not hard_reset:
+        # Локальные правки / расхождение — сбрасываем код к origin ( .viu не в git ).
+        code2, out2 = _do_pull(ff_only=False)
+        if code2 == 0:
+            code, out = code2, out2
+            used_reset = True
+        else:
+            out = (out + "\n" + out2).strip()
 
     if code == 0:
         cleanup_obsolete(root)
@@ -461,6 +472,13 @@ def apply_git_update(
             write_package_sha(root, full_sha)
     new_ref = current_commit(root)
     if code != 0:
+        # Git не вытянул — zip поверх папки (как без git).
+        zip_result = download_zip_update(branch=branch, target=root)
+        if zip_result.ok and zip_result.updated:
+            zip_result.message = (
+                f"Git не смог: {out[:200]}\n\nZip: {zip_result.message}"
+            )
+            return zip_result
         return UpdateResult(
             ok=False,
             checked=True,
@@ -470,6 +488,7 @@ def apply_git_update(
             remote_ref=status.remote_ref,
             message=f"Обновление не удалось: {out[:500]}",
         )
+    note = " (hard reset)" if used_reset or hard_reset else ""
     return UpdateResult(
         ok=True,
         checked=True,
@@ -478,7 +497,7 @@ def apply_git_update(
         behind=0,
         local_ref=new_ref,
         remote_ref=status.remote_ref,
-        message=f"Обновлено до {new_ref} [{branch}].",
+        message=f"Обновлено до {new_ref} [{branch}]{note}.",
     )
 
 
@@ -599,6 +618,7 @@ def update_viu_full(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, bool]:
     """Проверка → скачивание (если есть) → pip install. Возвращает (ok, текст, нужен_рестарт)."""
     lines: List[str] = []
     needs_restart = False
+    before = running_sha(package_root())[:12] or "—"
 
     status = check_for_update(branch=branch)
     lines.append(status.message)
@@ -612,6 +632,11 @@ def update_viu_full(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, bool]:
             ok, pip_msg = install_package()
             lines.append(pip_msg)
             return ok and applied.ok, "\n\n".join(lines), needs_restart
+
+    after = running_sha(package_root())[:12] or "—"
+    if before != after:
+        lines.append(f"Версия: {before} → {after}")
+        needs_restart = True
 
     ok, pip_msg = install_package()
     lines.append(pip_msg)

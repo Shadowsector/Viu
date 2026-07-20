@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from datetime import datetime
@@ -61,9 +62,34 @@ def _api_request(url: str) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _quote_branch(branch: str) -> str:
+    return urllib.parse.quote(branch, safe="")
+
+
+def refresh_bootstrap_script() -> bool:
+    """Подтянуть свежий bootstrap_update.py с GitHub (без git)."""
+    try:
+        req = urllib.request.Request(RAW_BOOTSTRAP_URL, headers=github_headers())
+        with urllib.request.urlopen(req, timeout=45) as resp:  # noqa: S310
+            data = resp.read()
+        if len(data) < 200 or b"bootstrap" not in data.lower():
+            return False
+        dest = root_dir() / "bootstrap_update.py"
+        dest.write_bytes(data)
+        return True
+    except (OSError, urllib.error.URLError):
+        return False
+
+
+def write_package_sha(sha: str) -> None:
+    path = root_dir() / "viu" / "package_sha.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(sha.strip() + "\n", encoding="utf-8")
+
+
 def remote_sha() -> str:
     """Последний коммит ветки на GitHub (без git)."""
-    url = f"https://api.github.com/repos/{REPO}/commits/{BRANCH}"
+    url = f"https://api.github.com/repos/{REPO}/commits/{_quote_branch(BRANCH)}"
     data = _api_request(url)
     sha = data.get("sha") or ""
     if not sha:
@@ -71,7 +97,18 @@ def remote_sha() -> str:
     return sha
 
 
+def read_package_sha() -> str:
+    path = root_dir() / "viu" / "package_sha.txt"
+    if not path.is_file():
+        return ""
+    line = path.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+    return line[0].strip() if line else ""
+
+
 def local_sha() -> str:
+    pkg = read_package_sha()
+    if pkg:
+        return pkg
     path = stamp_path()
     if not path.is_file():
         return ""
@@ -102,8 +139,8 @@ def needs_update() -> tuple[bool, str, str]:
 
 
 def download_zip() -> bytes:
-    # Публичный zip
-    url = f"https://github.com/{REPO}/archive/refs/heads/{BRANCH}.zip"
+    q = _quote_branch(BRANCH)
+    url = f"https://github.com/{REPO}/archive/refs/heads/{q}.zip"
     log(f"Скачиваю {url} …")
     req = urllib.request.Request(url, headers=github_headers())
     try:
@@ -112,9 +149,8 @@ def download_zip() -> bytes:
     except urllib.error.HTTPError as exc:
         if exc.code != 404:
             raise
-    # Приватный репо — zipball через API
-    api_url = f"https://api.github.com/repos/{REPO}/zipball/{BRANCH}"
-    log(f"Пробую API zipball (нужен VIU_GITHUB_TOKEN для private) …")
+    api_url = f"https://api.github.com/repos/{REPO}/zipball/{q}"
+    log("Пробую API zipball (нужен VIU_GITHUB_TOKEN для private) …")
     req2 = urllib.request.Request(api_url, headers=github_headers())
     with urllib.request.urlopen(req2, timeout=300) as resp:  # noqa: S310
         return resp.read()
@@ -278,6 +314,7 @@ def run_update(force: bool = False) -> bool:
         apply_zip(data)
         pip_install()
         write_stamp(sha)
+        write_package_sha(sha)
     except (OSError, zipfile.BadZipFile, RuntimeError, subprocess.TimeoutExpired) as exc:
         log(f"ОШИБКА обновления: {exc}")
         return False
@@ -320,6 +357,9 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001
             log(str(exc))
             return 1
+
+    if refresh_bootstrap_script():
+        log("bootstrap_update.py — свежая копия с GitHub")
 
     force = args.apply
     auto = args.auto or (not force and not args.check)

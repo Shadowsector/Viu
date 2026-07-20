@@ -140,6 +140,46 @@ def test_version_message_includes_branch():
     assert "eea4d7d" in msg
 
 
+def test_apply_git_fallback_hard_reset(tmp_path, monkeypatch):
+    from viu import updater
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "viu").mkdir()
+    monkeypatch.setattr(updater, "usable_git_root", lambda start=None: tmp_path)
+    monkeypatch.setattr(
+        updater,
+        "check_for_update",
+        lambda repo=None, branch=updater.DEFAULT_BRANCH, remote="origin": updater.UpdateResult(
+            ok=True,
+            checked=True,
+            has_updates=True,
+            behind=1,
+            local_ref="aaa",
+            remote_ref="bbb",
+            message="update",
+        ),
+    )
+    calls: list[list[str]] = []
+
+    def fake_run_git(args, cwd, timeout=120.0, retries=1):
+        calls.append(list(args))
+        if len(args) >= 2 and args[0] == "pull" and args[1] == "--ff-only":
+            return 1, "diverged"
+        if args[:2] == ["reset", "--hard"]:
+            return 0, "HEAD is now at bbb"
+        if args[:2] == ["rev-parse", "HEAD"]:
+            return 0, "deadbeefcafe" * 2
+        return 0, "ok"
+
+    monkeypatch.setattr(updater, "_run_git", fake_run_git)
+    monkeypatch.setattr(updater, "current_commit", lambda repo=None: "deadbeefcafe")
+    monkeypatch.setattr(updater, "cleanup_obsolete", lambda root=None: [])
+
+    result = updater.apply_git_update(tmp_path)
+    assert result.updated
+    assert any(a[:2] == ["reset", "--hard"] for a in calls)
+
+
 def test_apply_git_update_writes_package_sha(tmp_path, monkeypatch):
     from viu import updater
 
