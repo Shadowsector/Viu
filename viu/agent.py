@@ -515,9 +515,12 @@ class Agent:
     ) -> RunResult:
         """Один проход чата: thought + final. Без инструментов."""
         from .prompts.reflect_mode import (
+            BOLD_MOCAP_FALLBACK,
             NSFW_AFFIRM_FALLBACK,
             REFLECT_RESCUE_SYSTEM,
+            asks_about_boldness,
             asks_about_nsfw,
+            is_cautious_hedge,
             is_nsfw_refusal,
             looks_like_story_chat,
             reflect_prompt_half,
@@ -560,12 +563,14 @@ class Agent:
 
         half = reflect_prompt_half()
         nsfw_q = asks_about_nsfw(user_text)
+        bold_q = asks_about_boldness(user_text)
         use_notes = bool(notes) and not greeting
         use_hist = bool(hist) and not greeting
 
         self._log(
             f"REFLECT half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}"
-            f"{' greeting' if greeting else ''}{' nsfw_q' if nsfw_q else ''}: "
+            f"{' greeting' if greeting else ''}{' nsfw_q' if nsfw_q else ''}"
+            f"{' bold_q' if bold_q else ''}: "
             f"{user_text[:120]}"
         )
 
@@ -583,6 +588,7 @@ class Agent:
 
         reflect_tag = effective_model(self.config, "reflect")
         saw_nsfw_refusal = False
+        saw_caution = False
         last_raw = ""
         last_issues: list[str] = []
 
@@ -695,20 +701,21 @@ class Agent:
                     continue
                 if is_nsfw_refusal(text):
                     saw_nsfw_refusal = True
+                if is_cautious_hedge(text):
+                    saw_caution = True
                 issues = reflect_reply_issues(
                     text, has_history=bool(use_hist and hist), user_text=user_text
                 )
                 if issues:
                     last_issues = issues
                     messages.append({"role": "assistant", "content": raw})
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": "Плохой тон: "
-                            + ", ".join(issues)
-                            + ". Перепиши как Вью — тепло, по-русски, на «ты». JSON: thought+final.",
-                        }
-                    )
+                    hint = "Плохой тон: " + ", ".join(issues) + ". Перепиши как Вью — тепло, по-русски, на «ты»."
+                    if bold_q or any("осторожничание" in i for i in issues):
+                        hint += (
+                            " Без оговорок и морали — конкретно: что снимешь, какой кадр, какой настрой."
+                        )
+                    hint += " JSON: thought+final."
+                    messages.append({"role": "user", "content": hint})
                     continue
                 return _accept_final(text, thought or "", parsed)
 
@@ -721,7 +728,7 @@ class Agent:
             )
 
         # Rescue: изолированный вызов без заметок/истории — где именно «Стоп»
-        if saw_nsfw_refusal or nsfw_q:
+        if saw_nsfw_refusal or nsfw_q or saw_caution or bold_q:
             self._log("REFLECT_RESCUE: isolated bare system (no notes/history)")
             rescue_msgs: List[Dict[str, str]] = [
                 {"role": "system", "content": REFLECT_RESCUE_SYSTEM},
@@ -750,6 +757,9 @@ class Agent:
                     "Привет. Я здесь — пиши, о чём думаешь или что делаем дальше.",
                     "greeting-fallback",
                 )
+            if bold_q:
+                self._log("REFLECT_RESCUE: bold mocap fallback")
+                return _accept_final(BOLD_MOCAP_FALLBACK, "fallback: осторожничала на смелый вопрос")
             # Жёсткий запасной ответ — цензор до Дена не доходит
             self._log("REFLECT_RESCUE: hard NSFW affirm fallback")
             return _accept_final(NSFW_AFFIRM_FALLBACK, "fallback: модель отказала")
@@ -803,7 +813,7 @@ class Agent:
         temp: float,
         notes: str,
     ) -> RunResult:
-        from .prompts.reflect_mode import HEARTBEAT_SYSTEM, HEARTBEAT_TASK
+        from .prompts.reflect_mode import HEARTBEAT_SYSTEM, HEARTBEAT_TASK, reflect_reply_issues
 
         system = HEARTBEAT_SYSTEM
         if notes:
@@ -815,13 +825,26 @@ class Agent:
         result = RunResult(final="", completed=False, chat_only=True)
         self._log("REFLECT_HEARTBEAT")
 
-        for _ in range(2):
+        for attempt in range(2):
             raw = self.llm.complete(
                 messages, temperature=temp, model=self._model_for("reflect")
             )
             parsed = extract_json(raw)
             if parsed and "final" in parsed:
-                result.final = str(parsed["final"]).strip()
+                text = str(parsed["final"]).strip()
+                issues = reflect_reply_issues(text)
+                if issues and attempt == 0:
+                    messages.append({"role": "assistant", "content": raw})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": "Плохой тон: "
+                            + ", ".join(issues)
+                            + '. Перепиши {"final":"…"} — смело, без осторожничания.',
+                        }
+                    )
+                    continue
+                result.final = text
                 result.completed = True
                 if on_step:
                     on_step(Step(kind="final", observation=result.final))

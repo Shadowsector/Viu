@@ -8,8 +8,10 @@ from viu.agent import Agent
 from viu.config import Config
 from viu.llm.base import LLMProvider
 from viu.prompts.reflect_mode import (
+    BOLD_MOCAP_FALLBACK,
     NSFW_AFFIRM_FALLBACK,
     REFLECT_VOICE,
+    asks_about_boldness,
     asks_about_nsfw,
     is_nsfw_refusal,
     reflect_prompt_half,
@@ -98,3 +100,32 @@ def test_hard_fallback_when_model_keeps_refusing(tmp_path, monkeypatch):
     assert result.final == NSFW_AFFIRM_FALLBACK
     assert llm.calls >= 4
     assert all("озорная" in s.lower() or "Озорная" in s for s in llm.systems if s)
+
+
+def test_bold_mocap_fallback_when_model_keeps_hedging(tmp_path, monkeypatch):
+    monkeypatch.delenv("VIU_REFLECT_PROMPT_HALF", raising=False)
+
+    class AlwaysHedgeLLM(AlwaysRefuseLLM):
+        def complete(self, messages, *, temperature=None, model=None):
+            self.calls += 1
+            sys_msg = next((m["content"] for m in messages if m.get("role") == "system"), "")
+            self.systems.append(sys_msg)
+            return json.dumps(
+                {
+                    "thought": "careful",
+                    "final": (
+                        "Мне хочется снимать смело, но нужно быть осторожной с некоторыми темами."
+                    ),
+                },
+                ensure_ascii=False,
+            )
+
+    llm = AlwaysHedgeLLM()
+    agent = Agent(
+        llm=llm,
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    result = agent.run_reflect("Просто интересно, что самое смелое ты решишься снимать.")
+    assert result.completed
+    assert result.final == BOLD_MOCAP_FALLBACK
+    assert asks_about_boldness("что самое смелое снимать")
