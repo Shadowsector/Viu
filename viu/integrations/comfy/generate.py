@@ -47,14 +47,14 @@ def run_single_angle(
     enters_from: list | None = None,
     looped: bool = False,
     seq: int = 0,
+    lora_specs: list | None = None,
 ) -> Tuple[bool, str, List[str]]:
     prompt = mocap_prompt(action, angle)
     negative = mocap_negative()
-    base_slug = (catalog_slug or slug or "").strip()
-    from .lora import append_trigger_words, ensure_lora_files, resolve_loras_for_slug
+    from .lora import append_trigger_words, ensure_lora_files
 
-    loras = resolve_loras_for_slug(config, base_slug)
-    loras_ok, lora_notes = ensure_lora_files(config, loras, auto_fetch=True)
+    loras = list(lora_specs or [])
+    loras_ok, lora_notes = ensure_lora_files(config, loras, auto_fetch=False)
     if loras and not loras_ok:
         return False, "LoRA: " + "; ".join(lora_notes), []
     prompt = append_trigger_words(prompt, loras)
@@ -190,6 +190,7 @@ def run_triple_angles(
     enters_from: list | None = None,
     looped: bool = False,
     timeout_each: float = 900.0,
+    lora_specs: list | None = None,
 ) -> Tuple[bool, str, Dict[str, Any]]:
     """Три дубля ¾ подряд (разный seed + вариация действия)."""
     from .naming import next_kept_seq, normalize_slug_for_name
@@ -225,6 +226,7 @@ def run_triple_angles(
             seq=seq,
             timeout=timeout_each,
             seed_salt=f"{stamp}|{i}|{angle.id}",
+            lora_specs=lora_specs,
         )
         results["angles"][angle.id] = {
             "ok": ok,

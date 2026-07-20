@@ -32,16 +32,14 @@ def comfy_pipeline_status(config: Config) -> str:
         action = str(session.meta.get("approved_action") or session.meta.get("action") or "")[:80]
         if slug:
             lines.append(f"  catalog_slug: {slug}")
-            try:
-                from .lora import ensure_lora_files, resolve_loras_for_slug
-
-                loras = resolve_loras_for_slug(config, slug)
-                if loras:
-                    ok_l, _ = ensure_lora_files(config, loras, auto_fetch=False)
-                    names = ", ".join(f"{s.file}@{s.strength}" for s in loras)
-                    lines.append(f"  LoRA: {names} ({'на диске' if ok_l else 'НЕТ файла — comfy_lora_fetch'})")
-            except Exception:
-                pass
+            picked = session.meta.get("selected_loras") or []
+            if picked:
+                names = ", ".join(
+                    str(p.get("file") or p) if isinstance(p, dict) else str(p) for p in picked
+                )
+                lines.append(f"  LoRA (выбраны): {names}")
+            elif session.status == "awaiting_lora_pick":
+                lines.append("  LoRA: жду выбор (comfy_lora_list)")
         if action:
             lines.append(f"  промпт: {action}")
         if slug and action and slug.replace("_", " ") not in action.lower() and "idle stand" in action.lower() and slug != "idle":
@@ -52,6 +50,8 @@ def comfy_pipeline_status(config: Config) -> str:
             lines.append("  → **сейчас генерирует** 3 дубля (¾) в ComfyUI")
         elif session.status == "awaiting_prompt":
             lines.append("  → ждёт одобрение промпта (Telegram / чат: ок)")
+        elif session.status == "awaiting_lora_pick":
+            lines.append("  → ждёт выбор LoRA (lora: 1,2 / none)")
         elif session.status == "awaiting_clip_pick":
             lines.append("  → ждёт выбор лучшего дубля (дома: «Оценить клипы Comfy»)")
         elif session.status == "paused":

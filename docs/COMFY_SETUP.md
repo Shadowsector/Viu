@@ -79,16 +79,25 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 - вручную крутить workflow;
 - подключить **LoRA** / эксперименты.
 
-### LoRA / v2v — автоматизация Вью
+### LoRA — простой сценарий
 
-1. **Реестр** `.viu/comfy_loras.json` — привязка `catalog_slug` → LoRA (файл, strength, trigger, `download_url`).
-2. **Файлы** попадают в `ComfyUI/models/loras/` (Вью качает сама, если URL в реестре).
-3. **При генерации** Вью подставляет только LoRA текущего slug (без лишнего VRAM); для другого slug — другая цепочка.
-4. **Tools:**
-   - `comfy_lora_list` — реестр + ✓/✗ на диске
-   - `comfy_lora_bind catalog_slug=touch_self lora_file=....safetensors strength=0.85 download_url=https://...`
-   - `comfy_lora_fetch catalog_slug=touch_self` или `all=1`
-5. **Civitai:** env `VIU_CIVITAI_TOKEN` для ссылок, требующих авторизации.
-6. **v2v / I2V:** seed last-frame → следующий клип; полный v2v — отдельный workflow.
+1. **Скачай** `.safetensors` в `ComfyUI/models/loras/` (можно подпапки).
+2. **Индекс:** `comfy_lora_scan` или `comfy_lora_list scan=1` — Вью нумерует файлы.
+3. **Перед каждым пулом** (после одобрения промпта) Вью спросит в Telegram/чате:
+   - `lora: 1` / `lora: 1,3` / `lora: all` / `lora: none`
+4. **Заметки к файлу** (trigger, strength): `comfy_lora_note lora_file=foo.safetensors trigger=...`
+5. **Away:** без LoRA или повтор последнего выбора (`lora_last_pick`).
 
-Итого: положи URL один раз в реестр (или файл вручную) — дальше MoCap сам подхватывает/выгружает LoRA по slug.
+Опционально: `comfy_lora_bind` / `download_url` — если всё же хочешь автоподкачку по URL.
+
+### Что искать на Civitai / HF (теги)
+
+База модели: **Wan 2.1**, **wan2.1**, **wan t2v**, **wan i2v**, **video lora**, **motion lora**.
+
+По действиям (примеры):
+- `touch_self` / интим: `self touch`, `masturbation`, `solo`, `nsfw motion`
+- сидеть/лежать: `sit`, `lie down`, `sleep`, `get up`
+- ходьба: `walk cycle`, `locomotion`, `stride`
+- жесты: `wave`, `reach`, `pick up`, `drink`, `eat`
+
+Фильтр: Type = LoRA, Base model содержит Wan / video. Смотри preview-GIF и trigger words в описании.

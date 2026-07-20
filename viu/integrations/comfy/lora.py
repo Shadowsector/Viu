@@ -1,23 +1,36 @@
-"""Реестр LoRA для Comfy MoCap: привязка к catalog_slug, подкачка, подстановка в workflow."""
+"""Реестр LoRA для Comfy MoCap: скан папки, выбор перед пулом, подстановка в workflow."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import re
 import shutil
+import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ...config import Config
 from .paths import resolve_comfy_root
 
-_REGISTRY_REV = 1
+_REGISTRY_REV = 2
 _TEMPLATES = Path(__file__).resolve().parent / "templates"
 _REGISTRY_NAME = "comfy_loras.json"
+_INDEX_NAME = "comfy_loras_index.json"
+_LORA_EXTS = (".safetensors", ".pt", ".ckpt")
+
+_LORA_PICK_PREFIX_RE = re.compile(
+    r"^\s*(?:lora|лора)\s*[:\-–]\s*(.+)$",
+    re.IGNORECASE,
+)
+_LORA_NONE_RE = re.compile(
+    r"^\s*(?:none|нет|без|skip|пропустить|0|ничего)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -26,6 +39,53 @@ class LoraSpec:
     strength: float = 0.85
     trigger: str = ""
     subfolder: str = ""
+
+
+@dataclass
+class LoraIndexEntry:
+    """Проиндексированный файл с диска (номер для выбора в чате)."""
+
+    index: int
+    file: str
+    subfolder: str = ""
+    size_mb: float = 0.0
+    tags: List[str] = None  # type: ignore[assignment]
+    trigger: str = ""
+    strength: float = 0.85
+    mtime: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.tags is None:
+            self.tags = []
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(d: Dict[str, Any]) -> "LoraIndexEntry":
+        tags = d.get("tags")
+        return LoraIndexEntry(
+            index=int(d.get("index") or 0),
+            file=str(d.get("file") or ""),
+            subfolder=str(d.get("subfolder") or ""),
+            size_mb=float(d.get("size_mb") or 0),
+            tags=[str(t) for t in (tags or [])],
+            trigger=str(d.get("trigger") or ""),
+            strength=float(d.get("strength") or 0.85),
+            mtime=float(d.get("mtime") or 0),
+        )
+
+    def to_spec(self) -> LoraSpec:
+        return LoraSpec(
+            file=self.file,
+            strength=self.strength,
+            trigger=self.trigger,
+            subfolder=self.subfolder,
+        )
+
+
+def index_path(config: Config) -> Path:
+    return config.data_dir / _INDEX_NAME
 
 
 def registry_path(config: Config) -> Path:
@@ -180,6 +240,212 @@ def append_trigger_words(prompt: str, loras: List[LoraSpec]) -> str:
     return f"{prompt}, {suffix}" if prompt else suffix
 
 
+def _tags_from_filename(name: str) -> List[str]:
+    stem = Path(name).stem.lower()
+    parts = re.split(r"[_\-\s]+", stem)
+    return [p for p in parts if len(p) >= 2]
+
+
+def _library_entry(data: Dict[str, Any], filename: str) -> Dict[str, Any]:
+    lib = data.get("library") or {}
+    if not isinstance(lib, dict):
+        return {}
+    entry = lib.get(filename)
+    return entry if isinstance(entry, dict) else {}
+
+
+def scan_loras(config: Config, *, save: bool = True) -> List[LoraIndexEntry]:
+    """Проиндексировать все LoRA в ComfyUI/models/loras/ (рекурсивно)."""
+    ensure_registry(config)
+    data = load_registry(config)
+    root = comfy_loras_dir(config)
+    found: List[LoraIndexEntry] = []
+    try:
+        paths = sorted(
+            (p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in _LORA_EXTS),
+            key=lambda p: str(p.relative_to(root)).lower(),
+        )
+    except OSError:
+        paths = []
+    for i, path in enumerate(paths, start=1):
+        try:
+            rel = path.relative_to(root)
+            subfolder = "" if rel.parent == Path(".") else str(rel.parent).replace("\\", "/")
+            stat = path.stat()
+            lib = _library_entry(data, path.name)
+            tags = [str(t) for t in (lib.get("tags") or [])] or _tags_from_filename(path.name)
+            found.append(
+                LoraIndexEntry(
+                    index=i,
+                    file=path.name,
+                    subfolder=subfolder,
+                    size_mb=round(stat.st_size / (1024 * 1024), 1),
+                    tags=tags,
+                    trigger=str(lib.get("trigger") or ""),
+                    strength=float(lib.get("strength") or 0.85),
+                    mtime=stat.st_mtime,
+                )
+            )
+        except (OSError, ValueError):
+            continue
+    if save:
+        save_index(config, found)
+    return found
+
+
+def save_index(config: Config, entries: List[LoraIndexEntry]) -> Path:
+    path = index_path(config)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "_viu_rev": _REGISTRY_REV,
+        "scanned_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "loras_dir": str(comfy_loras_dir(config)),
+        "entries": [e.to_dict() for e in entries],
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def load_index(config: Config, *, rescan_if_missing: bool = True) -> List[LoraIndexEntry]:
+    path = index_path(config)
+    if not path.is_file():
+        if rescan_if_missing:
+            return scan_loras(config)
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        raw = data.get("entries") or []
+        entries = [LoraIndexEntry.from_dict(x) for x in raw if isinstance(x, dict)]
+        if entries:
+            return entries
+    except (OSError, json.JSONDecodeError):
+        pass
+    return scan_loras(config) if rescan_if_missing else []
+
+
+def format_lora_pick_message(entries: List[LoraIndexEntry]) -> str:
+    if not entries:
+        return (
+            "В ComfyUI/models/loras/ нет LoRA.\n"
+            "Скачай .safetensors в эту папку → comfy_lora_scan.\n"
+            "Ответь: `lora: none` — генерировать без LoRA."
+        )
+    lines = [
+        "Выбери LoRA для этого пула (можно несколько):",
+        "",
+    ]
+    for e in entries:
+        tag_hint = f" [{', '.join(e.tags[:4])}]" if e.tags else ""
+        sub = f" ({e.subfolder}/)" if e.subfolder else ""
+        trig = f' trigger="{e.trigger}"' if e.trigger else ""
+        lines.append(f"  {e.index}. {e.file}{sub} — {e.size_mb} MB{tag_hint}{trig}")
+    lines.extend(
+        [
+            "",
+            "Ответь:",
+            "• `lora: 1` или `lora: 1,3` — выбранные",
+            "• `lora: all` — все из списка",
+            "• `lora: none` — без LoRA (чистый Wan)",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def parse_lora_pick_reply(text: str, *, max_index: int = 99) -> Optional[List[int]]:
+    """None = не поняла; [] = без LoRA; [1,3] = выбор."""
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    if _LORA_NONE_RE.match(raw):
+        return []
+    body = raw
+    m = _LORA_PICK_PREFIX_RE.match(raw)
+    if m:
+        body = m.group(1).strip()
+        if _LORA_NONE_RE.match(body) or body.lower() in ("none", "0"):
+            return []
+    elif _LORA_NONE_RE.match(raw):
+        return []
+    elif not re.search(r"\d", raw):
+        return None
+    if body.lower() in ("all", "все", "*"):
+        return list(range(1, max_index + 1))
+    nums: List[int] = []
+    for part in re.split(r"[,;\s]+", body):
+        part = part.strip()
+        if not part:
+            continue
+        if part.lower() in ("all", "все"):
+            return list(range(1, max_index + 1))
+        try:
+            n = int(part)
+        except ValueError:
+            return None
+        if n < 1 or n > max_index:
+            return None
+        if n not in nums:
+            nums.append(n)
+    return nums if nums else None
+
+
+def specs_from_indices(config: Config, indices: List[int]) -> List[LoraSpec]:
+    entries = load_index(config)
+    by_idx = {e.index: e for e in entries}
+    specs: List[LoraSpec] = []
+    for i in indices:
+        entry = by_idx.get(i)
+        if entry is not None:
+            specs.append(entry.to_spec())
+    return specs
+
+
+def spec_to_dict(spec: LoraSpec) -> Dict[str, Any]:
+    return {
+        "file": spec.file,
+        "strength": spec.strength,
+        "trigger": spec.trigger,
+        "subfolder": spec.subfolder,
+    }
+
+
+def specs_from_session_meta(meta: Dict[str, Any]) -> List[LoraSpec]:
+    raw = meta.get("selected_loras") or []
+    specs: List[LoraSpec] = []
+    if not isinstance(raw, list):
+        return specs
+    for item in raw:
+        spec = _parse_lora_item(item)
+        if spec is not None:
+            specs.append(spec)
+    return specs
+
+
+def update_library_entry(
+    config: Config,
+    lora_file: str,
+    *,
+    trigger: str = "",
+    strength: float | None = None,
+    tags: str = "",
+) -> Tuple[bool, str]:
+    name = (lora_file or "").strip()
+    if not name:
+        return False, "Нужен lora_file=."
+    data = load_registry(config)
+    lib = data.setdefault("library", {})
+    entry = dict(lib.get(name) or {})
+    if trigger:
+        entry["trigger"] = trigger.strip()
+    if strength is not None:
+        entry["strength"] = float(strength)
+    if tags:
+        entry["tags"] = [t.strip() for t in re.split(r"[,;]", tags) if t.strip()]
+    lib[name] = entry
+    save_registry(config, data)
+    scan_loras(config)
+    return True, f"Заметки для {name} сохранены (trigger/strength/tags)."
+
+
 def _download_url_for_spec(config: Config, spec: LoraSpec) -> Optional[str]:
     data = load_registry(config)
     lib = (data.get("library") or {}).get(spec.file)
@@ -329,52 +595,36 @@ def bind_slug(
 
 def list_registry_status(config: Config) -> str:
     ensure_registry(config)
-    data = load_registry(config)
+    entries = load_index(config)
     loras_root = comfy_loras_dir(config)
     lines = [
-        f"Реестр: {registry_path(config)}",
+        f"Индекс: {index_path(config)}",
         f"LoRA dir: {loras_root}",
+        f"На диске: {len(entries)} файл(ов)",
         "",
     ]
-    defaults = data.get("defaults") or []
-    if defaults:
-        lines.append("defaults (всегда):")
-        for item in defaults:
-            spec = _parse_lora_item(item)
-            if spec:
-                lines.append(_format_spec_line(config, spec, prefix="  • "))
+    if entries:
+        lines.append("Список (номера для `lora: 1,2`):")
+        for e in entries:
+            tag_hint = f" — {', '.join(e.tags[:5])}" if e.tags else ""
+            sub = f"{e.subfolder}/" if e.subfolder else ""
+            trig = f' | trigger="{e.trigger}"' if e.trigger else ""
+            lines.append(f"  {e.index}. {sub}{e.file} @ {e.strength}{tag_hint}{trig}")
+        lines.append("")
+    else:
+        lines.append("Папка пуста — скачай LoRA в models/loras/, потом comfy_lora_scan.")
         lines.append("")
 
-    by_slug = data.get("by_slug") or {}
-    if not by_slug:
-        lines.append("by_slug: (пусто — добавь comfy_lora_bind)")
-    else:
-        lines.append("by_slug:")
-        for slug in sorted(by_slug.keys()):
-            binding = by_slug[slug]
-            if not isinstance(binding, dict):
-                continue
-            lines.append(f"  [{slug}]")
-            for item in binding.get("loras") or []:
-                spec = _parse_lora_item(item)
-                if spec:
-                    lines.append(_format_spec_line(config, spec, prefix="    • "))
-            dl = binding.get("download")
-            if isinstance(dl, dict) and dl.get("url"):
-                lines.append(f"    ↓ {dl.get('url')}")
-
+    data = load_registry(config)
     lib = data.get("library") or {}
     if lib:
-        lines.append("")
-        lines.append("library:")
+        lines.append("library (trigger/strength/tags):")
         for name in sorted(lib.keys()):
             entry = lib[name]
             if not isinstance(entry, dict):
                 continue
-            url = str(entry.get("download_url") or entry.get("url") or "")
-            on_disk = (loras_root / name).is_file()
-            mark = "✓" if on_disk else "✗"
-            lines.append(f"  {mark} {name}" + (f" — {url[:60]}…" if len(url) > 60 else (f" — {url}" if url else "")))
+            trig = str(entry.get("trigger") or "")
+            lines.append(f"  • {name}" + (f' — "{trig}"' if trig else ""))
     return "\n".join(lines)
 
 

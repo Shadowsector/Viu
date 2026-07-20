@@ -104,7 +104,7 @@ def test_comfy_lab_awaits_telegram(tmp_path, monkeypatch):
     (tmp_path / "Viu").mkdir(parents=True, exist_ok=True)
     ensure_task_file(cfg, action="lean on window")
     session = new_session(COMFY_TOPIC)
-    session.steps_total = 7
+    session.steps_total = 8
     session.meta["action"] = "lean on window"
     save_session(cfg, session)
 
@@ -133,7 +133,7 @@ def test_format_lab_progress_comfy_labels():
     from viu.lab.progress import format_lab_progress
 
     s = new_session(COMFY_TOPIC)
-    s.steps_total = 6
+    s.steps_total = 8
     s.step = 1
     text = format_lab_progress(s, "ok")
     assert "Comfy online" in text

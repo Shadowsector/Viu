@@ -292,16 +292,100 @@ class ComfyTripleTool(Tool):
 class ComfyLoraListTool(Tool):
     name = "comfy_lora_list"
     description = (
-        "Реестр LoRA (.viu/comfy_loras.json): привязки catalog_slug → файл, "
-        "статус на диске в ComfyUI/models/loras/."
+        "Проиндексированные LoRA из ComfyUI/models/loras/ — номера для выбора перед пулом. "
+        "scan=1 — пересканировать папку."
     )
+    parameters = {"scan": "1 = пересканировать models/loras/"}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.lora import ensure_registry, list_registry_status, scan_loras
+
+        ensure_registry(ctx.config)
+        if str(args.get("scan") or "").lower() in ("1", "true", "yes"):
+            scan_loras(ctx.config)
+        return ToolResult(True, list_registry_status(ctx.config))
+
+
+class ComfyLoraScanTool(Tool):
+    name = "comfy_lora_scan"
+    description = "Пересканировать ComfyUI/models/loras/ и обновить индекс .viu/comfy_loras_index.json."
     parameters = {}
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
-        from ..integrations.comfy.lora import ensure_registry, list_registry_status
+        from ..integrations.comfy.lora import format_lora_pick_message, scan_loras
 
-        ensure_registry(ctx.config)
-        return ToolResult(True, list_registry_status(ctx.config))
+        entries = scan_loras(ctx.config)
+        return ToolResult(True, format_lora_pick_message(entries))
+
+
+class ComfyLoraPickTool(Tool):
+    name = "comfy_lora_pick"
+    description = (
+        "Выбрать LoRA для текущего Comfy-пула. pick=1,3 | none | all. "
+        "Работает когда Lab ждёт awaiting_lora_pick."
+    )
+    parameters = {
+        "pick": "1 | 1,3 | all | none",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.lora import load_index, parse_lora_pick_reply
+        from ..lab.comfy_pipeline import COMFY_TOPIC, apply_lora_pick_decision
+        from ..lab.session import load_session
+
+        raw = str(args.get("pick") or "").strip()
+        if not raw:
+            return ToolResult(False, "Нужен pick=1,3 или pick=none.")
+        session = load_session(ctx.config, COMFY_TOPIC)
+        if session is None:
+            return ToolResult(False, "Нет lab comfy сессии.")
+        entries = load_index(ctx.config)
+        max_idx = max((e.index for e in entries), default=0)
+        text = raw if raw.lower().startswith(("lora", "лора", "none", "нет")) else f"lora: {raw}"
+        indices = parse_lora_pick_reply(text, max_index=max_idx)
+        if indices is None:
+            return ToolResult(False, "Не поняла pick — пример: pick=1,2 или pick=none")
+        if session.status != "awaiting_lora_pick":
+            return ToolResult(
+                False,
+                f"Сейчас статус {session.status}, не awaiting_lora_pick. "
+                "Дождись шага «Выбор LoRA» после одобрения промпта.",
+            )
+        msg = apply_lora_pick_decision(ctx.config, session, indices)
+        return ToolResult(True, msg)
+
+
+class ComfyLoraNoteTool(Tool):
+    name = "comfy_lora_note"
+    description = (
+        "Заметки к файлу LoRA: trigger-слова, strength, tags. "
+        "lora_file=name.safetensors trigger=... strength=0.85 tags=wan,touch"
+    )
+    parameters = {
+        "lora_file": "имя файла в loras/",
+        "trigger": "слова в промпт",
+        "strength": "0.85",
+        "tags": "через запятую (для списка)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.lora import update_library_entry
+
+        strength_raw = args.get("strength")
+        strength = None
+        if strength_raw not in (None, ""):
+            try:
+                strength = float(strength_raw)
+            except (TypeError, ValueError):
+                strength = 0.85
+        ok, msg = update_library_entry(
+            ctx.config,
+            str(args.get("lora_file") or ""),
+            trigger=str(args.get("trigger") or ""),
+            strength=strength,
+            tags=str(args.get("tags") or ""),
+        )
+        return ToolResult(ok, msg)
 
 
 class ComfyLoraBindTool(Tool):
