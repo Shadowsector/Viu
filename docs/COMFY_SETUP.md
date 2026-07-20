@@ -79,10 +79,25 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 - вручную крутить workflow;
 - подключить **LoRA** / эксперименты.
 
-### LoRA / v2v — как вижу
+### LoRA — простой сценарий
 
-1. **Сначала файлы:** LoRA в `ComfyUI/models/loras/`, v2v-ноды/модели — как обычно в Comfy.
-2. **Потом Вью:** tool вроде `comfy_lora_list` / правка workflow JSON (имя LoRA + strength в T2V-граф) — без обязательного кликанья в UI.
-3. **v2v / I2V:** уже задел — seed last-frame → следующий клип; полный v2v — отдельный workflow, когда появятся файлы и задача в каталоге.
+1. **Скачай** `.safetensors` в `ComfyUI/models/loras/` (можно подпапки).
+2. **Индекс:** `comfy_lora_scan` или `comfy_lora_list scan=1` — Вью нумерует файлы.
+3. **Перед каждым пулом** (после одобрения промпта) Вью спросит в Telegram/чате:
+   - `lora: 1` / `lora: 1,3` / `lora: all` / `lora: none`
+4. **Заметки к файлу** (trigger, strength): `comfy_lora_note lora_file=foo.safetensors trigger=...`
+5. **Away:** без LoRA или повтор последнего выбора (`lora_last_pick`).
 
-Итого: UI Comfy — отладочный люк; пайплайн — через Вью. LoRA не «магия из воздуха»: сначала артефакт на диске, потом Вью вшивает в шаблон.
+Опционально: `comfy_lora_bind` / `download_url` — если всё же хочешь автоподкачку по URL.
+
+### Что искать на Civitai / HF (теги)
+
+База модели: **Wan 2.1**, **wan2.1**, **wan t2v**, **wan i2v**, **video lora**, **motion lora**.
+
+По действиям (примеры):
+- `touch_self` / интим: `self touch`, `masturbation`, `solo`, `nsfw motion`
+- сидеть/лежать: `sit`, `lie down`, `sleep`, `get up`
+- ходьба: `walk cycle`, `locomotion`, `stride`
+- жесты: `wave`, `reach`, `pick up`, `drink`, `eat`
+
+Фильтр: Type = LoRA, Base model содержит Wan / video. Смотри preview-GIF и trigger words в описании.

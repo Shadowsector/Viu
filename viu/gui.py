@@ -1858,6 +1858,7 @@ class ViuGUI:
             "running",
             "paused",
             "awaiting_prompt",
+            "awaiting_lora_pick",
             "awaiting_clip_pick",
         ):
             if comfy.status == "awaiting_prompt" and auto:

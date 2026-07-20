@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from .paths import comfy_workflows_dir
 
@@ -268,6 +268,70 @@ def ensure_mp4_output(
         },
         "_meta": {"title": "SaveVideo"},
     }
+    return wf
+
+
+def inject_loras(
+    workflow: Dict[str, Any],
+    loras: Sequence[Union[Any, str, Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """Вставить цепочку LoraLoaderModelOnly между UNET и ModelSamplingSD3/KSampler."""
+    if not loras:
+        return workflow
+    from .lora import LoraSpec, _parse_lora_item
+
+    specs: List[LoraSpec] = []
+    for raw in loras:
+        if isinstance(raw, LoraSpec):
+            specs.append(raw)
+        else:
+            spec = _parse_lora_item(raw)
+            if spec is not None:
+                specs.append(spec)
+    if not specs:
+        return workflow
+
+    wf = json.loads(json.dumps(workflow))
+    consumer_id: Optional[str] = None
+    for nid, node in wf.items():
+        if isinstance(node, dict) and node.get("class_type") == "ModelSamplingSD3":
+            consumer_id = str(nid)
+            break
+    if consumer_id is None:
+        for nid, node in wf.items():
+            if not isinstance(node, dict):
+                continue
+            if node.get("class_type") in ("KSampler", "KSamplerAdvanced", "SamplerCustom"):
+                consumer_id = str(nid)
+                break
+    if consumer_id is None:
+        return wf
+
+    consumer = wf.get(consumer_id)
+    if not isinstance(consumer, dict):
+        return wf
+    model_ref = (consumer.get("inputs") or {}).get("model")
+    if not isinstance(model_ref, list) or len(model_ref) < 2:
+        return wf
+
+    prev_out: list = list(model_ref)
+    for i, spec in enumerate(specs):
+        lora_id = _next_node_id(wf, 850 + i)
+        lora_name = spec.file
+        if spec.subfolder:
+            lora_name = f"{spec.subfolder}/{spec.file}"
+        wf[lora_id] = {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {
+                "model": prev_out,
+                "lora_name": lora_name,
+                "strength_model": float(spec.strength),
+            },
+            "_meta": {"title": f"LoRA {spec.file}"},
+        }
+        prev_out = [lora_id, 0]
+
+    consumer.setdefault("inputs", {})["model"] = prev_out
     return wf
 
 

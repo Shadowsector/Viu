@@ -1,0 +1,27 @@
+{
+  "_viu_rev": 1,
+  "_comment": "Привязка LoRA к catalog_slug. Файлы → ComfyUI/models/loras/. download_url — только доверенные (HF, свой CDN). Civitai: VIU_CIVITAI_TOKEN.",
+  "defaults": [],
+  "by_slug": {
+    "touch_self": {
+      "loras": [
+        {
+          "file": "wan_touch_self.safetensors",
+          "strength": 0.85,
+          "trigger": "touching herself, natural self-touch motion"
+        }
+      ],
+      "download": {
+        "file": "wan_touch_self.safetensors",
+        "url": ""
+      }
+    }
+  },
+  "library": {
+    "wan_touch_self.safetensors": {
+      "download_url": "",
+      "trigger": "touching herself, natural self-touch motion",
+      "notes": "Замени download_url на прямую ссылку .safetensors или HuggingFace. Пока пусто — положи файл вручную в models/loras/."
+    }
+  }
+}

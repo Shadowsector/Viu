@@ -10,7 +10,7 @@ def _cfg(tmp_path: Path, monkeypatch) -> Config:
     monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
     monkeypatch.setenv("VIU_LIBRARY_ROOT", str(tmp_path / "Library"))
     data = tmp_path / ".viu"
-    data.mkdir()
+    data.mkdir(parents=True, exist_ok=True)
     (tmp_path / "Library").mkdir(parents=True, exist_ok=True)
     return Config(root=tmp_path / "Viu", data_dir=data, library_root=str(tmp_path / "Library"))
 
