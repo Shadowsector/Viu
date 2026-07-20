@@ -4,6 +4,7 @@ from pathlib import Path
 
 from viu.config import Config
 from viu.integrations.comfy.naming import (
+    comfy_filename_prefix,
     display_video_stem,
     max_clips_per_action,
     slug_at_quota,
@@ -34,6 +35,23 @@ def test_display_video_stem_transition():
 def test_display_video_stem_loop():
     stem = display_video_stem(catalog_slug="walk", looped=True, seq=2)
     assert stem == "Girl_Walk_loop_02"
+
+
+def test_display_video_stem_sleep_transition():
+    stem = display_video_stem(
+        catalog_slug="sleep_idle",
+        enters_from=["lie_down"],
+        take_id="take_a",
+        seq=1,
+    )
+    assert stem == "Girl_Lie_down_to_Sleep_idle_take_a_01"
+
+
+def test_comfy_filename_prefix_sanitizes():
+    assert comfy_filename_prefix("Girl_Sit_idle_to_Stand_up_take_a_03") == (
+        "Girl_Sit_idle_to_Stand_up_take_a_03"
+    )
+    assert comfy_filename_prefix("") == "viu_mocap"
 
 
 def test_slug_at_quota(monkeypatch, tmp_path):

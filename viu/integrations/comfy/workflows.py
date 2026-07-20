@@ -197,13 +197,36 @@ def _next_node_id(wf: Dict[str, Any], start: int = 900) -> str:
     return str(n)
 
 
+_PREFIX_SAVER_NODES = (
+    "SaveVideo",
+    "VHS_VideoCombine",
+    "SaveAnimatedWEBP",
+    "SaveWEBM",
+    "SaveImage",
+)
+
+
+def inject_filename_prefix(workflow: Dict[str, Any], prefix: str) -> Dict[str, Any]:
+    """Подставить читаемый префикс во все узлы сохранения."""
+    prefix = (prefix or "").strip() or "viu_mocap"
+    wf = json.loads(json.dumps(workflow))
+    for node in wf.values():
+        if not isinstance(node, dict):
+            continue
+        if node.get("class_type") in _PREFIX_SAVER_NODES:
+            node.setdefault("inputs", {})["filename_prefix"] = prefix
+    return wf
+
+
 def ensure_mp4_output(
     workflow: Dict[str, Any],
     *,
     fps: float = MOCAP_FPS,
+    filename_prefix: str = "viu_mocap",
 ) -> Dict[str, Any]:
     """Заменить WEBP/GIF-сейвер на CreateVideo → SaveVideo (mp4/h264)."""
     wf = json.loads(json.dumps(workflow))
+    prefix = (filename_prefix or "").strip() or "viu_mocap"
 
     # Уже есть SaveVideo — только выставить mp4/h264/fps на CreateVideo
     has_save = any(
@@ -222,7 +245,7 @@ def ensure_mp4_output(
                 inp = node.setdefault("inputs", {})
                 inp["format"] = "mp4"
                 inp["codec"] = "h264"
-                inp.setdefault("filename_prefix", "viu_mocap")
+                inp["filename_prefix"] = prefix
         # убрать старые анимированные сейверы, если остались рядом
         for nid in list(wf.keys()):
             node = wf[nid]
@@ -262,13 +285,13 @@ def ensure_mp4_output(
         "class_type": "SaveVideo",
         "inputs": {
             "video": [create_id, 0],
-            "filename_prefix": "viu_mocap",
+            "filename_prefix": prefix,
             "format": "mp4",
             "codec": "h264",
         },
         "_meta": {"title": "SaveVideo"},
     }
-    return wf
+    return inject_filename_prefix(wf, prefix)
 
 
 def inject_loras(
@@ -339,6 +362,7 @@ def prepare_mocap_workflow(
     workflow: Dict[str, Any],
     *,
     action: str = "",
+    filename_prefix: str = "",
 ) -> Dict[str, Any]:
     """Кадр/длина по действию (стоя≠лёжа) + mp4 — поверх любого t2v на диске."""
     from .framing import frame_spec_for_action
@@ -347,7 +371,9 @@ def prepare_mocap_workflow(
     wf = inject_vertical_frame(
         workflow, width=spec.width, height=spec.height, length=spec.length
     )
-    return ensure_mp4_output(wf, fps=spec.fps)
+    prefix = (filename_prefix or "").strip() or "viu_mocap"
+    wf = ensure_mp4_output(wf, fps=spec.fps, filename_prefix=prefix)
+    return inject_filename_prefix(wf, prefix)
 
 
 def workflow_is_stub(path: Path) -> bool:

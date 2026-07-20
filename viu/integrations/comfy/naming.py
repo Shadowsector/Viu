@@ -28,6 +28,17 @@ def normalize_slug_for_name(slug: str) -> str:
     return normalize_catalog_slug(slug)
 
 
+def comfy_filename_prefix(stem: str, *, max_len: int = 100) -> str:
+    """Префикс для Comfy SaveVideo — без пробелов и лишней длины."""
+    s = re.sub(r"[^a-zA-Z0-9_]+", "_", (stem or "").strip())
+    s = re.sub(r"_+", "_", s).strip("_")
+    if not s:
+        return "viu_mocap"
+    if len(s) > max_len:
+        s = s[:max_len].rstrip("_")
+    return s or "viu_mocap"
+
+
 def max_clips_per_action() -> int:
     try:
         return max(1, int(os.environ.get("VIU_COMFY_MAX_PER_ACTION", "10")))

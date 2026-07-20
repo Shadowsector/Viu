@@ -59,6 +59,18 @@ def run_single_angle(
         return False, "LoRA: " + "; ".join(lora_notes), []
     prompt = append_trigger_words(prompt, loras)
 
+    from .naming import comfy_filename_prefix, display_video_stem, normalize_slug_for_name
+
+    base_slug = normalize_slug_for_name(catalog_slug or slug)
+    display_stem = display_video_stem(
+        catalog_slug=base_slug,
+        enters_from=enters_from,
+        looped=looped,
+        take_id=angle.id,
+        seq=seq,
+    )
+    file_prefix = comfy_filename_prefix(display_stem)
+
     wf_name = workflow_name or choose_workflow_name(config, has_seed_image=False)
     try:
         wf = load_workflow(config, wf_name)
@@ -69,7 +81,7 @@ def run_single_angle(
     wf = inject_negative_prompt(wf, negative)
     wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
     wf = inject_loras(wf, loras)
-    wf = prepare_mocap_workflow(wf, action=action)
+    wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
 
     client = _client(config)
     ok, ping = client.ping()
@@ -104,16 +116,6 @@ def run_single_angle(
 
     refs = comfy_refs_dir(config)
     out_dir = comfy_out_dir(config)
-    from .naming import display_video_stem, normalize_slug_for_name
-
-    base_slug = normalize_slug_for_name(catalog_slug or slug)
-    display_stem = display_video_stem(
-        catalog_slug=base_slug,
-        enters_from=enters_from,
-        looped=looped,
-        take_id=angle.id,
-        seq=seq,
-    )
     saved: List[str] = []
     copy_notes: List[str] = []
     for i, meta in enumerate(files):

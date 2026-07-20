@@ -71,8 +71,8 @@ def comfy_pipeline_status(config: Config) -> str:
             lines.append(f"  очередь Comfy: running={running}, pending={pending}")
             if running or pending:
                 lines.append(
-                    "  (viu_mocap_*.mp4 в ComfyUI/output — сырой вывод; "
-                    "после скачивания → Girl_* в ComfyOut/Refs)"
+                    "  (ComfyUI/output: Girl_<slug>_take_* — читаемые имена; "
+                    "копии → Lab/ComfyOut и Lab/Refs)"
                 )
         except Exception:
             pass
