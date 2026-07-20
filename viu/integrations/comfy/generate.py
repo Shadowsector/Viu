@@ -15,6 +15,7 @@ from .model_pref import choose_workflow_name
 from .paths import comfy_out_dir, comfy_refs_dir
 from .prompts import diversify_action, mocap_negative, mocap_prompt
 from .workflows import (
+    inject_loras,
     inject_negative_prompt,
     inject_seed,
     inject_text_prompt,
@@ -49,6 +50,15 @@ def run_single_angle(
 ) -> Tuple[bool, str, List[str]]:
     prompt = mocap_prompt(action, angle)
     negative = mocap_negative()
+    base_slug = (catalog_slug or slug or "").strip()
+    from .lora import append_trigger_words, ensure_lora_files, resolve_loras_for_slug
+
+    loras = resolve_loras_for_slug(config, base_slug)
+    loras_ok, lora_notes = ensure_lora_files(config, loras, auto_fetch=True)
+    if loras and not loras_ok:
+        return False, "LoRA: " + "; ".join(lora_notes), []
+    prompt = append_trigger_words(prompt, loras)
+
     wf_name = workflow_name or choose_workflow_name(config, has_seed_image=False)
     try:
         wf = load_workflow(config, wf_name)
@@ -58,6 +68,7 @@ def run_single_angle(
     wf = inject_text_prompt(wf, prompt)
     wf = inject_negative_prompt(wf, negative)
     wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
+    wf = inject_loras(wf, loras)
     wf = prepare_mocap_workflow(wf, action=action)
 
     client = _client(config)

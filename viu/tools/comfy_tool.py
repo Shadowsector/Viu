@@ -66,6 +66,14 @@ class ComfyStatusTool(Tool):
             lines.append("Запуск: comfy_ensure или lab_start topic=comfy.")
             lines.append("Гайд: docs/COMFY_SETUP.md")
         try:
+            from ..integrations.comfy.lora import ensure_registry, list_registry_status
+
+            ensure_registry(ctx.config)
+            lines.append("")
+            lines.append(list_registry_status(ctx.config))
+        except Exception as exc:
+            lines.append(f"(lora registry: {exc})")
+        try:
             from ..integrations.comfy.pipeline_status import comfy_pipeline_status
 
             lines.append("")
@@ -257,6 +265,7 @@ class ComfyTripleTool(Tool):
     parameters = {
         "action": "действие / описание motion",
         "slug": "префикс имени файлов",
+        "catalog_slug": "slug каталога (для LoRA)",
         "timeout": "секунд на один угол (900)",
     }
 
@@ -265,13 +274,97 @@ class ComfyTripleTool(Tool):
         if not action:
             return ToolResult(False, "Нужен action=.")
         slug = str(args.get("slug") or "mocap").strip()
+        catalog_slug = str(args.get("catalog_slug") or slug).strip()
         try:
             timeout = float(args.get("timeout") or 900)
         except (TypeError, ValueError):
             timeout = 900.0
         ok, msg, _ = run_triple_angles(
-            ctx.config, action=action, slug=slug, timeout_each=timeout
+            ctx.config,
+            action=action,
+            slug=slug,
+            catalog_slug=catalog_slug,
+            timeout_each=timeout,
         )
+        return ToolResult(ok, msg)
+
+
+class ComfyLoraListTool(Tool):
+    name = "comfy_lora_list"
+    description = (
+        "Реестр LoRA (.viu/comfy_loras.json): привязки catalog_slug → файл, "
+        "статус на диске в ComfyUI/models/loras/."
+    )
+    parameters = {}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.lora import ensure_registry, list_registry_status
+
+        ensure_registry(ctx.config)
+        return ToolResult(True, list_registry_status(ctx.config))
+
+
+class ComfyLoraBindTool(Tool):
+    name = "comfy_lora_bind"
+    description = (
+        "Привязать LoRA к catalog_slug. catalog_slug=touch_self lora_file=name.safetensors "
+        "strength=0.85 trigger=... download_url=https://... replace=1 — заменить список."
+    )
+    parameters = {
+        "catalog_slug": "slug в animation_catalog",
+        "lora_file": "имя файла в models/loras/",
+        "strength": "0.85",
+        "trigger": "слова в промпт",
+        "subfolder": "подпапка в loras/",
+        "download_url": "прямая ссылка .safetensors (опционально)",
+        "replace": "1 = заменить loras у slug, не дописывать",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.lora import bind_slug
+
+        try:
+            strength = float(args.get("strength") or 0.85)
+        except (TypeError, ValueError):
+            strength = 0.85
+        replace = str(args.get("replace") or "").lower() in ("1", "true", "yes")
+        ok, msg = bind_slug(
+            ctx.config,
+            catalog_slug=str(args.get("catalog_slug") or ""),
+            lora_file=str(args.get("lora_file") or ""),
+            strength=strength,
+            trigger=str(args.get("trigger") or ""),
+            subfolder=str(args.get("subfolder") or ""),
+            download_url=str(args.get("download_url") or ""),
+            replace=replace,
+        )
+        return ToolResult(ok, msg)
+
+
+class ComfyLoraFetchTool(Tool):
+    name = "comfy_lora_fetch"
+    description = (
+        "Скачать LoRA из реестра (download_url). catalog_slug= — только для slug; "
+        "all=1 — все недостающие; force=1 — перекачать."
+    )
+    parameters = {
+        "catalog_slug": "скачать LoRA для одного slug",
+        "all": "1 = все недостающие из реестра",
+        "force": "1 = перекачать даже если файл есть",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.lora import ensure_registry, fetch_all_missing, fetch_for_slug
+
+        ensure_registry(ctx.config)
+        force = str(args.get("force") or "").lower() in ("1", "true", "yes")
+        if str(args.get("all") or "").lower() in ("1", "true", "yes"):
+            ok, msg = fetch_all_missing(ctx.config, force=force)
+            return ToolResult(ok, msg)
+        slug = str(args.get("catalog_slug") or "").strip()
+        if not slug:
+            return ToolResult(False, "Нужен catalog_slug= или all=1.")
+        ok, msg = fetch_for_slug(ctx.config, slug, force=force)
         return ToolResult(ok, msg)
 
 

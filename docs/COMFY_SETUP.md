@@ -79,10 +79,16 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 - вручную крутить workflow;
 - подключить **LoRA** / эксперименты.
 
-### LoRA / v2v — как вижу
+### LoRA / v2v — автоматизация Вью
 
-1. **Сначала файлы:** LoRA в `ComfyUI/models/loras/`, v2v-ноды/модели — как обычно в Comfy.
-2. **Потом Вью:** tool вроде `comfy_lora_list` / правка workflow JSON (имя LoRA + strength в T2V-граф) — без обязательного кликанья в UI.
-3. **v2v / I2V:** уже задел — seed last-frame → следующий клип; полный v2v — отдельный workflow, когда появятся файлы и задача в каталоге.
+1. **Реестр** `.viu/comfy_loras.json` — привязка `catalog_slug` → LoRA (файл, strength, trigger, `download_url`).
+2. **Файлы** попадают в `ComfyUI/models/loras/` (Вью качает сама, если URL в реестре).
+3. **При генерации** Вью подставляет только LoRA текущего slug (без лишнего VRAM); для другого slug — другая цепочка.
+4. **Tools:**
+   - `comfy_lora_list` — реестр + ✓/✗ на диске
+   - `comfy_lora_bind catalog_slug=touch_self lora_file=....safetensors strength=0.85 download_url=https://...`
+   - `comfy_lora_fetch catalog_slug=touch_self` или `all=1`
+5. **Civitai:** env `VIU_CIVITAI_TOKEN` для ссылок, требующих авторизации.
+6. **v2v / I2V:** seed last-frame → следующий клип; полный v2v — отдельный workflow.
 
-Итого: UI Comfy — отладочный люк; пайплайн — через Вью. LoRA не «магия из воздуха»: сначала артефакт на диске, потом Вью вшивает в шаблон.
+Итого: положи URL один раз в реестр (или файл вручную) — дальше MoCap сам подхватывает/выгружает LoRA по slug.
