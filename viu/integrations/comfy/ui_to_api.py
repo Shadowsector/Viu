@@ -16,6 +16,8 @@ _WIDGET_ORDER: Dict[str, List[str]] = {
     "SaveAnimatedWEBP": ["filename_prefix", "fps", "lossless", "quality", "method"],
     "SaveWEBM": ["filename_prefix", "codec", "fps", "crf"],
     "SaveImage": ["filename_prefix"],
+    "CreateVideo": ["fps"],
+    "SaveVideo": ["filename_prefix", "format", "codec"],
     "VAEDecode": [],
     "CLIPVisionLoader": ["clip_name"],
     "LoadImage": ["image"],

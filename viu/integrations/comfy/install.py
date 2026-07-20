@@ -416,14 +416,16 @@ def ensure_comfy_installed(
 
     ok_wf, wf_msg = download_wan_workflows(config, progress=progress)
     lines.append("Workflows:\n" + wf_msg)
-    if not ok_wf:
-        lines.append("(часть workflows не скачалась — попробую шаблоны из пакета Вью)")
-        try:
-            from .workflows import ensure_workflow_templates
+    try:
+        from .workflows import ensure_workflow_templates
 
-            ensure_workflow_templates(config, overwrite_stubs=True)
-        except Exception as exc:  # noqa: BLE001
-            lines.append(f"шаблоны: {exc}")
+        merged = ensure_workflow_templates(config, overwrite_stubs=not ok_wf)
+        if merged:
+            lines.append("Шаблоны Viu (SaveVideo rev4): " + ", ".join(p.name for p in merged))
+    except Exception as exc:  # noqa: BLE001
+        lines.append(f"шаблоны: {exc}")
+    if not ok_wf:
+        lines.append("(часть workflows не скачалась с GitHub — использую шаблоны из пакета Вью)")
 
     if with_pip:
         ok_pip, pip_msg = pip_install_requirements(dest, progress=progress)

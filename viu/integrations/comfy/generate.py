@@ -82,7 +82,6 @@ def run_single_angle(
     wf = inject_negative_prompt(wf, negative)
     wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
     wf = inject_loras(wf, loras)
-    wf = inject_loras(wf, loras)
     wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
 
     client = _client(config)
@@ -99,6 +98,9 @@ def run_single_angle(
             ok_face, stage_msg, input_name = stage_face_for_comfy(config, face)
             if ok_face and client.has_node_class("ReActorFaceSwap"):
                 wf = inject_face_swap(wf, face_image=input_name)
+                from .workflows import inject_filename_prefix
+
+                wf = inject_filename_prefix(wf, file_prefix)
                 face_note = f"лицо: {face.name}"
             elif ok_face:
                 face_note = (
@@ -196,7 +198,9 @@ def run_single_angle(
             )
         saved.append(str(dest_ref))
 
-    note = f"{angle.id}: → Lab/Refs ({len(saved)} файл(ов))"
+    note = f"{angle.id}: → Lab/Refs ({len(saved)} файл(ов)) [{file_prefix}]"
+    if files:
+        note += f" native={files[0].get('filename', '?')}"
     if face_note:
         note += f" [{face_note}]"
     if copy_notes:

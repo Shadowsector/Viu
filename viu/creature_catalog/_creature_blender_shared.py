@@ -250,12 +250,7 @@ def post_import_visibility(objects):
             obj.hide_render = True
             continue
         if obj.type == "MESH":
-            obj.hide_set(False)
-            try:
-                obj.hide_viewport = False
-            except AttributeError:
-                pass
-            obj.hide_render = False
+            set_mesh_viewport_visible(obj, True)
             vc = len(obj.data.vertices) if obj.data else 0
             if vc > 32:
                 body.append(obj)
@@ -289,6 +284,62 @@ def hide_helpers(objects):
                 obj.hide_render = True
         except (AttributeError, ReferenceError):
             pass
+
+
+def hide_rig_helpers_for_render(objects) -> None:
+    """Спрятать только WGT/cs_/empty/curve — не трогать body/clothing по подстроке в имени."""
+    for obj in objects:
+        try:
+            if is_wgt_name(obj.name) or is_control_shape_name(obj.name) or is_gzm_name(obj.name):
+                obj.hide_set(True)
+                obj.hide_render = True
+            elif obj.type == "EMPTY":
+                obj.hide_set(True)
+                obj.hide_render = True
+            elif obj.type == "CURVE":
+                obj.hide_set(True)
+                obj.hide_render = True
+            elif obj.type == "ARMATURE":
+                obj.data.display_type = "STICK"
+        except (AttributeError, ReferenceError):
+            pass
+
+
+def ensure_creature_meshes_render_visible(objects) -> tuple[int, int]:
+    """Включить render-флаги у видимых в viewport мешей (импорт DAZ часто гасит body)."""
+    body_n = 0
+    cloth_n = 0
+    for obj in objects:
+        if obj.type != "MESH" or skip_mesh(obj.name):
+            continue
+        if obj.hide_get():
+            continue
+        set_mesh_viewport_visible(obj, True)
+        if is_clothing_mesh(obj.name):
+            cloth_n += 1
+        elif is_body_mesh_name(obj.name) or len(obj.data.vertices if obj.data else 0) > 500:
+            body_n += 1
+    return body_n, cloth_n
+
+
+def creature_shot_render_warning(objects) -> str:
+    """Предупреждение перед скрином: тело видно в viewport, но выключено в рендере."""
+    issues: List[str] = []
+    body_vp = body_render = 0
+    for obj in objects:
+        if obj.type != "MESH" or skip_mesh(obj.name):
+            continue
+        if not (is_body_mesh_name(obj.name) or len(obj.data.vertices if obj.data else 0) > 500):
+            continue
+        if not obj.hide_get():
+            body_vp += 1
+        if not getattr(obj, "hide_render", False) and getattr(obj, "visible_camera", True):
+            body_render += 1
+    if body_vp and not body_render:
+        issues.append("тело в viewport, но выкл. в рендере")
+    if not body_vp and not body_render:
+        issues.append("тела не видно")
+    return "; ".join(issues)
 
 
 def hide_rig_viewport(objects) -> None:

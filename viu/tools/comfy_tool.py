@@ -21,7 +21,7 @@ from ..integrations.comfy import (
 from ..integrations.comfy.generate import run_triple_angles
 from ..integrations.comfy.model_pref import PREFERRED_FAMILY, probe_models
 from ..integrations.comfy.process import ensure_comfy_running
-from ..integrations.comfy.workflows import ensure_workflow_templates
+from ..integrations.comfy.workflows import ensure_workflow_templates, prepare_mocap_workflow
 from .base import AgentContext, Tool, ToolResult
 
 
@@ -177,8 +177,18 @@ class ComfyRunTool(Tool):
         except (FileNotFoundError, ValueError, OSError) as exc:
             return ToolResult(False, str(exc))
 
+        from ..integrations.comfy.naming import comfy_filename_prefix, display_video_stem
+
+        display_stem = display_video_stem(catalog_slug=slug)
+        file_prefix = comfy_filename_prefix(display_stem)
+
         if prompt:
             wf = inject_text_prompt(wf, prompt)
+            wf = prepare_mocap_workflow(wf, action=prompt, filename_prefix=file_prefix)
+        else:
+            from ..integrations.comfy.workflows import inject_filename_prefix
+
+            wf = inject_filename_prefix(wf, file_prefix)
 
         client = _client(ctx)
         ok, ping = client.ping()
@@ -204,7 +214,8 @@ class ComfyRunTool(Tool):
         saved: list[str] = []
         for i, meta in enumerate(files):
             ext = Path(meta["filename"]).suffix or ".png"
-            dest_out = out_dir / f"{slug}_{i}{ext}"
+            name = f"{display_stem}{ext}" if i == 0 else f"{display_stem}_{i}{ext}"
+            dest_out = out_dir / name
             try:
                 client.download_view(
                     meta["filename"],

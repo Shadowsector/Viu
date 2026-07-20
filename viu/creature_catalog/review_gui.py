@@ -407,7 +407,7 @@ class CreatureCatalogReviewWindow:
         if e.photo_ok:
             photo_msg = "✓ Скрины одобрены"
         elif e.has_photo_files():
-            photo_msg = "Скрины есть — проверь и жми «Скрины ок» или «Плохо»"
+            photo_msg = "📷 Скрины сняты — проверь и жми «Скрины ок» или «Плохо»"
         if e.photo_notes:
             photo_msg += f" · {e.photo_notes[:80]}"
         self.photo_status.config(text=photo_msg)

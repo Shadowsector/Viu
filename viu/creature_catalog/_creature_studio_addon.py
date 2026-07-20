@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 2, 6),
+    "version": (0, 2, 7),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -13,6 +13,7 @@ import importlib.util
 import json
 import math
 import sys
+import time
 import traceback
 from pathlib import Path
 
@@ -209,7 +210,8 @@ def _render_shots(entry: dict) -> tuple[str, str, str]:
     S.setup_shot_render(scene, res=768)
     S.ensure_shot_lights()
     objs = list(_STATE.get("creature_objects") or [])
-    S.hide_helpers(objs)
+    S.ensure_creature_meshes_render_visible(objs)
+    S.hide_rig_helpers_for_render(objs)
     creature_root = _STATE.get("creature_root")
     hidden = S.isolate_creature_for_render(creature_root)
     try:
@@ -436,6 +438,19 @@ class VIU_OT_StudioApplyHeight(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class VIU_OT_StudioShowBody(bpy.types.Operator):
+    bl_idname = "viu.studio_show_body"
+    bl_label = "Показать тело для скрина"
+
+    def execute(self, context):
+        objs = list(_STATE.get("creature_objects") or [])
+        body_n, cloth_n = S.ensure_creature_meshes_render_visible(objs)
+        props = context.scene.viu_creature_studio
+        props.shot_status = f"Тело: {body_n} меш., одежда: {cloth_n} меш."
+        self.report({"INFO"}, props.shot_status)
+        return {"FINISHED"}
+
+
 class VIU_OT_StudioScreenshot(bpy.types.Operator):
     bl_idname = "viu.studio_screenshot"
     bl_label = "Снять скрины"
@@ -460,6 +475,10 @@ class VIU_OT_StudioScreenshot(bpy.types.Operator):
                 **_markup_fields(props, entry),
             )
             self.report({"INFO"}, f"PNG: front + ¾ + side → {Path(front).parent.name}")
+            props.shot_status = (
+                f"✓ Скрины сняты: front · ¾ · side → Processed/{Path(front).parent.name}/"
+            )
+            props.shot_at = time.strftime("%H:%M:%S")
         except Exception as exc:
             self.report({"ERROR"}, str(exc))
             traceback.print_exc()
@@ -629,6 +648,16 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         layout.operator("viu.studio_apply_height", icon="ARROW_LEFTRIGHT")
         layout.separator()
         layout.label(text="Эталон = FBX (только существо)", icon="INFO")
+        warn = S.creature_shot_render_warning(list(_STATE.get("creature_objects") or []))
+        if warn:
+            layout.label(text=f"⚠ {warn}", icon="ERROR")
+        shot_msg = (props.shot_status or "").strip()
+        if shot_msg:
+            icon = "RENDER_STILL" if shot_msg.startswith("✓") else "INFO"
+            layout.label(text=shot_msg[:72], icon=icon)
+        if props.shot_at:
+            layout.label(text=f"Снято в {props.shot_at}", icon="TIME")
+        layout.operator("viu.studio_show_body", icon="MESH_DATA")
         layout.operator("viu.studio_screenshot", icon="RENDER_STILL")
         layout.operator("viu.studio_save", icon="EXPORT")
         layout.prop(props, "photo_notes")
@@ -648,6 +677,8 @@ class VIU_CreatureStudioProps(bpy.types.PropertyGroup):
     body_mesh: StringProperty(name="Меш роста", default="AUTO")
     photo_notes: StringProperty(name="Заметка", default="")
     shanya_status: StringProperty(name="Шаня", default="")
+    shot_status: StringProperty(name="Скрины", default="")
+    shot_at: StringProperty(name="Время скрина", default="")
     size_class: EnumProperty(name="Класс", items=_size_enum_items)
     locomotion: EnumProperty(name="Locomotion", items=_loco_enum_items)
     genital_profile: EnumProperty(name="Гениталии", items=_genital_enum_items, default=0)
@@ -666,6 +697,7 @@ _CLASSES = (
     VIU_OT_StudioBurstingHead,
     VIU_OT_StudioApplyMarkup,
     VIU_OT_StudioApplyHeight,
+    VIU_OT_StudioShowBody,
     VIU_OT_StudioScreenshot,
     VIU_OT_StudioSaveFbx,
     VIU_OT_StudioReportIssue,

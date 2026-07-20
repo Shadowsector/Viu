@@ -606,6 +606,7 @@ def harvest_comfy_native_output(
     """Скопировать свежие mp4 из U:\\Viu\\ComfyUI\\output\\ → Lab/Refs.
 
     Native Comfy всегда пишет туда; без копирования оценка клипов «пустая».
+    Имена viu_mocap / ComfyUI не копируем — MoCap уже кладёт Girl_* в Lab/Refs.
     """
     from .paths import resolve_comfy_root
 
@@ -625,6 +626,10 @@ def harvest_comfy_native_output(
     n = 0
     lines = [f"Сбор из {src_dir} → ComfyOut + Refs:"]
     for src in mp4s:
+        low = src.name.lower()
+        if low.startswith(("viu_mocap", "comfyui")):
+            lines.append(f"  skip generic {src.name}")
+            continue
         dest_ref = refs / src.name
         dest_out = out_dir / src.name
         if dest_ref.is_file() and dest_ref.stat().st_size == src.stat().st_size:
@@ -638,5 +643,5 @@ def harvest_comfy_native_output(
         except OSError as exc:
             lines.append(f"  ✗ {src.name}: {exc}")
     if n == 0:
-        lines.append("  (новых нет — уже в Refs или output пуст)")
+        lines.append("  (новых нет — уже в Refs, output пуст или только viu_mocap)")
     return n, "\n".join(lines)

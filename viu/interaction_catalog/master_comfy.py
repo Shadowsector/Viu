@@ -12,10 +12,12 @@ from ..integrations.comfy.angles import LEGACY_ANGLES
 from ..integrations.comfy.client import ComfyClient, ComfyError
 from ..integrations.comfy.generate import _client
 from ..integrations.comfy.model_pref import choose_workflow_name, probe_models
+from ..integrations.comfy.naming import comfy_filename_prefix, display_video_stem
 from ..integrations.comfy.process import ensure_comfy_running
 from ..integrations.comfy.workflows import (
     ensure_mp4_output,
     ensure_workflow_templates,
+    inject_filename_prefix,
     inject_negative_prompt,
     inject_seed,
     inject_text_prompt,
@@ -53,7 +55,10 @@ def _prepare_workflow(config: Config, wish: InteractionWish, action: str) -> dic
         height=DRAFT_SIZE[1],
         length=length,
     )
-    wf = ensure_mp4_output(wf, fps=float(wish.choreography.fps))
+    stem = display_video_stem(catalog_slug=wish.slug)
+    prefix = comfy_filename_prefix(stem)
+    wf = ensure_mp4_output(wf, fps=float(wish.choreography.fps), filename_prefix=prefix)
+    wf = inject_filename_prefix(wf, prefix)
     wf = inject_text_prompt(wf, action)
     wf = inject_negative_prompt(wf, master_draft_negative())
     wf = inject_seed(wf, _seed_for(wish.slug))
