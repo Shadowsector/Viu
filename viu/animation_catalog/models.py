@@ -232,6 +232,7 @@ def _w(
     animator_state: str = "",
     enters_from: Optional[List[str]] = None,
     exits_to: Optional[List[str]] = None,
+    scope: str = DEFAULT_SCOPE,
 ) -> AnimationWish:
     return AnimationWish(
         slug=slug,
@@ -245,6 +246,7 @@ def _w(
         animator_state=animator_state,
         enters_from=list(enters_from or []),
         exits_to=list(exits_to or []),
+        scope=normalize_scope(scope),
     )
 
 
@@ -604,6 +606,19 @@ DEFAULT_WISHES: List[AnimationWish] = [
         ["Drinking"],
         wave=2,
         enters_from=["idle", "sit_idle"],
+        exits_to=["idle", "sit_idle"],
+    ),
+    _w(
+        "touch_self",
+        "private",
+        "Ласкает себя",
+        "Одиночество в сарае/временном доме; приватная сцена (Instance).",
+        "Сидя или лёжа, медленные движения рук, смущённое дыхание — loop.",
+        "NSFW solo; только private overlay, не на карте.",
+        [],
+        wave=3,
+        scope="shanya_only",
+        enters_from=["idle", "sit_idle", "lie_down"],
         exits_to=["idle", "sit_idle"],
     ),
     _w(

@@ -42,6 +42,10 @@ def run_single_angle(
     workflow_name: str | None = None,
     timeout: float = 900.0,
     seed_salt: str = "",
+    catalog_slug: str = "",
+    enters_from: list | None = None,
+    looped: bool = False,
+    seq: int = 0,
 ) -> Tuple[bool, str, List[str]]:
     prompt = mocap_prompt(action, angle)
     negative = mocap_negative()
@@ -89,11 +93,21 @@ def run_single_angle(
 
     refs = comfy_refs_dir(config)
     out_dir = comfy_out_dir(config)
+    from .naming import display_video_stem, normalize_slug_for_name
+
+    base_slug = normalize_slug_for_name(catalog_slug or slug)
+    display_stem = display_video_stem(
+        catalog_slug=base_slug,
+        enters_from=enters_from,
+        looped=looped,
+        take_id=angle.id,
+        seq=seq,
+    )
     saved: List[str] = []
     copy_notes: List[str] = []
     for i, meta in enumerate(files):
         ext = Path(meta["filename"]).suffix or ".mp4"
-        name = f"{slug}_{angle.id}_{i}{ext}"
+        name = f"{display_stem}{ext}" if i == 0 else f"{display_stem}_{i}{ext}"
         dest_out = out_dir / name
         try:
             client.download_view(
@@ -131,10 +145,11 @@ def run_single_angle(
                 if not src.is_file():
                     continue
                 try:
+                    shutil.copy2(src, dest_out)
                     shutil.copy2(src, dest_ref)
                     if dest_ref.is_file():
                         copied = True
-                        copy_notes.append(f"Refs ← {src}")
+                        copy_notes.append(f"ComfyOut+Refs ← {src}")
                         break
                 except OSError as exc:
                     copy_notes.append(f"native copy fail {src.name}: {exc}")
@@ -160,16 +175,26 @@ def run_triple_angles(
     *,
     action: str,
     slug: str | None = None,
+    catalog_slug: str = "",
+    enters_from: list | None = None,
+    looped: bool = False,
     timeout_each: float = 900.0,
 ) -> Tuple[bool, str, Dict[str, Any]]:
     """Три дубля ¾ подряд (разный seed + вариация действия)."""
+    from .naming import next_kept_seq, normalize_slug_for_name
+
     angles = default_angles()
-    base_slug = (slug or "mocap").strip() or "mocap"
+    base_slug = normalize_slug_for_name(catalog_slug or slug or "mocap")
     stamp = time.strftime("%Y%m%d_%H%M%S")
     slug_full = f"{base_slug}_{stamp}"
+    seq = next_kept_seq(config, base_slug)
     results: Dict[str, Any] = {
         "action": action,
         "slug": slug_full,
+        "catalog_slug": base_slug,
+        "enters_from": list(enters_from or []),
+        "looped": looped,
+        "seq": seq,
         "angles": {},
         "files": [],
         "mode": "three_quarter_takes",
@@ -183,6 +208,10 @@ def run_triple_angles(
             action=take_action,
             angle=angle,
             slug=slug_full,
+            catalog_slug=base_slug,
+            enters_from=enters_from,
+            looped=looped,
+            seq=seq,
             timeout=timeout_each,
             seed_salt=f"{stamp}|{i}|{angle.id}",
         )

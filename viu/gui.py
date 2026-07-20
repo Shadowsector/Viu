@@ -1916,6 +1916,12 @@ class ViuGUI:
             if cas is not None and cas.status in ("running", "paused"):
                 pass  # fall through to cascadeur
             elif cas is None or cas.status in ("completed", "idle", "awaiting_rating"):
+                from .lab.comfy_director import invent_next_shot
+
+                probe = invent_next_shot(self.agent.config)
+                if probe.stop_cycle:
+                    self._append("Вью", probe.summary_ru(), tag="viu")
+                    return
                 self._lab_comfy_action(auto=True)
                 return
 
@@ -1956,7 +1962,13 @@ class ViuGUI:
         from .presence import is_away
 
         plan = invent_next_shot(self.agent.config)
+        if plan.stop_cycle:
+            self._append("Вью", plan.summary_ru(), tag="viu")
+            return
         self._append("Вью", plan.summary_ru(), tag="viu")
+        from .lab.comfy_director import barn_cycle_status
+
+        self._append("Вью", barn_cycle_status(self.agent.config), tag="viu")
         if not auto and not is_away(self.agent.config):
             self._append(
                 "Вью",

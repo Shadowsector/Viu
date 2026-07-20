@@ -324,7 +324,20 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
 
     slug = normalize_catalog_slug(catalog_slug) or "mocap"
     session.meta["catalog_slug"] = slug
-    ok, msg, results = run_triple_angles(config, action=action, slug=slug)
+    looped = bool(session.meta.get("looped"))
+    ok, msg, results = run_triple_angles(
+        config,
+        action=action,
+        slug=slug,
+        catalog_slug=slug,
+        enters_from=list(session.meta.get("enters_from") or []),
+        looped=looped,
+    )
+    from ..integrations.comfy.clip_review import harvest_comfy_native_output
+
+    h_n, h_msg = harvest_comfy_native_output(config)
+    if h_n:
+        msg += "\n" + h_msg
     session.meta["triple"] = results
     for path in results.get("files") or []:
         session.append_artifact(path)
@@ -447,15 +460,20 @@ def step_report(config: Config, session: LabSession) -> StepResult:
     kept = session.meta.get("clip_kept_path")
     seed = session.meta.get("clip_seed_frame")
     files = session.artifacts[-12:]
+    from .comfy_director import barn_cycle_status
+
     report = (
         f"Comfy MoCap итерация id={session.id}\n"
         f"action: {action}\n"
+        f"catalog: {session.meta.get('catalog_slug') or '—'}\n"
         f"model: {PREFERRED_FAMILY}\n"
         f"kept: {kept or '— (не выбран)'}\n"
         f"seed last-frame: {seed or '—'}\n"
         f"файлы ({len(files)}):\n"
         + "\n".join(f"  • {f}" for f in files)
-        + "\n\nДальше: Cascadeur MoCap по kept mp4; next clip можно стартовать с seed PNG (I2V)."
+        + "\n\n"
+        + barn_cycle_status(config)
+        + "\n\nДальше: Cascadeur MoCap по kept mp4; next clip — I2V с seed PNG."
     )
     session.last_report = report
     session.status = "awaiting_rating"

@@ -124,6 +124,14 @@ class Config:
         default_factory=lambda: float(_env("VIU_SHANYA_MAX_LIFT_KG", "35"))
     )
 
+    # Comfy MoCap: лимит kept-клипов на одно действие (цикл сарая).
+    comfy_max_per_action: int = field(
+        default_factory=lambda: int(_env("VIU_COMFY_MAX_PER_ACTION", "10"))
+    )
+    comfy_barn_cycle: bool = field(
+        default_factory=lambda: _env("VIU_COMFY_BARN_CYCLE", "1") == "1"
+    )
+
     # Ветка git для автообновления GUI.
     update_branch: str = field(
         default_factory=lambda: _env("VIU_UPDATE_BRANCH", "cursor/viu-agent-core-65c2")
