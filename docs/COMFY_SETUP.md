@@ -87,7 +87,8 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 
 Чтобы Wan не рисовал случайные лица:
 
-1. **Папка** `U:\Viu\Library\Lab\FaceRefs\` (Места → «Лица MoCap»).
+1. **Папка** `U:\Anabarra\Library\Lab\FaceRefs\` (Места → «Лица MoCap»).  
+   Не `U:\Viu\Library\` — склад игры в **Anabarra\Library**.
 2. Положи **PNG/JPG** с одним чётким лицом (фронт или ¾).
    - `default.png` — всегда это лицо;
    - или несколько файлов — **случайный** на каждый batch (одинаковый на 3 дубля).

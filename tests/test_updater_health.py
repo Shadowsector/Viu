@@ -208,6 +208,47 @@ def test_apply_git_update_writes_package_sha(tmp_path, monkeypatch):
     assert (tmp_path / "viu" / "package_sha.txt").read_text(encoding="utf-8").startswith("ok")
 
 
+def test_sha_needs_update_detects_mismatch(monkeypatch):
+    from viu import updater
+
+    monkeypatch.setattr(updater, "running_sha", lambda root=None: "aaa111")
+    monkeypatch.setattr(updater, "remote_sha_github", lambda branch=updater.DEFAULT_BRANCH: "bbb222")
+    outdated, local, remote = updater.sha_needs_update()
+    assert outdated
+    assert local == "aaa111"
+    assert remote == "bbb222"
+
+
+def test_update_viu_full_forces_when_sha_mismatch(tmp_path, monkeypatch):
+    from viu import updater
+
+    monkeypatch.setattr(updater, "package_root", lambda: tmp_path)
+    monkeypatch.setattr(updater, "running_sha", lambda root=None: "oldsha")
+    monkeypatch.setattr(updater, "remote_sha_github", lambda branch=updater.DEFAULT_BRANCH: "newsha")
+    monkeypatch.setattr(
+        updater,
+        "check_for_update",
+        lambda branch=updater.DEFAULT_BRANCH: updater.UpdateResult(
+            ok=True,
+            checked=True,
+            has_updates=False,
+            message="Уже последняя версия.",
+        ),
+    )
+    applied = updater.UpdateResult(
+        ok=True,
+        updated=True,
+        message="zip ok",
+    )
+    monkeypatch.setattr(updater, "apply_update_smart", lambda branch, hard_reset=False: applied)
+    monkeypatch.setattr(updater, "install_package", lambda root=None: (True, "pip ok"))
+
+    ok, text, restart = updater.update_viu_full()
+    assert ok and restart
+    assert "package_sha" in text or "SHA на диске" in text
+    assert "zip ok" in text
+
+
 @patch("urllib.request.urlopen")
 def test_ollama_available_mock(mock_urlopen):
     class Resp:

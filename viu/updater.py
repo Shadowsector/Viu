@@ -614,17 +614,44 @@ def version_label() -> str:
     return f"Viu {ref}"
 
 
+def sha_needs_update(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, str]:
+    """Сравнить package_sha на диске с GitHub — независимо от git fetch."""
+    local = running_sha(package_root())
+    try:
+        remote = remote_sha_github(branch=branch)
+    except (OSError, RuntimeError):
+        return False, local, ""
+    if not remote:
+        return False, local, ""
+    outdated = not local or local != remote
+    return outdated, local, remote
+
+
 def update_viu_full(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, bool]:
     """Проверка → скачивание (если есть) → pip install. Возвращает (ok, текст, нужен_рестарт)."""
     lines: List[str] = []
     needs_restart = False
     before = running_sha(package_root())[:12] or "—"
 
-    status = check_for_update(branch=branch)
-    lines.append(status.message)
+    sha_outdated, local_full, remote_full = sha_needs_update(branch=branch)
+    if remote_full:
+        lines.append(
+            f"SHA на диске: {local_full[:12] or '—'} · GitHub [{branch}]: {remote_full[:12]}"
+        )
 
-    if status.has_updates:
-        applied = apply_update_smart(branch=branch)
+    status = check_for_update(branch=branch)
+    if not sha_outdated:
+        lines.append(status.message)
+    elif status.has_updates:
+        lines.append(status.message)
+    else:
+        lines.append(
+            "Git говорит «актуально», но package_sha ≠ GitHub — принудительно качаю zip."
+        )
+
+    must_apply = status.has_updates or sha_outdated
+    if must_apply:
+        applied = apply_update_smart(branch=branch, hard_reset=sha_outdated)
         lines.append(applied.message)
         if applied.updated:
             needs_restart = True
@@ -640,4 +667,6 @@ def update_viu_full(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, bool]:
 
     ok, pip_msg = install_package()
     lines.append(pip_msg)
+    if must_apply and ok and not needs_restart and sha_outdated:
+        needs_restart = True
     return ok, "\n\n".join(lines), needs_restart
