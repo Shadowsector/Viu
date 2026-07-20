@@ -39,6 +39,24 @@ I2V 14B — опционально: `comfy_install i2v=1` (десятки GB).
 | `comfy_install` | clone + workflows + модели |
 | `comfy_ensure` | install при необходимости + старт `:8188` |
 
+### Из cmd (не из чата Вью)
+
+`comfy_install` — **инструмент Вью**, не отдельная программа. Из `U:\Viu\`:
+
+```bat
+comfy_install.bat reactor=1
+comfy_ensure.bat
+```
+
+Или напрямую:
+
+```bat
+python -m viu tool comfy_install --args "{\"reactor\":\"1\"}"
+python -m viu tool comfy_ensure
+```
+
+В окне Вью в чате тоже можно: `comfy_install reactor=1`.
+
 ### Torch / CUDA (RTX)
 
 Если в логе `Torch not compiled with CUDA enabled` или `from versions: none` для cu124:
@@ -92,7 +110,7 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 2. Положи **PNG/JPG** с одним чётким лицом (фронт или ¾).
    - `default.png` — всегда это лицо;
    - или несколько файлов — **случайный** на каждый batch (одинаковый на 3 дубля).
-3. Один раз: `comfy_install reactor=1` (ReActor + inswapper).
+3. Один раз: `comfy_install.bat reactor=1` (ReActor + inswapper).
 4. `comfy_ensure` — перезапуск Comfy, чтобы подхватить ноду.
 
 Выключить: `VIU_COMFY_FACE_SWAP=0` в `.env`.  

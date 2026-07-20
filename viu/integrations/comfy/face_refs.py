@@ -33,7 +33,7 @@ _README = """Lab/FaceRefs — эталонные лица для MoCap (ReActor)
 
 Выключить подмену: VIU_COMFY_FACE_SWAP=0
 
-После первой установки: comfy_install reactor=1
+После первой установки: comfy_install.bat reactor=1
 Пересборка не нужна — только положи фото и снимай.
 """
 
