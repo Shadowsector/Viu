@@ -32,10 +32,19 @@ if errorlevel 1 (
 )
 
 if not exist "ollama\Modelfile.viu-cydonia" (
-  echo ERROR: Modelfiles missing. Update Viu first ^(pull latest / zip^).
-  set "EC=1"
-  goto END
+  if exist "ollama\Modelfile.viu-cydonia.example" (
+    copy /y "ollama\Modelfile.viu-cydonia.example" "ollama\Modelfile.viu-cydonia" >nul
+    echo Seeded ollama\Modelfile.viu-cydonia from .example ^(локальный файл, не в git^).
+  ) else (
+    echo ERROR: Modelfiles missing. Update Viu first ^(pull latest / zip^).
+    set "EC=1"
+    goto END
+  )
 )
+
+call :SEED_IF_MISSING viu-magnum
+call :SEED_IF_MISSING viu-command-r
+call :SEED_IF_MISSING viu-qwen32
 
 rem If an old Viu tree left 70B Modelfiles on disk — delete them so nothing can recreate.
 call :SCRUB_OLD ollama\Modelfile.viu-euryale
@@ -101,4 +110,14 @@ goto :eof
 :BLOCKED
 echo BLOCKED: refusing to create %TAG% ^(70B set retired^).
 set "EC=1"
+goto :eof
+
+:SEED_IF_MISSING
+set "TAG=%~1"
+set "MF=ollama\Modelfile.%TAG%"
+set "EX=%MF%.example"
+if exist "%MF%" goto :eof
+if not exist "%EX%" goto :eof
+copy /y "%EX%" "%MF%" >nul
+echo Seeded %MF% from .example ^(локальный файл, не в git^).
 goto :eof

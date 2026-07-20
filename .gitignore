@@ -1,6 +1,11 @@
 # Секреты (токены) — не коммитить
 .env
 
+# Локальные Ollama Modelfile / jailbreak — правки не перетираются обновлением Viu
+ollama/Modelfile.viu-*
+!ollama/Modelfile.viu-*.example
+ollama/_SYSTEM_SNIPPET.txt
+
 # Служебные данные агента (память, планы, логи, уроки)
 .viu/
 

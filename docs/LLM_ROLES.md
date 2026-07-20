@@ -96,6 +96,20 @@ VIU_OLLAMA_NUM_PREDICT=4096
 пайплайн и граф — в заметках (`VIU_SELF`, `build_reflect_notes`), не в system.  
 не общий SYSTEM Ollama на все роли.
 
+### Локальные Modelfile (jailbreak)
+
+Рабочие файлы **`ollama/Modelfile.viu-*`** и **`ollama/_SYSTEM_SNIPPET.txt`** — **в `.gitignore`**:
+обновление Viu их **не перезаписывает**. Правь SYSTEM сам.
+
+В git лежат только шаблоны **`*.example`** — при первом `create_viu_ollama_models.bat`
+копируются в локальные Modelfile, если их ещё нет. После правки jailbreak:
+
+```bat
+ollama create viu-cydonia -f ollama\Modelfile.viu-cydonia
+```
+
+(или полный `create_viu_ollama_models.bat`).
+
 Перед сменой тяжёлых моделей: `ollama stop`.
 
 ## Почему Magnum спросил «вам есть 18?»
