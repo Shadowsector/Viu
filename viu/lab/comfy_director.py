@@ -262,12 +262,32 @@ def pending_review_count(config: Config) -> int:
 
 def invent_next_shot(config: Config, *, barn_cycle: Optional[bool] = None) -> MocapShotPlan:
     """Следующий клип по каталогу и графу. Без LLM."""
+    from ..integrations.comfy.scene_choice import (
+        format_scene_choice_message,
+        is_paused_for_scene_choice,
+        load_scene_state,
+        get_focus_slugs,
+    )
+
+    if is_paused_for_scene_choice(config):
+        st = load_scene_state(config)
+        return MocapShotPlan(
+            action="",
+            catalog_slug="",
+            reason=format_scene_choice_message(st),
+            stop_cycle=True,
+            title_ru=st.completed_title,
+        )
+
     use_barn = _barn_cycle_enabled() if barn_cycle is None else barn_cycle
     cat = AnimationCatalogStore(animation_catalog_path(config)).load()
     recent = _recent_slugs(config)
     # missing() уже без ref_video; плюс недавние kept
     holes = [w for w in cat.missing() if w.slug not in recent]
     holes = _filter_quota(config, holes)
+    focus = get_focus_slugs(config)
+    if focus:
+        holes = [w for w in holes if w.slug in focus] or holes
     if use_barn:
         barn_holes = [w for w in holes if w.slug in BARN_SHED_CYCLE]
         if barn_holes:

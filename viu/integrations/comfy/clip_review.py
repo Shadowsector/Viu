@@ -411,6 +411,14 @@ def keep_clip(
     store.save()
     _sync_catalog_wish(config, clip)
 
+    pause_msg = None
+    try:
+        from .scene_choice import on_action_quota_reached
+
+        pause_msg = on_action_quota_reached(config, slug, title_ru=slug.replace("_", " "))
+    except Exception:
+        pass
+
     lines = [
         f"Оставила «{clip.angle_label}» ({clip.angle}) score={clip.score}/5",
         f"kept: {kept_path}",
@@ -423,6 +431,8 @@ def keep_clip(
         lines.append(
             f"граф: enters_from={clip.enters_from or '—'} → `{slug}` → exits_to={clip.exits_to or '—'}"
         )
+    if pause_msg:
+        lines.append(pause_msg)
     return True, "\n".join(lines), clip
 
 

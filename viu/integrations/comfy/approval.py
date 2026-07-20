@@ -71,7 +71,7 @@ def try_handle_comfy_telegram(
     config: Config,
     text: str,
 ) -> Tuple[bool, str]:
-    """Если lab/comfy ждёт промпт или выбор клипа — обработать ответ."""
+    """Если lab/comfy ждёт промпт, выбор клипа или сцены — обработать ответ."""
     from ...lab.comfy_pipeline import (
         COMFY_TOPIC,
         apply_clip_pick_decision,
@@ -79,6 +79,13 @@ def try_handle_comfy_telegram(
     )
     from ...lab.session import load_session
     from .clip_review import parse_clip_pick_reply
+    from .scene_choice import apply_scene_choice, is_paused_for_scene_choice, parse_scene_choice_reply
+
+    if is_paused_for_scene_choice(config):
+        decision, payload = parse_scene_choice_reply(text)
+        if decision == "unknown":
+            return True, apply_scene_choice(config, "unknown", {})
+        return True, apply_scene_choice(config, decision, payload)
 
     session = load_session(config, COMFY_TOPIC)
     if session is None:

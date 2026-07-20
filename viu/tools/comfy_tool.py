@@ -65,6 +65,13 @@ class ComfyStatusTool(Tool):
         if not ok:
             lines.append("Запуск: comfy_ensure или lab_start topic=comfy.")
             lines.append("Гайд: docs/COMFY_SETUP.md")
+        try:
+            from ..integrations.comfy.pipeline_status import comfy_pipeline_status
+
+            lines.append("")
+            lines.append(comfy_pipeline_status(ctx.config))
+        except Exception as exc:
+            lines.append(f"(pipeline status: {exc})")
         return ToolResult(True, "\n".join(lines))
 
 
