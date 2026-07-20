@@ -358,6 +358,68 @@ def inject_loras(
     return wf
 
 
+def inject_face_swap(
+    workflow: Dict[str, Any],
+    *,
+    face_image: str,
+    decode_node_id: str = "",
+    create_video_node_id: str = "",
+) -> Dict[str, Any]:
+    """ReActor: VAEDecode → face swap → CreateVideo. face_image — имя в ComfyUI/input/."""
+    if not (face_image or "").strip():
+        return workflow
+    wf = json.loads(json.dumps(workflow))
+
+    decode_id = decode_node_id
+    if not decode_id:
+        for nid, node in wf.items():
+            if isinstance(node, dict) and node.get("class_type") == "VAEDecode":
+                decode_id = str(nid)
+                break
+    if not decode_id:
+        return workflow
+
+    cv_id = create_video_node_id
+    if not cv_id:
+        for nid, node in wf.items():
+            if isinstance(node, dict) and node.get("class_type") == "CreateVideo":
+                cv_id = str(nid)
+                break
+    if not cv_id:
+        return workflow
+
+    load_id = _next_node_id(wf, 910)
+    reactor_id = _next_node_id(wf, 911)
+    wf[load_id] = {
+        "class_type": "LoadImage",
+        "inputs": {"image": face_image.strip()},
+        "_meta": {"title": "Viu FaceRef"},
+    }
+    wf[reactor_id] = {
+        "class_type": "ReActorFaceSwap",
+        "inputs": {
+            "enabled": True,
+            "input_image": [decode_id, 0],
+            "source_image": [load_id, 0],
+            "swap_model": "inswapper_128.onnx",
+            "facedetection": "retinaface_resnet50",
+            "face_restore_model": "none",
+            "face_restore_visibility": 1.0,
+            "codeformer_weight": 0.5,
+            "detect_gender_input": "no",
+            "detect_gender_source": "no",
+            "input_faces_index": "0",
+            "source_faces_index": "0",
+            "console_log_level": 1,
+        },
+        "_meta": {"title": "Viu ReActor"},
+    }
+    cv = wf.get(cv_id)
+    if isinstance(cv, dict):
+        cv.setdefault("inputs", {})["images"] = [reactor_id, 0]
+    return wf
+
+
 def prepare_mocap_workflow(
     workflow: Dict[str, Any],
     *,

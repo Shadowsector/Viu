@@ -79,6 +79,24 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 - вручную крутить workflow;
 - подключить **LoRA** / эксперименты.
 
+Если браузер пишет **403 на 127.0.0.1** — обнови Вью и перезапусти Comfy (`comfy_ensure`):
+запуск теперь с `--listen 127.0.0.1` и CORS. Либо открой `http://localhost:8188`.
+Для MoCap UI не обязателен — Вью ходит в API сама.
+
+### Подмена лица (ReActor)
+
+Чтобы Wan не рисовал случайные лица:
+
+1. **Папка** `U:\Viu\Library\Lab\FaceRefs\` (Места → «Лица MoCap»).
+2. Положи **PNG/JPG** с одним чётким лицом (фронт или ¾).
+   - `default.png` — всегда это лицо;
+   - или несколько файлов — **случайный** на каждый batch (одинаковый на 3 дубля).
+3. Один раз: `comfy_install reactor=1` (ReActor + inswapper).
+4. `comfy_ensure` — перезапуск Comfy, чтобы подхватить ноду.
+
+Выключить: `VIU_COMFY_FACE_SWAP=0` в `.env`.  
+Фиксированное лицо: `VIU_COMFY_FACE_REF=U:\path\to\face.png`.
+
 ### LoRA — простой сценарий
 
 1. **Скачай** `.safetensors` в `ComfyUI/models/loras/` (можно подпапки).

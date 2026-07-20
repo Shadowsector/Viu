@@ -144,6 +144,7 @@ def all_places() -> List[Place]:
     )
     from .integrations.cascadeur.paths import cascadeur_export, cascadeur_inbox
     from .integrations.comfy.paths import (
+        comfy_face_refs_dir,
         comfy_out_dir,
         comfy_refs_dir,
         comfy_seed_frames_dir,
@@ -186,6 +187,14 @@ def all_places() -> List[Place]:
             cascadeur_inbox,
         ),
         # --- Выходы: что Вью собрала ---
+        Place(
+            "comfy_face_refs",
+            "Лица MoCap (FaceRefs)",
+            "folder",
+            "Входы",
+            "PNG/JPG эталонного лица → ReActor подставляет в каждый клип. default.png приоритетнее random.",
+            comfy_face_refs_dir,
+        ),
         Place(
             "comfy_refs",
             "Клипы Comfy (Refs)",

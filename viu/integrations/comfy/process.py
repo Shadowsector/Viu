@@ -405,8 +405,11 @@ def launch_comfy_process(
         str(py),
         str(main_py),
         "--listen",
+        "127.0.0.1",
         "--port",
         str(port),
+        "--enable-cors-header",
+        "*",
         "--disable-cuda-malloc",
     ]
     if extra_args:

@@ -138,6 +138,16 @@ class ComfyClient:
             raise ComfyError(f"download /view failed: {exc}") from exc
         return dest
 
+    def has_node_class(self, class_type: str) -> bool:
+        """Проверить, зарегистрирована ли нода (ReActor и т.п.)."""
+        try:
+            info = self._get("/object_info")
+        except ComfyError:
+            return False
+        if not isinstance(info, dict):
+            return False
+        return class_type in info
+
     def collect_output_files(self, history_entry: dict) -> List[Dict[str, str]]:
         """Список файлов из outputs (images / gifs / videos)."""
         files: List[Dict[str, str]] = []

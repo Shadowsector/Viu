@@ -80,6 +80,13 @@ class ComfyStatusTool(Tool):
             lines.append(comfy_pipeline_status(ctx.config))
         except Exception as exc:
             lines.append(f"(pipeline status: {exc})")
+        try:
+            from ..integrations.comfy.face_refs import face_refs_status
+
+            lines.append("")
+            lines.append(face_refs_status(ctx.config))
+        except Exception as exc:
+            lines.append(f"(face refs: {exc})")
         return ToolResult(True, "\n".join(lines))
 
 
@@ -94,6 +101,7 @@ class ComfyInstallTool(Tool):
         "models": "1 = скачать T2V модели (по умолчанию 1)",
         "i2v": "1 = ещё I2V+clip_vision (очень много места)",
         "pip": "1 = pip install requirements (по умолчанию 1)",
+        "reactor": "1 = ComfyUI-ReActor + inswapper (подмена лица MoCap)",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
@@ -102,6 +110,7 @@ class ComfyInstallTool(Tool):
         with_models = str(args.get("models", "1")).lower() in ("1", "true", "yes", "")
         include_i2v = str(args.get("i2v", "0")).lower() in ("1", "true", "yes")
         with_pip = str(args.get("pip", "1")).lower() in ("1", "true", "yes", "")
+        with_reactor = str(args.get("reactor", "0")).lower() in ("1", "true", "yes")
         notes: list[str] = []
 
         def progress(msg: str) -> None:
@@ -112,6 +121,7 @@ class ComfyInstallTool(Tool):
             with_models=with_models,
             include_i2v=include_i2v,
             with_pip=with_pip,
+            with_reactor=with_reactor,
             progress=progress,
         )
         body = msg

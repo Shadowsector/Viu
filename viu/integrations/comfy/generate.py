@@ -15,6 +15,7 @@ from .model_pref import choose_workflow_name
 from .paths import comfy_out_dir, comfy_refs_dir
 from .prompts import diversify_action, mocap_negative, mocap_prompt
 from .workflows import (
+    inject_face_swap,
     inject_loras,
     inject_negative_prompt,
     inject_seed,
@@ -81,12 +82,30 @@ def run_single_angle(
     wf = inject_negative_prompt(wf, negative)
     wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
     wf = inject_loras(wf, loras)
+    wf = inject_loras(wf, loras)
     wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
 
     client = _client(config)
     ok, ping = client.ping()
     if not ok:
         return False, ping, []
+
+    face_note = ""
+    from .face_refs import face_swap_enabled, pick_face_ref, stage_face_for_comfy
+
+    if face_swap_enabled():
+        face = pick_face_ref(config, seed=f"{slug}|{catalog_slug or base_slug}")
+        if face is not None:
+            ok_face, stage_msg, input_name = stage_face_for_comfy(config, face)
+            if ok_face and client.has_node_class("ReActorFaceSwap"):
+                wf = inject_face_swap(wf, face_image=input_name)
+                face_note = f"лицо: {face.name}"
+            elif ok_face:
+                face_note = (
+                    f"лицо {face.name} в input, но ReActor нет — comfy_install reactor=1"
+                )
+            else:
+                face_note = stage_msg
 
     try:
         prompt_id = client.queue_prompt(wf)
@@ -178,6 +197,8 @@ def run_single_angle(
         saved.append(str(dest_ref))
 
     note = f"{angle.id}: → Lab/Refs ({len(saved)} файл(ов))"
+    if face_note:
+        note += f" [{face_note}]"
     if copy_notes:
         note += " [" + "; ".join(copy_notes[:3]) + "]"
     return True, note, saved

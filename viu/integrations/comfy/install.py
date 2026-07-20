@@ -368,6 +368,7 @@ def ensure_comfy_installed(
     with_models: bool = True,
     include_i2v: bool = False,
     with_pip: bool = True,
+    with_reactor: bool = False,
     progress: ProgressCb = None,
 ) -> Tuple[bool, str]:
     """Скан → clone/repair при необходимости → workflows → модели → (pip)."""
@@ -436,4 +437,72 @@ def ensure_comfy_installed(
         if not ok_m:
             return False, "\n".join(lines)
 
+    if with_reactor:
+        ok_r, r_msg = ensure_reactor_installed(Path(dest), progress=progress)
+        lines.append("ReActor:\n" + r_msg)
+        if not ok_r:
+            lines.append("⚠ ReActor не установился полностью.")
+
+    return True, "\n".join(lines)
+
+
+REACTOR_GIT = "https://github.com/Gourieff/ComfyUI-ReActor.git"
+_INSWAPPER_URL = (
+    "https://huggingface.co/ezioruan/inswapper_128.onnx/resolve/main/inswapper_128.onnx"
+)
+
+
+def _python_for_comfy_root(root: Path) -> str:
+    for cand in (
+        root / "venv" / "Scripts" / "python.exe",
+        root / "venv" / "bin" / "python",
+        root / "python_embeded" / "python.exe",
+    ):
+        if cand.is_file():
+            return str(cand)
+    return sys.executable
+
+
+def ensure_reactor_installed(
+    root: Path, *, progress: ProgressCb = None
+) -> Tuple[bool, str]:
+    """ComfyUI-ReActor + inswapper для подмены лица в MoCap."""
+    root = Path(root)
+    dest = root / "custom_nodes" / "ComfyUI-ReActor"
+    lines: List[str] = []
+
+    if dest.is_dir() and (dest / "nodes.py").is_file():
+        lines.append(f"ReActor: уже есть ({dest.name})")
+    else:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if progress:
+            progress("git clone ComfyUI-ReActor…")
+        ok, msg = _run(
+            ["git", "clone", "--depth", "1", REACTOR_GIT, str(dest)],
+            timeout=300,
+        )
+        if not ok:
+            return False, f"ReActor clone failed: {msg}"
+        lines.append(f"ReActor: клонировала → {dest}")
+
+    req = dest / "requirements.txt"
+    if req.is_file():
+        py = _python_for_comfy_root(root)
+        if progress:
+            progress("pip install ReActor requirements…")
+        ok, msg = _run([py, "-m", "pip", "install", "-r", str(req)], timeout=1800)
+        lines.append(msg[:500] if msg else "ReActor pip ok")
+        if not ok:
+            lines.append("⚠ ReActor pip не полностью — перезапусти Comfy и повтори.")
+
+    inswapper = root / "models" / "insightface" / "inswapper_128.onnx"
+    if not inswapper.is_file():
+        if progress:
+            progress("inswapper_128.onnx…")
+        ok, msg = _download(_INSWAPPER_URL, inswapper, progress=progress)
+        lines.append(msg)
+        if not ok:
+            lines.append("⚠ inswapper не скачался — ReActor может скачать сам при первом swap.")
+
+    lines.append("Перезапусти Comfy (comfy_ensure), чтобы подхватить ReActor.")
     return True, "\n".join(lines)
