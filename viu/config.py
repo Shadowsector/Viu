@@ -67,7 +67,7 @@ class Config:
     max_steps: int = field(default_factory=lambda: int(_env("VIU_MAX_STEPS", "12")))
     temperature: float = field(default_factory=lambda: float(_env("VIU_TEMPERATURE", "0.2")))
     # Один запрос к Ollama/LLM (сек). 14b на холодном старте легко >2 мин.
-    llm_timeout: float = field(default_factory=lambda: float(_env("VIU_LLM_TIMEOUT", "1200")))
+    llm_timeout: float = field(default_factory=lambda: float(_env("VIU_LLM_TIMEOUT", "1800")))
 
     # Разрешать ли реальное выполнение shell-команд (по умолчанию — да, но в песочнице).
     allow_shell: bool = field(default_factory=lambda: _env("VIU_ALLOW_SHELL", "1") == "1")

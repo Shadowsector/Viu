@@ -11,7 +11,7 @@ set "PYTHONUNBUFFERED=1"
 
 rem 70B needs a long timeout (seconds). Override in .env if needed.
 if "%VIU_DIAG_TIMEOUT%"=="" set "VIU_DIAG_TIMEOUT=1200"
-if "%VIU_LLM_TIMEOUT%"=="" set "VIU_LLM_TIMEOUT=1200"
+if "%VIU_LLM_TIMEOUT%"=="" set "VIU_LLM_TIMEOUT=1800"
 
 echo ========================================
 echo  Viu NSFW halves diag
