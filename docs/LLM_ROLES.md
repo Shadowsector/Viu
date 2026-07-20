@@ -92,7 +92,8 @@ VIU_OLLAMA_NUM_PREDICT=4096
 | Роль | Reflect / GDD | **Work** |
 | Сильная сторона | таблицы, деревья, лор | JSON, механика, Unity |
 
-Промпт «ведущий геймдизайнер NSFW» — в reflect-промптах Вью,  
+Промпт reflect — только **голос Вью** (~15 строк). Разрешения 18+ — в Ollama Modelfile;
+пайплайн и граф — в заметках (`VIU_SELF`, `build_reflect_notes`), не в system.  
 не общий SYSTEM Ollama на все роли.
 
 Перед сменой тяжёлых моделей: `ollama stop`.

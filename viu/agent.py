@@ -552,10 +552,7 @@ class Agent:
         except OSError:
             story = None
 
-        # history: GUI + долгая память (без цензорских/саппорт-ответов)
         hist = scrub_poisoned_history(list(history or []))
-        # На «Привет» не тащим 16 реплик story — иначе модель здоровается,
-        # фильтр «приветствие посреди диалога» режет 3 раза → шаблонный fallback.
         if not greeting and len(hist) < 4 and story is not None:
             long_hist = scrub_poisoned_history(story.as_chat_history(limit=16))
             if long_hist:
@@ -563,15 +560,8 @@ class Agent:
 
         half = reflect_prompt_half()
         nsfw_q = asks_about_nsfw(user_text)
-        # Привет / вопрос про NSFW: лёгкий промпт как в чате Ollama.
-        # Полный GDD-system заставляет Command R моралить и ломать JSON.
-        if greeting or nsfw_q:
-            half = "bare"
-        use_notes = half in ("full", "work") and bool(notes) and not greeting and not nsfw_q
-        use_hist = half not in ("bare",) and bool(hist) and not greeting
-        if nsfw_q:
-            hist = scrub_poisoned_history(hist)
-            use_hist = False
+        use_notes = bool(notes) and not greeting
+        use_hist = bool(hist) and not greeting
 
         self._log(
             f"REFLECT half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}"
@@ -716,8 +706,7 @@ class Agent:
                             "role": "user",
                             "content": "Плохой тон: "
                             + ", ".join(issues)
-                            + ". Перепиши final тепло, по-русски, на «ты», без саппорта и лекций. "
-                            "Как близкая женщина Дена. JSON: thought+final.",
+                            + ". Перепиши как Вью — тепло, по-русски, на «ты». JSON: thought+final.",
                         }
                     )
                     continue

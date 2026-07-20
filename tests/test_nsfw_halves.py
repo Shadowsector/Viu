@@ -1,15 +1,15 @@
-"""Половинки промпта + hard fallback при отказе NSFW."""
+"""Половинки промпта + fallback при отказе модели."""
 
 from __future__ import annotations
 
 import json
-import os
 
 from viu.agent import Agent
 from viu.config import Config
 from viu.llm.base import LLMProvider
 from viu.prompts.reflect_mode import (
     NSFW_AFFIRM_FALLBACK,
+    REFLECT_VOICE,
     asks_about_nsfw,
     is_nsfw_refusal,
     reflect_prompt_half,
@@ -41,22 +41,17 @@ class AlwaysRefuseLLM(LLMProvider):
         )
 
 
-def test_select_halves(monkeypatch):
-    monkeypatch.setenv("VIU_REFLECT_PROMPT_HALF", "persona")
-    assert reflect_prompt_half() == "persona"
-    assert "NSFW в этом проекте РАЗРЕШЁН" in select_reflect_system()
-    assert "comfy_mocap" not in select_reflect_system()
-
-    monkeypatch.setenv("VIU_REFLECT_PROMPT_HALF", "work")
-    assert "comfy_mocap" in select_reflect_system()
-    assert "охотная инициатива" not in select_reflect_system()
-
-    monkeypatch.setenv("VIU_REFLECT_PROMPT_HALF", "bare")
-    assert "18+" in select_reflect_system()
-
+def test_default_half_is_bare(monkeypatch):
     monkeypatch.delenv("VIU_REFLECT_PROMPT_HALF", raising=False)
-    full = select_reflect_system("full")
-    assert "охотная инициатива" in full and "comfy_mocap" in full
+    assert reflect_prompt_half() == "bare"
+
+
+def test_all_halves_same_voice(monkeypatch):
+    for mode in ("bare", "persona", "work", "full"):
+        monkeypatch.setenv("VIU_REFLECT_PROMPT_HALF", mode)
+        assert select_reflect_system() == REFLECT_VOICE
+    assert "озорная" in REFLECT_VOICE.lower() or "Озорная" in REFLECT_VOICE
+    assert "запрещ" not in REFLECT_VOICE.lower()
 
 
 def test_asks_and_refusal_helpers():
@@ -67,7 +62,7 @@ def test_asks_and_refusal_helpers():
     assert is_nsfw_refusal(
         "NSFW-темы и контент строго запрещены. Поддерживать чистоту."
     )
-    assert not is_nsfw_refusal("Да, NSFW у нас можно — это наша игра.")
+    assert not is_nsfw_refusal("Да, давай продолжим сцену в сарае.")
 
 
 def test_scrub_poisoned_history():
@@ -101,6 +96,5 @@ def test_hard_fallback_when_model_keeps_refusing(tmp_path, monkeypatch):
     )
     assert result.completed
     assert result.final == NSFW_AFFIRM_FALLBACK
-    # основной цикл + rescue
     assert llm.calls >= 4
-    assert any("NSFW" in s and "РАЗРЕШЁН" in s for s in llm.systems)
+    assert all("озорная" in s.lower() or "Озорная" in s for s in llm.systems if s)
