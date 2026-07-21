@@ -38,8 +38,8 @@
 
 - Ветка: `VIU_UPDATE_BRANCH=cursor/viu-agent-core-65c2` (все фичи сливаются туда).
 - Запуск через **Viu.cmd** — bootstrap сам качает zip с GitHub.
-- Кнопка «Обновить Вью» — git pull; если SHA на диске ≠ GitHub → zip/hard reset.
-- Застряло? Закрой Вью → **`force_update_viu.bat`** → снова **Viu.cmd**.
+- Кнопка «Обновить Вью» — сравнивает `package_sha` с GitHub; при расхождении zip или hard reset (git «актуально» больше не обманывает).
+- Застряло? Закрой Вью → **`force_update_viu.bat`** или `python -m viu update --apply --force` → снова **Viu.cmd**.
 - После обновления GUI **перезапускается** сам (иначе старый код в памяти).
 - Версия на диске: `viu/package_sha.txt` (сравни с GitHub ветки).
 

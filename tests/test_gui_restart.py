@@ -53,10 +53,20 @@ def test_update_viu_full_sets_restart_flag(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         "viu.updater.apply_update_smart",
-        lambda branch=..., hard_reset=False: UpdateResult(
+        lambda branch=..., hard_reset=False, force=False: UpdateResult(
             ok=True, updated=True, message="updated"
         ),
     )
+    calls = {"n": 0}
+
+    def sha_twice(branch=...):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return True, "old", "new"
+        return False, "newsha", "newsha"
+
+    monkeypatch.setattr("viu.updater.sha_needs_update", sha_twice)
+    monkeypatch.setattr("viu.updater.running_sha", lambda root=None: "newsha")
     monkeypatch.setattr("viu.updater.install_package", lambda root=None: (True, "pip ok"))
 
     ok, text, restart = update_viu_full()

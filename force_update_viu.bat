@@ -30,9 +30,13 @@ if errorlevel 1 (
 echo [1/2] bootstrap_update.py --apply
 python bootstrap_update.py --apply
 if errorlevel 1 (
-  echo bootstrap failed — см. вывод выше
-  pause
-  exit /b 1
+  echo bootstrap failed — пробую python -m viu update --apply --force
+  python -m viu update --apply --force
+  if errorlevel 1 (
+    echo Оба способа не сработали — см. вывод выше
+    pause
+    exit /b 1
+  )
 )
 
 echo [2/2] pip install -e .

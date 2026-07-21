@@ -141,12 +141,17 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
 def cmd_update(args: argparse.Namespace) -> int:
     """Обновление Viu: git pull или zip с GitHub."""
-    from .updater import apply_update_smart, check_for_update, install_package, usable_git_root
+    from .updater import apply_update_smart, check_for_update, install_package, update_viu_full, usable_git_root
 
     config = Config()
     branch = config.update_branch
+    if getattr(args, "full", False):
+        ok, text, _restart = update_viu_full(branch=branch)
+        print(text)
+        return 0 if ok else 1
     if getattr(args, "apply", False):
-        result = apply_update_smart(branch=branch)
+        force = getattr(args, "force", False)
+        result = apply_update_smart(branch=branch, hard_reset=force, force=force)
         if result.updated:
             ok, pip_msg = install_package()
             print(result.message)
@@ -190,6 +195,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("plan", help="показать план").set_defaults(func=cmd_plan)
     p_up = sub.add_parser("update", help="проверить/скачать обновление Viu")
     p_up.add_argument("--apply", action="store_true", help="скачать и применить (git или zip)")
+    p_up.add_argument("--force", action="store_true", help="игнорировать «уже актуально», hard reset / zip")
+    p_up.add_argument("--full", action="store_true", help="как кнопка «Обновить Вью» в GUI")
     p_up.set_defaults(func=cmd_update)
     sub.add_parser("config", help="показать конфигурацию").set_defaults(func=cmd_config)
     return parser

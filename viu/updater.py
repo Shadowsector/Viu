@@ -322,6 +322,19 @@ def install_package(root: Optional[Path] = None) -> Tuple[bool, str]:
     return False, f"pip ошибка: {last_tail}"
 
 
+def _sha_mismatch_with_github(branch: str) -> Tuple[bool, str, str]:
+    """package_sha на диске ≠ GitHub — даже если git fetch говорит «актуально»."""
+    local = running_sha(package_root())
+    try:
+        remote = remote_sha_github(branch=branch)
+    except (OSError, RuntimeError):
+        return False, local, ""
+    if not remote:
+        return False, local, ""
+    outdated = not local or local != remote
+    return outdated, local, remote
+
+
 def check_for_update(
     repo: Optional[Path] = None,
     branch: str = DEFAULT_BRANCH,
@@ -390,6 +403,26 @@ def check_for_update(
     short_local = local[:12]
     short_remote = remote_ref[:12]
 
+    sha_outdated, pkg_local, pkg_remote = _sha_mismatch_with_github(branch)
+    if sha_outdated and pkg_remote:
+        short_pkg = (pkg_local or "—")[:12]
+        short_pkg_remote = pkg_remote[:12]
+        if behind == 0:
+            return UpdateResult(
+                ok=True,
+                checked=True,
+                has_updates=True,
+                behind=1,
+                local_ref=short_pkg or short_local,
+                remote_ref=short_pkg_remote or short_remote,
+                message=(
+                    f"Файлы на диске ({short_pkg}) ≠ GitHub [{branch}] ({short_pkg_remote}). "
+                    "Нажми «Обновить Вью» — подтяну zip или hard reset."
+                ),
+            )
+        short_local = short_pkg or short_local
+        short_remote = short_pkg_remote or short_remote
+
     if behind == 0:
         return UpdateResult(
             ok=True,
@@ -423,22 +456,36 @@ def check_for_update(
     )
 
 
+def _ensure_git_branch(root: Path, branch: str, remote: str) -> Tuple[int, str]:
+    """Переключить на ветку обновления, если сейчас другая."""
+    _, current = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], root)
+    if current == branch:
+        return 0, current
+    code, out = _run_git(["checkout", "-B", branch, f"{remote}/{branch}"], root, timeout=120.0)
+    if code == 0:
+        return 0, out
+    code2, out2 = _run_git(["checkout", branch], root, timeout=120.0)
+    return code2, (out + "\n" + out2).strip()
+
+
 def apply_git_update(
     repo: Optional[Path] = None,
     branch: str = DEFAULT_BRANCH,
     remote: str = "origin",
     hard_reset: bool = False,
+    force: bool = False,
 ) -> UpdateResult:
     cleanup_broken_git()
     status = check_for_update(repo, branch, remote)
     root = repo or usable_git_root()
     if root is None:
-        if status.has_updates:
+        if status.has_updates or force or hard_reset:
             return download_zip_update(branch=branch)
         return status
     if not status.ok:
         return status
-    if not status.has_updates:
+    must_sync = status.has_updates or hard_reset or force
+    if not must_sync:
         return UpdateResult(
             ok=True,
             updated=False,
@@ -449,14 +496,40 @@ def apply_git_update(
             message=status.message,
         )
 
+    code_fetch, out_fetch = _run_git(["fetch", remote, branch], root, retries=4)
+    if code_fetch != 0:
+        zip_result = download_zip_update(branch=branch, target=root)
+        if zip_result.ok and zip_result.updated:
+            zip_result.message = f"Git fetch не удался: {out_fetch[:200]}\n\nZip: {zip_result.message}"
+            return zip_result
+        return UpdateResult(
+            ok=False,
+            checked=True,
+            has_updates=True,
+            message=f"Не удалось fetch {branch}: {out_fetch[:500]}",
+        )
+
+    br_code, br_out = _ensure_git_branch(root, branch, remote)
+    if br_code != 0:
+        zip_result = download_zip_update(branch=branch, target=root)
+        if zip_result.ok and zip_result.updated:
+            zip_result.message = f"Git checkout {branch}: {br_out[:200]}\n\nZip: {zip_result.message}"
+            return zip_result
+        return UpdateResult(
+            ok=False,
+            checked=True,
+            has_updates=True,
+            message=f"Не удалось переключить ветку {branch}: {br_out[:500]}",
+        )
+
     def _do_pull(ff_only: bool) -> Tuple[int, str]:
-        if hard_reset or not ff_only:
+        if hard_reset or force or not ff_only:
             return _run_git(["reset", "--hard", f"{remote}/{branch}"], root, timeout=300.0)
         return _run_git(["pull", "--ff-only", remote, branch], root, timeout=300.0)
 
-    code, out = _do_pull(ff_only=True)
-    used_reset = False
-    if code != 0 and not hard_reset:
+    code, out = _do_pull(ff_only=not (hard_reset or force))
+    used_reset = hard_reset or force
+    if code != 0 and not (hard_reset or force):
         # Локальные правки / расхождение — сбрасываем код к origin ( .viu не в git ).
         code2, out2 = _do_pull(ff_only=False)
         if code2 == 0:
@@ -488,7 +561,15 @@ def apply_git_update(
             remote_ref=status.remote_ref,
             message=f"Обновление не удалось: {out[:500]}",
         )
-    note = " (hard reset)" if used_reset or hard_reset else ""
+    note = " (hard reset)" if used_reset or hard_reset or force else ""
+    still_outdated, _, _ = _sha_mismatch_with_github(branch)
+    if still_outdated:
+        zip_result = download_zip_update(branch=branch, target=root)
+        if zip_result.ok and zip_result.updated:
+            zip_result.message = (
+                f"Git обновлён до {new_ref}, но package_sha ≠ GitHub — докачал zip.\n{zip_result.message}"
+            )
+            return zip_result
     return UpdateResult(
         ok=True,
         checked=True,
@@ -570,11 +651,19 @@ def download_zip_update(
 def apply_update_smart(
     branch: str = DEFAULT_BRANCH,
     hard_reset: bool = False,
+    force: bool = False,
 ) -> UpdateResult:
     cleanup_broken_git()
     root = usable_git_root()
     if root is not None:
-        return apply_git_update(root, branch=branch, hard_reset=hard_reset)
+        result = apply_git_update(root, branch=branch, hard_reset=hard_reset, force=force)
+        if result.updated:
+            return result
+        if force or hard_reset:
+            zip_result = download_zip_update(branch=branch, target=root)
+            if zip_result.ok and zip_result.updated:
+                return zip_result
+        return result
     return download_zip_update(branch=branch)
 
 
@@ -583,22 +672,16 @@ def auto_update_on_start(
     allow_zip: bool = True,
 ) -> UpdateResult:
     cleanup_broken_git()
+    sha_outdated, _, _ = _sha_mismatch_with_github(branch)
     root = usable_git_root()
     if root is not None:
-        result = apply_git_update(root, branch=branch)
+        result = apply_git_update(root, branch=branch, hard_reset=sha_outdated)
         if result.updated:
             install_package(root)
         return result
     status = check_for_update(branch=branch)
     if not allow_zip or not status.has_updates:
         return status
-    try:
-        remote = remote_sha_github(branch=branch)
-        local = running_sha(package_root())
-        if local and local == remote:
-            return status
-    except (OSError, RuntimeError):
-        pass
     result = download_zip_update(branch=branch)
     if result.updated:
         install_package()
@@ -612,14 +695,7 @@ def version_label() -> str:
 
 def sha_needs_update(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, str]:
     """Сравнить package_sha на диске с GitHub — независимо от git fetch."""
-    local = running_sha(package_root())
-    try:
-        remote = remote_sha_github(branch=branch)
-    except (OSError, RuntimeError):
-        return False, local, ""
-    if not remote:
-        return False, local, ""
-    outdated = not local or local != remote
+    outdated, local, remote = _sha_mismatch_with_github(branch)
     return outdated, local, remote
 
 
@@ -636,21 +712,21 @@ def update_viu_full(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, bool]:
         )
 
     status = check_for_update(branch=branch)
-    if not sha_outdated:
-        lines.append(status.message)
-    elif status.has_updates:
-        lines.append(status.message)
-    else:
-        lines.append(
-            "Git говорит «актуально», но package_sha ≠ GitHub — принудительно качаю zip."
-        )
+    lines.append(status.message)
 
     must_apply = status.has_updates or sha_outdated
     if must_apply:
-        applied = apply_update_smart(branch=branch, hard_reset=sha_outdated)
+        force = sha_outdated
+        applied = apply_update_smart(branch=branch, hard_reset=sha_outdated, force=force)
         lines.append(applied.message)
         if applied.updated:
             needs_restart = True
+        elif force:
+            zip_result = download_zip_update(branch=branch)
+            lines.append(zip_result.message)
+            if zip_result.updated:
+                needs_restart = True
+                applied = zip_result
         if not applied.ok:
             ok, pip_msg = install_package()
             lines.append(pip_msg)
@@ -660,6 +736,16 @@ def update_viu_full(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, bool]:
     if before != after:
         lines.append(f"Версия: {before} → {after}")
         needs_restart = True
+
+    still_outdated, _, remote_after = sha_needs_update(branch=branch)
+    if still_outdated and remote_after:
+        lines.append(
+            f"После обновления SHA всё ещё ≠ GitHub ({after} vs {remote_after[:12]}). "
+            "Проверь сеть / VIU_GITHUB_TOKEN."
+        )
+        ok, pip_msg = install_package()
+        lines.append(pip_msg)
+        return False, "\n\n".join(lines), needs_restart
 
     ok, pip_msg = install_package()
     lines.append(pip_msg)

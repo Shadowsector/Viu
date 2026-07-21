@@ -63,8 +63,11 @@ echo [1/3] updates>> "%LAUNCH_LOG%"
 if exist "%~dp0bootstrap_update.py" (
   python bootstrap_update.py --auto >> "%LAUNCH_LOG%" 2>&1
   if errorlevel 2 (
-    echo [net] GitHub новее локальной копии — повтор с --apply>> "%LAUNCH_LOG%"
+    echo [net] GitHub новее — принудительный zip --apply>> "%LAUNCH_LOG%"
     python bootstrap_update.py --apply >> "%LAUNCH_LOG%" 2>&1
+  )
+  if errorlevel 1 (
+    echo [warn] Обновление не удалось — запускаю текущую версию>> "%LAUNCH_LOG%"
   )
 )
 

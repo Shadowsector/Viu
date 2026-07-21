@@ -376,9 +376,20 @@ def main(argv: list[str] | None = None) -> int:
 
     updated = False
     if force:
-        updated = run_update(force=True)
+        if not run_update(force=True):
+            return 1
     elif auto:
-        updated = run_update(force=False)
+        try:
+            outdated, _sha, reason = needs_update()
+        except Exception as exc:  # noqa: BLE001
+            log(str(exc))
+            return 1
+        if not outdated:
+            log(reason)
+        else:
+            updated = run_update(force=False)
+            if not updated:
+                return 2
 
     # Всегда прибираем старые файлы, даже если обновления не было.
     try:
