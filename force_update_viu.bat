@@ -34,7 +34,10 @@ if errorlevel 1 goto update_failed
 :pip_step
 echo [2/2] pip install -e .
 python -m pip install -e . -q --proxy= --disable-pip-version-check
-if errorlevel 1 python -m pip install -e . -q --proxy= --no-build-isolation --disable-pip-version-check
+if errorlevel 1 (
+  python -m pip install -q setuptools wheel --proxy=
+  python -m pip install -e . -q --proxy= --no-build-isolation --disable-pip-version-check
+)
 
 echo.
 echo Done. Close all Viu windows, then run Viu.cmd

@@ -223,7 +223,17 @@ def cleanup_obsolete() -> None:
 
 
 def pip_install() -> None:
-    """pip install -e . без мёртвого локального proxy; fallback без build isolation."""
+    """pip install -e . — делегируем viu.updater после распаковки."""
+    try:
+        from viu.updater import install_package
+
+        ok, msg = install_package(root_dir())
+        if ok:
+            return
+        raise RuntimeError(msg)
+    except ImportError:
+        pass
+
     try:
         from viu.net_env import scrub_proxy_env
     except ImportError:
@@ -245,21 +255,8 @@ def pip_install() -> None:
 
     env = scrub_proxy_env()
     cwd = str(root_dir())
-    attempts = [
-        [sys.executable, "-m", "pip", "install", "-e", cwd, "--proxy="],
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "-e",
-            cwd,
-            "--proxy=",
-            "--no-build-isolation",
-        ],
-    ]
-    last_tail = ""
-    for cmd in attempts:
+
+    def _run(cmd: list[str]) -> tuple[int, str]:
         log(" ".join(cmd[3:]) + " …")
         proc = subprocess.run(
             cmd,
@@ -270,9 +267,38 @@ def pip_install() -> None:
             creationflags=_NO_WINDOW,
             env=env,
         )
-        if proc.returncode == 0:
-            return
-        last_tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-500:]
+        tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-500:]
+        return proc.returncode, tail
+
+    code, last_tail = _run([sys.executable, "-m", "pip", "install", "-e", cwd, "--proxy="])
+    if code == 0:
+        return
+    _run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "setuptools>=61",
+            "wheel",
+            "--proxy=",
+        ]
+    )
+    code, last_tail = _run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-e",
+            cwd,
+            "--proxy=",
+            "--no-build-isolation",
+        ]
+    )
+    if code == 0:
+        return
     raise RuntimeError(f"pip не удался: {last_tail}")
 
 

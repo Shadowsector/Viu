@@ -287,34 +287,56 @@ def install_package(root: Optional[Path] = None) -> Tuple[bool, str]:
 
     cwd = root or package_root()
     env = scrub_proxy_env()
-    attempts = [
+
+    def _run(cmd: List[str]) -> Tuple[int, str]:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=1200,
+            creationflags=_NO_WINDOW,
+            env=env,
+        )
+        tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-400:]
+        return proc.returncode, tail
+
+    attempts: List[List[str]] = [
         [sys.executable, "-m", "pip", "install", "-e", str(cwd), "--proxy="],
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "-e",
-            str(cwd),
-            "--proxy=",
-            "--no-build-isolation",
-        ],
     ]
     last_tail = ""
     try:
         for cmd in attempts:
-            proc = subprocess.run(
-                cmd,
-                cwd=str(cwd),
-                capture_output=True,
-                text=True,
-                timeout=1200,
-                creationflags=_NO_WINDOW,
-                env=env,
-            )
-            if proc.returncode == 0:
+            code, last_tail = _run(cmd)
+            if code == 0:
                 return True, "Зависимости установлены (pip install -e .)."
-            last_tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-400:]
+        # --no-build-isolation требует setuptools в текущем Python (важно для 3.14+).
+        _run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "setuptools>=61",
+                "wheel",
+                "--proxy=",
+            ]
+        )
+        code, last_tail = _run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-e",
+                str(cwd),
+                "--proxy=",
+                "--no-build-isolation",
+            ]
+        )
+        if code == 0:
+            return True, "Зависимости установлены (pip install -e ., no isolation)."
     except subprocess.TimeoutExpired:
         return False, "pip: таймаут 1200s"
     except OSError as exc:

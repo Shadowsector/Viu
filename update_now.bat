@@ -7,6 +7,10 @@ set "HTTP_PROXY="
 set "HTTPS_PROXY="
 set "ALL_PROXY="
 python bootstrap_update.py --apply
-python -m pip install -e . -q --proxy= --no-build-isolation
+python -m pip install -e . -q --proxy=
+if errorlevel 1 (
+  python -m pip install -q setuptools wheel --proxy=
+  python -m pip install -e . -q --proxy= --no-build-isolation
+)
 echo Done. Run Viu.cmd
 pause

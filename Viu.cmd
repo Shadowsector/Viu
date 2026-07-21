@@ -76,11 +76,12 @@ if not exist "%~dp0.env" if exist "%~dp0.env.example" copy /Y "%~dp0.env.example
 
 echo [3/3] Пакет + запуск окна...
 echo [3/3] pip>> "%LAUNCH_LOG%"
-python -m pip install -e . -q --proxy="" --disable-pip-version-check --no-warn-script-location > "%PIP_LOG%" 2>&1
+python -m pip install -e . -q --proxy= --disable-pip-version-check --no-warn-script-location > "%PIP_LOG%" 2>&1
 if errorlevel 1 (
-  echo [net] Повтор --no-build-isolation...
-  echo retry no-build-isolation>> "%LAUNCH_LOG%"
-  python -m pip install -e . -q --proxy="" --no-build-isolation --disable-pip-version-check --no-warn-script-location >> "%PIP_LOG%" 2>&1
+  echo [net] setuptools + no-build-isolation...
+  echo retry setuptools>> "%LAUNCH_LOG%"
+  python -m pip install -q setuptools wheel --proxy= >> "%PIP_LOG%" 2>&1
+  python -m pip install -e . -q --proxy= --no-build-isolation --disable-pip-version-check --no-warn-script-location >> "%PIP_LOG%" 2>&1
 )
 if errorlevel 1 (
   echo [ОШИБКА] pip не смог установить Viu.
