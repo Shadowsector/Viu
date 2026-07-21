@@ -96,6 +96,28 @@ class ComfyClient:
         pending = q.get("queue_pending") or []
         return f"running={len(running)} pending={len(pending)}"
 
+    def interrupt(self, *, prompt_id: str | None = None) -> None:
+        """Остановить текущий prompt (POST /interrupt)."""
+        payload: dict = {}
+        if prompt_id:
+            payload["prompt_id"] = prompt_id
+        self._post("/interrupt", payload)
+
+    def free_memory(
+        self,
+        *,
+        unload_models: bool = True,
+        free_memory: bool = True,
+    ) -> None:
+        """Освободить VRAM на следующем idle-тике executor (POST /free)."""
+        self._post(
+            "/free",
+            {
+                "unload_models": bool(unload_models),
+                "free_memory": bool(free_memory),
+            },
+        )
+
     def wait_history(
         self,
         prompt_id: str,

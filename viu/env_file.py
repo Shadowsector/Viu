@@ -39,6 +39,9 @@ _ALWAYS_FROM_FILE = frozenset(
         "VIU_REFLECT_NO_HISTORY",
         "VIU_REFLECT_STORY_HISTORY",
         "VIU_REFLECT_FILTERED",
+        "VIU_COMFY_YIELD_ON_CHAT",
+        "VIU_COMFY_YIELD_FREE_VRAM",
+        "VIU_LAB_INTERVAL_MIN",
     }
 )
 

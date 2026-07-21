@@ -66,6 +66,7 @@ class ViuGUI:
         self._queue: queue.Queue = queue.Queue()
         self._tool_busy = False  # Comfy/lab/скрипт — GPU/файлы, не LLM
         self._llm_busy = False  # агент думает — чат ждёт
+        self._llm_comfy_yield = False
         self._action_buttons: list[tuple[str, ttk.Button]] = []
         self._action_group_boxes: dict[str, ttk.LabelFrame] = {}
         self._sidebar_stage_label: ttk.Label | None = None
@@ -896,8 +897,37 @@ class ViuGUI:
         self._refresh_busy_ui()
 
     def _set_llm_busy(self, busy: bool) -> None:
+        was_busy = self._llm_busy
         self._llm_busy = busy
+        if busy and not was_busy:
+            self._maybe_yield_comfy_for_llm()
+        elif was_busy and not busy:
+            self._release_comfy_yield()
         self._refresh_busy_ui()
+
+    def _maybe_yield_comfy_for_llm(self) -> None:
+        from .integrations.comfy.gpu_yield import (
+            comfy_yield_on_chat_enabled,
+            yield_comfy_for_llm,
+        )
+        from .lab.controller import lab_controller
+
+        if not comfy_yield_on_chat_enabled():
+            return
+        lab_controller.request_operator_priority("reflect чат")
+        self._llm_comfy_yield = True
+        note = yield_comfy_for_llm(self.agent.config)
+        if note:
+            self.agent._log(note)
+
+    def _release_comfy_yield(self) -> None:
+        if not self._llm_comfy_yield:
+            return
+        self._llm_comfy_yield = False
+        from .lab.controller import lab_controller
+
+        lab_controller.clear_operator_priority()
+        self.agent._log("comfy_yield: released (lab продолжит по таймеру, если «меня нет»)")
 
     def _set_busy(self, busy: bool) -> None:
         """Совместимость: полная блокировка (и tool, и LLM)."""
