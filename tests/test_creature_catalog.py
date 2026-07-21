@@ -662,15 +662,16 @@ def test_gui_action_creature_catalog():
     assert "creature_lineup" in ids
     action = next(a for a in GUI_ACTIONS if a.action_id == "creature_catalog")
     assert action.tool == "__creature_catalog__"
-    assert action.group == "Главное"
+    assert action.group == "Существа"
     assert any(a.action_id == "creature_prep" and a.tool == "creature_prep_open" for a in GUI_ACTIONS)
-    assert any(a.action_id == "creature_prep_sync" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_blender_sync" and a.is_chain for a in GUI_ACTIONS)
     assert any(a.action_id == "creature_wardrobe" and a.tool == "creature_wardrobe_open" for a in GUI_ACTIONS)
-    assert any(a.action_id == "creature_wardrobe_sync" for a in GUI_ACTIONS)
-    assert any(a.action_id == "creature_wardrobe" and a.tool == "creature_wardrobe_open" for a in GUI_ACTIONS)
-    assert any(a.action_id == "creature_wardrobe_sync" for a in GUI_ACTIONS)
     assert any(a.action_id == "creature_studio" and a.tool == "creature_studio_open" for a in GUI_ACTIONS)
-    assert any(a.action_id == "creature_studio_sync" for a in GUI_ACTIONS)
+    sync_chain = next(a for a in GUI_ACTIONS if a.action_id == "creature_blender_sync")
+    sync_tools = [t[0] for t in sync_chain.tool_chain]
+    assert "creature_prep_sync" in sync_tools
+    assert "creature_wardrobe_sync" in sync_tools
+    assert "creature_studio_sync" in sync_tools
     lineup = next(a for a in GUI_ACTIONS if a.action_id == "creature_lineup")
     assert lineup.group == "Редко"
 
