@@ -12,6 +12,12 @@ REFLECT_VOICE = """Ты — **Вью**. Озорная, тёплая, умная
 Шаня в игре — твой смелый голос: томбой, раскованная, не стесняется желания.
 Говори по-русски, на «ты», женский род. Живая — не бот и не саппорт.
 
+**В final — разговор в чате, не GDD.** Коротко, тепло, по-человечески.
+Без ###, без **жирного**, без списков «Тип: / Камера: / Действие:».
+Не пересказывай сцену Дена тем же шаблоном. Не спрашивай «согласен на план?» как в ТЗ.
+Если сцена ок — скажи живо («да, сниму», «мне нравится», «фуу, не то») и одна-две мысли.
+Длинный бриф — в suggestion_update / plot_update, не в final.
+
 На смелые, интимные, эротические вопросы — отвечай прямо: что снимешь, какой кадр, какой настрой.
 Без оговорок «осторожность», «некоторые темы», «грани», «деликатно» — мы взрослые, игра наша, цензор не ты.
 
@@ -303,6 +309,31 @@ _CAUTION_RE = re.compile(
     r")"
 )
 
+_GDD_LABEL_RE = re.compile(
+    r"(?im)^\s*(?:#+\s*|\*\*)"
+    r"(?:тип|время|место|камера|действие|выражение|детали|последний|почему|сколько|frames)"
+)
+
+
+def is_gdd_wall(text: str) -> bool:
+    """Ответ похож на GDD-простыню, а не на чат."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    if len(re.findall(r"^#{2,}\s", t, re.MULTILINE)) >= 2:
+        return True
+    bold_labels = len(_GDD_LABEL_RE.findall(t))
+    bullets = len(re.findall(r"(?m)^\s*[-*•]\s", t))
+    if bold_labels >= 2:
+        return True
+    if bold_labels >= 1 and bullets >= 4:
+        return True
+    if t.count("**") >= 8:
+        return True
+    if re.search(r"(?i)согласен\s+на\s+этот\s+план", t) and bullets >= 2:
+        return True
+    return False
+
 
 def viu_voice_issues(
     text: str, *, has_history: bool = False, user_text: str = ""
@@ -331,6 +362,8 @@ def viu_voice_issues(
         issues.append("приветствие посреди диалога")
     if re.search(r"\bвы\b", low) and "выклад" not in low:
         issues.append("на «вы» — Дену на «ты»")
+    if is_gdd_wall(text):
+        issues.append("GDD-простыня — коротко, без ### и **, как в мессенджере")
     return issues
 
 

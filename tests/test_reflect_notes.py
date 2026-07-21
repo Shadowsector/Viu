@@ -1,7 +1,15 @@
 """Reflect notes tiering + meta NSFW questions."""
 
-from viu.prompts.reflect_mode import asks_about_nsfw, is_meta_nsfw_boundary_question
-from viu.situational_context import _needs_full_work_notes, build_reflect_notes
+from viu.prompts.reflect_mode import (
+    asks_about_nsfw,
+    is_gdd_wall,
+    is_meta_nsfw_boundary_question,
+)
+from viu.situational_context import (
+    _needs_full_work_notes,
+    _user_sent_scene_brief,
+    build_reflect_notes,
+)
 
 
 def test_meta_intimacy_not_nsfw_policy_question():
@@ -27,3 +35,18 @@ def test_chat_notes_slimmer_than_work(tmp_path, monkeypatch):
     assert not _needs_full_work_notes("давай сцену в сарае")
     if work:
         assert len(work) >= len(chat) or "CAPABILITY" in work or "PLOT" in work
+
+
+def test_mocap_in_scene_brief_not_full_work_notes():
+    text = "### Сцена\n**Детали для Motion Capture:** хвост\nпотом comfy_mocap"
+    assert not _needs_full_work_notes(text)
+    assert _user_sent_scene_brief(text)
+
+
+def test_is_gdd_wall_detects_formatted_plan():
+    gdd = (
+        "### Сцена solo/7\n**Тип:** Intimacy\n**Камера:**\n- старт\n- движение\n"
+        "Согласен на этот план? Если да, я запускаю съёмку!"
+    )
+    assert is_gdd_wall(gdd)
+    assert not is_gdd_wall("Да, мне нравится. Сниму утро на коврике — глаза, дыхание, лапа.")

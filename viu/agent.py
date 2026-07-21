@@ -723,6 +723,11 @@ class Agent:
                     last_issues = issues
                     messages.append({"role": "assistant", "content": raw})
                     hint = "Плохой тон: " + ", ".join(issues) + ". Перепиши как Вью — тепло, по-русски, на «ты»."
+                    if any("GDD" in i for i in issues):
+                        hint += (
+                            " Без ### и **. Не пересказывай сцену списком. "
+                            "Коротко: да/нет/мысль, как подруга в чате."
+                        )
                     if bold_q or any("осторожничание" in i for i in issues):
                         hint += (
                             " Без оговорок и морали — конкретно: что снимешь, какой кадр, какой настрой."

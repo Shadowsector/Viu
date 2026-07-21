@@ -51,9 +51,19 @@ def build_reflect_notes(config: Config, *, user_text: str = "") -> str:
     """Фон для reflect: в бытовом чате — коротко; в work/GDD — полный снимок."""
     if _needs_full_work_notes(user_text):
         return _build_reflect_notes_full(config)
-    if _needs_story_digest(user_text):
+    if _needs_story_digest(user_text) and not _user_sent_scene_brief(user_text):
         return _build_reflect_notes_story(config)
     return _build_reflect_notes_chat(config)
+
+
+def _user_sent_scene_brief(user_text: str) -> bool:
+    """Ден уже прислал раскадровку — не заливать канву/квесты и не отвечать GDD-зеркалом."""
+    t = user_text or ""
+    if t.count("###") >= 1 or t.count("**") >= 6:
+        return True
+    if re.search(r"(?i)motion\s+capture|frames\)|камера\s*:", t):
+        return True
+    return False
 
 
 def _needs_story_digest(user_text: str) -> bool:
@@ -94,6 +104,10 @@ def _build_reflect_notes_story(config: Config) -> str:
                 )
     except OSError:
         pass
+    parts.append(
+        "--- Стиль ответа ---\n"
+        "Заметки выше — фон. В final только живая речь: 2–6 предложений, без GDD-разметки."
+    )
     return "\n\n".join(p for p in parts if p)
 
 
@@ -101,12 +115,17 @@ def _needs_full_work_notes(user_text: str) -> bool:
     low = (user_text or "").lower()
     if not low.strip():
         return False
+    # Только операционные запросы — не «обсуждаем сцену» с mocap/comfy в тексте.
     return bool(
         re.search(
-            r"следующ\w+\s+шаг|comfy_|cascadeur|lab\s|граф\s+анима|"
-            r"каталог|квест|канв|plot_|quest_|pipeline|mocap|"
-            r"unity|blender|экспорт|импорт|дыр\w*\s+граф|"
-            r"animation_catalog|чем\s+занимаешься|что\s+делаешь\s+сейчас",
+            r"следующ\w+\s+шаг|"
+            r"(?:запусти|выполни)\s+(?:lab|comfy)|"
+            r"lab\s+topic|"
+            r"comfy_(?:mocap|triple|ensure)\s|"
+            r"cascadeur_(?:status|import|export)|"
+            r"animation_catalog_show|"
+            r"чем\s+занимаешься|что\s+делаешь\s+сейчас|"
+            r"дыр\w*\s+граф|граф\s+анима.*(?:покаж|дыр)",
             low,
         )
     )
