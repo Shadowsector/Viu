@@ -60,6 +60,30 @@ def build_reflect_notes(config: Config, *, user_text: str = "") -> str:
     return _build_reflect_notes_chat(config, user_text=user_text)
 
 
+def needs_plot_file_context(user_text: str) -> bool:
+    """Вопрос про сюжет/квесты — подмешать PLOT_CANVAS и QUESTS, не story_memory."""
+    from .plot_canvas import looks_like_plot_design
+
+    low = (user_text or "").lower()
+    if looks_like_plot_design(user_text):
+        return True
+    return bool(
+        re.search(
+            r"просмотр\w*\s+.{0,24}файл|"
+            r"файл\w*.{0,24}(?:сюжет|квест|игр)|"
+            r"мнени\w+.{0,30}(?:сюжет|квест|игр)|"
+            r"прочита\w+.{0,24}(?:сюжет|квест|канв)|"
+            r"допис\w+.{0,20}(?:сюжет|квест|квест)",
+            low,
+        )
+    )
+
+
+def build_reflect_notes_plot(config: Config) -> str:
+    """Только канон сюжета: канва, квесты, vision, персонажи — без пайплайна."""
+    return _build_reflect_notes_plot(config)
+
+
 def _needs_full_work_notes(user_text: str) -> bool:
     low = (user_text or "").lower()
     if not low.strip():
@@ -98,6 +122,12 @@ def _build_reflect_notes_chat(config: Config, *, user_text: str = "") -> str:
         looks_like_story_chat,
     )
 
+    if needs_plot_file_context(user_text):
+        plot = _build_reflect_notes_plot(config)
+        if plot:
+            return _REFLECT_CHAT_BRIEF + "\n\n" + plot
+        return _REFLECT_CHAT_BRIEF
+
     intimate = (
         looks_like_story_chat(user_text)
         or asks_about_nsfw(user_text)
@@ -126,6 +156,76 @@ def _build_reflect_notes_chat(config: Config, *, user_text: str = "") -> str:
         parts.append("--- Следующий кадр ---\n" + plan.summary_ru())
     except Exception:
         pass
+    return "\n\n".join(parts) if parts else ""
+
+
+def _build_reflect_notes_plot(config: Config) -> str:
+    """Канон сюжета для обсуждения — без Comfy, графа, story_memory."""
+    parts: list[str] = []
+
+    try:
+        from .vision import read_vision_creative
+
+        creative = read_vision_creative(config, max_chars=2000).strip()
+        if creative:
+            parts.append(
+                "--- vision (сюжет/мечта; опирайся, не зачитывай списком) ---\n"
+                + creative
+            )
+    except OSError:
+        pass
+
+    try:
+        from .characters_vision import read_characters_vision
+
+        chars = read_characters_vision(config, max_chars=2800).strip()
+        filled = any(
+            ("**" in ln and ":" in ln and len(ln.split(":", 1)[-1].strip()) > 0)
+            for ln in chars.splitlines()
+        )
+        if filled:
+            parts.append(
+                "--- CHARACTERS_VISION (канон персонажей) ---\n" + chars
+            )
+    except OSError:
+        pass
+
+    try:
+        from .plot_canvas import (
+            canvas_has_substance,
+            ensure_plot_canvas,
+            ensure_quests,
+            read_plot_canvas,
+            read_quests,
+        )
+
+        ensure_plot_canvas(config)
+        ensure_quests(config)
+        canvas = read_plot_canvas(config, max_chars=4500).strip()
+        if canvas_has_substance(canvas):
+            parts.append(
+                "--- PLOT_CANVAS (канон сюжета — сверяйся; не выдумывай) ---\n"
+                + canvas
+            )
+        else:
+            parts.append(
+                "--- PLOT_CANVAS: пока пусто или заготовка. "
+                "Скажи Дену честно; предложи биты и запиши через plot_update в JSON. ---"
+            )
+        quests = read_quests(config, max_chars=3500).strip()
+        if canvas_has_substance(quests):
+            parts.append("--- QUESTS (канон квестов) ---\n" + quests)
+        elif quests.strip():
+            parts.append("--- QUESTS ---\n" + quests)
+    except OSError:
+        pass
+
+    if parts:
+        parts.append(
+            "--- Подсказка ---\n"
+            "Опирайся на файлы выше. Если канона мало — скажи прямо, не придумывай "
+            'корпорации и сюжет с нуля. Дописать канон: plot_update / quest_update в JSON.'
+        )
     return "\n\n".join(parts) if parts else ""
 
 

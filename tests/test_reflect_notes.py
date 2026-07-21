@@ -1,7 +1,12 @@
 """Reflect notes tiering + meta NSFW questions."""
 
 from viu.prompts.reflect_mode import asks_about_nsfw, is_meta_nsfw_boundary_question
-from viu.situational_context import _needs_full_work_notes, build_reflect_notes
+from viu.situational_context import (
+    _needs_full_work_notes,
+    build_reflect_notes,
+    build_reflect_notes_plot,
+    needs_plot_file_context,
+)
 
 
 def test_meta_intimacy_not_nsfw_policy_question():
@@ -203,6 +208,69 @@ def test_reflect_fail_snapshot(tmp_path, monkeypatch):
     msg = format_reflect_fail_message(["мета про режимы"], "viu-command-r")
     assert "reflect_last_fail" in msg
     assert "viu-cydonia" in msg
+
+
+def test_needs_plot_file_context_story_review():
+    q = "Просмотри файлы сюжета игры. Хотелось бы твоё мнение о нём."
+    assert needs_plot_file_context(q)
+
+
+def test_plot_notes_injected_in_bare_reflect(tmp_path, monkeypatch):
+    from viu.agent import Agent
+    from viu.config import Config
+    from viu.llm.mock import MockLLM
+    from viu.plot_canvas import ensure_plot_canvas, ensure_quests
+
+    monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
+    cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
+    canvas = ensure_plot_canvas(cfg)
+    canvas.write_text(
+        "## Акт 1\n\nДомовой в сарае, не Корпорация XYZ.\n",
+        encoding="utf-8",
+    )
+    quests = ensure_quests(cfg)
+    quests.write_text("## Квест\n\nНайти снежинку.\n", encoding="utf-8")
+    seen: list[list[dict]] = []
+
+    class CaptureLLM(MockLLM):
+        def complete(self, messages, *, temperature=None, model=None):
+            seen.append(list(messages))
+            return '{"thought":"ok","final":"Вижу домового в сарае."}'
+
+    agent = Agent(llm=CaptureLLM(), config=cfg)
+    agent.run_reflect(
+        "Просмотри файлы сюжета игры. Хотелось бы твоё мнение о нём."
+    )
+    assert seen
+    user = next(m["content"] for m in seen[0] if m["role"] == "user")
+    assert "PLOT_CANVAS" in user or "домовой" in user.lower()
+    assert "Корпорация" not in user
+
+
+def test_build_reflect_notes_plot_has_canvas(tmp_path, monkeypatch):
+    from viu.config import Config
+    from viu.plot_canvas import ensure_plot_canvas
+
+    monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
+    cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
+    ensure_plot_canvas(cfg).write_text("## Тест\n\nШаня у таскбара.\n", encoding="utf-8")
+    notes = build_reflect_notes_plot(cfg)
+    assert "PLOT_CANVAS" in notes
+    assert "Шаня" in notes
+
+
+def test_chat_notes_plot_not_slim_brief(tmp_path, monkeypatch):
+    from viu.config import Config
+    from viu.plot_canvas import ensure_plot_canvas
+
+    monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
+    cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
+    ensure_plot_canvas(cfg).write_text("## Канон\n\nСарай.\n", encoding="utf-8")
+    chat = build_reflect_notes(
+        cfg, user_text="Просмотри файлы сюжета — твоё мнение?"
+    )
+    assert "PLOT_CANVAS" in chat
+    assert "VIU_SELF" not in chat
 
 
 def test_chat_notes_slimmer_than_work(tmp_path, monkeypatch):

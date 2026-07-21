@@ -600,12 +600,24 @@ class Agent:
         )
         user_text = (task or "").strip()
 
+        from .situational_context import build_reflect_notes_plot, needs_plot_file_context
+
+        plot_ctx = False
         if heartbeat:
             system = HEARTBEAT_SYSTEM
             user_msg = HEARTBEAT_TASK
         else:
             system = REFLECT_BARE_MINIMAL
             user_msg = user_text
+            if needs_plot_file_context(user_text):
+                plot_notes = build_reflect_notes_plot(self.config)
+                if plot_notes:
+                    plot_ctx = True
+                    user_msg = (
+                        user_text
+                        + "\n\n--- Канон сюжета и квестов (читай, не выдумывай) ---\n"
+                        + plot_notes
+                    )
 
         messages: List[Dict[str, str]] = []
         if not (reflect_no_system() and not heartbeat):
@@ -633,10 +645,14 @@ class Agent:
         self._log(
             f"REFLECT bare hist={len(hist)} tg={int(echo_telegram)}"
             f" no_sys={int(reflect_no_system())} no_hist={int(reflect_no_history())}"
-            f" filtered={int(reflect_use_filters())}"
+            f" filtered={int(reflect_use_filters())} plot_ctx={int(plot_ctx)}"
         )
 
-        def _accept(text: str, thought: str = "") -> RunResult:
+        def _accept(
+            text: str,
+            thought: str = "",
+            parsed: Optional[Dict[str, str]] = None,
+        ) -> RunResult:
             result.inner_thought = thought
             result.final = text
             result.completed = True
@@ -651,8 +667,19 @@ class Agent:
                     from .story_memory import get_story_memory
 
                     get_story_memory(self.config).add_exchange(
-                        user_text, text, source="chat", tags=["dialog"]
+                        user_text,
+                        text,
+                        source="chat",
+                        tags=["dialog", "story"] if plot_ctx else ["dialog"],
                     )
+                except OSError:
+                    pass
+            if parsed:
+                try:
+                    from .plot_canvas import apply_reflect_updates
+
+                    for note in apply_reflect_updates(self.config, parsed):
+                        self._log(f"PLOT: {note}")
                 except OSError:
                     pass
             return result
@@ -673,14 +700,14 @@ class Agent:
                 result.final = f"Не достучалась до модели: {exc}"
                 result.completed = True
                 return result
-            text, thought, truncated, _parsed = parse_reflect_response(raw)
+            text, thought, truncated, parsed = parse_reflect_response(raw)
             if text and not truncated:
-                return _accept(text, thought or "")
+                return _accept(text, thought or "", parsed)
             if text and truncated and attempt == 1:
                 salvaged = salvage_partial_final(raw)
                 if salvaged:
-                    return _accept(salvaged, "salvage")
-                return _accept(text, thought or "")
+                    return _accept(salvaged, "salvage", parsed)
+                return _accept(text, thought or "", parsed)
             if truncated:
                 messages.append({"role": "assistant", "content": raw or ""})
                 messages.append(
