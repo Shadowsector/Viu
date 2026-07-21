@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 from typing import Dict, List, Sequence
 
 # Единый голос. Половинки — для диагностики (VIU_REFLECT_PROMPT_HALF), по умолчанию bare.
@@ -362,6 +363,65 @@ def reflect_temperature(config) -> float:
         except ValueError:
             pass
     return 0.88
+
+
+def reflect_fail_log_path(config) -> Path:
+    return Path(config.data_dir) / "logs" / "reflect_last_fail.txt"
+
+
+def write_reflect_fail_snapshot(
+    config,
+    *,
+    user_text: str,
+    issues: list[str],
+    model: str,
+    raw: str,
+    note: str = "",
+) -> None:
+    """Снимок последнего отказа фильтра — чтобы понять, что сломало ответ."""
+    from datetime import datetime
+
+    path = reflect_fail_log_path(config)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            f"time={datetime.now().isoformat(timespec='seconds')}",
+            f"model={model}",
+            f"note={note or '-'}",
+            f"user={ (user_text or '')[:800]}",
+            f"issues={'; '.join(issues) if issues else '-'}",
+            f"raw={ (raw or '')[:2500]}",
+            "",
+            "Цепочка: Telegram/GUI → run_reflect → Ollama → parse_reflect_response",
+            "→ reflect_reply_issues / is_nsfw_refusal → (retry/rescue) → тебе.",
+            "См. также .viu/logs/agent.log (REFLECT_FAIL, REFLECT_RESCUE).",
+        ]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def format_reflect_fail_message(
+    issues: list[str],
+    model_label: str,
+) -> str:
+    """Текст для чата/Telegram, когда ответ не прошёл фильтры."""
+    lines = [
+        "Я запуталась в ответе и не стала слать чушь.",
+        "Попробуй короче или перефразируй.",
+        f"В списке «Чат» лучше viu-cydonia (сейчас {model_label}).",
+        "",
+        "Что сработало: см. .viu/logs/reflect_last_fail.txt",
+    ]
+    if os.environ.get("VIU_REFLECT_DEBUG", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        if issues:
+            lines.append("")
+            lines.append("[debug] " + "; ".join(issues[:5]))
+    return "\n".join(lines)
 
 
 REFLECT_THINK = REFLECT_VOICE

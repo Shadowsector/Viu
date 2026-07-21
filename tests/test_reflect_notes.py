@@ -34,6 +34,32 @@ def test_meta_mode_reply_rejected():
     assert any("мета" in i for i in issues)
 
 
+def test_reflect_fail_snapshot(tmp_path, monkeypatch):
+    from viu.config import Config
+    from viu.prompts.reflect_mode import (
+        format_reflect_fail_message,
+        reflect_fail_log_path,
+        write_reflect_fail_snapshot,
+    )
+
+    monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
+    cfg = Config(data_dir=tmp_path / ".viu")
+    write_reflect_fail_snapshot(
+        cfg,
+        user_text="тест",
+        issues=["осторожничание"],
+        model="viu-cydonia",
+        raw='{"final":"нужно быть осторожной"}',
+    )
+    path = reflect_fail_log_path(cfg)
+    assert path.is_file()
+    text = path.read_text(encoding="utf-8")
+    assert "осторожничание" in text
+    msg = format_reflect_fail_message(["мета про режимы"], "viu-command-r")
+    assert "reflect_last_fail" in msg
+    assert "viu-cydonia" in msg
+
+
 def test_chat_notes_slimmer_than_work(tmp_path, monkeypatch):
     from viu.config import Config
 

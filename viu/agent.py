@@ -529,6 +529,8 @@ class Agent:
             scrub_poisoned_history,
             select_reflect_system,
             user_is_greeting,
+            write_reflect_fail_snapshot,
+            format_reflect_fail_message,
         )
         from .situational_context import build_reflect_notes
 
@@ -763,14 +765,29 @@ class Agent:
             if bold_q:
                 self._log("REFLECT_RESCUE: bold mocap fallback")
                 return _accept_final(BOLD_MOCAP_FALLBACK, "fallback: осторожничала на смелый вопрос")
-            # Жёсткий запасной ответ — цензор до Дена не доходит
             self._log("REFLECT_RESCUE: hard NSFW affirm fallback")
+            write_reflect_fail_snapshot(
+                self.config,
+                user_text=user_text,
+                issues=last_issues or ["rescue: модель отказала"],
+                model=reflect_tag,
+                raw=last_raw,
+                note="rescue-fallback",
+            )
             return _accept_final(NSFW_AFFIRM_FALLBACK, "fallback: модель отказала")
 
         self._log(
             "REFLECT_FAIL template: issues="
             + (",".join(last_issues) if last_issues else "-")
             + f" model={reflect_tag} raw={(last_raw or '')[:200]!r}"
+        )
+        write_reflect_fail_snapshot(
+            self.config,
+            user_text=user_text,
+            issues=last_issues,
+            model=reflect_tag,
+            raw=last_raw,
+            note="reflect-fail",
         )
         if greeting:
             return _accept_final(
@@ -792,18 +809,13 @@ class Agent:
             wrap = model_label(self.config, "reflect")
             result.final = (
                 "Ответ модели оборвался на середине — сырой JSON не отправила. "
-                "Спроси короче или «продолжай сцену» "
-                f"(reflect={wrap}). "
-                "Обнови Вью (нужна версия после eea4d7d) и VIU_OLLAMA_NUM_PREDICT=4096 в .env."
+                "Спроси короче или «продолжай сцену». "
+                "В .env: VIU_OLLAMA_NUM_PREDICT=4096. "
+                f"Модель чата: {wrap}."
             )
             result.completed = True
             return result
-        wrap = model_label(self.config, "reflect")
-        result.final = (
-            "Я запуталась в ответе и не стала слать чушь. "
-            "Попробуй короче или перефразируй. "
-            f"Если повторяется — в списке «Чат» выбери viu-cydonia (сейчас {wrap})."
-        )
+        result.final = format_reflect_fail_message(last_issues, model_label(self.config, "reflect"))
         result.completed = True
         return result
 
