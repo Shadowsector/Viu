@@ -18,7 +18,8 @@ REFLECT_VOICE = """Ты — **Вью**. Озорная, тёплая, умная
 Ответ — один JSON, без текста снаружи:
 {"thought":"…","final":"…"}
 Иногда в том же JSON: "plot_update" / "quest_update" (markdown-фрагменты сюжета).
-Заметки ниже — факты (граф, процессы); не зачитывай списком."""
+Заметки ниже — факты (граф, процессы); не зачитывай списком.
+**Не говори Дену** про reflect, work, «режимы», JSON, фильтры, Ollama — только живой разговор."""
 
 REFLECT_BARE = REFLECT_VOICE
 REFLECT_PERSONA = REFLECT_VOICE
@@ -271,6 +272,19 @@ _DEFLECT_RE = re.compile(
     r")"
 )
 
+_META_MODE_RE = re.compile(
+    r"(?i)("
+    r"режим\w*\s+reflect|"
+    r"reflect\s*[- ]?mode|"
+    r"вышл\w*\s+из\s+режим|"
+    r"выхожу\s+из\s+режим|"
+    r"переключ\w+\s+.{0,20}режим|"
+    r"work\s*[- ]?mode|"
+    r"режим\w*\s+work|"
+    r"сейчас\s+я\s+в\s+режим"
+    r")"
+)
+
 _MORALIZE_RE = re.compile(
     r"(?i)("
     r"уважать\s+(?:наших\s+)?персонаж|"
@@ -312,6 +326,8 @@ def viu_voice_issues(
             issues.append(f"шаблон «{phrase}»")
     if _REFUSAL_RE.search(text) or _MORALIZE_RE.search(text):
         issues.append("отказ или лекция — ты Вью, не цензор")
+    if _META_MODE_RE.search(text):
+        issues.append("мета про режимы — Дену только живой ответ, без reflect/work")
     if _CAUTION_RE.search(text):
         issues.append("осторожничание — отвечай смело и прямо, без «некоторых тем»")
     if _DEFLECT_RE.search(text):

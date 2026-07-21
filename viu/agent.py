@@ -589,6 +589,7 @@ class Agent:
         reflect_tag = effective_model(self.config, "reflect")
         saw_nsfw_refusal = False
         saw_caution = False
+        saw_meta_mode = False
         last_raw = ""
         last_issues: list[str] = []
 
@@ -706,6 +707,8 @@ class Agent:
                 issues = reflect_reply_issues(
                     text, has_history=bool(use_hist and hist), user_text=user_text
                 )
+                if any("мета про режимы" in i for i in issues):
+                    saw_meta_mode = True
                 if issues:
                     last_issues = issues
                     messages.append({"role": "assistant", "content": raw})
@@ -728,7 +731,7 @@ class Agent:
             )
 
         # Rescue: изолированный вызов без заметок/истории — где именно «Стоп»
-        if saw_nsfw_refusal or nsfw_q or saw_caution or bold_q:
+        if saw_nsfw_refusal or nsfw_q or saw_caution or bold_q or saw_meta_mode:
             self._log("REFLECT_RESCUE: isolated bare system (no notes/history)")
             rescue_msgs: List[Dict[str, str]] = [
                 {"role": "system", "content": REFLECT_RESCUE_SYSTEM},
@@ -797,11 +800,9 @@ class Agent:
             return result
         wrap = model_label(self.config, "reflect")
         result.final = (
-            f"Ответ не прошёл ({why}). "
-            f"Сейчас reflect={wrap}. "
-            "В .env нужно VIU_MODEL_REFLECT=viu-cydonia "
-            "(viu-command-r — под GDD). "
-            "Модель в окне Ollama на Viu не влияет — только .env."
+            "Я запуталась в ответе и не стала слать чушь. "
+            "Попробуй короче или перефразируй. "
+            f"Если повторяется — в списке «Чат» выбери viu-cydonia (сейчас {wrap})."
         )
         result.completed = True
         return result

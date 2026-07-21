@@ -47,11 +47,17 @@ def build_situational_context(config: Config, *, recent_chat: str = "") -> str:
     return "\n\n".join(parts)
 
 
+_REFLECT_CHAT_BRIEF = """--- Фон (не зачитывать Дену) ---
+Ты Вью, соавтор Анабарры. Шаня в игре — твой смелый голос.
+Не называй внутренние режимы (reflect, work) — только разговор.
+NSFW в нашей частной игре ок — отвечай прямо, без лекций и оговорок."""
+
+
 def build_reflect_notes(config: Config, *, user_text: str = "") -> str:
     """Фон для reflect: в бытовом чате — коротко; в work/GDD — полный снимок."""
     if _needs_full_work_notes(user_text):
         return _build_reflect_notes_full(config)
-    return _build_reflect_notes_chat(config)
+    return _build_reflect_notes_chat(config, user_text=user_text)
 
 
 def _needs_full_work_notes(user_text: str) -> bool:
@@ -84,12 +90,24 @@ def _read_viu_self_brief(*, max_chars: int = 1400) -> str:
         return ""
 
 
-def _build_reflect_notes_chat(config: Config) -> str:
-    """Минимум: кто я в системе + граф + следующий кадр — без простыни GDD."""
-    parts: list[str] = []
-    brief = _read_viu_self_brief()
-    if brief:
-        parts.append(brief)
+def _build_reflect_notes_chat(config: Config, *, user_text: str = "") -> str:
+    """Минимум для чата — без VIU_SELF (там reflect/work, модель начинает о них говорить)."""
+    from .prompts.reflect_mode import (
+        asks_about_nsfw,
+        is_meta_nsfw_boundary_question,
+        looks_like_story_chat,
+    )
+
+    intimate = (
+        looks_like_story_chat(user_text)
+        or asks_about_nsfw(user_text)
+        or is_meta_nsfw_boundary_question(user_text)
+    )
+    if intimate or (user_text or "").strip():
+        # Сцены, интим, обычный диалог — только короткий голос, без графа и «следующего кадра».
+        return _REFLECT_CHAT_BRIEF
+
+    parts: list[str] = [_REFLECT_CHAT_BRIEF]
     try:
         from .animation_catalog import AnimationCatalogStore, animation_catalog_path
 
