@@ -102,7 +102,7 @@ def test_reflect_request_dump_writes_json(tmp_path, monkeypatch):
     assert data["messages"][-1]["content"] == "покажи дамп"
 
 
-def test_weak_scene_reply_detected():
+def test_weak_scene_reply_not_filtered():
     from viu.prompts.reflect_mode import is_roleplay_scene_prompt, is_weak_scene_reply
 
     user = (
@@ -110,11 +110,10 @@ def test_weak_scene_reply_detected():
     )
     assert is_roleplay_scene_prompt(user)
     weak = "*Я вижу твоё лицо через экран — ты краснеешь*\n\nОй... 😳"
-    assert is_weak_scene_reply(weak, user)
+    assert not is_weak_scene_reply(weak, user)
     from viu.prompts.reflect_mode import reflect_reply_issues
 
-    issues = reflect_reply_issues(weak, user_text=user)
-    assert any("слабая сцена" in i for i in issues)
+    assert reflect_reply_issues(weak, user_text=user) == []
 
 
 def test_reflect_fail_snapshot(tmp_path, monkeypatch):

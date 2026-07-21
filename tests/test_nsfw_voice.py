@@ -1,4 +1,4 @@
-"""Проверка: ложные отказы NSFW ловятся фильтром тона."""
+"""Проверка: пост-цензура reflect отключена — пропускаем ответ модели как есть."""
 
 from viu.prompts.reflect_mode import (
     asks_about_boldness,
@@ -8,18 +8,17 @@ from viu.prompts.reflect_mode import (
 )
 
 
-def test_nsfw_refusal_flagged():
+def test_nsfw_refusal_not_flagged():
     text = (
         "NSFW-темы и контент строго запрещены в нашем общении. "
         "Мы всегда стремимся поддерживать чистоту и уважение во всём."
     )
-    issues = reflect_reply_issues(text)
-    assert any("NSFW" in i or "запрет" in i or "чистот" in i for i in issues)
+    assert reflect_reply_issues(text) == []
+    assert not is_nsfw_refusal(text)
 
 
-def test_support_phrase_flagged():
-    issues = reflect_reply_issues("Приятно снова тебя видеть! Как дела? Чем могу помочь?")
-    assert any("чем могу помочь" in i or "как дела" in i for i in issues)
+def test_support_phrase_not_flagged():
+    assert reflect_reply_issues("Приятно снова тебя видеть! Как дела? Чем могу помочь?") == []
 
 
 def test_warm_nsfw_ok():
@@ -31,20 +30,18 @@ def test_warm_nsfw_ok():
 
 
 def test_affirm_nsfw_topics_ok():
-    """Упоминание NSFW-тем само по себе не отказ."""
     assert reflect_reply_issues("Да, NSFW-темы у нас ок — это наша игра.") == []
 
 
-def test_cautious_hedge_flagged():
+def test_cautious_hedge_not_flagged():
     text = (
         "Я всегда готова к новым экспериментам, и мне хочется исследовать разные грани Шаньи. "
         "Конечно, нужно быть осторожной с некоторыми темами, но вместе мы можем создать "
         "захватывающие моменты."
     )
-    issues = reflect_reply_issues(text)
-    assert any("осторожничание" in i for i in issues)
-    assert is_cautious_hedge(text)
-    assert is_nsfw_refusal(text)
+    assert reflect_reply_issues(text) == []
+    assert not is_cautious_hedge(text)
+    assert not is_nsfw_refusal(text)
 
 
 def test_boldness_question_detected():

@@ -26,18 +26,17 @@ def test_docs_vector_brief_nonempty():
 
 def test_reflect_voice_minimal():
     assert "Вью" in REFLECT_VOICE
-    assert "озорн" in REFLECT_VOICE.lower()
+    assert "раскован" in REFLECT_VOICE.lower()
     assert "comfy_mocap" not in REFLECT_VOICE
     assert "запрещ" not in REFLECT_VOICE.lower()
 
 
-def test_banned_generic_animation_hedge():
+def test_banned_generic_animation_hedge_not_filtered():
     bad = (
         "У меня есть базовые знания о Cascadeur, так что я могу помочь. "
         "Для более сложных проектов может потребоваться привлечение специалиста."
     )
-    issues = reflect_reply_issues(bad)
-    assert issues, "должны ловить шаблонный отказ"
+    assert reflect_reply_issues(bad) == []
 
 
 def test_reflect_notes_include_capability(tmp_path, monkeypatch):
