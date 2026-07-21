@@ -250,6 +250,12 @@ def sync_studio_feedback(config: Config) -> Tuple[int, str]:
             e.contact_modes = [
                 m for m in (row.get("contact_modes") or []) if m in CONTACT_MODES
             ]
+        from .appearance import normalize_hair_color, normalize_skin_tone
+
+        if row.get("skin_tone"):
+            e.skin_tone = normalize_skin_tone(str(row["skin_tone"]))
+        if row.get("hair_color"):
+            e.hair_color = normalize_hair_color(str(row["hair_color"]))
         e.sync_nsfw_capable()
         if row.get("target_height_m"):
             try:

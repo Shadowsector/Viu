@@ -10,6 +10,14 @@ from tkinter import messagebox, simpledialog, ttk
 from typing import Callable, Optional
 
 from ..config import Config
+from .appearance import (
+    HAIR_COLOR_IDS,
+    HAIR_COLOR_LABELS,
+    SKIN_TONE_IDS,
+    SKIN_TONE_LABELS,
+    normalize_hair_color,
+    normalize_skin_tone,
+)
 from .auto_size import apply_size_to_same_stem, auto_apply_size_guesses
 from .models import (
     CONTACT_MODE_LABELS,
@@ -199,6 +207,31 @@ class CreatureCatalogReviewWindow:
                 text=CONTACT_MODE_LABELS.get(mode, mode),
                 variable=self.contact_vars[mode],
             ).pack(side="left", padx=(0, 12))
+
+        appear_row = ttk.Frame(anat_fr)
+        appear_row.pack(fill="x", pady=(6, 0))
+        ttk.Label(appear_row, text="Кожа:").pack(side="left", padx=(0, 4))
+        self.skin_var = tk.StringVar(value="default")
+        skin_values = [f"{sid} — {SKIN_TONE_LABELS.get(sid, sid)}" for sid in SKIN_TONE_IDS]
+        self.skin_combo = ttk.Combobox(
+            appear_row,
+            textvariable=self.skin_var,
+            values=skin_values,
+            width=22,
+            state="readonly",
+        )
+        self.skin_combo.pack(side="left", padx=(0, 12))
+        ttk.Label(appear_row, text="Волосы:").pack(side="left", padx=(0, 4))
+        self.hair_var = tk.StringVar(value="default")
+        hair_values = [f"{hid} — {HAIR_COLOR_LABELS.get(hid, hid)}" for hid in HAIR_COLOR_IDS]
+        self.hair_combo = ttk.Combobox(
+            appear_row,
+            textvariable=self.hair_var,
+            values=hair_values,
+            width=22,
+            state="readonly",
+        )
+        self.hair_combo.pack(side="left")
 
         hrow = ttk.Frame(self.detail)
         hrow.pack(anchor="w", fill="x", pady=(0, 8))
@@ -422,11 +455,34 @@ class CreatureCatalogReviewWindow:
         modes = set(e.contact_modes or [])
         for mode, var in self.contact_vars.items():
             var.set(mode in modes)
+        self._set_appearance_display(e)
         if e.nsfw_capable and gp == "none" and not modes:
             self.hint_lbl.config(
                 text=(self.hint_lbl.cget("text") or "")
                 + " · ⚠ старая NSFW-галочка — уточни анатомию"
             )
+
+    def _appearance_id_from_combo(self, var: tk.StringVar, valid_ids: tuple[str, ...]) -> str:
+        raw = (var.get() or "").strip()
+        if raw in valid_ids:
+            return raw
+        if " — " in raw:
+            head = raw.split(" — ", 1)[0].strip()
+            if head in valid_ids:
+                return head
+        return valid_ids[0] if valid_ids else "default"
+
+    def _set_appearance_display(self, e: CreatureEntry) -> None:
+        st = normalize_skin_tone(e.skin_tone or "default")
+        hc = normalize_hair_color(e.hair_color or "default")
+        self.skin_var.set(f"{st} — {SKIN_TONE_LABELS.get(st, st)}")
+        self.hair_var.set(f"{hc} — {HAIR_COLOR_LABELS.get(hc, hc)}")
+
+    def _appearance_from_ui(self) -> tuple[str, str]:
+        return (
+            self._appearance_id_from_combo(self.skin_var, SKIN_TONE_IDS),
+            self._appearance_id_from_combo(self.hair_var, HAIR_COLOR_IDS),
+        )
 
     def _anatomy_from_ui(self) -> tuple[str, list[str]]:
         gp = self.genital_var.get() or "none"
@@ -616,7 +672,10 @@ class CreatureCatalogReviewWindow:
             messagebox.showerror("Вью", f"Не удалось поставить size={size}", parent=self.win)
             return
         gp, modes = self._anatomy_from_ui()
+        skin_tone, hair_color = self._appearance_from_ui()
         updated.set_anatomy(genital_profile=gp, contact_modes=modes)
+        updated.skin_tone = skin_tone
+        updated.hair_color = hair_color
         self.store.upsert(updated)
         extra = apply_size_to_same_stem(
             self.store,

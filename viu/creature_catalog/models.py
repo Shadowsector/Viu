@@ -84,13 +84,14 @@ LOCOMOTION = (
 )
 
 # Половая разметка → набор NSFW-анимаций (все классы роста).
-GENITAL_PROFILES = ("none", "penis", "vagina", "futa")
+GENITAL_PROFILES = ("none", "penis", "vagina", "futa", "penis_planned")
 
 GENITAL_PROFILE_LABELS: Dict[str, str] = {
     "none": "нет половых органов",
     "penis": "пенис (мужское)",
     "vagina": "вагина (женское)",
     "futa": "futa (оба)",
+    "penis_planned": "♂ планируется (меша пока нет)",
 }
 
 # Контакт без гениталий: мимик (язык), цветок, щупальца…
@@ -265,10 +266,12 @@ class CreatureEntry:
     textures_packed: bool = False
     texture_manifest_path: str = ""
     outfit_sets_path: str = ""
-    genital_profile: str = "none"          # none | penis | vagina | futa
+    genital_profile: str = "none"          # none | penis | vagina | futa | penis_planned
     contact_modes: List[str] = field(default_factory=list)  # oral | tentacle | hand
     nsfw_capable: bool = False            # авто: genital≠none или есть contact_modes
     genital_rig: str = ""                # none | pending | attached (legacy rig state)
+    skin_tone: str = "default"           # appearance.SKIN_TONE_IDS
+    hair_color: str = "default"          # appearance.HAIR_COLOR_IDS
     flaccid_default: bool = True
     # Не трогать при bake/normalize: уши, хвосты, гениталии и пр. часто живут
     # в shape keys / morph targets (в т.ч. «спрятанный» орган → вытянуть morph'ом).
@@ -328,6 +331,8 @@ class CreatureEntry:
             ],
             nsfw_capable=bool(d.get("nsfw_capable")),
             genital_rig=str(d.get("genital_rig") or ""),
+            skin_tone=str(d.get("skin_tone") or "default"),
+            hair_color=str(d.get("hair_color") or "default"),
             flaccid_default=bool(d.get("flaccid_default", True)),
             preserve_morphs=bool(d.get("preserve_morphs", True)),
             morph_notes=str(d.get("morph_notes") or ""),
@@ -351,6 +356,10 @@ class CreatureEntry:
         if not e.id and e.path:
             e.id = creature_id_for_path(Path(e.path))
         e._migrate_anatomy_from_legacy(d)
+        from .appearance import normalize_hair_color, normalize_skin_tone
+
+        e.skin_tone = normalize_skin_tone(e.skin_tone)
+        e.hair_color = normalize_hair_color(e.hair_color)
         e.sync_nsfw_capable()
         return e
 
@@ -364,7 +373,10 @@ class CreatureEntry:
 
     def sync_nsfw_capable(self) -> None:
         gp = (self.genital_profile or "none").strip()
+        planned = gp == "penis_planned"
         self.nsfw_capable = (gp not in ("", "none")) or bool(self.contact_modes)
+        if planned and self.genital_rig in ("", "none"):
+            self.genital_rig = "pending"
 
     def set_anatomy(
         self,

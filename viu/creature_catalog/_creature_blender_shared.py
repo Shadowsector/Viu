@@ -36,6 +36,33 @@ _BODY_MESH_KEYS = (
     "body", "hair", "eye", "ear", "lash", "brow", "teeth", "tongue", "head",
     "face", "skin", "nipple", "breast",
 )
+_HAIR_MESH_KEYS = ("hair", "scalp", "ponytail", "bangs", "fringe", "mane")
+_SKIN_EXCLUDE_KEYS = (
+    "hair", "eye", "lash", "teeth", "tongue", "brow", "cornea", "iris", "pupil",
+    "eyelash", "eyebrow",
+)
+_VIU_APPEARANCE_ORIG = "viu_appearance_orig"
+
+# Дублируем пресеты из viu/creature_catalog/appearance.py (Blender не видит пакет viu).
+_SKIN_TONE_RGB: Dict[str, Tuple[float, float, float]] = {
+    "default": (1.0, 1.0, 1.0),
+    "fair": (1.08, 0.94, 0.90),
+    "light": (1.02, 0.88, 0.78),
+    "medium": (0.92, 0.76, 0.62),
+    "tan": (0.85, 0.68, 0.52),
+    "olive": (0.78, 0.72, 0.55),
+    "dark": (0.55, 0.42, 0.34),
+}
+_HAIR_COLOR_RGB: Dict[str, Tuple[float, float, float]] = {
+    "default": (1.0, 1.0, 1.0),
+    "black": (0.12, 0.10, 0.09),
+    "dark_brown": (0.28, 0.18, 0.12),
+    "brown": (0.42, 0.26, 0.16),
+    "blonde": (0.78, 0.62, 0.32),
+    "auburn": (0.62, 0.22, 0.10),
+    "silver": (0.72, 0.72, 0.78),
+    "fantasy_blue": (0.22, 0.38, 0.85),
+}
 
 
 def slugify(name: str) -> str:
@@ -870,6 +897,99 @@ def is_body_mesh_name(name: str) -> bool:
     if is_clothing_mesh(name):
         return False
     return any(k in low for k in _BODY_MESH_KEYS)
+
+
+def is_hair_mesh_name(name: str) -> bool:
+    if is_wgt_name(name) or is_gzm_name(name):
+        return False
+    low = (name or "").lower()
+    return any(k in low for k in _HAIR_MESH_KEYS)
+
+
+def is_skin_mesh_name(name: str) -> bool:
+    if not is_body_mesh_name(name):
+        return False
+    low = (name or "").lower()
+    if is_hair_mesh_name(name):
+        return False
+    return not any(k in low for k in _SKIN_EXCLUDE_KEYS)
+
+
+def _appearance_orig_key(mat_name: str) -> str:
+    return f"{_VIU_APPEARANCE_ORIG}_{mat_name}"
+
+
+def _read_base_color(mat) -> Tuple[float, float, float, float]:
+    if mat.use_nodes and mat.node_tree:
+        bsdf = mat.node_tree.nodes.get("Principled BSDF")
+        if bsdf and bsdf.inputs.get("Base Color"):
+            c = bsdf.inputs["Base Color"].default_value
+            return float(c[0]), float(c[1]), float(c[2]), float(c[3])
+    c = mat.diffuse_color
+    return float(c[0]), float(c[1]), float(c[2]), float(c[3])
+
+
+def _write_base_color(mat, rgba: Tuple[float, float, float, float]) -> None:
+    if mat.use_nodes and mat.node_tree:
+        bsdf = mat.node_tree.nodes.get("Principled BSDF")
+        if bsdf and bsdf.inputs.get("Base Color"):
+            bsdf.inputs["Base Color"].default_value = rgba
+            return
+    mat.diffuse_color = rgba
+
+
+def _tint_material(mat, rgb: Tuple[float, float, float], *, absolute: bool) -> None:
+    key = _appearance_orig_key(mat.name)
+    if key not in mat:
+        mat[key] = _read_base_color(mat)
+    orig = mat[key]
+    if isinstance(orig, (list, tuple)) and len(orig) >= 4:
+        o = (float(orig[0]), float(orig[1]), float(orig[2]), float(orig[3]))
+    else:
+        o = _read_base_color(mat)
+        mat[key] = o
+    if absolute:
+        _write_base_color(mat, (rgb[0], rgb[1], rgb[2], o[3]))
+    else:
+        _write_base_color(
+            mat,
+            (o[0] * rgb[0], o[1] * rgb[1], o[2] * rgb[2], o[3]),
+        )
+
+
+def apply_creature_appearance(
+    objects: Sequence,
+    *,
+    skin_tone: str = "default",
+    hair_color: str = "default",
+) -> Tuple[int, int]:
+    """Тон кожи (multiply) и цвет волос (replace) по именам мешей."""
+    skin_rgb = _SKIN_TONE_RGB.get(skin_tone or "default", _SKIN_TONE_RGB["default"])
+    hair_rgb = _HAIR_COLOR_RGB.get(hair_color or "default", _HAIR_COLOR_RGB["default"])
+    skin_n = 0
+    hair_n = 0
+    for obj in objects:
+        if obj is None or obj.type != "MESH" or skip_mesh(obj.name):
+            continue
+        mats_touched: set = set()
+        if skin_tone != "default" and is_skin_mesh_name(obj.name):
+            for slot in obj.material_slots:
+                mat = slot.material
+                if mat and mat.name not in mats_touched:
+                    _tint_material(mat, skin_rgb, absolute=False)
+                    mats_touched.add(mat.name)
+            if mats_touched:
+                skin_n += 1
+        mats_touched = set()
+        if hair_color != "default" and is_hair_mesh_name(obj.name):
+            for slot in obj.material_slots:
+                mat = slot.material
+                if mat and mat.name not in mats_touched:
+                    _tint_material(mat, hair_rgb, absolute=True)
+                    mats_touched.add(mat.name)
+            if mats_touched:
+                hair_n += 1
+    return skin_n, hair_n
 
 
 def mesh_visibility_snapshot(objects: Sequence) -> dict:

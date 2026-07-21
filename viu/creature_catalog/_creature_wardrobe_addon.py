@@ -2,10 +2,10 @@
 bl_info = {
     "name": "Viu Creature Wardrobe",
     "author": "Viu",
-    "version": (0, 2, 1),
+    "version": (0, 3, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
-    "description": "Наборы одежды: Casual/Fitness/Swimsuit… + вариант 1–3",
+    "description": "Наборы одежды: Casual/Fitness/Swimsuit… + внешность (кожа/волосы)",
     "category": "Animation",
 }
 
@@ -19,6 +19,9 @@ from bpy.props import BoolProperty, EnumProperty, StringProperty
 
 _SESSION: dict = {}
 _STATE = {"root": None, "objects": [], "import_colls": []}
+_GENITAL_ITEMS = [("none", "нет половых органов", "")]
+_SKIN_ITEMS = [("default", "как в файле", "")]
+_HAIR_ITEMS = [("default", "как в файле", "")]
 _SLOT = "VIU_WardrobeSlot"
 _ROOT = "VIU_WARDROBE_ROOT"
 
@@ -123,6 +126,28 @@ def _load_entry(entry: dict) -> str:
     return f"Wardrobe: {entry.get('name')} ({len(meshes)} мешей)"
 
 
+def _sync_props_from_entry(context, entry: dict) -> None:
+    props = context.scene.viu_creature_wardrobe
+    gp = str(entry.get("genital_profile") or "none")
+    valid_gp = {i[0] for i in _GENITAL_ITEMS}
+    props.genital_profile = gp if gp in valid_gp else "none"
+    st = str(entry.get("skin_tone") or "default")
+    valid_st = {i[0] for i in _SKIN_ITEMS}
+    props.skin_tone = st if st in valid_st else "default"
+    hc = str(entry.get("hair_color") or "default")
+    valid_hc = {i[0] for i in _HAIR_ITEMS}
+    props.hair_color = hc if hc in valid_hc else "default"
+
+
+def _apply_appearance(context) -> tuple[int, int]:
+    props = context.scene.viu_creature_wardrobe
+    return S.apply_creature_appearance(
+        _STATE.get("objects") or [],
+        skin_tone=props.skin_tone or "default",
+        hair_color=props.hair_color or "default",
+    )
+
+
 def _mesh_objects():
     return [o for o in (_STATE.get("objects") or []) if o.type == "MESH" and not S.skip_mesh(o.name)]
 
@@ -161,6 +186,10 @@ class VIU_OT_WardrobePrev(bpy.types.Operator):
             return {"FINISHED"}
         _SESSION["index"] = idx - 1
         _load_entry(_current_entry())
+        _sync_props_from_entry(context, _current_entry())
+        skin_n, hair_n = _apply_appearance(context)
+        if skin_n or hair_n:
+            self.report({"INFO"}, f"Внешность: кожа {skin_n}, волосы {hair_n}")
         return {"FINISHED"}
 
 
@@ -181,6 +210,10 @@ class VIU_OT_WardrobeNext(bpy.types.Operator):
             return {"FINISHED"}
         _SESSION["index"] = idx + 1
         _load_entry(_current_entry())
+        _sync_props_from_entry(context, _current_entry())
+        skin_n, hair_n = _apply_appearance(context)
+        if skin_n or hair_n:
+            self.report({"INFO"}, f"Внешность: кожа {skin_n}, волосы {hair_n}")
         return {"FINISHED"}
 
 
@@ -246,6 +279,40 @@ class VIU_OT_WardrobeShowGenital(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class VIU_OT_WardrobeApplyAppearance(bpy.types.Operator):
+    bl_idname = "viu.wardrobe_apply_appearance"
+    bl_label = "Применить кожу и волосы"
+
+    def execute(self, context):
+        skin_n, hair_n = _apply_appearance(context)
+        props = context.scene.viu_creature_wardrobe
+        entry = _current_entry()
+        if entry:
+            _sync_feedback(entry, _load_outfit_doc(entry), S.mesh_visibility_snapshot(_STATE.get("objects") or []), props)
+        self.report({"INFO"}, f"Кожа: {skin_n} меш(ей), волосы: {hair_n}")
+        return {"FINISHED"}
+
+
+class VIU_OT_WardrobeSaveAnatomy(bpy.types.Operator):
+    bl_idname = "viu.wardrobe_save_anatomy"
+    bl_label = "Сохранить анатомию / внешность"
+
+    def execute(self, context):
+        entry = _current_entry()
+        if not entry:
+            return {"CANCELLED"}
+        props = context.scene.viu_creature_wardrobe
+        snap = S.mesh_visibility_snapshot(_STATE.get("objects") or [])
+        data = _load_outfit_doc(entry)
+        _sync_feedback(entry, data, snap, props)
+        gp_label = next(
+            (lbl for gid, lbl, _ in _GENITAL_ITEMS if gid == props.genital_profile),
+            props.genital_profile,
+        )
+        self.report({"INFO"}, f"Сохранено: {gp_label}")
+        return {"FINISHED"}
+
+
 class VIU_OT_WardrobeHideGenital(bpy.types.Operator):
     bl_idname = "viu.wardrobe_hide_genital"
     bl_label = "Спрятать genital mesh"
@@ -281,9 +348,15 @@ def _write_outfit_set(entry: dict, props, type_id: str, variant: str, snap: dict
 
 
 def _sync_feedback(entry: dict, data: dict, snap: dict, props) -> None:
-    genital_rig = "attached" if snap["genital_mesh_visible"] else (
-        "pending" if any(S.is_genital_mesh(o.name) for o in _mesh_objects()) else "none"
-    )
+    gp = props.genital_profile or entry.get("genital_profile") or "none"
+    if gp == "penis_planned":
+        genital_rig = "pending"
+    elif snap["genital_mesh_visible"]:
+        genital_rig = "attached"
+    elif any(S.is_genital_mesh(o.name) for o in _mesh_objects()):
+        genital_rig = "pending"
+    else:
+        genital_rig = "none"
     confirmed_n = sum(1 for s in data.get("sets") or [] if isinstance(s, dict) and s.get("confirmed"))
     out = _outfit_path(entry)
     S.write_feedback_file(
@@ -291,7 +364,10 @@ def _sync_feedback(entry: dict, data: dict, snap: dict, props) -> None:
         entry,
         outfit_sets_path=str(out),
         outfit_sets_confirmed=confirmed_n,
+        genital_profile=gp,
         genital_rig=genital_rig,
+        skin_tone=props.skin_tone or "default",
+        hair_color=props.hair_color or "default",
         wardrobe_notes=props.set_notes or "",
     )
 
@@ -386,10 +462,18 @@ class VIU_PT_CreatureWardrobe(bpy.types.Panel):
         layout.operator("viu.wardrobe_hide_rig", icon="HIDE_ON")
         layout.operator("viu.wardrobe_body_only", icon="ARMATURE_DATA")
         layout.operator("viu.wardrobe_hide_clothes", icon="HIDE_ON")
+        props = context.scene.viu_creature_wardrobe
+        box = layout.box()
+        box.label(text="Внешность и анатомия:", icon="USER")
+        box.prop(props, "skin_tone", text="Кожа")
+        box.prop(props, "hair_color", text="Волосы")
+        row = box.row(align=True)
+        row.operator("viu.wardrobe_apply_appearance", icon="BRUSH_DATA")
+        box.prop(props, "genital_profile", text="Гениталии")
+        box.operator("viu.wardrobe_save_anatomy", icon="EXPORT")
         row = layout.row(align=True)
         row.operator("viu.wardrobe_show_genital", icon="HIDE_OFF")
         row.operator("viu.wardrobe_hide_genital", icon="HIDE_ON")
-        props = context.scene.viu_creature_wardrobe
         if props.clip_warning:
             layout.label(text=props.clip_warning, icon="ERROR")
 
@@ -439,6 +523,18 @@ class VIU_PT_CreatureWardrobe(bpy.types.Panel):
         layout.operator("viu.wardrobe_save_set", text=f"Сохранить {label} {int(variant)}", icon="EXPORT")
 
 
+def _genital_enum_items(self, context):
+    return _GENITAL_ITEMS
+
+
+def _skin_enum_items(self, context):
+    return _SKIN_ITEMS
+
+
+def _hair_enum_items(self, context):
+    return _HAIR_ITEMS
+
+
 class VIU_CreatureWardrobeProps(bpy.types.PropertyGroup):
     outfit_type: EnumProperty(
         name="Тип",
@@ -453,6 +549,9 @@ class VIU_CreatureWardrobeProps(bpy.types.PropertyGroup):
     set_notes: StringProperty(name="Заметка", default="")
     set_confirmed: BoolProperty(name="Подтверждён ✓", default=True)
     clip_warning: StringProperty(name="", default="")
+    skin_tone: EnumProperty(name="Тон кожи", items=_skin_enum_items, default=0)
+    hair_color: EnumProperty(name="Цвет волос", items=_hair_enum_items, default=0)
+    genital_profile: EnumProperty(name="Гениталии", items=_genital_enum_items, default=0)
 
     def outfit_type_variant_id(self) -> str:
         return _outfit_set_id(self.outfit_type or "casual", self.outfit_variant or "01")
@@ -467,6 +566,8 @@ _CLASSES = (
     VIU_OT_WardrobeBodyOnly,
     VIU_OT_WardrobeHideClothes,
     VIU_OT_WardrobeShowGenital,
+    VIU_OT_WardrobeApplyAppearance,
+    VIU_OT_WardrobeSaveAnatomy,
     VIU_OT_WardrobeHideGenital,
     VIU_OT_WardrobeSaveBare,
     VIU_OT_WardrobeSaveSet,
@@ -476,12 +577,34 @@ _CLASSES = (
 
 
 def load_session(session_path: str) -> None:
-    global _SESSION
+    global _SESSION, _GENITAL_ITEMS, _SKIN_ITEMS, _HAIR_ITEMS
     _SESSION = json.loads(Path(session_path).read_text(encoding="utf-8"))
+    _GENITAL_ITEMS = []
+    for row in _SESSION.get("genital_profiles") or []:
+        gid = row.get("id") or "none"
+        _GENITAL_ITEMS.append((gid, row.get("label") or gid, ""))
+    if not _GENITAL_ITEMS:
+        _GENITAL_ITEMS = [("none", "нет половых органов", "")]
+    _SKIN_ITEMS = []
+    for row in _SESSION.get("skin_tones") or []:
+        sid = row.get("id") or "default"
+        _SKIN_ITEMS.append((sid, row.get("label") or sid, ""))
+    if not _SKIN_ITEMS:
+        _SKIN_ITEMS = [("default", "как в файле", "")]
+    _HAIR_ITEMS = []
+    for row in _SESSION.get("hair_colors") or []:
+        hid = row.get("id") or "default"
+        _HAIR_ITEMS.append((hid, row.get("label") or hid, ""))
+    if not _HAIR_ITEMS:
+        _HAIR_ITEMS = [("default", "как в файле", "")]
     bpy.ops.wm.read_homefile(use_empty=True)
     entry = _current_entry()
     if entry:
         print("VIU_WARDROBE_LOAD", _load_entry(entry))
+        if bpy.context.scene.viu_creature_wardrobe:
+            _sync_props_from_entry(bpy.context, entry)
+            skin_n, hair_n = _apply_appearance(bpy.context)
+            print("VIU_WARDROBE_APPEARANCE", f"skin={skin_n} hair={hair_n}")
 
 
 def register():

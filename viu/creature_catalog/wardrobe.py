@@ -11,6 +11,13 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from ..config import Config
 from .lineup import queue_creatures_from_catalog
 from .models import CreatureEntry
+from .models import GENITAL_PROFILE_LABELS, GENITAL_PROFILES
+from .appearance import (
+    HAIR_COLOR_IDS,
+    HAIR_COLOR_LABELS,
+    SKIN_TONE_IDS,
+    SKIN_TONE_LABELS,
+)
 from .paths import (
     creature_catalog_path,
     creature_outfit_sets_path,
@@ -60,6 +67,8 @@ def _entry_payload(e: CreatureEntry, config: Config) -> Dict[str, Any]:
         "outfit_sets_path": str(creature_outfit_sets_path(config, e.slug)),
         "genital_profile": e.genital_profile or "none",
         "genital_rig": e.genital_rig or "none",
+        "skin_tone": e.skin_tone or "default",
+        "hair_color": e.hair_color or "default",
     }
 
 
@@ -101,6 +110,15 @@ def write_wardrobe_session(
         "catalog_path": str(creature_catalog_path(config)),
         "feedback_path": str(wardrobe_dir / FEEDBACK_NAME),
         "index": max(0, min(index, len(creatures) - 1)),
+        "genital_profiles": [
+            {"id": g, "label": GENITAL_PROFILE_LABELS.get(g, g)} for g in GENITAL_PROFILES
+        ],
+        "skin_tones": [
+            {"id": sid, "label": SKIN_TONE_LABELS.get(sid, sid)} for sid in SKIN_TONE_IDS
+        ],
+        "hair_colors": [
+            {"id": hid, "label": HAIR_COLOR_LABELS.get(hid, hid)} for hid in HAIR_COLOR_IDS
+        ],
         "queue": [_entry_payload(e, config) for e in creatures],
     }
     path = wardrobe_dir / SESSION_NAME
@@ -131,9 +149,19 @@ def sync_wardrobe_feedback(config: Config) -> Tuple[int, str]:
             continue
         if row.get("outfit_sets_path"):
             e.outfit_sets_path = str(row["outfit_sets_path"])
+        gp = str(row.get("genital_profile") or "").strip()
+        if gp in GENITAL_PROFILES:
+            e.genital_profile = gp
         gr = str(row.get("genital_rig") or "").strip()
         if gr in ("none", "pending", "attached"):
             e.genital_rig = gr
+        from .appearance import normalize_hair_color, normalize_skin_tone
+
+        if row.get("skin_tone"):
+            e.skin_tone = normalize_skin_tone(str(row["skin_tone"]))
+        if row.get("hair_color"):
+            e.hair_color = normalize_hair_color(str(row["hair_color"]))
+        e.sync_nsfw_capable()
         if row.get("wardrobe_notes"):
             e.notes = append_pipeline_note(e.notes or "", "wardrobe", str(row["wardrobe_notes"]))
         store.upsert(e)
@@ -178,5 +206,6 @@ def open_creature_wardrobe(
         True,
         f"{msg}\nBlender → N → Viu → **Wardrobe**.\n"
         f"Очередь: {names}\n"
-        "Тип (Casual…) + вариант 1–3 → Сохранить. Потом «Синхр. wardrobe» → «Студия существ».",
+        "Тип (Casual…) + вариант 1–3 → Сохранить. Кожа/волосы/гениталии — блок «Внешность».\n"
+        "Потом «Синхр. wardrobe» → «Студия существ».",
     )

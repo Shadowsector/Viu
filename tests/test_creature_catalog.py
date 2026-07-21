@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from viu.config import Config
@@ -77,6 +78,64 @@ def test_anatomy_markup_and_anim_bucket(tmp_path, monkeypatch):
     e.set_anatomy(genital_profile="none", contact_modes=["oral", "tentacle"])
     assert e.anim_bucket() == "small__biped__oral+tentacle"
     assert "рот" in e.anatomy_summary()
+
+
+def test_penis_planned_anatomy_and_appearance_fields(tmp_path, monkeypatch):
+    from viu.creature_catalog.appearance import normalize_hair_color, normalize_skin_tone
+    from viu.creature_catalog.models import CreatureEntry, GENITAL_PROFILE_LABELS, STATUS_SIZED
+
+    e = CreatureEntry(
+        id="y",
+        path=str(tmp_path / "boy.fbx"),
+        name="boy",
+        size_class="humanoid",
+        locomotion="biped",
+        status=STATUS_SIZED,
+    )
+    e.set_anatomy(genital_profile="penis_planned")
+    assert e.nsfw_capable
+    assert e.genital_rig == "pending"
+    assert "планируется" in GENITAL_PROFILE_LABELS["penis_planned"]
+    assert e.anim_bucket().endswith("__penis_planned")
+
+    e.skin_tone = normalize_skin_tone("tan")
+    e.hair_color = normalize_hair_color("fantasy_blue")
+    assert e.skin_tone == "tan"
+    assert e.hair_color == "fantasy_blue"
+
+    restored = CreatureEntry.from_dict(e.to_dict())
+    assert restored.genital_profile == "penis_planned"
+    assert restored.skin_tone == "tan"
+    assert restored.hair_color == "fantasy_blue"
+
+
+def test_wardrobe_session_includes_appearance(tmp_path, monkeypatch):
+    from viu.creature_catalog.models import CreatureEntry, STATUS_NORMALIZED
+    from viu.creature_catalog.wardrobe import write_wardrobe_session
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    prep = tmp_path / "Library" / "Lab" / "Creatures" / "processed" / "elf" / "prepared.blend"
+    prep.parent.mkdir(parents=True, exist_ok=True)
+    prep.write_bytes(b"blend")
+    e = CreatureEntry(
+        id="elf1",
+        path=str(tmp_path / "elf.fbx"),
+        name="Elf",
+        slug="elf",
+        size_class="humanoid",
+        locomotion="biped",
+        status=STATUS_NORMALIZED,
+        prepared_path=str(prep),
+        genital_profile="penis_planned",
+        skin_tone="medium",
+        hair_color="blonde",
+    )
+    session_path = write_wardrobe_session(cfg, [e])
+    data = json.loads(session_path.read_text(encoding="utf-8"))
+    assert any(row["id"] == "penis_planned" for row in data["genital_profiles"])
+    assert data["queue"][0]["skin_tone"] == "medium"
+    assert data["queue"][0]["hair_color"] == "blonde"
+    assert any(row["id"] == "medium" for row in data["skin_tones"])
 
 
 def test_creature_describe_parse_and_store(tmp_path, monkeypatch):
