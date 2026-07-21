@@ -1,6 +1,12 @@
 import json
 
-from viu.agent import Agent, extract_json
+from viu.agent import (
+    Agent,
+    extract_json,
+    looks_like_leaked_protocol,
+    parse_reflect_response,
+    salvage_partial_final,
+)
 from viu.config import Config
 from viu.demo import demo_script
 from viu.llm import MockLLM
@@ -39,7 +45,90 @@ def test_extract_json_picks_agent_object_over_embedded_data():
     assert parsed and parsed["final"] == "готово"
 
 
-def test_agent_single_tool_then_final(tmp_path):
+def test_extract_json_with_preamble_and_fence():
+    text = (
+        "Похоже на кусок размышлений.\n\n"
+        '```json\n{"thought": "x", "final": "ответ Дену"}\n```'
+    )
+    parsed = extract_json(text)
+    assert parsed and parsed["final"] == "ответ Дену"
+
+
+def test_parse_reflect_truncated_json_not_plaintext():
+    raw = (
+        'Похоже на кусок размышлений.\n\n```json\n{\n'
+        '  "thought": "план",\n'
+        '  "final": "Разбираюсь! Давай структурированно:\\n\\n## Сюжет\\n'
+        "Вушка: прозрачный ду"
+    )
+    final, thought, truncated, parsed = parse_reflect_response(raw)
+    assert truncated
+    assert final is None
+    assert looks_like_leaked_protocol(raw)
+
+
+def test_parse_reflect_complete_fenced_json():
+    raw = (
+        "комментарий модели\n\n"
+        '```json\n{"thought":"план","final":"Короткий ответ."}\n```'
+    )
+    final, thought, truncated, parsed = parse_reflect_response(raw)
+    assert final == "Короткий ответ."
+    assert thought == "план"
+    assert not truncated
+    assert parsed is not None
+
+
+def test_salvage_partial_final_from_truncated_gdd():
+    raw = (
+        '```json\n{\n  "thought": "план",\n  "final": "Я вижу это. Давай разберём по кадрам:\n\n'
+        "## Сцена: Вушка\n"
+        "**Кадр 1:** Ночь. Шаня спит на коврике у стены.\n"
+        "- Освещение: луна\n"
+        "она н"
+    )
+    final, thought, truncated, parsed = parse_reflect_response(raw)
+    assert truncated
+    assert final is None
+    salvaged = salvage_partial_final(raw)
+    assert "Я вижу это" in salvaged
+    assert "thought" not in salvaged.lower() or "вижу" in salvaged
+    assert "продолжай" in salvaged
+    assert not looks_like_leaked_protocol(salvaged)
+
+
+def test_run_reflect_does_not_leak_raw_json_to_final(tmp_path):
+    """Обрезанный JSON не уходит в final как сырой текст."""
+
+    class TruncatedLLM:
+        name = "trunc"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete(self, messages, *, temperature=None, model=None):
+            self.calls += 1
+            if self.calls == 1:
+                return (
+                    'Похоже на кусок размышлений.\n```json\n'
+                    '{"thought":"x","final":"Начало ответа без конца'
+                )
+            return json.dumps(
+                {"thought": "короче", "final": "Короткий цельный ответ."},
+                ensure_ascii=False,
+            )
+
+    agent = Agent(
+        llm=TruncatedLLM(),
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    result = agent.run_reflect("сценарии NSFW для домового")
+    assert result.completed
+    assert result.final == "Короткий цельный ответ."
+    assert "Похоже" not in result.final
+    assert '"thought"' not in result.final
+
+
     responses = [
         json.dumps({"thought": "запишу файл", "action": {"tool": "write_file", "args": {"path": "a.txt", "content": "hi"}}}),
         json.dumps({"thought": "готово", "final": "Файл создан"}),

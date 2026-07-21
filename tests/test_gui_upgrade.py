@@ -17,12 +17,15 @@ def test_gui_actions_grouped():
     assert "Редко" in grouped
     assert ACTION_GROUPS == ["Главное", "Редко"]
     # Минимум кнопок — не стена из 30 пунктов
-    assert len(GUI_ACTIONS) <= 22
+    assert len(GUI_ACTIONS) <= 32
     assert any(a.action_id == "next_step" and a.tool == "__next_step__" for a in GUI_ACTIONS)
     assert any(a.action_id == "unity_overlay" and a.tool == "unity_overlay" for a in GUI_ACTIONS)
     assert any(a.tool == "__update_viu__" for a in GUI_ACTIONS)
     assert any(a.action_id == "unity_apply" and a.is_chain for a in GUI_ACTIONS)
     assert any(a.action_id == "lab_comfy" and a.tool == "__lab_comfy__" for a in GUI_ACTIONS)
+    assert any(a.action_id == "interaction_blocking" and a.tool == "interaction_blocking" for a in GUI_ACTIONS)
+    assert any(a.action_id == "interaction_master" and a.is_chain for a in GUI_ACTIONS)
+    assert any(a.action_id == "lab_interaction" and a.tool == "__interaction_lab__" for a in GUI_ACTIONS)
     assert any(a.action_id == "comfy_open" and a.tool == "__comfy_open__" for a in GUI_ACTIONS)
     assert any(a.action_id == "decision_queue" and a.tool == "__decision_queue__" for a in GUI_ACTIONS)
     # Presence — сверху окна, не в сайдбаре

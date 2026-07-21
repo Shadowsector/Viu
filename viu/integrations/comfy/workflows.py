@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from .paths import comfy_workflows_dir
 
@@ -197,13 +197,36 @@ def _next_node_id(wf: Dict[str, Any], start: int = 900) -> str:
     return str(n)
 
 
+_PREFIX_SAVER_NODES = (
+    "SaveVideo",
+    "VHS_VideoCombine",
+    "SaveAnimatedWEBP",
+    "SaveWEBM",
+    "SaveImage",
+)
+
+
+def inject_filename_prefix(workflow: Dict[str, Any], prefix: str) -> Dict[str, Any]:
+    """Подставить читаемый префикс во все узлы сохранения."""
+    prefix = (prefix or "").strip() or "viu_mocap"
+    wf = json.loads(json.dumps(workflow))
+    for node in wf.values():
+        if not isinstance(node, dict):
+            continue
+        if node.get("class_type") in _PREFIX_SAVER_NODES:
+            node.setdefault("inputs", {})["filename_prefix"] = prefix
+    return wf
+
+
 def ensure_mp4_output(
     workflow: Dict[str, Any],
     *,
     fps: float = MOCAP_FPS,
+    filename_prefix: str = "viu_mocap",
 ) -> Dict[str, Any]:
     """Заменить WEBP/GIF-сейвер на CreateVideo → SaveVideo (mp4/h264)."""
     wf = json.loads(json.dumps(workflow))
+    prefix = (filename_prefix or "").strip() or "viu_mocap"
 
     # Уже есть SaveVideo — только выставить mp4/h264/fps на CreateVideo
     has_save = any(
@@ -222,7 +245,7 @@ def ensure_mp4_output(
                 inp = node.setdefault("inputs", {})
                 inp["format"] = "mp4"
                 inp["codec"] = "h264"
-                inp.setdefault("filename_prefix", "viu_mocap")
+                inp["filename_prefix"] = prefix
         # убрать старые анимированные сейверы, если остались рядом
         for nid in list(wf.keys()):
             node = wf[nid]
@@ -262,12 +285,138 @@ def ensure_mp4_output(
         "class_type": "SaveVideo",
         "inputs": {
             "video": [create_id, 0],
-            "filename_prefix": "viu_mocap",
+            "filename_prefix": prefix,
             "format": "mp4",
             "codec": "h264",
         },
         "_meta": {"title": "SaveVideo"},
     }
+    return inject_filename_prefix(wf, prefix)
+
+
+def inject_loras(
+    workflow: Dict[str, Any],
+    loras: Sequence[Union[Any, str, Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """Вставить цепочку LoraLoaderModelOnly между UNET и ModelSamplingSD3/KSampler."""
+    if not loras:
+        return workflow
+    from .lora import LoraSpec, _parse_lora_item
+
+    specs: List[LoraSpec] = []
+    for raw in loras:
+        if isinstance(raw, LoraSpec):
+            specs.append(raw)
+        else:
+            spec = _parse_lora_item(raw)
+            if spec is not None:
+                specs.append(spec)
+    if not specs:
+        return workflow
+
+    wf = json.loads(json.dumps(workflow))
+    consumer_id: Optional[str] = None
+    for nid, node in wf.items():
+        if isinstance(node, dict) and node.get("class_type") == "ModelSamplingSD3":
+            consumer_id = str(nid)
+            break
+    if consumer_id is None:
+        for nid, node in wf.items():
+            if not isinstance(node, dict):
+                continue
+            if node.get("class_type") in ("KSampler", "KSamplerAdvanced", "SamplerCustom"):
+                consumer_id = str(nid)
+                break
+    if consumer_id is None:
+        return wf
+
+    consumer = wf.get(consumer_id)
+    if not isinstance(consumer, dict):
+        return wf
+    model_ref = (consumer.get("inputs") or {}).get("model")
+    if not isinstance(model_ref, list) or len(model_ref) < 2:
+        return wf
+
+    prev_out: list = list(model_ref)
+    for i, spec in enumerate(specs):
+        lora_id = _next_node_id(wf, 850 + i)
+        lora_name = spec.file
+        if spec.subfolder:
+            lora_name = f"{spec.subfolder}/{spec.file}"
+        wf[lora_id] = {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {
+                "model": prev_out,
+                "lora_name": lora_name,
+                "strength_model": float(spec.strength),
+            },
+            "_meta": {"title": f"LoRA {spec.file}"},
+        }
+        prev_out = [lora_id, 0]
+
+    consumer.setdefault("inputs", {})["model"] = prev_out
+    return wf
+
+
+def inject_face_swap(
+    workflow: Dict[str, Any],
+    *,
+    face_image: str,
+    decode_node_id: str = "",
+    create_video_node_id: str = "",
+) -> Dict[str, Any]:
+    """ReActor: VAEDecode → face swap → CreateVideo. face_image — имя в ComfyUI/input/."""
+    if not (face_image or "").strip():
+        return workflow
+    wf = json.loads(json.dumps(workflow))
+
+    decode_id = decode_node_id
+    if not decode_id:
+        for nid, node in wf.items():
+            if isinstance(node, dict) and node.get("class_type") == "VAEDecode":
+                decode_id = str(nid)
+                break
+    if not decode_id:
+        return workflow
+
+    cv_id = create_video_node_id
+    if not cv_id:
+        for nid, node in wf.items():
+            if isinstance(node, dict) and node.get("class_type") == "CreateVideo":
+                cv_id = str(nid)
+                break
+    if not cv_id:
+        return workflow
+
+    load_id = _next_node_id(wf, 910)
+    reactor_id = _next_node_id(wf, 911)
+    wf[load_id] = {
+        "class_type": "LoadImage",
+        "inputs": {"image": face_image.strip()},
+        "_meta": {"title": "Viu FaceRef"},
+    }
+    wf[reactor_id] = {
+        "class_type": "ReActorFaceSwap",
+        "inputs": {
+            "enabled": True,
+            "input_image": [decode_id, 0],
+            "source_image": [load_id, 0],
+            "swap_model": "inswapper_128.onnx",
+            "facedetection": "retinaface_resnet50",
+            "face_restore_model": "none",
+            "face_restore_visibility": 1.0,
+            "codeformer_weight": 0.5,
+            "detect_gender_input": "no",
+            "detect_gender_source": "no",
+            "input_faces_index": "0",
+            "source_faces_index": "0",
+            "console_log_level": 1,
+        },
+        "_meta": {"title": "Viu ReActor"},
+    }
+    cv = wf.get(cv_id)
+    if isinstance(cv, dict):
+        cv.setdefault("inputs", {})["images"] = [reactor_id, 0]
     return wf
 
 
@@ -275,6 +424,7 @@ def prepare_mocap_workflow(
     workflow: Dict[str, Any],
     *,
     action: str = "",
+    filename_prefix: str = "",
 ) -> Dict[str, Any]:
     """Кадр/длина по действию (стоя≠лёжа) + mp4 — поверх любого t2v на диске."""
     from .framing import frame_spec_for_action
@@ -283,7 +433,9 @@ def prepare_mocap_workflow(
     wf = inject_vertical_frame(
         workflow, width=spec.width, height=spec.height, length=spec.length
     )
-    return ensure_mp4_output(wf, fps=spec.fps)
+    prefix = (filename_prefix or "").strip() or "viu_mocap"
+    wf = ensure_mp4_output(wf, fps=spec.fps, filename_prefix=prefix)
+    return inject_filename_prefix(wf, prefix)
 
 
 def workflow_is_stub(path: Path) -> bool:

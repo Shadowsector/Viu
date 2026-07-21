@@ -8,6 +8,7 @@ vLLM, LocalAI) и прочих совместимых эндпоинтов.
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.request
 from typing import List
@@ -24,7 +25,7 @@ class OpenAICompatibleLLM(LLMProvider):
         base_url: str = "https://api.openai.com/v1",
         model: str = "gpt-4o-mini",
         temperature: float = 0.2,
-        timeout: float = 600.0,
+        timeout: float = 1200.0,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -46,11 +47,29 @@ class OpenAICompatibleLLM(LLMProvider):
         url = f"{self.base_url}/chat/completions"
         temp = self.temperature if temperature is None else temperature
         use_model = (model or self.model or "").strip() or self.model
-        payload = {
+        payload: dict = {
             "model": use_model,
             "messages": messages,
             "temperature": temp,
         }
+        # Ollama-specific knobs (OpenAI-compatible endpoint accepts them)
+        if "11434" in self.base_url or "ollama" in self.base_url.lower():
+            options: dict = {}
+            raw_ctx = (os.environ.get("VIU_OLLAMA_NUM_CTX") or "").strip()
+            if raw_ctx.isdigit():
+                options["num_ctx"] = int(raw_ctx)
+            raw_predict = (os.environ.get("VIU_OLLAMA_NUM_PREDICT") or "4096").strip()
+            if raw_predict.isdigit():
+                options["num_predict"] = int(raw_predict)
+            if options:
+                payload["options"] = options
+            keep = (os.environ.get("VIU_OLLAMA_KEEP_ALIVE") or "").strip()
+            if keep:
+                # "5m", "0" (unload сразу), "-1" (держать)
+                if keep.isdigit() or (keep.startswith("-") and keep[1:].isdigit()):
+                    payload["keep_alive"] = int(keep)
+                else:
+                    payload["keep_alive"] = keep
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             url,

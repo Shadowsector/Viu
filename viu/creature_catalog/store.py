@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
+from .catalog_dedupe import catalog_entry_rank
 from .models import (
     STATUS_NEW,
     STATUS_SIZED,
@@ -96,8 +97,28 @@ class CreatureCatalogStore:
         # сброс старого замера — линейка перемерит
         e.measured_height_m = 0.0
         e.scale_applied = 1.0
+        e.photo_ok = False
+        e.photo_notes = ""
         self._items[e.id] = e
         return e
+
+    def mark_photo_ok(self, cid: str, *, ok: bool, notes: str = "") -> Optional[CreatureEntry]:
+        e = self._items.get(cid)
+        if e is None:
+            return None
+        e.photo_ok = bool(ok)
+        if notes:
+            e.photo_notes = notes.strip()
+        elif ok:
+            e.photo_notes = ""
+        self._items[e.id] = e
+        return e
+
+    def needs_photos(self) -> List[CreatureEntry]:
+        return [e for e in self.sized() if e.needs_photo_lineup()]
+
+    def needs_photo_review(self) -> List[CreatureEntry]:
+        return [e for e in self.sized() if e.needs_photo_review()]
 
     def sized(self) -> List[CreatureEntry]:
         return [e for e in self._items.values() if e.size_class and e.status != "skip"]
@@ -119,8 +140,12 @@ class CreatureCatalogStore:
         total = len(self._items)
         pending = len(self.pending())
         sized = sum(1 for e in self._items.values() if e.size_class)
+        need_photos = len(self.needs_photos())
+        need_review = len(self.needs_photo_review())
+        photo_ok = sum(1 for e in self._items.values() if e.photo_ok)
         lines = [
             f"Каталог существ: {total} шт., размечено size: {sized}, ждут разметки: {pending}.",
+            f"Скрины: ок {photo_ok}, ждут съёмки {need_photos}, ждут проверки {need_review}.",
         ]
         by_bucket: Dict[str, int] = {}
         for e in self._items.values():
@@ -137,3 +162,65 @@ class CreatureCatalogStore:
             if pending > 15:
                 lines.append(f"  … +{pending - 15}")
         return "\n".join(lines)
+
+    @staticmethod
+    def _compact_notes(notes: str) -> str:
+        seen: set = set()
+        out: List[str] = []
+        for line in (notes or "").splitlines():
+            line = line.strip()
+            if not line or line in seen:
+                continue
+            seen.add(line)
+            out.append(line)
+        return "\n".join(out)
+
+    def pipeline_notes_text(self, *, limit: int = 40) -> str:
+        """Заметки [prep] / [wardrobe] / [studio] — одна секция на slug."""
+        by_slug: Dict[str, CreatureEntry] = {}
+        for e in self._items.values():
+            n = e.notes or ""
+            if "[prep]" not in n and "[wardrobe]" not in n and "[studio]" not in n:
+                continue
+            slug = (e.slug or e.name or e.id).lower()
+            prev = by_slug.get(slug)
+            if prev is None or catalog_entry_rank(e) > catalog_entry_rank(prev):
+                by_slug[slug] = e
+            elif prev and n and n not in (prev.notes or ""):
+                prev.notes = self._compact_notes((prev.notes or "") + "\n" + n)
+        rows = sorted(by_slug.values(), key=lambda e: e.name.lower())
+        if not rows:
+            return "Заметок по пайплайну (prep/wardrobe/studio) в каталоге нет."
+        lines = [f"Заметки по существам ({len(rows)} уникальных slug):"]
+        for e in rows[:limit]:
+            lines.append(f"\n### {e.name} (`{e.slug}`)")
+            lines.append(self._compact_notes(e.notes or ""))
+        if len(rows) > limit:
+            lines.append(f"\n… ещё {len(rows) - limit} с заметками.")
+        return "\n".join(lines)
+
+    def merge_duplicate_slugs(self) -> Tuple[int, int]:
+        """Слить дубли каталога с одним slug (оставить лучшую запись)."""
+        groups: Dict[str, List[CreatureEntry]] = {}
+        for e in self._items.values():
+            slug = (e.slug or "").strip().lower() or e.id
+            groups.setdefault(slug, []).append(e)
+        removed = 0
+        merged_notes = 0
+        for slug, group in groups.items():
+            if len(group) <= 1:
+                continue
+            group.sort(key=catalog_entry_rank, reverse=True)
+            keeper = group[0]
+            for dup in group[1:]:
+                if dup.notes:
+                    combined = self._compact_notes(
+                        (keeper.notes or "") + "\n" + (dup.notes or "")
+                    )
+                    if combined != (keeper.notes or ""):
+                        merged_notes += 1
+                    keeper.notes = combined
+                del self._items[dup.id]
+                removed += 1
+            self._items[keeper.id] = keeper
+        return removed, merged_notes

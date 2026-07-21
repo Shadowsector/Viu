@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "comment": "Пример interaction_catalog.json — совместные анимации (multi-actor)",
+  "interactions": [
+    {
+      "id": "a1b2c3d4e5f67890",
+      "slug": "shanya_wolf_approach",
+      "title_ru": "Шаня и волк: подход и касание",
+      "when_used": "Два персонажа рядом на карте; волк осторожно подходит и касается плеча.",
+      "looks_like": "Статичная камера studio, Шаня стоит, волк сбоку подходит, краткий контакт, отход.",
+      "wave": 1,
+      "status": "wished",
+      "enters_from": ["idle_near_pair"],
+      "exits_to": ["idle_separate"],
+      "choreography": {
+        "fps": 24,
+        "duration_frames": 72,
+        "camera_type": "ortho_studio",
+        "camera_height_m": 1.8,
+        "camera_distance_m": 4.0,
+        "studio": "white",
+        "beats": [0, 24, 48, 71]
+      },
+      "sync_markers": [
+        {"frame": 0, "event": "start", "note": "оба в стойке"},
+        {"frame": 24, "event": "contact_shoulder", "note": "морда/лапа у плеча"},
+        {"frame": 48, "event": "release", "note": "волк отступает"},
+        {"frame": 71, "event": "end", "note": "стабильная дистанция"}
+      ],
+      "actors": [
+        {
+          "role": "initiator",
+          "creature_slug": "wolf_alpha",
+          "rig_kind": "quadruped",
+          "motion_path": "control_pose",
+          "ref_video": "",
+          "isolated_ref": "",
+          "mocap_fbx": "",
+          "status": "pending"
+        },
+        {
+          "role": "target",
+          "creature_slug": "shanya",
+          "rig_kind": "humanoid",
+          "motion_path": "mocap",
+          "ref_video": "",
+          "isolated_ref": "",
+          "mocap_fbx": "",
+          "status": "pending"
+        }
+      ],
+      "master_ref_draft": "",
+      "master_ref": "",
+      "blocking_blend": "",
+      "assembly_blend": "",
+      "assembly_target": "blender",
+      "verify_report": "",
+      "notes": "MVP-пилот wave 1 — см. docs/INTERACTION_PIPELINE.md"
+    }
+  ]
+}

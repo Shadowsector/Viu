@@ -34,6 +34,8 @@ CAPABILITY_BRIEF = """
 - Клипы: Native Comfy → `ComfyUI/output/`, рабочая копия — `Lab/Refs`; одобрение дома
   всплывает само. Док: `docs/VIU_DIRECTION.md`.
 - **Персонажи:** кнопка «Персонажи» → `.viu/CHARACTERS_VISION.md` (локально, не GitHub).
+- **Сюжет:** `.viu/PLOT_CANVAS.md` (общая канва) + `.viu/QUESTS.md` (квесты).
+  В чате сверяйся с канвой; фиксация битов — `plot_update` / `quest_update` в JSON.
 
 ### Не умею / ограничение
 - **Не** «нарисую анимацию словами» и не заменю Cascadeur болтовнёй.

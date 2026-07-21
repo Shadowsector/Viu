@@ -83,6 +83,25 @@ LOCOMOTION = (
     "unknown",
 )
 
+# Половая разметка → набор NSFW-анимаций (все классы роста).
+GENITAL_PROFILES = ("none", "penis", "vagina", "futa")
+
+GENITAL_PROFILE_LABELS: Dict[str, str] = {
+    "none": "нет половых органов",
+    "penis": "пенис (мужское)",
+    "vagina": "вагина (женское)",
+    "futa": "futa (оба)",
+}
+
+# Контакт без гениталий: мимик (язык), цветок, щупальца…
+CONTACT_MODES = ("oral", "tentacle", "hand")
+
+CONTACT_MODE_LABELS: Dict[str, str] = {
+    "oral": "рот / язык",
+    "tentacle": "щупальца",
+    "hand": "руки / лапы",
+}
+
 STATUS_NEW = "new"
 STATUS_SIZED = "sized"          # Ден выбрал class
 STATUS_NORMALIZED = "normalized"  # scale в Blender сделан
@@ -203,6 +222,29 @@ def slugify(name: str) -> str:
     return re.sub(r"_+", "_", s).strip("_")[:64] or "creature"
 
 
+def creature_identity_from_inbox_path(path: Path, inbox: Path) -> Tuple[str, str]:
+    """Имя и slug с учётом подпапки Inbox (Tiki/Tiki.blend → Tiki, tiki)."""
+    try:
+        rel = path.resolve().relative_to(inbox.resolve())
+    except ValueError:
+        stem = path.stem
+        return stem, slugify(stem)
+
+    parts = list(rel.parts)
+    if len(parts) <= 1:
+        stem = path.stem
+        return stem, slugify(stem)
+
+    folder_parts = parts[:-1]
+    stem = path.stem
+    inner = folder_parts[-1]
+    if inner.lower() == stem.lower() or slugify(inner) == slugify(stem):
+        return inner, slugify(inner)
+    display = "/".join([*folder_parts, stem])
+    slug = slugify("_".join([*folder_parts, stem]))
+    return display, slug or slugify(stem)
+
+
 @dataclass
 class CreatureEntry:
     """Одна модель существа в каталоге."""
@@ -220,16 +262,32 @@ class CreatureEntry:
     scale_applied: float = 1.0
     textures_external: bool = False
     textures_dir: str = ""
-    nsfw_capable: bool = False
-    genital_rig: str = ""                # none | pending | attached
+    textures_packed: bool = False
+    texture_manifest_path: str = ""
+    outfit_sets_path: str = ""
+    genital_profile: str = "none"          # none | penis | vagina | futa
+    contact_modes: List[str] = field(default_factory=list)  # oral | tentacle | hand
+    nsfw_capable: bool = False            # авто: genital≠none или есть contact_modes
+    genital_rig: str = ""                # none | pending | attached (legacy rig state)
     flaccid_default: bool = True
     # Не трогать при bake/normalize: уши, хвосты, гениталии и пр. часто живут
     # в shape keys / morph targets (в т.ч. «спрятанный» орган → вытянуть morph'ом).
     preserve_morphs: bool = True
     morph_notes: str = ""                # что нашли глазами: penis_reveal, ears, tail…
     prepared_path: str = ""
+    prep_ok: bool = False
+    ready_fbx_path: str = ""
     photo_front: str = ""
     photo_side: str = ""
+    photo_three_quarter: str = ""
+    photo_ok: bool = False          # Ден подтвердил скрины lineup
+    photo_notes: str = ""           # что не так: IK, текстуры, …
+    # Внешность для анимации / Comfy (из VL по скрину или руками).
+    appearance_en: str = ""              # English prompt / tags for Comfy
+    appearance_ru: str = ""              # коротко для чата Вью
+    appearance_tags: List[str] = field(default_factory=list)
+    describe_model: str = ""             # llava / … чем описали
+    described_at: str = ""
     notes: str = ""
     reviewed: bool = False
     tags: List[str] = field(default_factory=list)
@@ -261,33 +319,115 @@ class CreatureEntry:
             scale_applied=float(d.get("scale_applied") or 1),
             textures_external=bool(d.get("textures_external")),
             textures_dir=str(d.get("textures_dir") or ""),
+            textures_packed=bool(d.get("textures_packed")),
+            texture_manifest_path=str(d.get("texture_manifest_path") or ""),
+            outfit_sets_path=str(d.get("outfit_sets_path") or ""),
+            genital_profile=str(d.get("genital_profile") or "none"),
+            contact_modes=[
+                m for m in (d.get("contact_modes") or []) if m in CONTACT_MODES
+            ],
             nsfw_capable=bool(d.get("nsfw_capable")),
             genital_rig=str(d.get("genital_rig") or ""),
             flaccid_default=bool(d.get("flaccid_default", True)),
             preserve_morphs=bool(d.get("preserve_morphs", True)),
             morph_notes=str(d.get("morph_notes") or ""),
             prepared_path=str(d.get("prepared_path") or ""),
+            prep_ok=bool(d.get("prep_ok")),
+            ready_fbx_path=str(d.get("ready_fbx_path") or ""),
             photo_front=str(d.get("photo_front") or ""),
             photo_side=str(d.get("photo_side") or ""),
+            photo_three_quarter=str(d.get("photo_three_quarter") or ""),
+            photo_ok=bool(d.get("photo_ok")),
+            photo_notes=str(d.get("photo_notes") or ""),
+            appearance_en=str(d.get("appearance_en") or ""),
+            appearance_ru=str(d.get("appearance_ru") or ""),
+            appearance_tags=list(d.get("appearance_tags") or []),
+            describe_model=str(d.get("describe_model") or ""),
+            described_at=str(d.get("described_at") or ""),
             notes=str(d.get("notes") or ""),
             reviewed=bool(d.get("reviewed")),
             tags=list(d.get("tags") or []),
         )
         if not e.id and e.path:
             e.id = creature_id_for_path(Path(e.path))
+        e._migrate_anatomy_from_legacy(d)
+        e.sync_nsfw_capable()
         return e
 
+    def _migrate_anatomy_from_legacy(self, d: Dict[str, Any]) -> None:
+        gp = (self.genital_profile or "none").strip()
+        if gp not in GENITAL_PROFILES:
+            self.genital_profile = "none"
+        if not d.get("genital_profile") and d.get("nsfw_capable"):
+            # старая галочка NSFW — оставляем none, Ден уточнит в разметке
+            pass
+
+    def sync_nsfw_capable(self) -> None:
+        gp = (self.genital_profile or "none").strip()
+        self.nsfw_capable = (gp not in ("", "none")) or bool(self.contact_modes)
+
+    def set_anatomy(
+        self,
+        *,
+        genital_profile: str = "",
+        contact_modes: Optional[List[str]] = None,
+    ) -> None:
+        if genital_profile:
+            gp = genital_profile.strip()
+            self.genital_profile = gp if gp in GENITAL_PROFILES else "none"
+        if contact_modes is not None:
+            self.contact_modes = [m for m in contact_modes if m in CONTACT_MODES]
+        self.sync_nsfw_capable()
+
+    def anatomy_summary(self) -> str:
+        parts: List[str] = []
+        gp = (self.genital_profile or "none").strip()
+        if gp and gp != "none":
+            parts.append(GENITAL_PROFILE_LABELS.get(gp, gp))
+        for m in self.contact_modes or []:
+            parts.append(CONTACT_MODE_LABELS.get(m, m))
+        return " · ".join(parts) if parts else "—"
+
+    def has_photo_files(self) -> bool:
+        for p in (self.photo_front, self.photo_side, self.photo_three_quarter):
+            if p and Path(p).is_file():
+                return True
+        return False
+
+    def needs_photo_lineup(self) -> bool:
+        """Нужна съёмка в Blender (нет файлов или сброшено после правки)."""
+        if self.status == STATUS_SKIP or not self.size_class:
+            return False
+        if self.photo_ok:
+            return False
+        return not self.has_photo_files()
+
+    def needs_photo_review(self) -> bool:
+        """Есть скрины, но Ден ещё не нажал «Скрины ок»."""
+        if self.status == STATUS_SKIP or not self.size_class or self.photo_ok:
+            return False
+        return self.has_photo_files()
+
     def anim_bucket(self) -> str:
-        """Ключ набора анимаций: size × locomotion."""
+        """Ключ набора анимаций: size × locomotion [× анатомия]."""
         size = self.size_class or "unset"
         loco = self.locomotion or "unknown"
-        return f"{size}__{loco}"
+        base = f"{size}__{loco}"
+        gp = (self.genital_profile or "none").strip()
+        if gp and gp != "none":
+            return f"{base}__{gp}"
+        modes = sorted(set(self.contact_modes or []))
+        if modes:
+            return f"{base}__" + "+".join(modes)
+        return base
 
     def render_line(self) -> str:
         size = self.size_class or "?"
         alt = f"+{','.join(self.size_alt)}" if self.size_alt else ""
         h = f"{self.measured_height_m:.2f}→{self.target_height_m:.2f}m" if self.target_height_m else "—"
+        anat = self.anatomy_summary()
+        anat_bit = f" | {anat}" if anat != "—" else ""
         return (
             f"[{self.status}] {self.name} | {size}{alt} | {self.locomotion} | "
-            f"{h} | {Path(self.path).name}"
+            f"{h}{anat_bit} | {Path(self.path).name}"
         )

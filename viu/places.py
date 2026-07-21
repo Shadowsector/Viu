@@ -83,6 +83,18 @@ def _characters(config: Config) -> Path:
     return ensure_characters_vision(config)
 
 
+def _plot_canvas(config: Config) -> Path:
+    from .plot_canvas import ensure_plot_canvas
+
+    return ensure_plot_canvas(config)
+
+
+def _quests(config: Config) -> Path:
+    from .plot_canvas import ensure_quests
+
+    return ensure_quests(config)
+
+
 def _comfy_native_output(config: Config) -> Path:
     from .integrations.comfy.paths import resolve_comfy_root
 
@@ -132,6 +144,7 @@ def all_places() -> List[Place]:
     )
     from .integrations.cascadeur.paths import cascadeur_export, cascadeur_inbox
     from .integrations.comfy.paths import (
+        comfy_face_refs_dir,
         comfy_out_dir,
         comfy_refs_dir,
         comfy_seed_frames_dir,
@@ -151,18 +164,18 @@ def all_places() -> List[Place]:
         ),
         Place(
             "models_inbox",
-            "Модели → Lab Inbox",
+            "Живые существа → Inbox",
             "folder",
             "Входы",
-            "Персонажи .blend/.fbx для rig-check и Cascadeur.",
+            "Тот же Inbox, что Creatures (волки, гоблины, humanoid).",
             models_inbox_dir,
         ),
         Place(
             "creatures_inbox",
-            "Существа → Inbox",
+            "Живые существа → Inbox",
             "folder",
             "Входы",
-            "Монстры/четвероногие → «Разметить существ».",
+            "Единая папка: Lab/Creatures/Inbox → «Разметить» / «Студия».",
             creatures_inbox_dir,
         ),
         Place(
@@ -174,6 +187,14 @@ def all_places() -> List[Place]:
             cascadeur_inbox,
         ),
         # --- Выходы: что Вью собрала ---
+        Place(
+            "comfy_face_refs",
+            "Лица MoCap (FaceRefs)",
+            "folder",
+            "Входы",
+            "PNG/JPG эталонного лица → ReActor подставляет в каждый клип. default.png приоритетнее random.",
+            comfy_face_refs_dir,
+        ),
         Place(
             "comfy_refs",
             "Клипы Comfy (Refs)",
@@ -271,6 +292,22 @@ def all_places() -> List[Place]:
             "Файлы",
             "Характеры/интим — локально, не на GitHub.",
             _characters,
+        ),
+        Place(
+            "plot_canvas",
+            "Канва сюжета (PLOT_CANVAS)",
+            "file",
+            "Файлы",
+            "Общая канва — квесты сверяются с ней. Локально.",
+            _plot_canvas,
+        ),
+        Place(
+            "quests",
+            "Квесты (QUESTS)",
+            "file",
+            "Файлы",
+            "Отдельные квесты — локально в .viu/.",
+            _quests,
         ),
         Place(
             "girl_sockets",

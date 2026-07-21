@@ -82,6 +82,24 @@ def comfy_seed_frames_dir(config: Config) -> Path:
     return p
 
 
+def comfy_face_refs_dir(config: Config) -> Path:
+    """Эталонные лица для ReActor (PNG/JPG)."""
+    env = os.environ.get("VIU_COMFY_FACE_REFS", "").strip()
+    if env:
+        p = Path(env).expanduser()
+    else:
+        p = library_root(config) / "Lab" / "FaceRefs"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def comfy_input_dir(comfy_root: Path) -> Path:
+    """ComfyUI/input — LoadImage читает отсюда."""
+    p = comfy_root / "input"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def looks_like_comfy_root(path: Path) -> bool:
     """Настоящий ComfyUI: main.py + хотя бы один маркер (не unittest/main.py)."""
     try:

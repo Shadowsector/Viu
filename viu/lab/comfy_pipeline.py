@@ -31,6 +31,7 @@ STEP_LABELS = [
     "Модели Wan",
     "Черновик промпта",
     "Одобрение Telegram",
+    "Выбор LoRA",
     "3 дубля (¾)",
     "Выбор лучшего дубля",
     "Отчёт",
@@ -205,6 +206,8 @@ def step_request_approval(config: Config, session: LabSession) -> StepResult:
         session.meta["approved"] = True
         session.meta["approved_action"] = action
         session.meta["auto_approved_away"] = True
+        session.meta.pop("lora_pick_done", None)
+        session.meta.pop("selected_loras", None)
         session.status = "running"
         # step не трогаем — run_one_step сделает 3→4 (generate)
         save_session(config, session)
@@ -261,6 +264,8 @@ def apply_prompt_decision(
 
     session.meta["approved"] = True
     session.meta["approved_action"] = action
+    session.meta.pop("lora_pick_done", None)
+    session.meta.pop("selected_loras", None)
     session.status = "running"
     if session.step < 4:
         session.step = 4
@@ -268,12 +273,95 @@ def apply_prompt_decision(
     append_journal(
         config,
         COMFY_TOPIC,
-        f"### Промпт одобрен\n\naction: {action}\n\nДальше — 3 дубля ¾.",
+        f"### Промпт одобрен\n\naction: {action}\n\nДальше — выбор LoRA.",
     )
     return (
         f"Промпт принят («{action[:80]}»).\n"
-        "Запускаю 3 дубля (три четверти, разный seed) → Lab/Refs."
+        "Дальше выберем LoRA (или без) → 3 дубля ¾."
     )
+
+
+def step_request_lora_pick(config: Config, session: LabSession) -> StepResult:
+    """Скан папки loras/ и спросить, какие подключить к этому пулу."""
+    from ..integrations.comfy.lora import (
+        format_lora_pick_message,
+        scan_loras,
+        spec_to_dict,
+        specs_from_indices,
+    )
+
+    if session.meta.get("lora_pick_done"):
+        picked = session.meta.get("selected_loras") or []
+        return True, f"LoRA выбраны: {len(picked)} шт.", None
+
+    entries = scan_loras(config)
+    if not entries:
+        session.meta["selected_loras"] = []
+        session.meta["lora_pick_done"] = True
+        return True, "LoRA на диске нет — генерирую чистый Wan.", None
+
+    try:
+        from ..presence import is_away
+
+        away = is_away(config)
+    except Exception:
+        away = False
+    if away:
+        last = [int(x) for x in (session.meta.get("lora_last_pick") or []) if str(x).isdigit()]
+        specs = specs_from_indices(config, last) if last else []
+        session.meta["selected_loras"] = [spec_to_dict(s) for s in specs]
+        session.meta["lora_pick_done"] = True
+        names = ", ".join(s.file for s in specs) if specs else "нет"
+        return True, f"Нет дома — LoRA как в прошлый раз: {names}.", None
+
+    session.status = "awaiting_lora_pick"
+    save_session(config, session)
+    msg = format_lora_pick_message(entries)
+    try:
+        from ..integrations.telegram import settings as tg_settings
+        from ..integrations.telegram.client import TelegramClient
+
+        if tg_settings.enabled(config):
+            token = tg_settings.token(config)
+            chat_id = tg_settings.chat_id(config)
+            if token and chat_id:
+                TelegramClient(token).send_message(
+                    chat_id,
+                    "🎛 Comfy: выбери LoRA для пула\n\n" + msg[:1800],
+                )
+    except Exception:
+        pass
+    append_journal(config, COMFY_TOPIC, f"### Выбор LoRA\n\n{msg}")
+    return True, msg, None
+
+
+def apply_lora_pick_decision(
+    config: Config,
+    session: LabSession,
+    indices: List[int],
+) -> str:
+    from ..integrations.comfy.lora import (
+        scan_loras,
+        spec_to_dict,
+        specs_from_indices,
+    )
+
+    scan_loras(config)
+    specs = specs_from_indices(config, indices)
+    session.meta["selected_loras"] = [spec_to_dict(s) for s in specs]
+    session.meta["lora_last_pick"] = list(indices)
+    session.meta["lora_pick_done"] = True
+    session.status = "running"
+    if session.step < 5:
+        session.step = 5
+    save_session(config, session)
+    if not specs:
+        msg = "Без LoRA — чистый Wan."
+    else:
+        names = ", ".join(f"{s.file}@{s.strength}" for s in specs)
+        msg = f"LoRA: {names}."
+    append_journal(config, COMFY_TOPIC, f"### LoRA выбраны\n\n{msg}")
+    return msg + "\nЗапускаю 3 дубля ¾."
 
 
 def step_generate_triple(config: Config, session: LabSession) -> StepResult:
@@ -284,6 +372,26 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
         save_session(config, session)
         return True, "Промпт ещё не одобрен — жду Telegram.", None
 
+    # Не долбить генерацию, если :8188 мёртв
+    from ..integrations.comfy.client import ComfyClient
+
+    url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
+    ok_ping, ping_msg = ComfyClient(base_url=str(url), timeout=3.0).ping()
+    if not ok_ping:
+        ok_run, run_msg = ensure_comfy_running(
+            config, auto_install=False, wait_seconds=90.0
+        )
+        if not ok_run:
+            session.status = "paused"
+            session.pause_reason = "comfy_offline"
+            save_session(config, session)
+            msg = (
+                f"ComfyUI недоступен ({url}): {ping_msg}\n{run_msg}\n\n"
+                "⏸ Lab на паузе. Запусти Comfy (или comfy_ensure), потом снова Lab."
+            )
+            append_journal(config, COMFY_TOPIC, f"### 3 дубля ¾\n\n{msg}")
+            return False, msg, None
+
     action = str(session.meta.get("approved_action") or session.meta.get("action") or "")
     catalog_slug = str(session.meta.get("catalog_slug") or "").strip()
     if not catalog_slug:
@@ -291,25 +399,55 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
 
         plan = invent_next_shot(config)
         catalog_slug = plan.catalog_slug
-        if not action:
-            action = plan.action
+        action = plan.action
         session.meta["catalog_slug"] = catalog_slug
         session.meta["enters_from"] = list(plan.enters_from)
         session.meta["exits_to"] = list(plan.exits_to)
         session.meta["shot_reason"] = plan.reason
         session.meta["looped"] = plan.looped
         save_session(config, session)
+    else:
+        from .comfy_director import sync_session_shot_from_slug
+
+        action = sync_session_shot_from_slug(config, session)
+        save_session(config, session)
     # Никогда не slugify EN-action («idle stand…» → idle_stand)
     from ..integrations.comfy.clip_review import normalize_catalog_slug
 
     slug = normalize_catalog_slug(catalog_slug) or "mocap"
     session.meta["catalog_slug"] = slug
-    ok, msg, results = run_triple_angles(config, action=action, slug=slug)
+    looped = bool(session.meta.get("looped"))
+    from ..integrations.comfy.lora import specs_from_session_meta
+
+    lora_specs = specs_from_session_meta(session.meta)
+    ok, msg, results = run_triple_angles(
+        config,
+        action=action,
+        slug=slug,
+        catalog_slug=slug,
+        enters_from=list(session.meta.get("enters_from") or []),
+        looped=looped,
+        lora_specs=lora_specs,
+    )
+    from ..integrations.comfy.clip_review import harvest_comfy_native_output
+
+    h_n, h_msg = harvest_comfy_native_output(config)
+    if h_n:
+        msg += "\n" + h_msg
     session.meta["triple"] = results
     for path in results.get("files") or []:
         session.append_artifact(path)
     append_journal(config, COMFY_TOPIC, f"### 3 дубля ¾\n\n{msg}")
     if not ok:
+        # Connection refused / все дубли FAIL — не маскировать под успех
+        if "10061" in msg or "недоступен" in msg.lower() or "refused" in msg.lower():
+            session.status = "paused"
+            session.pause_reason = "comfy_offline"
+            save_session(config, session)
+            msg += (
+                "\n\n⏸ ComfyUI не на :8188. Lab на паузе — запусти Comfy, "
+                "потом Lab (будет RECOVER, не 20 слепых повторов)."
+            )
         return False, msg, None
 
     from ..integrations.comfy.clip_review import (
@@ -418,15 +556,20 @@ def step_report(config: Config, session: LabSession) -> StepResult:
     kept = session.meta.get("clip_kept_path")
     seed = session.meta.get("clip_seed_frame")
     files = session.artifacts[-12:]
+    from .comfy_director import barn_cycle_status
+
     report = (
         f"Comfy MoCap итерация id={session.id}\n"
         f"action: {action}\n"
+        f"catalog: {session.meta.get('catalog_slug') or '—'}\n"
         f"model: {PREFERRED_FAMILY}\n"
         f"kept: {kept or '— (не выбран)'}\n"
         f"seed last-frame: {seed or '—'}\n"
         f"файлы ({len(files)}):\n"
         + "\n".join(f"  • {f}" for f in files)
-        + "\n\nДальше: Cascadeur MoCap по kept mp4; next clip можно стартовать с seed PNG (I2V)."
+        + "\n\n"
+        + barn_cycle_status(config)
+        + "\n\nДальше: Cascadeur MoCap по kept mp4; next clip — I2V с seed PNG."
     )
     session.last_report = report
     session.status = "awaiting_rating"
@@ -440,6 +583,7 @@ STEPS: list[Callable[[Config, LabSession], StepResult]] = [
     step_models,
     step_draft_prompt,
     step_request_approval,
+    step_request_lora_pick,
     step_generate_triple,
     step_await_clip_pick,
     step_report,
@@ -449,6 +593,11 @@ STEPS: list[Callable[[Config, LabSession], StepResult]] = [
 def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
     if session.status == "awaiting_prompt":
         return True, "Жду одобрение промпта в Telegram (ок / правки: … / стоп)."
+    if session.status == "awaiting_lora_pick":
+        return True, (
+            "Жду выбор LoRA: `lora: 1` / `lora: 1,3` / `lora: all` / `lora: none` "
+            "или tool comfy_lora_pick."
+        )
     if session.status == "awaiting_clip_pick":
         return True, (
             "Жду выбор клипа: `лучший: front` / `лучший: side 5` / `отклонить все` "
@@ -488,15 +637,22 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
         notify_lab_step(config, step_idx, label, msg)
         return True, msg
 
+    if session.status == "awaiting_lora_pick":
+        session.steps_total = len(STEPS)
+        save_session(config, session)
+        notify_lab_step(config, step_idx, label, msg)
+        return True, msg
+
     if session.status == "paused":
         save_session(config, session)
         return True, msg
 
-    if not ok and session.step in (0, 4):
+    if not ok and session.step in (0, 5):
         session.last_fail_step = session.step
         session.last_fail_msg = msg[:2000]
         key = str(session.step)
         session.step_fail_counts[key] = session.step_fail_counts.get(key, 0) + 1
+        n = session.step_fail_counts[key]
         save_session(config, session)
         if session.step == 0:
             hint = (
@@ -505,8 +661,12 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
                 "или снова `comfy_ensure`."
             )
         else:
-            hint = "\n\n⏸ Генерация не прошла — поправлю workflow/модели и повторю."
-        return True, msg + hint
+            hint = (
+                "\n\n⏸ Генерация не прошла. "
+                f"Провал ×{n} — следующий Lab = RECOVER (не слепой повтор)."
+            )
+        # ok=False чтобы run_until_done остановился
+        return False, msg + hint
 
     session.last_fail_step = -1
     session.step += 1
@@ -530,12 +690,15 @@ def run_until_done(
         session = load_session(config, COMFY_TOPIC) or session
         if session.status in (
             "awaiting_prompt",
+            "awaiting_lora_pick",
             "awaiting_clip_pick",
             "awaiting_rating",
             "completed",
         ):
             if session.status == "awaiting_prompt":
                 lines.append("Жду одобрение промпта в Telegram.")
+            elif session.status == "awaiting_lora_pick":
+                lines.append("Жду выбор LoRA (lora: 1,2 / none).")
             elif session.status == "awaiting_clip_pick":
                 lines.append("Жду выбор лучшего клипа.")
             elif session.status == "awaiting_rating":

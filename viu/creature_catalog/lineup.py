@@ -11,8 +11,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..config import Config
+from .catalog_dedupe import catalog_entry_rank
 from .models import CreatureEntry, STATUS_NORMALIZED
-from .paths import creature_catalog_path, creatures_lineup_dir
+from .paths import creature_catalog_path, creatures_lineup_dir, creatures_processed_dir
 from .store import CreatureCatalogStore
 
 LINEUP_SCRIPT_NAME = "viu_creature_lineup.py"
@@ -74,6 +75,12 @@ def resolve_shanya_path(config: Config, explicit: str = "") -> Optional[Path]:
     if explicit:
         p = Path(explicit).expanduser()
         return p if p.is_file() else None
+    for env_key in ("VIU_SHANYA_FBX", "VIU_SHANYA_PATH"):
+        env = os.environ.get(env_key, "").strip()
+        if env:
+            p = Path(env).expanduser()
+            if p.is_file():
+                return p
     cands = _shanya_candidates(config)
     return cands[0] if cands else None
 
@@ -93,6 +100,54 @@ def dedupe_by_stem(creatures: Sequence[CreatureEntry]) -> List[CreatureEntry]:
     return sorted(best.values(), key=lambda e: (e.size_class or "", e.name.lower()))
 
 
+def dedupe_by_inbox_folder(
+    creatures: Sequence[CreatureEntry],
+    inbox_root: Path,
+) -> List[CreatureEntry]:
+    """Один asset на папку в Inbox; внутри папки .blend → .glb → .fbx."""
+    best: Dict[str, CreatureEntry] = {}
+    for e in creatures:
+        if not e.path:
+            continue
+        path = Path(e.path)
+        try:
+            rel = path.resolve().relative_to(inbox_root.resolve())
+            key = str(rel.parent / rel.stem).lower().replace("\\", "/")
+        except ValueError:
+            key = str(path.resolve()).lower()
+        prev = best.get(key)
+        if prev is None or _ext_rank(e.path) < _ext_rank(prev.path):
+            best[key] = e
+    return sorted(best.values(), key=lambda e: e.name.lower())
+
+
+def _catalog_entry_rank(e: CreatureEntry) -> int:
+    return catalog_entry_rank(e)
+
+
+def dedupe_by_slug(creatures: Sequence[CreatureEntry]) -> List[CreatureEntry]:
+    """Одна запись каталога на slug (Tiki.fbx + Tiki.blend → одна строка в очереди)."""
+    from .models import slugify
+
+    best: Dict[str, CreatureEntry] = {}
+    for e in creatures:
+        slug = (e.slug or slugify(e.name) or "").strip().lower()
+        if not slug:
+            slug = (e.name or e.id or "creature").lower()
+        prev = best.get(slug)
+        if prev is None or catalog_entry_rank(e) > catalog_entry_rank(prev):
+            best[slug] = e
+    return sorted(best.values(), key=lambda e: e.name.lower())
+
+
+def queue_creatures_from_catalog(
+    creatures: Sequence[CreatureEntry],
+    inbox_root: Path,
+) -> List[CreatureEntry]:
+    """Inbox-папка → slug: без повторов в Blender-очереди."""
+    return dedupe_by_slug(dedupe_by_inbox_folder(list(creatures), inbox_root))
+
+
 def _write_job_files(
     out_dir: Path,
     *,
@@ -101,6 +156,7 @@ def _write_job_files(
     blend_out: Path,
     spacing_m: float,
     job_name: str = "lineup_job.json",
+    processed_root: Optional[Path] = None,
 ) -> Path:
     entries = []
     for i, e in enumerate(creatures):
@@ -108,6 +164,7 @@ def _write_job_files(
             {
                 "id": e.id,
                 "name": e.name,
+                "slug": e.slug,
                 "path": e.path,
                 "size_class": e.size_class,
                 "target_height_m": e.target_height_m or 1.0,
@@ -120,6 +177,7 @@ def _write_job_files(
         "shanya_target_m": 1.70,
         "spacing_m": spacing_m,
         "output_blend": str(blend_out),
+        "processed_root": str(processed_root) if processed_root else "",
         "creatures": entries,
     }
     job_path = out_dir / job_name
@@ -127,10 +185,34 @@ def _write_job_files(
     return job_path
 
 
+def _match_creature_filter(
+    entry: CreatureEntry,
+    *,
+    slug_filter: Sequence[str],
+) -> bool:
+    if not slug_filter:
+        return True
+    want = {s.strip().lower() for s in slug_filter if s.strip()}
+    if not want:
+        return True
+    hay = {
+        (entry.slug or "").lower(),
+        (entry.name or "").lower(),
+        entry.id.lower(),
+        Path(entry.path).stem.lower(),
+    }
+    return bool(hay & want) or any(
+        (entry.slug or "").lower().startswith(w) or (entry.name or "").lower().startswith(w)
+        for w in want
+    )
+
+
 def build_lineup_jobs(
     config: Config,
     *,
     size_filter: Sequence[str] = (),
+    slug_filter: Sequence[str] = (),
+    need_photos_only: bool = False,
     shanya_path: str = "",
     spacing_m: float = _DEFAULT_SPACING,
     split: Optional[bool] = None,
@@ -139,6 +221,12 @@ def build_lineup_jobs(
     """Собрать job(ы) + скрипт. По умолчанию дедуп и сплит по классам если много."""
     store = CreatureCatalogStore(creature_catalog_path(config)).load()
     creatures = [e for e in store.all() if e.size_class]
+    if need_photos_only:
+        creatures = [e for e in creatures if e.needs_photo_lineup()]
+    if slug_filter:
+        creatures = [
+            e for e in creatures if _match_creature_filter(e, slug_filter=slug_filter)
+        ]
     if size_filter:
         want = {s.strip() for s in size_filter if s.strip()}
         creatures = [
@@ -147,6 +235,20 @@ def build_lineup_jobs(
             if e.size_class in want or any(a in want for a in e.size_alt)
         ]
     if not creatures:
+        if slug_filter:
+            return (
+                False,
+                f"Нет существ для slug={','.join(slug_filter)} (нужен size_class).",
+                [],
+            )
+        if need_photos_only:
+            return (
+                False,
+                "Нет существ без скринов (все сняты — проверь в «Разметить существ»). "
+                "Переснять одного: creature_lineup slug=имя need_photos=0. "
+                "Весь каталог: creature_lineup need_photos=0",
+                [],
+            )
         return (
             False,
             "Нет существ с размером. Сначала «Разметить существ».",
@@ -161,8 +263,11 @@ def build_lineup_jobs(
     shanya = resolve_shanya_path(config, shanya_path)
     out_dir = creatures_lineup_dir(config)
     script_path = _install_lineup_script(out_dir)
+    processed_root = creatures_processed_dir(config)
 
     do_split = split if split is not None else (deduped_n > _SPLIT_AFTER)
+    if slug_filter or deduped_n <= 3:
+        do_split = False
     job_paths: List[Path] = []
 
     if do_split:
@@ -179,6 +284,7 @@ def build_lineup_jobs(
                     blend_out=blend_out,
                     spacing_m=spacing_m,
                     job_name=f"lineup_job_{size_id}.json",
+                    processed_root=processed_root,
                 )
             )
         # обзор: по одному представителю класса
@@ -192,6 +298,7 @@ def build_lineup_jobs(
                 blend_out=out_dir / "creature_lineup_overview.blend",
                 spacing_m=max(spacing_m, 1.5),
                 job_name="lineup_job_overview.json",
+                processed_root=processed_root,
             ),
         )
     else:
@@ -203,6 +310,7 @@ def build_lineup_jobs(
                 blend_out=out_dir / "creature_lineup.blend",
                 spacing_m=spacing_m,
                 job_name="lineup_job.json",
+                processed_root=processed_root,
             )
         )
 
@@ -210,6 +318,8 @@ def build_lineup_jobs(
         f"Подготовка: было {raw_n} файлов"
         + (f", после дедупа имён: {deduped_n}" if not all_files else "")
         + (f", сцен: {len(job_paths)} (по классам + обзор)" if do_split else ", одна сцена")
+        + (", только без одобренных скринов" if need_photos_only else "")
+        + (f", slug: {','.join(slug_filter)}" if slug_filter else "")
         + f".\nШаня: {shanya or 'НЕ НАЙДЕНА'}\nПапка: {out_dir}"
     )
     return True, note, job_paths
@@ -219,6 +329,8 @@ def build_lineup_job(
     config: Config,
     *,
     size_filter: Sequence[str] = (),
+    slug_filter: Sequence[str] = (),
+    need_photos_only: bool = False,
     shanya_path: str = "",
     spacing_m: float = 1.2,
 ) -> Tuple[bool, str, Path]:
@@ -226,6 +338,8 @@ def build_lineup_job(
     ok, msg, jobs = build_lineup_jobs(
         config,
         size_filter=size_filter,
+        slug_filter=slug_filter,
+        need_photos_only=need_photos_only,
         shanya_path=shanya_path,
         spacing_m=spacing_m,
     )
@@ -245,6 +359,45 @@ def _parse_measured(stdout: str) -> List[Dict[str, Any]]:
         except json.JSONDecodeError:
             continue
     return rows
+
+
+def _parse_photos(stdout: str) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for line in (stdout or "").splitlines():
+        if "VIU_LINEUP_PHOTO" not in line or "VIU_LINEUP_PHOTO_FAIL" in line:
+            continue
+        if "VIU_LINEUP_PHOTOS_DONE" in line:
+            continue
+        raw = line.split("VIU_LINEUP_PHOTO", 1)[-1].strip()
+        try:
+            rows.append(json.loads(raw))
+        except json.JSONDecodeError:
+            continue
+    return rows
+
+
+def _apply_photos(config: Config, rows: Sequence[Dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    store = CreatureCatalogStore(creature_catalog_path(config)).load()
+    n = 0
+    for row in rows:
+        cid = str(row.get("id") or "")
+        e = store.get(cid)
+        if e is None:
+            continue
+        front = str(row.get("front") or "").strip()
+        side = str(row.get("side") or "").strip()
+        if front:
+            e.photo_front = front
+        if side:
+            e.photo_side = side
+        e.photo_ok = False
+        store.upsert(e)
+        n += 1
+    if n:
+        store.save()
+    return n
 
 
 def _apply_measured(config: Config, rows: Sequence[Dict[str, Any]]) -> int:
@@ -327,6 +480,8 @@ def run_blender_lineup_job(
     combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
     rows = _parse_measured(proc.stdout or "")
     updated = _apply_measured(config, rows)
+    photos = _parse_photos(proc.stdout or "")
+    shots = _apply_photos(config, photos)
     ok_mark = "VIU_LINEUP_OK" in combined
     fails = [ln for ln in (proc.stdout or "").splitlines() if "VIU_LINEUP_HEIGHT_FAIL" in ln]
     if proc.returncode != 0 and not ok_mark:
@@ -338,6 +493,8 @@ def run_blender_lineup_job(
     msg = f"OK: {blend_out.name} ({len(job.get('creatures') or [])} моделей"
     if updated:
         msg += f", рост записан у {updated}"
+    if shots:
+        msg += f", скрины: {shots}"
     msg += ")"
     if fails:
         msg += f"\n⚠ рост не сошёлся у {len(fails)} — см. красные таблички в сцене:\n"
@@ -366,6 +523,8 @@ def run_creature_lineup(
     config: Config,
     *,
     size_filter: Sequence[str] = (),
+    slug_filter: Sequence[str] = (),
+    need_photos_only: bool = False,
     shanya_path: str = "",
     spacing_m: float = _DEFAULT_SPACING,
     split: Optional[bool] = None,
@@ -378,6 +537,8 @@ def run_creature_lineup(
     ok, prep, jobs = build_lineup_jobs(
         config,
         size_filter=size_filter,
+        slug_filter=slug_filter,
+        need_photos_only=need_photos_only,
         shanya_path=shanya_path,
         spacing_m=spacing_m,
         split=split,
@@ -391,6 +552,8 @@ def run_creature_lineup(
         "",
         "Запускаю Blender сама…",
         "В сцене: Шаня + таблички с именем и целевым ростом.",
+        "После lineup — авто front/side PNG в Lab/Creatures/Processed/<slug>/.",
+        "Проверь скрины в «Разметить существ» → галочка «Показать уже размеченных».",
         "Если рост не совпал — в «Разметить существ» поставь точный рост (м) и перезапусти линейку.",
     ]
     blends: List[Path] = []

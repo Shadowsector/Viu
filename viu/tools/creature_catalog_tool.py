@@ -14,14 +14,17 @@ from ..creature_catalog import (
 )
 from ..creature_catalog.auto_size import auto_apply_size_guesses
 from ..creature_catalog.lineup import run_creature_lineup
-from ..creature_catalog.models import ALL_SIZE_IDS, LOCOMOTION
+from ..creature_catalog.models import ALL_SIZE_IDS, CONTACT_MODES, GENITAL_PROFILES, LOCOMOTION
+from ..creature_catalog.studio import open_creature_studio, sync_studio_feedback
+from ..creature_catalog.prep import open_creature_prep, sync_prep_feedback
+from ..creature_catalog.wardrobe import open_creature_wardrobe, sync_wardrobe_feedback
 from .base import AgentContext, Tool, ToolResult
 
 
 class CreatureCatalogScanTool(Tool):
     name = "creature_catalog_scan"
     description = (
-        "Сканировать Lab/Creatures/Inbox (+ Lab/Models/Inbox) → creature_catalog.json. "
+        "Сканировать Lab/Creatures/Inbox → creature_catalog.json. "
         "Потом авторазметка уверенных имён. Основной UX — кнопка «Разметить существ»."
     )
     parameters: dict = {}
@@ -110,7 +113,8 @@ class CreatureCatalogSetSizeTool(Tool):
     description = (
         "Проставить size_class существу. id= или slug=; size=mini|small|humanoid|large|huge|"
         "quad_mini|quad_med|quad_large; size_alt= через запятую (dual); "
-        "locomotion=biped|quadruped|amorph|tentacle|mimic|flyer; nsfw=1."
+        "locomotion=biped|quadruped|amorph|tentacle|mimic|flyer; "
+        "genital=none|penis|vagina|futa; contact=oral,tentacle,hand (через запятую)."
     )
     parameters = {
         "id": "id записи",
@@ -118,7 +122,8 @@ class CreatureCatalogSetSizeTool(Tool):
         "size": "size_class",
         "size_alt": "доп. классы через запятую",
         "locomotion": "locomotion",
-        "nsfw": "1 = nsfw_capable",
+        "genital": "genital_profile: none|penis|vagina|futa",
+        "contact": "contact_modes: oral,tentacle,hand",
         "notes": "заметка",
         "height": "точный рост в метрах (иначе из класса)",
     }
@@ -175,27 +180,81 @@ class CreatureCatalogSetSizeTool(Tool):
         )
         if updated is None:
             return ToolResult(False, "Не удалось обновить")
-        if str(args.get("nsfw") or "").strip() in ("1", "true", "yes"):
-            updated.nsfw_capable = True
-            store.upsert(updated)
+        genital = str(args.get("genital") or args.get("genital_profile") or "").strip()
+        contact_raw = str(args.get("contact") or args.get("contact_modes") or "").strip()
+        if genital:
+            if genital not in GENITAL_PROFILES:
+                return ToolResult(
+                    False,
+                    f"genital= один из: {', '.join(GENITAL_PROFILES)}",
+                )
+        modes: List[str] = []
+        if contact_raw:
+            modes = [p.strip() for p in contact_raw.split(",") if p.strip()]
+            bad = [m for m in modes if m not in CONTACT_MODES]
+            if bad:
+                return ToolResult(
+                    False,
+                    f"contact= oral,tentacle,hand — неизвестно: {', '.join(bad)}",
+                )
+        if genital or contact_raw:
+            updated.set_anatomy(
+                genital_profile=genital or updated.genital_profile,
+                contact_modes=modes if contact_raw else None,
+            )
+        store.upsert(updated)
         store.save()
         return ToolResult(
             True,
             f"OK: {updated.render_line()}\n"
             f"anim_bucket=`{updated.anim_bucket()}`\n"
-            "Дальше: creature_lineup — сравнить рост с Шаней в Blender.",
+            f"анатомия: {updated.anatomy_summary()}\n"
+            "Дальше: подготовка → студия существ.",
         )
+
+
+class CreatureDescribeTool(Tool):
+    name = "creature_describe"
+    description = (
+        "Описать существо по скрину (Ollama VL / llava): EN-промпт + RU для анимации. "
+        "Пишет appearance_* в creature_catalog.json. "
+        "query=имя/slug/id; image=путь к PNG (иначе photo_front или Processed/<slug>/front.png)."
+    )
+    parameters = {
+        "query": "имя, slug или id существа",
+        "image": "опционально путь к PNG скрина",
+        "mark_ready": "1 (по умолчанию) → status=ready если есть size_class",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..creature_catalog.describe import describe_creature
+
+        query = str(args.get("query") or args.get("name") or "").strip()
+        if not query:
+            return ToolResult(False, "Нужен query= имя/slug существа.")
+        image = str(args.get("image") or args.get("path") or "").strip()
+        mark = str(args.get("mark_ready") or "1").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+        )
+        ok, msg = describe_creature(
+            ctx.config, query, image=image, mark_ready=mark
+        )
+        return ToolResult(ok, msg)
 
 
 class CreatureLineupTool(Tool):
     name = "creature_lineup"
     description = (
         "Линейка существ: Вью сама запускает Blender, собирает .blend рядом с Шаней, "
-        "открывает результат. size= фильтр; open=0 не открывать; split=0 одна сцена; "
-        "all=1 без дедупа имён; prepare_only=1 только JSON без Blender."
+        "front/side PNG в Processed/. По умолчанию только без одобренных скринов. "
+        "slug= один или несколько; need_photos=0 — весь каталог; open=0 не открывать."
     )
     parameters = {
         "size": "фильтр size_class через запятую (пусто = все размеченные)",
+        "slug": "slug или имя (через запятую) — только эти существа",
+        "need_photos": "1 только ждут съёмки/проверки (по умолчанию), 0 весь каталог",
         "shanya_path": "путь к модели Шани",
         "spacing": "метры между фигурами (1.2)",
         "open": "1 открыть .blend/папку (по умолчанию), 0 — нет",
@@ -206,6 +265,13 @@ class CreatureLineupTool(Tool):
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         sizes = [p.strip() for p in str(args.get("size") or "").split(",") if p.strip()]
+        slug_filter = [
+            p.strip()
+            for p in str(args.get("slug") or args.get("slugs") or "").split(",")
+            if p.strip()
+        ]
+        need_raw = str(args.get("need_photos") or "1").strip().lower()
+        need_photos_only = need_raw not in ("0", "false", "no", "all")
         try:
             spacing = float(args.get("spacing") or 1.2)
         except (TypeError, ValueError):
@@ -215,6 +281,8 @@ class CreatureLineupTool(Tool):
             ok, msg, path = build_lineup_job(
                 ctx.config,
                 size_filter=sizes,
+                slug_filter=slug_filter,
+                need_photos_only=need_photos_only,
                 shanya_path=str(args.get("shanya_path") or "").strip(),
                 spacing_m=spacing,
             )
@@ -239,6 +307,8 @@ class CreatureLineupTool(Tool):
         ok, msg = run_creature_lineup(
             ctx.config,
             size_filter=sizes,
+            slug_filter=slug_filter,
+            need_photos_only=need_photos_only,
             shanya_path=str(args.get("shanya_path") or "").strip(),
             spacing_m=spacing,
             split=split,
@@ -248,10 +318,133 @@ class CreatureLineupTool(Tool):
         return ToolResult(ok, msg)
 
 
+class CreatureWardrobeOpenTool(Tool):
+    name = "creature_wardrobe_open"
+    description = "Blender Wardrobe: наборы одежды, genital visibility. Нужен prepared.blend."
+    parameters = {"slug": "один slug/имя"}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        slug_filter = [p.strip() for p in str(args.get("slug") or "").split(",") if p.strip()]
+        ok, msg = open_creature_wardrobe(ctx.config, slug_filter=slug_filter)
+        return ToolResult(ok, msg)
+
+
+class CreatureWardrobeSyncTool(Tool):
+    name = "creature_wardrobe_sync"
+    description = "Считать wardrobe_feedback → outfit_sets.json, genital_rig в каталог."
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        n, msg = sync_wardrobe_feedback(ctx.config)
+        return ToolResult(n > 0, msg)
+
+
+class CreaturePrepOpenTool(Tool):
+    name = "creature_prep_open"
+    description = (
+        "Blender — подготовка моделей (шаг 1): очистка, Bursting Head, текстуры, prepared.blend."
+    )
+    parameters = {
+        "slug": "один slug/имя",
+        "all": "1 все из Inbox, 0 только без prepared (по умолчанию)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        slug_filter = [p.strip() for p in str(args.get("slug") or "").split(",") if p.strip()]
+        only_unprepared = str(args.get("all") or "").strip().lower() not in ("1", "true", "yes", "all")
+        ok, msg = open_creature_prep(ctx.config, slug_filter=slug_filter, only_unprepared=only_unprepared)
+        return ToolResult(ok, msg)
+
+
+class CreaturePrepSyncTool(Tool):
+    name = "creature_prep_sync"
+    description = "Считать prep_feedback.json → prepared_path, prep_ok в каталог."
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        n, msg = sync_prep_feedback(ctx.config)
+        return ToolResult(n > 0, msg)
+
+
+class CreatureStudioOpenTool(Tool):
+    name = "creature_studio_open"
+    description = (
+        "Blender-студия (шаг 2): разметка + Шаня + рост + скрины + эталон FBX. "
+        "Нужен prepared.blend. slug= один; all=1 вся очередь."
+    )
+    parameters = {
+        "slug": "один slug/имя (пусто = очередь без photo_ok)",
+        "all": "1 все размеченные, 0 только без одобренных скринов (по умолчанию)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        slug_filter = [
+            p.strip()
+            for p in str(args.get("slug") or "").split(",")
+            if p.strip()
+        ]
+        only_unapproved = str(args.get("all") or "").strip().lower() not in (
+            "1",
+            "true",
+            "yes",
+            "all",
+        )
+        ok, msg = open_creature_studio(
+            ctx.config,
+            slug_filter=slug_filter,
+            only_unapproved=only_unapproved,
+        )
+        return ToolResult(ok, msg)
+
+
+class CreatureStudioSyncTool(Tool):
+    name = "creature_studio_sync"
+    description = (
+        "Считать studio_feedback.json → разметка, рост, скрины, photo_ok, эталон FBX."
+    )
+    parameters: dict = {}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        n, msg = sync_studio_feedback(ctx.config)
+        return ToolResult(n > 0, msg)
+
+
+class CreaturePipelineNotesTool(Tool):
+    name = "creature_pipeline_notes"
+    description = "Показать заметки [prep]/[wardrobe]/[studio] из creature_catalog.json."
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        store = CreatureCatalogStore(creature_catalog_path(ctx.config)).load()
+        text = store.pipeline_notes_text()
+        return ToolResult(True, text)
+
+
+class CreatureCatalogMergeTool(Tool):
+    name = "creature_catalog_merge"
+    description = "Слить дубли каталога с одним slug (Dennis дважды и т.п.)."
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        store = CreatureCatalogStore(creature_catalog_path(ctx.config)).load()
+        removed, merged = store.merge_duplicate_slugs()
+        if removed:
+            store.save()
+        return ToolResult(
+            True,
+            f"Каталог: удалено дублей {removed}, объединено заметок {merged}.",
+        )
+
+
 __all__ = [
     "CreatureCatalogScanTool",
     "CreatureCatalogShowTool",
     "CreatureCatalogSetSizeTool",
     "CreatureCatalogAutoSizeTool",
+    "CreatureDescribeTool",
     "CreatureLineupTool",
+    "CreatureWardrobeOpenTool",
+    "CreatureWardrobeSyncTool",
+    "CreaturePrepOpenTool",
+    "CreaturePrepSyncTool",
+    "CreatureStudioOpenTool",
+    "CreatureStudioSyncTool",
+    "CreaturePipelineNotesTool",
+    "CreatureCatalogMergeTool",
 ]

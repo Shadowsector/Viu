@@ -49,11 +49,15 @@ class Config:
     provider: str = field(default_factory=lambda: _env("VIU_PROVIDER", "mock"))
 
     # Параметры OpenAI-совместимого API.
-    model: str = field(default_factory=lambda: _env("VIU_MODEL", "gpt-4o-mini"))
-    # Роли (пусто = VIU_MODEL). Ollama: разные теги, переключение на лету по запросу.
-    model_reflect: str = field(default_factory=lambda: _env("VIU_MODEL_REFLECT", ""))
-    model_work: str = field(default_factory=lambda: _env("VIU_MODEL_WORK", ""))
-    model_code: str = field(default_factory=lambda: _env("VIU_MODEL_CODE", ""))
+    # Пустые роли → viu-обёртки (см. llm_roles.effective_model), не голый coder.
+    model: str = field(default_factory=lambda: _env("VIU_MODEL", "viu-cydonia"))
+    model_reflect: str = field(
+        default_factory=lambda: _env("VIU_MODEL_REFLECT", "viu-cydonia")
+    )
+    model_work: str = field(default_factory=lambda: _env("VIU_MODEL_WORK", "viu-qwen32"))
+    model_code: str = field(
+        default_factory=lambda: _env("VIU_MODEL_CODE", "qwen2.5-coder:14b")
+    )
     api_key: str = field(default_factory=lambda: _env("VIU_API_KEY", ""))
     base_url: str = field(
         default_factory=lambda: _env("VIU_BASE_URL", "https://api.openai.com/v1")
@@ -63,7 +67,7 @@ class Config:
     max_steps: int = field(default_factory=lambda: int(_env("VIU_MAX_STEPS", "12")))
     temperature: float = field(default_factory=lambda: float(_env("VIU_TEMPERATURE", "0.2")))
     # Один запрос к Ollama/LLM (сек). 14b на холодном старте легко >2 мин.
-    llm_timeout: float = field(default_factory=lambda: float(_env("VIU_LLM_TIMEOUT", "600")))
+    llm_timeout: float = field(default_factory=lambda: float(_env("VIU_LLM_TIMEOUT", "1200")))
 
     # Разрешать ли реальное выполнение shell-команд (по умолчанию — да, но в песочнице).
     allow_shell: bool = field(default_factory=lambda: _env("VIU_ALLOW_SHELL", "1") == "1")
@@ -118,6 +122,14 @@ class Config:
     mascot_dir: str = field(default_factory=lambda: _env("VIU_MASCOT_DIR", ""))
     shanya_max_lift_kg: float = field(
         default_factory=lambda: float(_env("VIU_SHANYA_MAX_LIFT_KG", "35"))
+    )
+
+    # Comfy MoCap: лимит kept-клипов на одно действие (цикл сарая).
+    comfy_max_per_action: int = field(
+        default_factory=lambda: int(_env("VIU_COMFY_MAX_PER_ACTION", "10"))
+    )
+    comfy_barn_cycle: bool = field(
+        default_factory=lambda: _env("VIU_COMFY_BARN_CYCLE", "1") == "1"
     )
 
     # Ветка git для автообновления GUI.

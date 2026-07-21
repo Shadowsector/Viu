@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from datetime import datetime
@@ -61,9 +62,34 @@ def _api_request(url: str) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _quote_branch(branch: str) -> str:
+    return urllib.parse.quote(branch, safe="")
+
+
+def refresh_bootstrap_script() -> bool:
+    """Подтянуть свежий bootstrap_update.py с GitHub (без git)."""
+    try:
+        req = urllib.request.Request(RAW_BOOTSTRAP_URL, headers=github_headers())
+        with urllib.request.urlopen(req, timeout=45) as resp:  # noqa: S310
+            data = resp.read()
+        if len(data) < 200 or b"bootstrap" not in data.lower():
+            return False
+        dest = root_dir() / "bootstrap_update.py"
+        dest.write_bytes(data)
+        return True
+    except (OSError, urllib.error.URLError):
+        return False
+
+
+def write_package_sha(sha: str) -> None:
+    path = root_dir() / "viu" / "package_sha.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(sha.strip() + "\n", encoding="utf-8")
+
+
 def remote_sha() -> str:
     """Последний коммит ветки на GitHub (без git)."""
-    url = f"https://api.github.com/repos/{REPO}/commits/{BRANCH}"
+    url = f"https://api.github.com/repos/{REPO}/commits/{_quote_branch(BRANCH)}"
     data = _api_request(url)
     sha = data.get("sha") or ""
     if not sha:
@@ -71,7 +97,18 @@ def remote_sha() -> str:
     return sha
 
 
+def read_package_sha() -> str:
+    path = root_dir() / "viu" / "package_sha.txt"
+    if not path.is_file():
+        return ""
+    line = path.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+    return line[0].strip() if line else ""
+
+
 def local_sha() -> str:
+    pkg = read_package_sha()
+    if pkg:
+        return pkg
     path = stamp_path()
     if not path.is_file():
         return ""
@@ -102,8 +139,8 @@ def needs_update() -> tuple[bool, str, str]:
 
 
 def download_zip() -> bytes:
-    # Публичный zip
-    url = f"https://github.com/{REPO}/archive/refs/heads/{BRANCH}.zip"
+    q = _quote_branch(BRANCH)
+    url = f"https://github.com/{REPO}/archive/refs/heads/{q}.zip"
     log(f"Скачиваю {url} …")
     req = urllib.request.Request(url, headers=github_headers())
     try:
@@ -112,9 +149,8 @@ def download_zip() -> bytes:
     except urllib.error.HTTPError as exc:
         if exc.code != 404:
             raise
-    # Приватный репо — zipball через API
-    api_url = f"https://api.github.com/repos/{REPO}/zipball/{BRANCH}"
-    log(f"Пробую API zipball (нужен VIU_GITHUB_TOKEN для private) …")
+    api_url = f"https://api.github.com/repos/{REPO}/zipball/{q}"
+    log("Пробую API zipball (нужен VIU_GITHUB_TOKEN для private) …")
     req2 = urllib.request.Request(api_url, headers=github_headers())
     with urllib.request.urlopen(req2, timeout=300) as resp:  # noqa: S310
         return resp.read()
@@ -133,18 +169,28 @@ def apply_zip(data: bytes) -> None:
             raise RuntimeError("Пустой zip-архив")
         src_root = roots[0]
         log(f"Распаковка в {dest} …")
-        for item in src_root.iterdir():
-            if item.name in PRESERVE_DIRS and (dest / item.name).exists():
-                continue
-            if item.name in PRESERVE_FILES and (dest / item.name).exists():
-                continue
-            target = dest / item.name
-            if item.is_dir():
-                if target.exists():
-                    shutil.rmtree(target)
-                shutil.copytree(item, target)
-            else:
-                shutil.copy2(item, target)
+        try:
+            from viu.ollama_layout import copy_install_tree_item as _copy_item
+
+            for item in src_root.iterdir():
+                if item.name in PRESERVE_DIRS and (dest / item.name).exists():
+                    continue
+                if item.name in PRESERVE_FILES and (dest / item.name).exists():
+                    continue
+                _copy_item(item, dest)
+        except ImportError:
+            for item in src_root.iterdir():
+                if item.name in PRESERVE_DIRS and (dest / item.name).exists():
+                    continue
+                if item.name in PRESERVE_FILES and (dest / item.name).exists():
+                    continue
+                target = dest / item.name
+                if item.is_dir():
+                    if target.exists():
+                        shutil.rmtree(target)
+                    shutil.copytree(item, target)
+                else:
+                    shutil.copy2(item, target)
 
 
 OBSOLETE_FILES = (
@@ -177,18 +223,57 @@ def cleanup_obsolete() -> None:
 
 
 def pip_install() -> None:
-    log("pip install -e . …")
-    proc = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-e", str(root_dir())],
-        cwd=str(root_dir()),
-        capture_output=True,
-        text=True,
-        timeout=1200,
-        creationflags=_NO_WINDOW,
-    )
-    if proc.returncode != 0:
-        tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-500:]
-        raise RuntimeError(f"pip не удался: {tail}")
+    """pip install -e . без мёртвого локального proxy; fallback без build isolation."""
+    try:
+        from viu.net_env import scrub_proxy_env
+    except ImportError:
+        def scrub_proxy_env():  # type: ignore[misc]
+            out = dict(os.environ)
+            for key in (
+                "HTTP_PROXY",
+                "HTTPS_PROXY",
+                "ALL_PROXY",
+                "http_proxy",
+                "https_proxy",
+                "all_proxy",
+                "PIP_PROXY",
+            ):
+                out.pop(key, None)
+            out["NO_PROXY"] = "*"
+            out["no_proxy"] = "*"
+            return out
+
+    env = scrub_proxy_env()
+    cwd = str(root_dir())
+    attempts = [
+        [sys.executable, "-m", "pip", "install", "-e", cwd, "--proxy="],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-e",
+            cwd,
+            "--proxy=",
+            "--no-build-isolation",
+        ],
+    ]
+    last_tail = ""
+    for cmd in attempts:
+        log(" ".join(cmd[3:]) + " …")
+        proc = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=1200,
+            creationflags=_NO_WINDOW,
+            env=env,
+        )
+        if proc.returncode == 0:
+            return
+        last_tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-500:]
+    raise RuntimeError(f"pip не удался: {last_tail}")
 
 
 def launch_gui() -> None:
@@ -239,6 +324,7 @@ def run_update(force: bool = False) -> bool:
         apply_zip(data)
         pip_install()
         write_stamp(sha)
+        write_package_sha(sha)
     except (OSError, zipfile.BadZipFile, RuntimeError, subprocess.TimeoutExpired) as exc:
         log(f"ОШИБКА обновления: {exc}")
         return False
@@ -255,6 +341,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--launch", action="store_true", help="открыть GUI после обновления")
     args = parser.parse_args(argv)
 
+    try:
+        from viu.net_env import apply_proxy_scrub_to_process, proxy_hint
+
+        removed = apply_proxy_scrub_to_process()
+        hint = proxy_hint(removed)
+        if hint:
+            log(hint)
+    except Exception:  # noqa: BLE001
+        for key in (
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+        ):
+            os.environ.pop(key, None)
+
     if args.check:
         try:
             outdated, sha, reason = needs_update()
@@ -263,6 +367,9 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001
             log(str(exc))
             return 1
+
+    if refresh_bootstrap_script():
+        log("bootstrap_update.py — свежая копия с GitHub")
 
     force = args.apply
     auto = args.auto or (not force and not args.check)

@@ -11,6 +11,7 @@ from .models import (
     STATUS_NEW,
     CreatureEntry,
     creature_id_for_path,
+    creature_identity_from_inbox_path,
     suggest_locomotion_from_name,
     suggest_size_from_name,
 )
@@ -32,25 +33,16 @@ def _find_textures_nearby(asset: Path) -> Tuple[bool, str]:
 
 
 def scan_creatures_inbox(config: Config) -> Tuple[int, int, str]:
-    """Добавить новые файлы из Creatures/Inbox (+ опционально Lab/Models/Inbox).
+    """Добавить новые файлы из Lab/Creatures/Inbox (единый inbox существ).
 
     Returns: (added, total, message)
 
     Важно: считается **каждый файл** (.fbx/.blend/.glb…), рекурсивно.
-    Одна папка с goblin.fbx + goblin.blend + LOD = три записи — поэтому
-    «в проводнике 66 папок/моделей», а в каталоге может быть ~100+.
-    Также сканируется Lab/Models/Inbox, если он есть.
-    """
+    Models/Inbox — только Шаня / humanoid lab, не сканируется как существо.
+  """
     store = CreatureCatalogStore(creature_catalog_path(config)).load()
     inbox = creatures_inbox_dir(config)
     roots = [inbox]
-    # также lab models — часто туда кладут всё подряд
-    try:
-        from ..lab.paths import models_inbox_dir
-
-        roots.append(models_inbox_dir(config))
-    except Exception:
-        pass
 
     added = 0
     per_root_added: Dict[str, int] = {}
@@ -76,18 +68,27 @@ def scan_creatures_inbox(config: Config) -> Tuple[int, int, str]:
             except OSError:
                 continue
             per_root_seen[root_key] = per_root_seen.get(root_key, 0) + 1
+            cid = creature_id_for_path(resolved)
+            existing = store.get(cid)
+            if existing:
+                if not existing.prep_ok:
+                    name, slug = creature_identity_from_inbox_path(resolved, inbox)
+                    existing.name = name
+                    existing.slug = slug
+                    store.upsert(existing)
+                seen_paths.add(resolved)
+                continue
             if resolved in seen_paths:
                 continue
-            cid = creature_id_for_path(resolved)
-            if store.get(cid):
-                continue
             ext_tex, tex_dir = _find_textures_nearby(resolved)
-            guesses = suggest_size_from_name(resolved.stem)
-            loco = suggest_locomotion_from_name(resolved.stem)
+            display_name, slug = creature_identity_from_inbox_path(resolved, inbox)
+            guesses = suggest_size_from_name(display_name)
+            loco = suggest_locomotion_from_name(display_name)
             entry = CreatureEntry(
                 id=cid,
                 path=str(resolved),
-                name=resolved.stem,
+                name=display_name,
+                slug=slug,
                 locomotion=loco,
                 textures_external=ext_tex,
                 textures_dir=tex_dir,

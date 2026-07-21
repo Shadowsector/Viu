@@ -57,7 +57,7 @@ def set_active_model(config: Config, model: str) -> None:
 def get_update_interval_min(config: Config) -> int:
     raw = get(config, "update_interval_min", None)
     if raw is None:
-        return int(float(__import__("os").environ.get("VIU_UPDATE_INTERVAL_MIN", "0") or 0))
+        return int(float(__import__("os").environ.get("VIU_UPDATE_INTERVAL_MIN", "60") or 60))
     try:
         return max(0, int(raw))
     except (TypeError, ValueError):
@@ -66,6 +66,22 @@ def get_update_interval_min(config: Config) -> int:
 
 def set_update_interval_min(config: Config, minutes: int) -> None:
     set_value(config, "update_interval_min", max(0, int(minutes)))
+
+
+def get_reflect_model_override(config: Config) -> str:
+    """Выбор reflect в GUI (runtime.json). Пусто = из .env."""
+    return str(get(config, "reflect_model") or "").strip()
+
+
+def set_reflect_model_override(config: Config, model_id: str) -> None:
+    mid = (model_id or "").strip()
+    if mid:
+        set_value(config, "reflect_model", mid)
+    else:
+        with _LOCK:
+            data = _read(config)
+            data.pop("reflect_model", None)
+            _write(config, data)
 
 
 def get_heartbeat_interval_min(config: Config) -> int:

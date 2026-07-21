@@ -31,6 +31,107 @@ def _cfg(tmp_path: Path, monkeypatch) -> Config:
     ).ensure_dirs()
 
 
+def test_outfit_sets_upsert():
+    from viu.creature_catalog.outfit_sets import empty_outfit_doc, upsert_outfit_set
+
+    data = empty_outfit_doc("shanya", "Shanya")
+    snap = {
+        "show_meshes": ["Body", "Pants"],
+        "hide_meshes": ["Bikini"],
+        "genital_mesh_visible": False,
+        "clothing_visible": True,
+    }
+    upsert_outfit_set(data, set_id="casual_01", label="Casual", snapshot=snap, confirmed=True)
+    assert len(data["sets"]) == 1
+    assert data["sets"][0]["hide_genital_mesh"] is True
+
+
+def test_texture_manifest_paths(tmp_path, monkeypatch):
+    from viu.creature_catalog.paths import (
+        creature_outfit_sets_path,
+        creature_texture_manifest_path,
+    )
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    m = creature_texture_manifest_path(cfg, "wolf", stage="prepared")
+    assert m.parent.name == "wolf"
+    assert m.name == "texture_manifest.json"
+    o = creature_outfit_sets_path(cfg, "wolf")
+    assert o.name == "outfit_sets.json"
+
+
+def test_anatomy_markup_and_anim_bucket(tmp_path, monkeypatch):
+    from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
+
+    e = CreatureEntry(
+        id="x",
+        path=str(tmp_path / "goblin.fbx"),
+        name="goblin",
+        size_class="small",
+        locomotion="biped",
+        status=STATUS_SIZED,
+    )
+    e.set_anatomy(genital_profile="penis")
+    assert e.nsfw_capable
+    assert e.anim_bucket() == "small__biped__penis"
+    e.set_anatomy(genital_profile="none", contact_modes=["oral", "tentacle"])
+    assert e.anim_bucket() == "small__biped__oral+tentacle"
+    assert "рот" in e.anatomy_summary()
+
+
+def test_creature_describe_parse_and_store(tmp_path, monkeypatch):
+    from viu.creature_catalog.describe import _parse_vl, describe_creature
+    from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
+
+    en, ru, tags = _parse_vl(
+        "EN: green goblin biped, warty skin\n"
+        "RU: Зеленоватый гоблин, двуногий.\n"
+        "TAGS: biped, goblin, green"
+    )
+    assert "goblin" in en.lower()
+    assert "гоблин" in ru.lower()
+    assert "biped" in tags
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    png = tmp_path / "gob.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+    e = CreatureEntry(
+        id="abc123",
+        path=str(tmp_path / "Goblin.fbx"),
+        name="Goblin",
+        size_class="small",
+        locomotion="biped",
+        status=STATUS_SIZED,
+        photo_front=str(png),
+    )
+    store.upsert(e)
+    store.save()
+
+    def fake_ask(image_path, *, prompt, config, model=""):
+        return True, (
+            "EN: small green goblin warrior\n"
+            "RU: Маленький зелёный гоблин-воин.\n"
+            "TAGS: goblin, biped"
+        )
+
+    monkeypatch.setattr(
+        "viu.creature_catalog.describe.ask_vision", fake_ask
+    )
+    monkeypatch.setattr(
+        "viu.creature_catalog.describe.pick_vision_model", lambda *_a, **_k: "llava"
+    )
+    ok, msg = describe_creature(cfg, "Goblin")
+    assert ok
+    assert "EN:" in msg
+    store2 = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    g = store2.get("abc123")
+    assert g is not None
+    assert "goblin" in g.appearance_en.lower()
+    assert g.appearance_ru
+    assert g.status == "ready"
+
+
 def test_girl_sockets_include_hands_and_cleavage():
     ids = list_girl_socket_ids()
     assert "socket_oral" in ids
@@ -44,6 +145,36 @@ def test_suggest_size_goblin():
     assert "small" in suggest_size_from_name("Goblin_warrior")
     assert suggest_locomotion_from_name("green_slime") == "amorph"
     assert suggest_locomotion_from_name("mimic_chest") == "mimic"
+
+
+def test_resolve_shanya_path_env(tmp_path, monkeypatch):
+    from viu.creature_catalog.lineup import resolve_shanya_path
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    shanya = tmp_path / "Library" / "Lab" / "Models" / "CascadeurReady" / "Shanya.fbx"
+    shanya.parent.mkdir(parents=True, exist_ok=True)
+    shanya.write_bytes(b"fbx")
+    override = tmp_path / "custom" / "Shanya_ref.fbx"
+    override.parent.mkdir()
+    override.write_bytes(b"fbx")
+    monkeypatch.setenv("VIU_SHANYA_FBX", str(override))
+    assert resolve_shanya_path(cfg) == override
+    monkeypatch.delenv("VIU_SHANYA_FBX", raising=False)
+    assert resolve_shanya_path(cfg) == shanya
+
+
+def test_resolve_shanya_studio_prefers_fbx(tmp_path, monkeypatch):
+    from viu.creature_catalog.studio import resolve_shanya_studio_path
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    d = tmp_path / "Library" / "Lab" / "Models" / "CascadeurReady"
+    d.mkdir(parents=True, exist_ok=True)
+    blend = d / "Shanya_rig.blend"
+    fbx = d / "Shanya.fbx"
+    blend.write_bytes(b"blend")
+    fbx.write_bytes(b"fbx")
+    monkeypatch.setenv("VIU_SHANYA_FBX", str(blend))
+    assert resolve_shanya_studio_path(cfg) == fbx
 
 
 def test_scan_and_set_size(tmp_path, monkeypatch):
@@ -124,10 +255,52 @@ def test_lineup_job(tmp_path, monkeypatch):
     ok, msg, job = build_lineup_job(cfg, size_filter=["quad_med"])
     assert ok, msg
     assert job.is_file()
+    data = __import__("json").loads(job.read_text(encoding="utf-8"))
+    assert data.get("processed_root")
+    assert data["creatures"][0].get("slug")
     script = job.parent / "viu_creature_lineup.py"
     assert script.is_file()
-    assert "wrap_root" in script.read_text(encoding="utf-8")
-    assert "import_scene.fbx" in script.read_text(encoding="utf-8")
+    body = script.read_text(encoding="utf-8")
+    assert "wrap_root" in body
+    assert "import_scene.fbx" in body
+    assert "VIU_LINEUP_PHOTO" in body
+    assert "render_creature_shots" in body
+    assert "_hide_rig_helpers" in body
+
+
+def test_lineup_parse_photos_and_apply(tmp_path, monkeypatch):
+    from viu.creature_catalog.lineup import _apply_photos, _parse_photos
+    from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
+
+    stdout = (
+        'VIU_LINEUP_PHOTO {"id": "abc", "slug": "goblin", '
+        '"front": "/tmp/goblin/front.png", "side": "/tmp/goblin/side.png"}\n'
+        "VIU_LINEUP_PHOTOS_DONE 1\n"
+        "VIU_LINEUP_PHOTO_FAIL goblin2 boom\n"
+    )
+    rows = _parse_photos(stdout)
+    assert len(rows) == 1
+    assert rows[0]["slug"] == "goblin"
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    store.upsert(
+        CreatureEntry(
+            id="abc",
+            path=str(tmp_path / "Goblin.fbx"),
+            name="Goblin",
+            slug="goblin",
+            size_class="small",
+            status=STATUS_SIZED,
+        )
+    )
+    store.save()
+    n = _apply_photos(cfg, rows)
+    assert n == 1
+    g = CreatureCatalogStore(creature_catalog_path(cfg)).load().get("abc")
+    assert g is not None
+    assert g.photo_front.endswith("front.png")
+    assert g.photo_side.endswith("side.png")
 
 
 def test_lineup_dedupe_and_auto_run(tmp_path, monkeypatch):
@@ -166,9 +339,16 @@ def test_lineup_dedupe_and_auto_run(tmp_path, monkeypatch):
         out.write_bytes(b"BLENDER")
         stdout = "VIU_LINEUP_OK " + str(out) + "\n"
         for c in job["creatures"]:
+            slug = c.get("slug") or "creature"
+            front = str(tmp_path / "Library" / "Lab" / "Creatures" / "Processed" / slug / "front.png")
+            side = str(tmp_path / "Library" / "Lab" / "Creatures" / "Processed" / slug / "side.png")
             stdout += (
                 'VIU_LINEUP_ROW {"id": "%s", "measured_m": 1.2, "scale": 0.5}\n'
                 % c["id"]
+            )
+            stdout += (
+                'VIU_LINEUP_PHOTO {"id": "%s", "slug": "%s", "front": "%s", "side": "%s"}\n'
+                % (c["id"], slug, front, side)
             )
         from types import SimpleNamespace
 
@@ -185,6 +365,7 @@ def test_lineup_dedupe_and_auto_run(tmp_path, monkeypatch):
     assert calls
     store2 = CreatureCatalogStore(creature_catalog_path(cfg)).load()
     assert any(e.measured_height_m > 0 for e in store2.all())
+    assert any(e.photo_front for e in store2.all())
 
 
 def test_set_size_custom_height(tmp_path, monkeypatch):
@@ -208,12 +389,269 @@ def test_suggest_facehug_and_croc():
     assert "large" in suggest_size_from_name("Bareoth_Werewolf_1")
 
 
+def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
+    from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
+    from viu.creature_catalog.paths import creature_prepared_blend_path
+    from viu.creature_catalog.studio import (
+        build_studio_queue,
+        sync_studio_feedback,
+        write_studio_session,
+    )
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    prep = creature_prepared_blend_path(cfg, "wolf_alpha")
+    prep.parent.mkdir(parents=True, exist_ok=True)
+    prep.write_bytes(b"prep")
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    store.upsert(
+        CreatureEntry(
+            id="w1",
+            path=str(tmp_path / "wolf.blend"),
+            name="wolf_alpha",
+            slug="wolf_alpha",
+            size_class="quad_med",
+            locomotion="quadruped",
+            status=STATUS_SIZED,
+            prep_ok=True,
+            prepared_path=str(prep),
+        )
+    )
+    store.save()
+
+    ok, msg, queue = build_studio_queue(cfg, slug_filter=["wolf_alpha"])
+    assert ok and len(queue) == 1
+    session = write_studio_session(cfg, queue)
+    assert session.is_file()
+    data = __import__("json").loads(session.read_text(encoding="utf-8"))
+    assert data["queue"][0]["slug"] == "wolf_alpha"
+    assert data["queue"][0]["path"] == str(prep)
+    assert (session.parent / "viu_creature_studio.py").is_file()
+    assert (session.parent / "viu_creature_blender_shared.py").is_file()
+
+    fb = session.parent / "studio_feedback.json"
+    fb.write_text(
+        __import__("json").dumps(
+            {
+                "entries": [
+                    {
+                        "id": "w1",
+                        "slug": "wolf_alpha",
+                        "photo_front": str(tmp_path / "front.png"),
+                        "photo_three_quarter": str(tmp_path / "three_quarter.png"),
+                        "photo_side": str(tmp_path / "side.png"),
+                        "photo_ok": True,
+                        "target_height_m": 0.96,
+                        "size_class": "quad_med",
+                        "locomotion": "quadruped",
+                        "ready_fbx_path": str(tmp_path / "wolf_alpha_ready.fbx"),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    n, sync_msg = sync_studio_feedback(cfg)
+    assert n == 1
+    w = CreatureCatalogStore(creature_catalog_path(cfg)).load().get("w1")
+    assert w is not None
+    assert w.photo_ok
+    assert w.photo_three_quarter.endswith("three_quarter.png")
+    assert w.target_height_m == 0.96
+    assert w.ready_fbx_path.endswith("wolf_alpha_ready.fbx")
+
+
+def test_creature_prep_session_and_sync(tmp_path, monkeypatch):
+    from viu.creature_catalog.models import CreatureEntry
+    from viu.creature_catalog.paths import creature_prepared_blend_path
+    from viu.creature_catalog.prep import (
+        build_prep_queue,
+        sync_prep_feedback,
+        write_prep_session,
+    )
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    inbox = tmp_path / "wolf.blend"
+    inbox.write_bytes(b"inbox")
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    store.upsert(
+        CreatureEntry(
+            id="w1",
+            path=str(inbox),
+            name="wolf_alpha",
+            slug="wolf_alpha",
+        )
+    )
+    store.save()
+
+    ok, msg, queue = build_prep_queue(cfg, slug_filter=["wolf_alpha"])
+    assert ok and len(queue) == 1
+    session = write_prep_session(cfg, queue)
+    assert (session.parent / "viu_creature_prep.py").is_file()
+
+    prep_out = creature_prepared_blend_path(cfg, "wolf_alpha", ensure_dir=True)
+    prep_out.parent.mkdir(parents=True, exist_ok=True)
+    prep_out.write_bytes(b"prepared")
+    fb = session.parent / "prep_feedback.json"
+    fb.write_text(
+        __import__("json").dumps(
+            {
+                "entries": [
+                    {
+                        "id": "w1",
+                        "prepared_path": str(prep_out),
+                        "prep_ok": True,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    n, _ = sync_prep_feedback(cfg)
+    assert n == 1
+    w = CreatureCatalogStore(creature_catalog_path(cfg)).load().get("w1")
+    assert w is not None
+    assert w.prep_ok
+    assert w.prepared_path == str(prep_out)
+
+
+def test_studio_queue_requires_prepared(tmp_path, monkeypatch):
+    from viu.creature_catalog.models import CreatureEntry
+    from viu.creature_catalog.studio import build_studio_queue
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    store.upsert(
+        CreatureEntry(
+            id="w1",
+            path=str(tmp_path / "wolf.blend"),
+            name="wolf_alpha",
+            slug="wolf_alpha",
+        )
+    )
+    store.save()
+    (tmp_path / "wolf.blend").write_bytes(b"x")
+    ok, msg, queue = build_studio_queue(cfg)
+    assert not ok
+    assert "подготов" in msg.lower()
+
+
+def test_unified_living_inbox(tmp_path, monkeypatch):
+    from viu.creature_catalog.paths import creatures_inbox_dir
+    from viu.lab.paths import models_inbox_dir
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    assert models_inbox_dir(cfg) == creatures_inbox_dir(cfg)
+
+
+def test_creature_studio_tool_imports():
+    from viu.tools.creature_catalog_tool import (
+        CreaturePrepOpenTool,
+        CreaturePrepSyncTool,
+        CreatureWardrobeOpenTool,
+        CreatureWardrobeSyncTool,
+        CreatureStudioOpenTool,
+        CreatureStudioSyncTool,
+    )
+
+    assert CreaturePrepOpenTool().name == "creature_prep_open"
+    assert CreaturePrepSyncTool().name == "creature_prep_sync"
+    assert CreatureWardrobeOpenTool().name == "creature_wardrobe_open"
+    assert CreatureWardrobeSyncTool().name == "creature_wardrobe_sync"
+    assert CreatureStudioOpenTool().name == "creature_studio_open"
+    assert CreatureStudioSyncTool().name == "creature_studio_sync"
+
+
 def test_tools_registered():
     names = build_default_registry().names()
     assert "creature_catalog_scan" in names
     assert "creature_catalog_set_size" in names
     assert "creature_catalog_auto_size" in names
     assert "creature_lineup" in names
+    assert "creature_prep_open" in names
+    assert "creature_prep_sync" in names
+    assert "creature_wardrobe_open" in names
+    assert "creature_wardrobe_sync" in names
+    assert "creature_studio_open" in names
+    assert "creature_studio_sync" in names
+
+
+def test_lineup_slug_and_need_photos_filter(tmp_path, monkeypatch):
+    from viu.creature_catalog.lineup import build_lineup_jobs
+    from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    store.upsert(
+        CreatureEntry(
+            id="w1",
+            path=str(tmp_path / "wolf.blend"),
+            name="wolf_alpha",
+            slug="wolf_alpha",
+            size_class="quad_med",
+            locomotion="quadruped",
+            status=STATUS_SIZED,
+            photo_front=str(tmp_path / "wolf_front.png"),
+            photo_side=str(tmp_path / "wolf_side.png"),
+            photo_ok=True,
+        )
+    )
+    store.upsert(
+        CreatureEntry(
+            id="g1",
+            path=str(tmp_path / "goblin.fbx"),
+            name="Goblin",
+            slug="goblin",
+            size_class="small",
+            locomotion="biped",
+            status=STATUS_SIZED,
+        )
+    )
+    store.save()
+    (tmp_path / "wolf_front.png").write_bytes(b"x")
+    (tmp_path / "wolf_side.png").write_bytes(b"x")
+
+    ok, _msg, jobs = build_lineup_jobs(cfg, slug_filter=["wolf_alpha"], need_photos_only=False)
+    assert ok and jobs
+    data = __import__("json").loads(jobs[0].read_text(encoding="utf-8"))
+    assert len(data["creatures"]) == 1
+    assert data["creatures"][0]["slug"] == "wolf_alpha"
+
+    ok2, msg2, jobs2 = build_lineup_jobs(cfg, need_photos_only=True)
+    assert ok2 and jobs2
+    data2 = __import__("json").loads(jobs2[0].read_text(encoding="utf-8"))
+    assert len(data2["creatures"]) == 1
+    assert data2["creatures"][0]["slug"] == "goblin"
+
+    store2 = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    g = store2.get("g1")
+    assert g is not None
+    (tmp_path / "g_front.png").write_bytes(b"x")
+    g.photo_front = str(tmp_path / "g_front.png")
+    store2.upsert(g)
+    store2.save()
+    ok3, msg3, _ = build_lineup_jobs(cfg, need_photos_only=True)
+    assert not ok3
+    assert "без скринов" in msg3
+
+
+def test_photo_ok_model(tmp_path, monkeypatch):
+    from viu.creature_catalog.models import CreatureEntry, STATUS_SIZED
+
+    e = CreatureEntry(
+        id="x",
+        path=str(tmp_path / "a.fbx"),
+        name="Wolf",
+        size_class="quad_med",
+        status=STATUS_SIZED,
+    )
+    assert e.needs_photo_lineup()
+    assert not e.needs_photo_review()
+    (tmp_path / "front.png").write_bytes(b"x")
+    e.photo_front = str(tmp_path / "front.png")
+    assert not e.needs_photo_lineup()
+    assert e.needs_photo_review()
+    e.photo_ok = True
+    assert not e.needs_photo_review()
 
 
 def test_gui_action_creature_catalog():
@@ -225,5 +663,145 @@ def test_gui_action_creature_catalog():
     action = next(a for a in GUI_ACTIONS if a.action_id == "creature_catalog")
     assert action.tool == "__creature_catalog__"
     assert action.group == "Главное"
+    assert any(a.action_id == "creature_prep" and a.tool == "creature_prep_open" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_prep_sync" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_wardrobe" and a.tool == "creature_wardrobe_open" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_wardrobe_sync" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_wardrobe" and a.tool == "creature_wardrobe_open" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_wardrobe_sync" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_studio" and a.tool == "creature_studio_open" for a in GUI_ACTIONS)
+    assert any(a.action_id == "creature_studio_sync" for a in GUI_ACTIONS)
     lineup = next(a for a in GUI_ACTIONS if a.action_id == "creature_lineup")
-    assert lineup.tool == "creature_lineup"
+    assert lineup.group == "Редко"
+
+
+def test_outfit_types_ids():
+    from viu.creature_catalog.outfit_types import (
+        outfit_set_id,
+        outfit_type_label,
+        parse_outfit_set_id,
+    )
+
+    assert outfit_set_id("casual", "02") == "casual_02"
+    assert outfit_set_id("swimsuit", "2") == "swimsuit_02"
+    assert outfit_type_label("half_nude") == "Half-nude"
+    assert parse_outfit_set_id("lingerie_03") == ("lingerie", "03")
+
+
+def test_creature_identity_from_subfolder(tmp_path):
+    from viu.creature_catalog.models import creature_identity_from_inbox_path
+
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    blend = inbox / "Erisa" / "Erisa.blend"
+    blend.parent.mkdir(parents=True)
+    blend.write_bytes(b"x")
+    name, slug = creature_identity_from_inbox_path(blend, inbox)
+    assert name == "Erisa"
+    assert slug == "erisa"
+
+    rig = inbox / "Girls" / "Erisa" / "rig.blend"
+    rig.parent.mkdir(parents=True, exist_ok=True)
+    rig.write_bytes(b"x")
+    name2, slug2 = creature_identity_from_inbox_path(rig, inbox)
+    assert name2 == "Girls/Erisa/rig"
+    assert slug2 == "girls_erisa_rig"
+
+
+def test_append_pipeline_note_dedupes():
+    from viu.creature_catalog.note_utils import append_pipeline_note
+
+    n = append_pipeline_note("", "prep", "нет текстур")
+    n2 = append_pipeline_note(n, "prep", "нет текстур")
+    assert n == n2
+    assert n.count("нет текстур") == 1
+
+
+def test_merge_duplicate_slugs(tmp_path, monkeypatch):
+    from viu.creature_catalog.models import CreatureEntry
+    from viu.creature_catalog.store import CreatureCatalogStore
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    store = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    store.upsert(
+        CreatureEntry(id="a", path=str(tmp_path / "a.fbx"), name="Dennis", slug="dennis")
+    )
+    store.upsert(
+        CreatureEntry(
+            id="b",
+            path=str(tmp_path / "b.blend"),
+            name="Dennis",
+            slug="dennis",
+            prep_ok=True,
+            notes="[wardrobe] test",
+        )
+    )
+    removed, _ = store.merge_duplicate_slugs()
+    assert removed == 1
+    assert len(store.all()) == 1
+    assert store.all()[0].prep_ok
+
+
+def test_dedupe_by_slug_merges_same_creature(tmp_path):
+    from viu.creature_catalog.lineup import dedupe_by_slug
+    from viu.creature_catalog.models import CreatureEntry
+
+    a = CreatureEntry(
+        id="a",
+        path=str(tmp_path / "tiki.fbx"),
+        name="Tiki",
+        slug="tiki",
+        prep_ok=False,
+    )
+    b = CreatureEntry(
+        id="b",
+        path=str(tmp_path / "Tiki" / "Tiki.blend"),
+        name="Tiki",
+        slug="tiki",
+        prep_ok=True,
+        prepared_path=str(tmp_path / "prepared" / "tiki_prepared.blend"),
+    )
+    out = dedupe_by_slug([a, b])
+    assert len(out) == 1
+    assert out[0].id == "b"
+
+
+def test_dedupe_by_inbox_folder_keeps_subfolders(tmp_path):
+    from viu.creature_catalog.lineup import dedupe_by_inbox_folder
+    from viu.creature_catalog.models import CreatureEntry
+
+    inbox = tmp_path / "Inbox"
+    inbox.mkdir()
+    a = CreatureEntry(id="a", path=str(inbox / "GirlA" / "model.blend"), name="GirlA", slug="girla")
+    b = CreatureEntry(id="b", path=str(inbox / "GirlB" / "model.blend"), name="GirlB", slug="girlb")
+    out = dedupe_by_inbox_folder([a, b], inbox)
+    assert len(out) == 2
+
+
+def test_prep_queue_scans_subfolders_and_no_empty_prepared_dir(tmp_path, monkeypatch):
+    from viu.creature_catalog.paths import creature_prepared_blend_path, creatures_prepared_dir
+    from viu.creature_catalog.prep import build_prep_queue, needs_prep_entry
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    inbox = cfg.library_root
+    from viu.creature_catalog.paths import creatures_inbox_dir
+
+    root = creatures_inbox_dir(cfg)
+    (root / "Tiki").mkdir(parents=True)
+    (root / "Tiki" / "Tiki.blend").write_bytes(b"blend")
+    (root / "Renekton").mkdir(parents=True)
+    (root / "Renekton" / "Renekton.fbx").write_bytes(b"fbx")
+
+    ok, msg, queue = build_prep_queue(cfg)
+    assert ok
+    assert len(queue) == 2
+    assert "Скан Inbox" in msg
+
+    needs_prep_entry(queue[0], cfg)
+    prepared_root = creatures_prepared_dir(cfg)
+    assert not any(prepared_root.iterdir()), "needs_prep не должен создавать пустые папки Prepared"
+
+    path = creature_prepared_blend_path(cfg, queue[0].slug)
+    assert not path.parent.is_dir()
+    path = creature_prepared_blend_path(cfg, queue[0].slug, ensure_dir=True)
+    assert path.parent.is_dir()

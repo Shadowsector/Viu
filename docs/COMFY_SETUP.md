@@ -39,6 +39,33 @@ I2V 14B — опционально: `comfy_install i2v=1` (десятки GB).
 | `comfy_install` | clone + workflows + модели |
 | `comfy_ensure` | install при необходимости + старт `:8188` |
 
+### Из cmd (не из чата Вью)
+
+`comfy_install` — **инструмент Вью**, не отдельная программа. Из `U:\Viu\`:
+
+```bat
+comfy_install.bat reactor=1 models=0
+comfy_ensure.bat
+```
+
+Только ReActor (без скачивания Wan-моделей, быстрее):
+
+```bat
+python -m viu tool comfy_install --args "{\"reactor\":\"1\",\"models\":\"0\"}"
+```
+
+Или полная установка + ReActor:
+
+```bat
+python -m viu tool comfy_install --args "{\"reactor\":\"1\"}"
+python -m viu tool comfy_ensure
+```
+
+В cmd сразу должны появляться строки `[comfy_install] …` — установка долгая (git, pip).
+Если «моргает и тишина» — обнови Viu до свежей версии или используй `comfy_install.bat`.
+
+В окне Вью в чате тоже можно: `comfy_install reactor=1`.
+
 ### Torch / CUDA (RTX)
 
 Если в логе `Torch not compiled with CUDA enabled` или `from versions: none` для cu124:
@@ -79,10 +106,44 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 - вручную крутить workflow;
 - подключить **LoRA** / эксперименты.
 
-### LoRA / v2v — как вижу
+Если браузер пишет **403 на 127.0.0.1** — обнови Вью и перезапусти Comfy (`comfy_ensure`):
+запуск теперь с `--listen 127.0.0.1` и CORS. Либо открой `http://localhost:8188`.
+Для MoCap UI не обязателен — Вью ходит в API сама.
 
-1. **Сначала файлы:** LoRA в `ComfyUI/models/loras/`, v2v-ноды/модели — как обычно в Comfy.
-2. **Потом Вью:** tool вроде `comfy_lora_list` / правка workflow JSON (имя LoRA + strength в T2V-граф) — без обязательного кликанья в UI.
-3. **v2v / I2V:** уже задел — seed last-frame → следующий клип; полный v2v — отдельный workflow, когда появятся файлы и задача в каталоге.
+### Подмена лица (ReActor)
 
-Итого: UI Comfy — отладочный люк; пайплайн — через Вью. LoRA не «магия из воздуха»: сначала артефакт на диске, потом Вью вшивает в шаблон.
+Чтобы Wan не рисовал случайные лица:
+
+1. **Папка** `U:\Anabarra\Library\Lab\FaceRefs\` (Места → «Лица MoCap»).  
+   Не `U:\Viu\Library\` — склад игры в **Anabarra\Library**.
+2. Положи **PNG/JPG** с одним чётким лицом (фронт или ¾).
+   - `default.png` — всегда это лицо;
+   - или несколько файлов — **случайный** на каждый batch (одинаковый на 3 дубля).
+3. Один раз: `comfy_install.bat reactor=1` (ReActor + inswapper).
+4. `comfy_ensure` — перезапуск Comfy, чтобы подхватить ноду.
+
+Выключить: `VIU_COMFY_FACE_SWAP=0` в `.env`.  
+Фиксированное лицо: `VIU_COMFY_FACE_REF=U:\path\to\face.png`.
+
+### LoRA — простой сценарий
+
+1. **Скачай** `.safetensors` в `ComfyUI/models/loras/` (можно подпапки).
+2. **Индекс:** `comfy_lora_scan` или `comfy_lora_list scan=1` — Вью нумерует файлы.
+3. **Перед каждым пулом** (после одобрения промпта) Вью спросит в Telegram/чате:
+   - `lora: 1` / `lora: 1,3` / `lora: all` / `lora: none`
+4. **Заметки к файлу** (trigger, strength): `comfy_lora_note lora_file=foo.safetensors trigger=...`
+5. **Away:** без LoRA или повтор последнего выбора (`lora_last_pick`).
+
+Опционально: `comfy_lora_bind` / `download_url` — если всё же хочешь автоподкачку по URL.
+
+### Что искать на Civitai / HF (теги)
+
+База модели: **Wan 2.1**, **wan2.1**, **wan t2v**, **wan i2v**, **video lora**, **motion lora**.
+
+По действиям (примеры):
+- `touch_self` / интим: `self touch`, `masturbation`, `solo`, `nsfw motion`
+- сидеть/лежать: `sit`, `lie down`, `sleep`, `get up`
+- ходьба: `walk cycle`, `locomotion`, `stride`
+- жесты: `wave`, `reach`, `pick up`, `drink`, `eat`
+
+Фильтр: Type = LoRA, Base model содержит Wan / video. Смотри preview-GIF и trigger words в описании.

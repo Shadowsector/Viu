@@ -40,6 +40,11 @@ _RU_ALIASES: Dict[str, Tuple[str, Dict[str, Any]]] = {
     "очередь существ": ("creature_catalog_show", {"mode": "pending"}),
     "линейка существ": ("creature_lineup", {}),
     "lineup существ": ("creature_lineup", {}),
+    "blocking сцены": ("interaction_blocking", {}),
+    "сцена blocking": ("interaction_blocking", {}),
+    "master ref сцены": ("interaction_master_draft", {}),
+    "master ref": ("interaction_master_draft", {}),
+    "совместные анимации": ("interaction_catalog_show", {"mode": "holes"}),
 }
 
 

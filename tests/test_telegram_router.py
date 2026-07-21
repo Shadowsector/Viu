@@ -55,6 +55,23 @@ class RetrySpeakLLM(LLMProvider):
         )
 
 
+def test_telegram_send_splits_long_message():
+    from viu.integrations.telegram.client import TelegramClient
+
+    sent: list[str] = []
+    c = TelegramClient("fake:token")
+
+    def fake_call(method, payload=None):
+        if method == "sendMessage" and payload:
+            sent.append(str(payload.get("text") or ""))
+        return {}
+
+    c._call = fake_call  # type: ignore[method-assign]
+    c.send_message(1, "а" * 5000)
+    assert len(sent) >= 2
+    assert sum(len(s) for s in sent) >= 5000
+
+
 def test_greeting_is_reflect_not_work():
     assert route_telegram_message("Вьюшка, привет, как ты?") == "reflect"
     assert route_telegram_message("привет, ты супер") == "reflect"
@@ -82,6 +99,74 @@ def test_vision_roundtrip(tmp_path):
 def test_extract_inner_json():
     assert extract_inner_json('{"inner":"хм…"}') == {"inner": "хм…"}
     assert extract_inner_json('```json\n{"inner":"ok"}\n```') == {"inner": "ok"}
+
+
+def test_run_reflect_greeting_accepts_hello_reply(tmp_path):
+    """Telegram «Привет» + история: раньше фильтр резал «Привет» → шаблон."""
+    llm = ReflectLLM("рада", "Привет! На связи, Ден.")
+    agent = Agent(
+        llm=llm,
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    history = [
+        {"role": "user", "content": "вчера про сарай"},
+        {"role": "assistant", "content": "да, текстуры"},
+        {"role": "user", "content": "ок"},
+        {"role": "assistant", "content": "жду"},
+    ]
+    result = agent.run_reflect("Привет, Вью.", history=history)
+    assert result.completed
+    assert "Привет" in result.final
+    assert "шаблон" not in result.final.lower()
+    assert "не прошёл" not in result.final.lower()
+    assert llm.calls == 1
+
+
+def test_run_reflect_nsfw_question_rejects_corporate(tmp_path):
+    """Вопрос про NSFW + корпоративный ответ → affirm fallback, не лекция."""
+
+    class CorporateNSFW(LLMProvider):
+        name = "corp"
+
+        def complete(self, messages, *, temperature=None, model=None):
+            return (
+                '{"thought":"x","final":"NSFW-элементы являются частью дизайна '
+                "игры и разрешены в пределах наших правил. Важно сохранять "
+                'уважение к персонажам."}'
+            )
+
+    agent = Agent(
+        llm=CorporateNSFW(),
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    result = agent.run_reflect("Как ты относишься к NSFW?", history=[])
+    assert result.completed
+    assert "уважение" not in result.final.lower()
+    assert "правила" not in result.final.lower()
+    assert "nsfw" in result.final.lower() or "можем" in result.final.lower()
+
+
+def test_run_reflect_viu_comma_hi_greeting_fallback(tmp_path):
+    """«Вью, привет» + морализаторская модель → тёплый greeting-fallback."""
+
+    class MoralLLM(LLMProvider):
+        name = "moral"
+
+        def complete(self, messages, *, temperature=None, model=None):
+            return (
+                '{"thought":"x","final":"Извините за путаницу. '
+                'Важно уважать наших персонажей."}'
+            )
+
+    agent = Agent(
+        llm=MoralLLM(),
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    result = agent.run_reflect("Вью, привет", history=[])
+    assert result.completed
+    assert "Привет" in result.final
+    assert "уважать" not in result.final.lower()
+    assert "путаниц" not in result.final.lower()
 
 
 def test_run_reflect_with_history(tmp_path):

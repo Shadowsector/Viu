@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ...config import Config
 from .framing import detect_orientation, frame_spec_for_action
-from .paths import comfy_refs_dir, comfy_seed_frames_dir
+from .paths import comfy_refs_dir, comfy_seed_frames_dir, comfy_out_dir
 
 STATUS_CANDIDATE = "candidate"
 STATUS_KEPT = "kept"
@@ -341,8 +341,24 @@ def keep_clip(
         slug = normalize_catalog_slug(catalog_slug)
     elif clip.catalog_slug.strip():
         slug = normalize_catalog_slug(clip.catalog_slug)
-    kept_name = f"{slug}_{clip.angle}_{clip.batch_id[-6:]}.mp4"
+    ef = enters_from if enters_from is not None else list(clip.enters_from)
+    from .naming import display_video_stem, next_kept_seq
+
+    kept_stem = display_video_stem(
+        catalog_slug=slug,
+        enters_from=ef or clip.enters_from,
+        looped="idle" in slug or slug.endswith("_idle"),
+        seq=next_kept_seq(config, slug),
+    )
+    kept_name = f"{kept_stem}.mp4"
     kept_path = comfy_kept_dir(config) / kept_name
+    # дубликат в ComfyOut для удобного просмотра
+    from .paths import comfy_out_dir
+
+    try:
+        shutil.copy2(src, comfy_out_dir(config) / kept_name)
+    except OSError:
+        pass
     try:
         shutil.copy2(src, kept_path)
     except OSError as exc:
@@ -356,7 +372,6 @@ def keep_clip(
     clip.score = max(1, min(5, int(score or 4)))
     clip.notes = (notes or "").strip()
     clip.catalog_slug = slug
-    ef = enters_from if enters_from is not None else list(clip.enters_from)
     et = exits_to if exits_to is not None else list(clip.exits_to)
     clip.enters_from = [_slugify(x) for x in ef if str(x).strip()]
     clip.exits_to = [_slugify(x) for x in et if str(x).strip()]
@@ -396,6 +411,14 @@ def keep_clip(
     store.save()
     _sync_catalog_wish(config, clip)
 
+    pause_msg = None
+    try:
+        from .scene_choice import on_action_quota_reached
+
+        pause_msg = on_action_quota_reached(config, slug, title_ru=slug.replace("_", " "))
+    except Exception:
+        pass
+
     lines = [
         f"Оставила «{clip.angle_label}» ({clip.angle}) score={clip.score}/5",
         f"kept: {kept_path}",
@@ -408,6 +431,8 @@ def keep_clip(
         lines.append(
             f"граф: enters_from={clip.enters_from or '—'} → `{slug}` → exits_to={clip.exits_to or '—'}"
         )
+    if pause_msg:
+        lines.append(pause_msg)
     return True, "\n".join(lines), clip
 
 
@@ -561,9 +586,12 @@ def format_candidates_message(clips: List[ComfyClip]) -> str:
     if not clips:
         return "Нет кандидатов на оценку."
     batch = clips[0].batch_id
+    from .paths import comfy_refs_dir
+
     lines = [
         f"Выбери лучший дубль ¾ (batch `{batch}`):",
-        "Окно оценки откроется само (дома). Или в чате/Telegram:",
+        f"Файлы: Lab/ComfyOut + Lab/Refs (не только ComfyUI/output).",
+        "Дома: окно «Оценить клипы Comfy» (Редко) или чат/Telegram:",
         "`лучший: take_b` / `лучший: a` / `лучший: c 5` / `отклонить все`",
         "",
     ]
@@ -588,19 +616,23 @@ def harvest_comfy_native_output(
     if not src_dir.is_dir():
         return 0, f"Нет папки {src_dir}"
     refs = comfy_refs_dir(config)
+    out_dir = comfy_out_dir(config)
     mp4s = sorted(
         src_dir.rglob("*.mp4"),
         key=lambda p: p.stat().st_mtime if p.is_file() else 0,
         reverse=True,
     )[:limit]
     n = 0
-    lines = [f"Сбор из {src_dir} → {refs}:"]
+    lines = [f"Сбор из {src_dir} → ComfyOut + Refs:"]
     for src in mp4s:
-        dest = refs / src.name
-        if dest.is_file() and dest.stat().st_size == src.stat().st_size:
-            continue
+        dest_ref = refs / src.name
+        dest_out = out_dir / src.name
+        if dest_ref.is_file() and dest_ref.stat().st_size == src.stat().st_size:
+            if dest_out.is_file():
+                continue
         try:
-            shutil.copy2(src, dest)
+            shutil.copy2(src, dest_out)
+            shutil.copy2(src, dest_ref)
             n += 1
             lines.append(f"  + {src.name}")
         except OSError as exc:

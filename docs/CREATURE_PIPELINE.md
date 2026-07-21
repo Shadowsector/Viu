@@ -1,40 +1,86 @@
-# План: существа → MoCap → сцена (зафиксировано 2026-07-16)
+# План: существа → описание → MoCap → сцена
 
-Не прыгаем через шаги. После линейки роста:
+## Command R для сюжета (не про монстров)
 
-## 1. Добить разметку существ
-- Все нужные модели: класс + точный рост где надо.
-- Спорные — в `creature_lineup_<класс>.blend`.
-- Morphs (уши/хвост/genital) **не bake** вслепую.
+В `U:\Viu\.env`:
 
-## 2. Инвентаризация morphs
-- Список shape keys по моделям: ears / tail / penis_reveal / …
-- Куда morph уже умеет «вытянуть» орган — помечаем, используем morph, не ломаем.
+```env
+VIU_MODEL_REFLECT=viu-command-r
+```
 
-## 3. Аккуратная нормализация
-- Текстуры / pack при необходимости.
-- Scale уже из линейки; без apply, убивающего shape keys.
+Перезапуск Вью → на кнопке **Дома · viu-command-r**.  
+Для обычного чата/ERP верни `viu-cydonia`. Work/code не трогай.
 
-## 4. Genital / NSFW-риг
-- Где есть morph — morph + flaccid по умолчанию.
-- Иначе эталонный prefab (после выбора эталона).
-
-## 5. A-pose фото → Comfy
-- Front/side seed монстра, как у Шани.
-- Генерация клипов под MoCap.
-
-## 6. Сокеты на девушках (Unity)
-- oral / vaginal / anal / hand_l / hand_r / cleavage.
-- Стыковка penetrator aim с графом анимаций.
+Нужен тег: `create_viu_ollama_models.bat` (база `command-r` уже в Ollama).
 
 ---
 
-## Comfy AFK (параллельно, уже в коде)
+## Пайплайн внешности монстра (зафиксировано)
 
-- Ракурс: **только ¾**.
-- «Тройка» = **3 дубля** (разный seed + timing), не 3 камеры.
-- Режиссёр идёт по **графу** `enters_from` / `exits_to`, закрывает дыры (`ref_video`).
-- **Нет дома:** сама одобряет, снимает, оставляет `take_b`.
-- **Дома:** шлёт в Telegram текущий кадр + альтернативы из графа.
+Цель: у Вью в `creature_catalog.json` есть **скрин + EN-промпт + RU-описание**,
+связанные с уже известным size_class / locomotion / ростом — чтобы понимать,
+как анимировать и что кормить в Comfy.
 
-Следующий кусок кода по существам — скажи: **morph-инвентарь** или **сокеты Шани**.
+```
+[1] Inbox → scan → size/loco (уже есть)
+[2] Lineup в Blender → нормализация роста (уже есть)
+[3] Скрин front/side → PNG
+[4] VL (llava) или позже Comfy WD14 → appearance_en / appearance_ru / tags
+[5] Запись в каталог + status=ready
+[6] Reflect видит блок «Существа (внешность…)» → лучше советует анимацию
+[7] Позже: seed PNG → Comfy I2V/T2V клипы под MoCap
+```
+
+### Сейчас в коде
+
+| Шаг | Статус |
+|-----|--------|
+| Scan / size / lineup | ✅ |
+| Поля `photo_*`, `appearance_en/ru/tags` | ✅ |
+| `creature_describe` (Ollama VL по PNG) | ✅ |
+| Inject в reflect notes | ✅ |
+| Авто-рендер front/side после lineup (Blender → Processed) | ✅ |
+| Comfy WD14 / Interrogator workflow | ⏳ (тот же schema) |
+| Авто seed → MoCap клип | ⏳ (шаг 7) |
+
+### Как пользоваться (v1)
+
+1. Разметить рост (`Разметить существ` / lineup).
+2. **«Линейка существ»** — после Blender в каталоге появятся `photo_front` / `photo_side`  
+   (`Lab/Creatures/Processed/<slug>/front.png`, `side.png`).  
+   Ручной скрин по-прежнему можно положить туда же.
+3. В чате Вью / tool:
+
+```text
+creature_describe query=Goblin image=U:\...\front.png
+```
+
+4. Проверить `.viu/creature_catalog.json` → `appearance_en`, `appearance_ru`.
+5. Обсуждать анимацию — Вью подтянет описание в заметки.
+
+### Почему не сразу Comfy img2prompt
+
+Ollama **llava** уже стоит; WD14 в Comfy — отдельный workflow + ноды.
+Схема каталога одна: потом `creature_describe` сможет звать Comfy вместо VL,
+поля те же.
+
+### Дальше по приоритету
+
+1. Кнопка «Описать» в GUI разметки существ.
+2. Comfy caption node (опционально).
+3. MoCap seed из `photo_front` (шаг 5–7 старого плана).
+
+Старый чеклист morphs / genital / сокеты — ниже без изменений смысла.
+
+**Совместные анимации (multi-actor):** см. `docs/INTERACTION_PIPELINE.md`, `docs/INTERACTION_SETUP.md` (куда класть FBX).
+
+---
+
+## Чеклист после линейки (как было)
+
+1. Добить разметку (класс + рост).
+2. Инвентаризация morphs.
+3. Аккуратная нормализация (без bake shape keys).
+4. Genital / NSFW-риг.
+5. A-pose фото → описание (↑) → потом Comfy клипы.
+6. Сокеты на девушках (Unity).

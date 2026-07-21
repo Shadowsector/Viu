@@ -14,6 +14,25 @@ from ..animation_catalog import AnimationCatalogStore, animation_catalog_path
 from ..animation_catalog.models import AnimationWish
 from ..config import Config
 from ..integrations.comfy.clip_review import ComfyClipStore, STATUS_KEPT, clip_review_path
+from ..integrations.comfy.naming import max_clips_per_action, slug_at_quota
+
+# Цикл «временный дом / сарай»: пол, стул, стол, кровать, осмотр.
+BARN_SHED_CYCLE: tuple[str, ...] = (
+    "walk",
+    "sit_down",
+    "sit_idle",
+    "stand_up",
+    "lie_down",
+    "sleep_idle",
+    "get_up",
+    "lean",
+    "look_around",
+    "look_window",
+    "take",
+    "eat",
+    "drink",
+    "touch_self",
+)
 
 # Базовые EN-шаблоны по slug — Wan лучше ест EN.
 _SLUG_ACTION_EN = {
@@ -37,7 +56,16 @@ _SLUG_ACTION_EN = {
     "jump": "standing jump up and land, knees bend, arms assist",
     "fall": "falling backward or sideways from stand, loss of balance",
     "pickup": "bending to pick up a small object from the floor, then stand again",
-    "lean": "leaning against invisible wall, one shoulder/hip contact, relaxed",
+    "lean": "leaning against invisible wall or table edge, relaxed weight shift, one elbow on surface",
+    "look_around": "standing, turning head left and right, examining surroundings, curious gaze",
+    "look_window": "standing at window, looking outside, hand on frame optional, thoughtful pause",
+    "take": "bending to pick up object from floor or table, then standing with item in hand",
+    "eat": "standing or sitting, bringing food to mouth, chewing, holding plate or apple",
+    "drink": "raising cup or bottle to lips, small sip, lowering hand",
+    "touch_self": (
+        "private solo moment, seated or lying, slow self-touch, intimate breathing, "
+        "shy closed eyes, loopable subtle motion"
+    ),
 }
 
 # Парафразы — чтобы повтор одного slug не был дословной копией
@@ -79,8 +107,11 @@ class MocapShotPlan:
     title_ru: str = ""
     alternatives: List[str] = field(default_factory=list)
     looped: bool = False
+    stop_cycle: bool = False
 
     def summary_ru(self) -> str:
+        if self.stop_cycle:
+            return f"⏸ Comfy MoCap: {self.reason}"
         kind = "цикл (looped)" if self.looped else "переход / one-shot"
         lines = [
             f"Снимаю «{self.title_ru or self.catalog_slug}»: {self.action}",
@@ -190,12 +221,121 @@ def _graph_ordered_holes(
     return transitions or rest or loco or other or pool2
 
 
-def invent_next_shot(config: Config) -> MocapShotPlan:
+def _filter_quota(config: Config, wishes: List[AnimationWish]) -> List[AnimationWish]:
+    return [w for w in wishes if not slug_at_quota(config, w.slug)]
+
+
+def _barn_cycle_enabled() -> bool:
+    import os
+
+    return os.environ.get("VIU_COMFY_BARN_CYCLE", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def barn_cycle_status(config: Config) -> str:
+    """Сводка по лимиту 10 клипов на действие в цикле сарая."""
+    lines = [f"Цикл сарая/дом (лимит {max_clips_per_action()} kept на действие):"]
+    for slug in BARN_SHED_CYCLE:
+        n = kept_count_for_slug(config, slug)
+        mark = "✓" if n >= max_clips_per_action() else "…"
+        lines.append(f"  {mark} {slug}: {n}/{max_clips_per_action()}")
+    pending = pending_review_count(config)
+    if pending:
+        lines.append(f"На оценку (кандидаты): {pending}")
+    return "\n".join(lines)
+
+
+def kept_count_for_slug(config: Config, slug: str) -> int:
+    from ..integrations.comfy.naming import kept_count_for_slug as _n
+
+    return _n(config, slug)
+
+
+def pending_review_count(config: Config) -> int:
+    store = ComfyClipStore(clip_review_path(config)).load()
+    return sum(1 for c in store.clips if c.status == "candidate")
+
+
+def action_for_slug(
+    config: Config,
+    slug: str,
+    *,
+    paraphrase_i: int = 0,
+) -> str:
+    """EN-промпт по catalog_slug (не оставлять stale idle stand при lie_down)."""
+    from ..integrations.comfy.clip_review import normalize_catalog_slug
+
+    slug = normalize_catalog_slug(slug)
+    if not slug:
+        return _SLUG_ACTION_EN.get("idle", "idle stand")
+    cat = AnimationCatalogStore(animation_catalog_path(config)).load()
+    wish = cat.get_by_slug(slug)
+    if wish is not None:
+        return _wish_to_action(wish, paraphrase_i=paraphrase_i)
+    if slug in _SLUG_ACTION_EN:
+        return _SLUG_ACTION_EN[slug]
+    return slug.replace("_", " ")
+
+
+def sync_session_shot_from_slug(config: Config, session) -> str:
+    """Подтянуть action/граф из catalog_slug. Возвращает итоговый action."""
+    from ..integrations.comfy.clip_review import normalize_catalog_slug
+
+    slug = normalize_catalog_slug(str(session.meta.get("catalog_slug") or ""))
+    if not slug:
+        return str(session.meta.get("approved_action") or session.meta.get("action") or "")
+    kept_n = kept_count_for_slug(config, slug)
+    action = action_for_slug(config, slug, paraphrase_i=kept_n)
+    cat = AnimationCatalogStore(animation_catalog_path(config)).load()
+    wish = cat.get_by_slug(slug)
+    session.meta["catalog_slug"] = slug
+    session.meta["action"] = action
+    session.meta["approved_action"] = action
+    session.meta["looped"] = wish_is_looped(wish) if wish else bool(session.meta.get("looped"))
+    if wish:
+        if wish.enters_from:
+            session.meta["enters_from"] = list(wish.enters_from)
+        if wish.exits_to:
+            session.meta["exits_to"] = list(wish.exits_to)
+    return action
+
+
+def invent_next_shot(config: Config, *, barn_cycle: Optional[bool] = None) -> MocapShotPlan:
     """Следующий клип по каталогу и графу. Без LLM."""
+    from ..integrations.comfy.scene_choice import (
+        format_scene_choice_message,
+        is_paused_for_scene_choice,
+        load_scene_state,
+        get_focus_slugs,
+    )
+
+    if is_paused_for_scene_choice(config):
+        st = load_scene_state(config)
+        return MocapShotPlan(
+            action="",
+            catalog_slug="",
+            reason=format_scene_choice_message(st),
+            stop_cycle=True,
+            title_ru=st.completed_title,
+        )
+
+    use_barn = _barn_cycle_enabled() if barn_cycle is None else barn_cycle
     cat = AnimationCatalogStore(animation_catalog_path(config)).load()
     recent = _recent_slugs(config)
     # missing() уже без ref_video; плюс недавние kept
     holes = [w for w in cat.missing() if w.slug not in recent]
+    holes = _filter_quota(config, holes)
+    focus = get_focus_slugs(config)
+    if focus:
+        holes = [w for w in holes if w.slug in focus] or holes
+    if use_barn:
+        barn_holes = [w for w in holes if w.slug in BARN_SHED_CYCLE]
+        if barn_holes:
+            holes = barn_holes
     ordered = _graph_ordered_holes(cat, holes) if holes else []
 
     alts: List[str] = []
@@ -228,17 +368,34 @@ def invent_next_shot(config: Config) -> MocapShotPlan:
             looped=wish_is_looped(wish),
         )
 
-    # всё закрыто — вариация по графу (не тот же idle)
+    # всё закрыто — вариация, но не idle и не сверх лимита
     all_w = [w for w in cat.all_wishes() if w.slug not in recent]
+    all_w = _filter_quota(config, all_w)
+    if use_barn:
+        barn_all = [w for w in all_w if w.slug in BARN_SHED_CYCLE]
+        if barn_all:
+            all_w = barn_all
+    idle_w = cat.get_by_slug("idle")
+    if idle_w and _wish_filled(idle_w):
+        all_w = [w for w in all_w if w.slug != "idle"]
     if not all_w:
-        all_w = cat.all_wishes()
+        reason = (
+            f"все действия цикла сарая набрали по {max_clips_per_action()} kept-клипов "
+            f"(или дыры закрыты). {barn_cycle_status(config)}"
+        )
+        return MocapShotPlan(
+            action="",
+            catalog_slug="",
+            reason=reason,
+            stop_cycle=True,
+        )
     pick = next((w for w in all_w if w.slug != "idle"), all_w[0] if all_w else None)
     if pick is None:
         return MocapShotPlan(
-            action=_SLUG_ACTION_EN["wave"],
-            catalog_slug="wave",
-            reason="каталог пуст — жест приветствия как разведка",
-            title_ru="Машет рукой",
+            action="",
+            catalog_slug="",
+            reason="каталог пуст",
+            stop_cycle=True,
         )
     return MocapShotPlan(
         action=_wish_to_action(pick, paraphrase_i=1),

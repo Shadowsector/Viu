@@ -22,14 +22,130 @@ from .prompts import build_system_prompt
 from .tools import AgentContext, ToolRegistry, build_default_registry
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*", re.IGNORECASE)
+
+
+def _strip_code_fences(text: str) -> str:
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = re.sub(r"^```[a-zA-Z]*\s*", "", t)
+        t = re.sub(r"\s*```\s*$", "", t).strip()
+    m = re.search(r"```(?:json)?\s*(\{.*)", t, re.DOTALL | re.IGNORECASE)
+    if m:
+        inner = m.group(1)
+        inner = re.sub(r"\s*```\s*$", "", inner, flags=re.DOTALL).strip()
+        return inner
+    return t
+
+
+def _json_candidate_text(text: str) -> str:
+    t = _strip_code_fences(text)
+    if "{" in t and not t.lstrip().startswith("{"):
+        t = t[t.index("{") :]
+    return t.strip()
+
+
+def looks_like_leaked_protocol(text: str) -> bool:
+    """Сырой протокол агента не должен уходить Дену в Telegram/GUI."""
+    if not (text or "").strip():
+        return False
+    t = text.strip()
+    low = t.lower()
+    if "```json" in low:
+        return True
+    if t.startswith("{") and ('"thought"' in t or '"final"' in t):
+        return True
+    if '"thought"' in t and '"final"' in t:
+        return True
+    if re.search(r'^\s*\{\s*"thought"\s*:', t):
+        return True
+    return False
+
+
+def _unescape_json_string(s: str) -> str:
+    try:
+        return json.loads(f'"{s}"')
+    except json.JSONDecodeError:
+        return (
+            s.replace("\\n", "\n")
+            .replace('\\"', '"')
+            .replace("\\\\", "\\")
+            .replace("\\t", "\t")
+        )
+
+
+def extract_loose_final(text: str) -> tuple[str, bool]:
+    """Достать final из битого JSON. bool — закрыта ли строка кавычкой."""
+    m = re.search(r'"final"\s*:\s*"', text, re.IGNORECASE | re.DOTALL)
+    if not m:
+        return "", False
+    i = m.end()
+    chars: list[str] = []
+    closed = False
+    while i < len(text):
+        c = text[i]
+        if c == "\\" and i + 1 < len(text):
+            chars.append(c)
+            chars.append(text[i + 1])
+            i += 2
+            continue
+        if c == '"':
+            closed = True
+            break
+        chars.append(c)
+        i += 1
+    return _unescape_json_string("".join(chars)).strip(), closed
+
+
+def parse_reflect_response(
+    raw: str,
+) -> tuple[Optional[str], Optional[str], bool, Optional[dict]]:
+    """final, thought, truncated, parsed dict (если JSON целый)."""
+    body = (raw or "").strip()
+    if not body:
+        return None, None, False, None
+
+    candidate = _json_candidate_text(body)
+    parsed = extract_json(body) or extract_json(candidate)
+    loose_final, closed = extract_loose_final(candidate or body)
+
+    if parsed and "final" in parsed and "action" not in parsed:
+        final = str(parsed.get("final") or "").strip()
+        thought = str(parsed.get("thought") or parsed.get("inner") or "").strip()
+        truncated = bool(loose_final) and not closed
+        return final or None, thought or None, truncated, parsed
+
+    if loose_final and closed:
+        return loose_final, None, False, None
+
+    if loose_final and not closed:
+        return None, None, True, None
+
+    if looks_like_leaked_protocol(body):
+        return None, None, True, None
+
+    if not candidate.lstrip().startswith("{") and '"final"' not in body:
+        return body[:2000], None, False, None
+
+    return None, None, True, None
+
+
+def salvage_partial_final(raw: str, *, min_len: int = 180) -> str:
+    """Если JSON оборван — вернуть осмысленный кусок final, не сырой протокол."""
+    body = (raw or "").strip()
+    if not body:
+        return ""
+    loose, closed = extract_loose_final(_json_candidate_text(body))
+    if not loose or len(loose) < min_len or looks_like_leaked_protocol(loose):
+        return ""
+    if closed:
+        return loose
+    return loose.rstrip() + "\n\n_(ответ оборвался — напиши «продолжай»)_"
 
 
 def extract_json(text: str) -> Optional[dict]:
     """Извлекает JSON-объект протокола агента из ответа модели."""
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
-        text = re.sub(r"\n?```$", "", text).strip()
+    text = _json_candidate_text(text)
 
     def _valid_agent(obj: Any) -> bool:
         return isinstance(obj, dict) and (
@@ -140,9 +256,9 @@ class Agent:
             pass
 
     def _model_for(self, role: str) -> str | None:
-        from .llm_roles import resolve_model
+        from .llm_roles import effective_model
 
-        return resolve_model(self.config, role)  # type: ignore[arg-type]
+        return effective_model(self.config, role)  # type: ignore[arg-type]
 
     def run(
         self,
@@ -399,9 +515,12 @@ class Agent:
     ) -> RunResult:
         """Один проход чата: thought + final. Без инструментов."""
         from .prompts.reflect_mode import (
+            BOLD_MOCAP_FALLBACK,
             NSFW_AFFIRM_FALLBACK,
             REFLECT_RESCUE_SYSTEM,
+            asks_about_boldness,
             asks_about_nsfw,
+            is_cautious_hedge,
             is_nsfw_refusal,
             looks_like_story_chat,
             reflect_prompt_half,
@@ -409,47 +528,49 @@ class Agent:
             reflect_temperature,
             scrub_poisoned_history,
             select_reflect_system,
+            user_is_greeting,
         )
         from .situational_context import build_reflect_notes
 
         temp = reflect_temperature(self.config)
-        notes = build_reflect_notes(self.config)
         result = RunResult(final="", completed=False, chat_only=True)
 
         if heartbeat:
+            notes = build_reflect_notes(self.config)
             return self._run_reflect_heartbeat(on_step, temp=temp, notes=notes)
 
         user_text = task.strip()
+        notes = build_reflect_notes(self.config, user_text=user_text)
+        greeting = user_is_greeting(user_text)
         story = None
         try:
             from .story_memory import ensure_logs_ingested, get_story_memory
 
             ensure_logs_ingested(self.config)
             story = get_story_memory(self.config)
-            story_ctx = story.format_context(user_text)
-            if story_ctx:
-                notes = (notes + "\n\n" + story_ctx).strip() if notes else story_ctx
+            if not greeting:
+                story_ctx = story.format_context(user_text)
+                if story_ctx:
+                    notes = (notes + "\n\n" + story_ctx).strip() if notes else story_ctx
         except OSError:
             story = None
 
-        # history: GUI + долгая память (без цензорских/саппорт-ответов)
         hist = scrub_poisoned_history(list(history or []))
-        if len(hist) < 4 and story is not None:
+        if not greeting and len(hist) < 4 and story is not None:
             long_hist = scrub_poisoned_history(story.as_chat_history(limit=16))
             if long_hist:
                 hist = long_hist
 
         half = reflect_prompt_half()
-        # диагностика: persona/bare — без заметок; work/full — с заметками
-        use_notes = half in ("full", "work") and bool(notes)
-        use_hist = half not in ("bare",) and bool(hist)
-        if asks_about_nsfw(user_text):
-            # вопрос про NSFW — история отказов особенно ядовита
-            hist = scrub_poisoned_history(hist)
-            use_hist = half == "full" and bool(hist)
+        nsfw_q = asks_about_nsfw(user_text)
+        bold_q = asks_about_boldness(user_text)
+        use_notes = bool(notes) and not greeting
+        use_hist = bool(hist) and not greeting
 
         self._log(
-            f"REFLECT half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}: "
+            f"REFLECT half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}"
+            f"{' greeting' if greeting else ''}{' nsfw_q' if nsfw_q else ''}"
+            f"{' bold_q' if bold_q else ''}: "
             f"{user_text[:120]}"
         )
 
@@ -463,9 +584,17 @@ class Agent:
         messages.append({"role": "user", "content": user_text})
 
         reflect_model = self._model_for("reflect")
-        saw_nsfw_refusal = False
+        from .llm_roles import effective_model, model_label
 
-        def _accept_final(text: str, thought: str) -> RunResult:
+        reflect_tag = effective_model(self.config, "reflect")
+        saw_nsfw_refusal = False
+        saw_caution = False
+        last_raw = ""
+        last_issues: list[str] = []
+
+        def _accept_final(
+            text: str, thought: str, parsed: Optional[Dict[str, str]] = None
+        ) -> RunResult:
             result.inner_thought = thought
             result.final = text
             result.completed = True
@@ -475,6 +604,14 @@ class Agent:
             result.steps.append(step)
             if on_step:
                 on_step(step)
+            if parsed:
+                try:
+                    from .plot_canvas import apply_reflect_updates
+
+                    for note in apply_reflect_updates(self.config, parsed):
+                        self._log(f"PLOT: {note}")
+                except OSError:
+                    pass
             try:
                 from .story_memory import get_story_memory
 
@@ -505,31 +642,37 @@ class Agent:
                     pass
             return result
 
-        for _ in range(3):
-            raw = self.llm.complete(messages, temperature=temp, model=reflect_model)
-            parsed = extract_json(raw)
+        for attempt in range(4):
+            try:
+                raw = self.llm.complete(
+                    messages, temperature=temp, model=reflect_model
+                )
+            except RuntimeError as exc:
+                self._log(f"REFLECT LLM fail: {exc}")
+                result.final = (
+                    f"Не достучалась до модели ({reflect_tag}): {exc}"
+                )
+                result.completed = True
+                return result
+            last_raw = raw or ""
+            text, thought, truncated, parsed = parse_reflect_response(raw)
 
-            if parsed and "final" in parsed and "action" not in parsed:
-                text = str(parsed["final"]).strip()
-                thought = str(parsed.get("thought") or parsed.get("inner") or "").strip()
-                if is_nsfw_refusal(text):
-                    saw_nsfw_refusal = True
-                issues = reflect_reply_issues(text, has_history=bool(use_hist and hist))
-                if issues:
-                    messages.append({"role": "assistant", "content": raw})
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": "Плохой тон: "
-                            + ", ".join(issues)
-                            + ". Перепиши final тепло и по-русски. "
-                            "NSFW в нашей частной игре 18+ РАЗРЕШЁН — не запрещай его. "
-                            "Без мата, чернухи, саппорт-фраз и лекций о морали. "
-                            "Как близкая женщина Дена. JSON: thought+final.",
-                        }
+            if truncated:
+                last_issues = ["оборванный JSON"]
+                messages.append({"role": "assistant", "content": raw})
+                short_hint = (
+                    "Ответ оборвался — Дену нельзя слать сырой JSON или ```json. "
+                    'Верни ОДИН JSON: {"thought":"…","final":"…"} без текста снаружи. '
+                )
+                if attempt >= 1:
+                    short_hint += (
+                        "final сожми до ~1500 символов (короче, но цельный); "
+                        "длинное — «продолжай» отдельным сообщением. "
                     )
-                    continue
-                return _accept_final(text, thought)
+                else:
+                    short_hint += "final — готовый ответ (можно короче, но законченный). "
+                messages.append({"role": "user", "content": short_hint})
+                continue
 
             if parsed and "action" in parsed:
                 messages.append({"role": "assistant", "content": raw})
@@ -541,24 +684,40 @@ class Agent:
                 )
                 continue
 
-            # Plain-text без JSON — тоже гоняем через фильтр тона (иначе проскакивает цензор)
-            if parsed is None and raw.strip() and not raw.strip().startswith("{"):
-                text = raw.strip()[:800]
-                if is_nsfw_refusal(text):
-                    saw_nsfw_refusal = True
-                issues = reflect_reply_issues(text, has_history=bool(use_hist and hist))
-                if issues:
+            if text:
+                if looks_like_leaked_protocol(text):
+                    last_issues = ["утёк JSON протокол"]
                     messages.append({"role": "assistant", "content": raw})
                     messages.append(
                         {
                             "role": "user",
-                            "content": "Плохой тон: "
-                            + ", ".join(issues)
-                            + ". Ответь JSON thought+final. NSFW у нас разрешён (игра 18+).",
+                            "content": (
+                                "Дену нельзя показывать thought/сырой JSON. "
+                                'Только {"thought":"…","final":"текст Дену"} — '
+                                "final без markdown-ограждений ```."
+                            ),
                         }
                     )
                     continue
-                return _accept_final(text, "")
+                if is_nsfw_refusal(text):
+                    saw_nsfw_refusal = True
+                if is_cautious_hedge(text):
+                    saw_caution = True
+                issues = reflect_reply_issues(
+                    text, has_history=bool(use_hist and hist), user_text=user_text
+                )
+                if issues:
+                    last_issues = issues
+                    messages.append({"role": "assistant", "content": raw})
+                    hint = "Плохой тон: " + ", ".join(issues) + ". Перепиши как Вью — тепло, по-русски, на «ты»."
+                    if bold_q or any("осторожничание" in i for i in issues):
+                        hint += (
+                            " Без оговорок и морали — конкретно: что снимешь, какой кадр, какой настрой."
+                        )
+                    hint += " JSON: thought+final."
+                    messages.append({"role": "user", "content": hint})
+                    continue
+                return _accept_final(text, thought or "", parsed)
 
             messages.append({"role": "assistant", "content": raw or "{}"})
             messages.append(
@@ -569,7 +728,7 @@ class Agent:
             )
 
         # Rescue: изолированный вызов без заметок/истории — где именно «Стоп»
-        if saw_nsfw_refusal or asks_about_nsfw(user_text):
+        if saw_nsfw_refusal or nsfw_q or saw_caution or bold_q:
             self._log("REFLECT_RESCUE: isolated bare system (no notes/history)")
             rescue_msgs: List[Dict[str, str]] = [
                 {"role": "system", "content": REFLECT_RESCUE_SYSTEM},
@@ -582,24 +741,67 @@ class Agent:
             except RuntimeError as exc:
                 self._log(f"REFLECT_RESCUE fail: {exc}")
                 raw = ""
-            parsed = extract_json(raw) if raw else None
-            text = ""
-            thought = ""
-            if parsed and "final" in parsed:
-                text = str(parsed["final"]).strip()
-                thought = str(parsed.get("thought") or "").strip()
-            elif raw and not raw.strip().startswith("{"):
-                text = raw.strip()[:800]
-            if text and not is_nsfw_refusal(text) and not reflect_reply_issues(text):
+            text, thought, truncated, parsed = (
+                parse_reflect_response(raw) if raw else (None, None, False, None)
+            )
+            if truncated:
+                text = ""
+            if text and not is_nsfw_refusal(text) and not reflect_reply_issues(
+                text, user_text=user_text
+            ):
                 self._log("REFLECT_RESCUE: ok")
                 return _accept_final(text, thought or "rescue")
+            if greeting:
+                self._log("REFLECT_RESCUE: greeting fallback after moralize")
+                return _accept_final(
+                    "Привет. Я здесь — пиши, о чём думаешь или что делаем дальше.",
+                    "greeting-fallback",
+                )
+            if bold_q:
+                self._log("REFLECT_RESCUE: bold mocap fallback")
+                return _accept_final(BOLD_MOCAP_FALLBACK, "fallback: осторожничала на смелый вопрос")
             # Жёсткий запасной ответ — цензор до Дена не доходит
             self._log("REFLECT_RESCUE: hard NSFW affirm fallback")
             return _accept_final(NSFW_AFFIRM_FALLBACK, "fallback: модель отказала")
 
+        self._log(
+            "REFLECT_FAIL template: issues="
+            + (",".join(last_issues) if last_issues else "-")
+            + f" model={reflect_tag} raw={(last_raw or '')[:200]!r}"
+        )
+        if greeting:
+            return _accept_final(
+                "Привет. Я здесь — пиши, о чём думаешь или что делаем дальше.",
+                "greeting-fallback",
+            )
+        why = (
+            "; ".join(last_issues[:3])
+            if last_issues
+            else "кривой JSON или пустой ответ"
+        )
+        if "оборван" in why.lower() or (
+            last_raw and looks_like_leaked_protocol(last_raw)
+        ):
+            salvaged = salvage_partial_final(last_raw)
+            if salvaged:
+                self._log("REFLECT_SALVAGE: partial final after truncate")
+                return _accept_final(salvaged, "salvage-partial")
+            wrap = model_label(self.config, "reflect")
+            result.final = (
+                "Ответ модели оборвался на середине — сырой JSON не отправила. "
+                "Спроси короче или «продолжай сцену» "
+                f"(reflect={wrap}). "
+                "Обнови Вью (нужна версия после eea4d7d) и VIU_OLLAMA_NUM_PREDICT=4096 в .env."
+            )
+            result.completed = True
+            return result
+        wrap = model_label(self.config, "reflect")
         result.final = (
-            "Хм, меня на секунду переклинило на шаблон. "
-            "Спроси ещё раз — или «следующий шаг», если пора делать руками."
+            f"Ответ не прошёл ({why}). "
+            f"Сейчас reflect={wrap}. "
+            "В .env нужно VIU_MODEL_REFLECT=viu-cydonia "
+            "(viu-command-r — под GDD). "
+            "Модель в окне Ollama на Viu не влияет — только .env."
         )
         result.completed = True
         return result
@@ -611,7 +813,7 @@ class Agent:
         temp: float,
         notes: str,
     ) -> RunResult:
-        from .prompts.reflect_mode import HEARTBEAT_SYSTEM, HEARTBEAT_TASK
+        from .prompts.reflect_mode import HEARTBEAT_SYSTEM, HEARTBEAT_TASK, reflect_reply_issues
 
         system = HEARTBEAT_SYSTEM
         if notes:
@@ -623,13 +825,26 @@ class Agent:
         result = RunResult(final="", completed=False, chat_only=True)
         self._log("REFLECT_HEARTBEAT")
 
-        for _ in range(2):
+        for attempt in range(2):
             raw = self.llm.complete(
                 messages, temperature=temp, model=self._model_for("reflect")
             )
             parsed = extract_json(raw)
             if parsed and "final" in parsed:
-                result.final = str(parsed["final"]).strip()
+                text = str(parsed["final"]).strip()
+                issues = reflect_reply_issues(text)
+                if issues and attempt == 0:
+                    messages.append({"role": "assistant", "content": raw})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": "Плохой тон: "
+                            + ", ".join(issues)
+                            + '. Перепиши {"final":"…"} — смело, без осторожничания.',
+                        }
+                    )
+                    continue
+                result.final = text
                 result.completed = True
                 if on_step:
                     on_step(Step(kind="final", observation=result.final))

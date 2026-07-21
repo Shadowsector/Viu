@@ -71,14 +71,23 @@ def try_handle_comfy_telegram(
     config: Config,
     text: str,
 ) -> Tuple[bool, str]:
-    """Если lab/comfy ждёт промпт или выбор клипа — обработать ответ."""
+    """Если lab/comfy ждёт промпт, выбор клипа или сцены — обработать ответ."""
     from ...lab.comfy_pipeline import (
         COMFY_TOPIC,
         apply_clip_pick_decision,
+        apply_lora_pick_decision,
         apply_prompt_decision,
     )
     from ...lab.session import load_session
     from .clip_review import parse_clip_pick_reply
+    from .lora import load_index, parse_lora_pick_reply
+    from .scene_choice import apply_scene_choice, is_paused_for_scene_choice, parse_scene_choice_reply
+
+    if is_paused_for_scene_choice(config):
+        decision, payload = parse_scene_choice_reply(text)
+        if decision == "unknown":
+            return True, apply_scene_choice(config, "unknown", {})
+        return True, apply_scene_choice(config, decision, payload)
 
     session = load_session(config, COMFY_TOPIC)
     if session is None:
@@ -93,6 +102,17 @@ def try_handle_comfy_telegram(
             )
         decision, payload = parsed
         return True, apply_clip_pick_decision(config, session, decision, payload)
+
+    if session.status == "awaiting_lora_pick":
+        entries = load_index(config)
+        max_idx = max((e.index for e in entries), default=0)
+        indices = parse_lora_pick_reply(text, max_index=max_idx)
+        if indices is None:
+            return True, (
+                "Не поняла выбор LoRA.\n"
+                "Напиши: lora: 1 | lora: 1,3 | lora: all | lora: none"
+            )
+        return True, apply_lora_pick_decision(config, session, indices)
 
     if session.status != "awaiting_prompt":
         return False, ""

@@ -7,7 +7,7 @@ from pathlib import Path
 from viu.capabilities import CAPABILITY_BRIEF, docs_vector_brief, reflect_capability_notes
 from viu.config import Config
 from viu.llm_roles import guess_work_role, resolve_model
-from viu.prompts.reflect_mode import REFLECT_SYSTEM, reflect_reply_issues
+from viu.prompts.reflect_mode import REFLECT_VOICE, reflect_reply_issues
 from viu.situational_context import build_reflect_notes
 
 
@@ -24,9 +24,11 @@ def test_docs_vector_brief_nonempty():
     assert "COMFY" in text or "Cascadeur" in text or "CASCADEUR" in text
 
 
-def test_reflect_system_has_capability():
-    assert "Cascadeur MoCap" in REFLECT_SYSTEM or "comfy_mocap" in REFLECT_SYSTEM
-    assert "специалист" in REFLECT_SYSTEM
+def test_reflect_voice_minimal():
+    assert "Вью" in REFLECT_VOICE
+    assert "озорн" in REFLECT_VOICE.lower()
+    assert "comfy_mocap" not in REFLECT_VOICE
+    assert "запрещ" not in REFLECT_VOICE.lower()
 
 
 def test_banned_generic_animation_hedge():
@@ -41,9 +43,8 @@ def test_banned_generic_animation_hedge():
 def test_reflect_notes_include_capability(tmp_path, monkeypatch):
     monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
     cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
-    notes = build_reflect_notes(cfg)
-    assert "Comfy" in notes
-    assert "Cascadeur" in notes
+    notes = build_reflect_notes(cfg, user_text="чем занимаешься сейчас")
+    assert "Comfy" in notes or "VIU_SELF" in notes
 
 
 def test_resolve_model_roles(tmp_path):

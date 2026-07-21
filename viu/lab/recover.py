@@ -9,7 +9,6 @@ from ..integrations.cascadeur import cascadeur_status
 from ..integrations.cascadeur.window import cascadeur_window_diagnostic, find_cascadeur_hwnd
 from ..tools.web import search_web
 from .session import LabSession, append_journal, save_session
-from .cascadeur_pipeline import STEP_LABELS
 
 
 def _fail_count(session: LabSession, step: int) -> int:
@@ -23,7 +22,94 @@ def should_recover_instead_of_retry(session: LabSession) -> bool:
 
 
 def recover_stuck_step(config: Config, session: LabSession) -> Tuple[bool, str]:
-    """Диагностика + web + journal. Не повторяет тот же шаг вслепую."""
+    """Диагностика. Не повторяет тот же шаг вслепую."""
+    if session.topic == "comfy":
+        return _recover_comfy(config, session)
+    return _recover_cascadeur(config, session)
+
+
+def _recover_comfy(config: Config, session: LabSession) -> Tuple[bool, str]:
+    from ..integrations.comfy.client import ComfyClient
+    from ..integrations.comfy.process import ensure_comfy_running
+    from .comfy_pipeline import STEP_LABELS as COMFY_LABELS
+
+    step = session.last_fail_step
+    if step < 0:
+        step = session.step
+    label = COMFY_LABELS[step] if 0 <= step < len(COMFY_LABELS) else f"шаг {step + 1}"
+    session.recoveries += 1
+    url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
+    lines = [
+        f"🔧 Lab Comfy RECOVER — шаг {step + 1} «{label}» (#{session.recoveries})",
+        f"Последняя ошибка: {(session.last_fail_msg or '')[:600]}",
+        "",
+    ]
+
+    client = ComfyClient(base_url=str(url), timeout=3.0)
+    ok_ping, ping_msg = client.ping()
+    lines.append(f"--- ping {url} ---")
+    lines.append(ping_msg)
+
+    if not ok_ping:
+        lines.append("")
+        lines.append("Пробую поднять ComfyUI (ensure_comfy_running)…")
+        ok_run, run_msg = ensure_comfy_running(
+            config, auto_install=False, wait_seconds=120.0
+        )
+        lines.append(run_msg[:1200])
+        if ok_run:
+            session.last_fail_step = -1
+            session.step_fail_counts = {}
+            session.status = "running"
+            # генерация — шаг 4; online — 0
+            if step >= 4:
+                session.step = 4
+            else:
+                session.step = 0
+            lines.append("")
+            lines.append("↩ Comfy снова на связи — следующий Lab-клик продолжит генерацию.")
+            append_journal(config, session.topic, "### Recover Comfy\n\n" + "\n".join(lines))
+            save_session(config, session)
+            return True, "\n".join(lines)
+
+        session.status = "paused"
+        session.pause_reason = "comfy_offline"
+        session.last_fail_step = step
+        lines.append("")
+        lines.append(
+            "⏸ ComfyUI не отвечает на :8188.\n"
+            "Запусти Comfy вручную (ярлык / U:\\Viu\\ComfyUI) или `comfy_ensure`,\n"
+            "потом снова «Lab: весь цикл». Пока offline — lab на паузе, без слепых повторов."
+        )
+        append_journal(config, session.topic, "### Recover Comfy\n\n" + "\n".join(lines))
+        save_session(config, session)
+        from .notify import notify_lab_stuck
+
+        notify_lab_stuck(config, session, "\n".join(lines[:14]), step_label=f"RECOVER «{label}»")
+        return False, "\n".join(lines)
+
+    # API жив — сброс счётчика и повтор генерации с шага 4
+    if _fail_count(session, step) >= 6:
+        session.step = 0
+        session.last_fail_step = -1
+        session.step_fail_counts = {}
+        session.status = "running"
+        lines.append("↻ Много провалов — откат к шагу 1 «Comfy online».")
+    else:
+        session.step = 4 if step >= 4 else step
+        session.last_fail_step = -1
+        session.step_fail_counts = {}
+        session.status = "running"
+        lines.append("↩ API жив — сбросила счётчик; следующий клик = снова «3 дубля».")
+
+    append_journal(config, session.topic, "### Recover Comfy\n\n" + "\n".join(lines))
+    save_session(config, session)
+    return True, "\n".join(lines)
+
+
+def _recover_cascadeur(config: Config, session: LabSession) -> Tuple[bool, str]:
+    from .cascadeur_pipeline import STEP_LABELS
+
     step = session.last_fail_step
     if step < 0:
         return True, "Застревания нет — обычный шаг."
@@ -57,14 +143,13 @@ def recover_stuck_step(config: Config, session: LabSession) -> Tuple[bool, str]:
         except Exception as exc:  # noqa: BLE001
             lines.append(f"web: {exc}")
 
-    # Vision по последнему скрину lab, если есть
     arts = [a for a in session.artifacts if a.lower().endswith(".png")]
     if arts:
+        from pathlib import Path
+
         from ..integrations.cascadeur.capture import analyze_cascadeur_shot
 
         last_png = arts[-1]
-        from pathlib import Path
-
         v_ok, v_text, verdict = analyze_cascadeur_shot(config, Path(last_png))
         lines.append("")
         lines.append(f"--- vision ({last_png}) ---")
@@ -74,7 +159,6 @@ def recover_stuck_step(config: Config, session: LabSession) -> Tuple[bool, str]:
         else:
             lines.append(v_text)
 
-    # Авто-откат: capture fail + cascadeur не запущен → шаг launch
     if step == 7 and not find_cascadeur_hwnd():
         session.step = 4
         session.launch_ok = False

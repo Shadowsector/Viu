@@ -40,7 +40,14 @@ def artifacts_dir(config: Config, topic: str) -> Path:
 
 
 def models_inbox_dir(config: Config) -> Path:
-    """Входящие модели для lab: rig-check и случайные прогоны в Cascadeur."""
+    """Единый Inbox живых существ (то же, что Creatures/Inbox)."""
+    from ..creature_catalog.paths import creatures_inbox_dir
+
+    return creatures_inbox_dir(config)
+
+
+def _models_inbox_dir_legacy(config: Config) -> Path:
+    """Старый путь — только если задан VIU_LAB_MODELS_INBOX."""
     import os
 
     from ..anabarra_layout import library_root
@@ -48,17 +55,10 @@ def models_inbox_dir(config: Config) -> Path:
     env = os.environ.get("VIU_LAB_MODELS_INBOX", "").strip()
     if env:
         p = Path(env).expanduser()
-    else:
-        p = library_root(config) / "Lab" / "Models" / "Inbox"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    p = library_root(config) / "Lab" / "Models" / "Inbox"
     p.mkdir(parents=True, exist_ok=True)
-    readme = p / "README.txt"
-    if not readme.is_file():
-        readme.write_text(
-            "Папка входящих моделей для лаборатории Вью.\n"
-            "Положи сюда .blend или .fbx персонажей.\n"
-            "Вью проверит кости в Blender и попробует случайно в Cascadeur.\n",
-            encoding="utf-8",
-        )
     return p
 
 
@@ -106,11 +106,10 @@ def _runtime_get(config: Config, key: str, default: str) -> str:
 
 
 def lab_vram_gb(config: Config) -> float:
-    raw = os.environ.get("VIU_LAB_VRAM_GB") or _runtime_get(config, "lab_vram_gb", "6")
-    try:
-        return max(1.0, float(raw))
-    except (TypeError, ValueError):
-        return 6.0
+    from ..ollama_vram import ollama_vram_gb
+
+    runtime = _runtime_get(config, "lab_vram_gb", "")
+    return ollama_vram_gb(runtime_gb=runtime or None)
 
 
 def lab_monitor_index(config: Config) -> int:
@@ -131,6 +130,7 @@ def lab_interval_min(config: Config) -> int:
 
 
 def apply_lab_vram_env(config: Config) -> None:
-    """Подсказка Ollama: не съедать всю VRAM (Den: RTX 3060, лимит ~6 GB)."""
-    gb = lab_vram_gb(config)
-    os.environ.setdefault("OLLAMA_MAX_VRAM", str(int(gb * 1024 * 1024 * 1024)))
+    """Подсказка Ollama: лимит VRAM под LLM (Den: RTX 3060, ~10 GB)."""
+    from ..ollama_vram import apply_ollama_vram_limit
+
+    apply_ollama_vram_limit(config)

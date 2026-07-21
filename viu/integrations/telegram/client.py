@@ -58,16 +58,30 @@ class TelegramClient:
         text = (text or "").strip()
         if not text:
             raise ValueError("empty message")
-        if len(text) > 4000:
-            text = text[:3990] + "\n…"
-        return self._call(
-            "sendMessage",
-            {
-                "chat_id": chat_id,
-                "text": text,
-                "disable_web_page_preview": disable_preview,
-            },
-        )
+        if len(text) <= 4000:
+            return self._call(
+                "sendMessage",
+                {
+                    "chat_id": chat_id,
+                    "text": text,
+                    "disable_web_page_preview": disable_preview,
+                },
+            )
+        chunk_size = 3800
+        last: dict = {}
+        for i in range(0, len(text), chunk_size):
+            chunk = text[i : i + chunk_size]
+            if i + chunk_size < len(text):
+                chunk = chunk + "…"
+            last = self._call(
+                "sendMessage",
+                {
+                    "chat_id": chat_id,
+                    "text": chunk,
+                    "disable_web_page_preview": disable_preview,
+                },
+            )
+        return last
 
     def get_updates(self, *, offset: int = 0, timeout: int = 25) -> List[dict]:
         payload: Dict[str, Any] = {"timeout": timeout}

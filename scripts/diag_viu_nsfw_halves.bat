@@ -26,7 +26,7 @@ if not exist "scripts\diag_viu_nsfw_halves.py" (
   goto END
 )
 
-if "%VIU_MODEL_REFLECT%"=="" set "VIU_MODEL_REFLECT=viu-euryale"
+if "%VIU_MODEL_REFLECT%"=="" set "VIU_MODEL_REFLECT=viu-magnum"
 if "%VIU_BASE_URL%"=="" set "VIU_BASE_URL=http://127.0.0.1:11434/v1"
 
 set "LOG=%CD%\diag_nsfw_halves.log"

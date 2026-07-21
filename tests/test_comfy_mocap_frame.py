@@ -56,11 +56,18 @@ def test_frame_spec_lie_horizontal():
 
 
 def test_prepare_mocap_stand():
-    wf = prepare_mocap_workflow(_webp_wf(), action="idle stand")
+    wf = prepare_mocap_workflow(
+        _webp_wf(),
+        action="idle stand",
+        filename_prefix="Girl_Idle_loop_01",
+    )
     assert wf["40"]["inputs"]["width"] == 576
     assert wf["40"]["inputs"]["height"] == 1024
     assert wf["40"]["inputs"]["length"] == 81
-    assert any(n.get("class_type") == "SaveVideo" for n in wf.values() if isinstance(n, dict))
+    save = next(
+        n for n in wf.values() if isinstance(n, dict) and n.get("class_type") == "SaveVideo"
+    )
+    assert save["inputs"]["filename_prefix"] == "Girl_Idle_loop_01"
 
 
 def test_prepare_mocap_lie():

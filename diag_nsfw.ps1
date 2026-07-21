@@ -7,7 +7,7 @@ $env:PYTHONUTF8 = "1"
 $env:PYTHONUNBUFFERED = "1"
 if (-not $env:VIU_DIAG_TIMEOUT) { $env:VIU_DIAG_TIMEOUT = "1200" }
 if (-not $env:VIU_LLM_TIMEOUT) { $env:VIU_LLM_TIMEOUT = "1200" }
-if (-not $env:VIU_MODEL_REFLECT) { $env:VIU_MODEL_REFLECT = "viu-euryale" }
+if (-not $env:VIU_MODEL_REFLECT) { $env:VIU_MODEL_REFLECT = "viu-magnum" }
 if (-not $env:VIU_BASE_URL) { $env:VIU_BASE_URL = "http://127.0.0.1:11434/v1" }
 Write-Host "Folder: $(Get-Location)"
 Write-Host "Timeout: $($env:VIU_DIAG_TIMEOUT)s"

@@ -27,7 +27,7 @@ def test_away_auto_approves_comfy(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     set_presence(cfg, MODE_AWAY)
     session = new_session(COMFY_TOPIC)
-    session.steps_total = 7
+    session.steps_total = 8
     session.step = 3
     session.meta["action"] = "walking forward at a calm pace"
     session.status = "running"

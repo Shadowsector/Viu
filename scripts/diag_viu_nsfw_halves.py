@@ -79,7 +79,7 @@ def _model() -> str:
         os.environ.get("VIU_MODEL_REFLECT")
         or os.environ.get("VIU_OLLAMA_MODEL")
         or os.environ.get("VIU_MODEL")
-        or "viu-euryale"
+        or "viu-magnum"
     )
 
 

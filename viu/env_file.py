@@ -18,6 +18,26 @@ _RELOAD_IF_EMPTY = frozenset(
     }
 )
 
+# Эти ключи из .env всегда перекрывают то, что выставил Viu.cmd / оболочка.
+_ALWAYS_FROM_FILE = frozenset(
+    {
+        "VIU_LLM_TIMEOUT",
+        "VIU_MODEL",
+        "VIU_MODEL_REFLECT",
+        "VIU_MODEL_WORK",
+        "VIU_MODEL_CODE",
+        "VIU_PROVIDER",
+        "VIU_BASE_URL",
+        "VIU_OLLAMA_NUM_CTX",
+        "VIU_OLLAMA_NUM_PREDICT",
+        "VIU_OLLAMA_KEEP_ALIVE",
+        "VIU_LAB_VRAM_GB",
+        "VIU_REFLECT_TEMPERATURE",
+        "VIU_REFLECT_PROMPT_HALF",
+    }
+)
+
+
 _EXPORT_RE = re.compile(r"^export\s+", re.IGNORECASE)
 
 
@@ -36,6 +56,10 @@ def _parse_line(line: str) -> tuple[str, str] | None:
 
 def _apply_pair(key: str, value: str) -> None:
     if key in _RELOAD_IF_EMPTY:
+        if value:
+            os.environ[key] = value
+        return
+    if key in _ALWAYS_FROM_FILE:
         if value:
             os.environ[key] = value
         return
@@ -103,6 +127,12 @@ def bootstrap_env(install_root: Path | None = None) -> Path | None:
     primary = roots[0] if roots else Path.cwd()
     env_path = ensure_env_file(primary)
     load_env_file(*roots)
+    try:
+        from .ollama_vram import apply_ollama_vram_limit
+
+        apply_ollama_vram_limit()
+    except Exception:
+        pass
     return env_path if env_path.is_file() else None
 
 

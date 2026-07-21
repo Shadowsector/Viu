@@ -176,6 +176,35 @@ def running_sha(root: Optional[Path] = None) -> str:
     return read_package_sha(base) or read_local_sha(base)
 
 
+def _version_message(
+    *,
+    branch: str,
+    local: str,
+    remote: str = "",
+    behind: int = 0,
+    up_to_date: bool,
+) -> str:
+    """Человекочитаемая строка: ветка + SHA (zip/git одинаково)."""
+    short_local = (local or "—")[:12]
+    short_remote = (remote or "")[:12]
+    if up_to_date:
+        return f"Уже последняя версия [{branch}] {short_local}."
+    if behind:
+        return (
+            f"Доступно обновление [{branch}]: +{behind} коммит(ов) "
+            f"({short_local} → {short_remote})."
+        )
+    if short_remote:
+        return (
+            f"Доступно обновление [{branch}]: {short_local} → {short_remote}. "
+            "Нажми «Обновить Вью» — скачаю и перезапущу."
+        )
+    return (
+        f"Нужна установка с GitHub [{branch}] (remote={short_remote or '?'}). "
+        "Кнопка «Обновить Вью» или авто при запуске."
+    )
+
+
 def stamp_changed_since(start_sha: str, root: Optional[Path] = None) -> bool:
     """На диске другая метка версии — процессу нужен relaunch (zip/bootstrap)."""
     current = running_sha(root)
@@ -254,24 +283,43 @@ def current_commit(repo: Optional[Path] = None) -> str:
 
 def install_package(root: Optional[Path] = None) -> Tuple[bool, str]:
     """pip install -e . — как Mia install_requirements."""
+    from .net_env import scrub_proxy_env
+
     cwd = root or package_root()
+    env = scrub_proxy_env()
+    attempts = [
+        [sys.executable, "-m", "pip", "install", "-e", str(cwd), "--proxy="],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-e",
+            str(cwd),
+            "--proxy=",
+            "--no-build-isolation",
+        ],
+    ]
+    last_tail = ""
     try:
-        proc = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-e", str(cwd)],
-            cwd=str(cwd),
-            capture_output=True,
-            text=True,
-            timeout=1200,
-            creationflags=_NO_WINDOW,
-        )
+        for cmd in attempts:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(cwd),
+                capture_output=True,
+                text=True,
+                timeout=1200,
+                creationflags=_NO_WINDOW,
+                env=env,
+            )
+            if proc.returncode == 0:
+                return True, "Зависимости установлены (pip install -e .)."
+            last_tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-400:]
     except subprocess.TimeoutExpired:
         return False, "pip: таймаут 1200s"
     except OSError as exc:
         return False, f"pip: {exc}"
-    if proc.returncode == 0:
-        return True, "Зависимости установлены (pip install -e .)."
-    tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-400:]
-    return False, f"pip ошибка: {tail}"
+    return False, f"pip ошибка: {last_tail}"
 
 
 def check_for_update(
@@ -292,17 +340,12 @@ def check_for_update(
                     has_updates=False,
                     local_ref=local[:12],
                     remote_ref=remote[:12],
-                    message=f"Уже последняя версия (GitHub) {local[:12]}.",
-                )
-            if local:
-                msg = (
-                    f"Доступно обновление ({local[:12]} → {remote[:12]}). "
-                    "Нажми «Обновить Вью» или перезапусти — подтяну сама."
-                )
-            else:
-                msg = (
-                    f"Нужна установка/обновление с GitHub (remote={remote[:12]}). "
-                    "Авто при запуске или кнопка «Обновить Вью»."
+                    message=_version_message(
+                        branch=branch,
+                        local=local,
+                        remote=remote,
+                        up_to_date=True,
+                    ),
                 )
             return UpdateResult(
                 ok=True,
@@ -310,7 +353,12 @@ def check_for_update(
                 has_updates=True,
                 local_ref=local[:12] if local else "—",
                 remote_ref=remote[:12],
-                message=msg,
+                message=_version_message(
+                    branch=branch,
+                    local=local,
+                    remote=remote,
+                    up_to_date=False,
+                ),
             )
         except (OSError, RuntimeError) as exc:
             return UpdateResult(
@@ -350,7 +398,12 @@ def check_for_update(
             behind=0,
             local_ref=short_local,
             remote_ref=short_remote,
-            message=f"Уже последняя версия ({short_local}).",
+            message=_version_message(
+                branch=branch,
+                local=local,
+                remote=remote_ref,
+                up_to_date=True,
+            ),
         )
 
     return UpdateResult(
@@ -360,7 +413,13 @@ def check_for_update(
         behind=behind,
         local_ref=short_local,
         remote_ref=short_remote,
-        message=f"Доступно обновление: +{behind} коммит(ов) ({short_local} → {short_remote}).",
+        message=_version_message(
+            branch=branch,
+            local=local,
+            remote=remote_ref,
+            behind=behind,
+            up_to_date=False,
+        ),
     )
 
 
@@ -390,15 +449,36 @@ def apply_git_update(
             message=status.message,
         )
 
-    if hard_reset:
-        code, out = _run_git(["reset", "--hard", f"{remote}/{branch}"], root, timeout=300.0)
-    else:
-        code, out = _run_git(["pull", "--ff-only", remote, branch], root, timeout=300.0)
+    def _do_pull(ff_only: bool) -> Tuple[int, str]:
+        if hard_reset or not ff_only:
+            return _run_git(["reset", "--hard", f"{remote}/{branch}"], root, timeout=300.0)
+        return _run_git(["pull", "--ff-only", remote, branch], root, timeout=300.0)
+
+    code, out = _do_pull(ff_only=True)
+    used_reset = False
+    if code != 0 and not hard_reset:
+        # Локальные правки / расхождение — сбрасываем код к origin ( .viu не в git ).
+        code2, out2 = _do_pull(ff_only=False)
+        if code2 == 0:
+            code, out = code2, out2
+            used_reset = True
+        else:
+            out = (out + "\n" + out2).strip()
 
     if code == 0:
         cleanup_obsolete(root)
+        _, full_sha = _run_git(["rev-parse", "HEAD"], root)
+        if full_sha:
+            write_package_sha(root, full_sha)
     new_ref = current_commit(root)
     if code != 0:
+        # Git не вытянул — zip поверх папки (как без git).
+        zip_result = download_zip_update(branch=branch, target=root)
+        if zip_result.ok and zip_result.updated:
+            zip_result.message = (
+                f"Git не смог: {out[:200]}\n\nZip: {zip_result.message}"
+            )
+            return zip_result
         return UpdateResult(
             ok=False,
             checked=True,
@@ -408,6 +488,7 @@ def apply_git_update(
             remote_ref=status.remote_ref,
             message=f"Обновление не удалось: {out[:500]}",
         )
+    note = " (hard reset)" if used_reset or hard_reset else ""
     return UpdateResult(
         ok=True,
         checked=True,
@@ -416,7 +497,7 @@ def apply_git_update(
         behind=0,
         local_ref=new_ref,
         remote_ref=status.remote_ref,
-        message=f"Обновлено до {new_ref}.",
+        message=f"Обновлено до {new_ref} [{branch}]{note}.",
     )
 
 
@@ -459,16 +540,12 @@ def download_zip_update(
         if not roots:
             return UpdateResult(ok=False, message="Пустой архив с GitHub.")
         src_root = roots[0]
+        from .ollama_layout import copy_install_tree_item
+
         for item in src_root.iterdir():
             if item.name in preserve and (dest / item.name).exists():
                 continue
-            target_path = dest / item.name
-            if item.is_dir():
-                if target_path.exists():
-                    shutil.rmtree(target_path)
-                shutil.copytree(item, target_path)
-            else:
-                shutil.copy2(item, target_path)
+            copy_install_tree_item(item, dest)
 
     try:
         sha = remote_sha_github(repo=repo, branch=branch)
@@ -533,16 +610,44 @@ def version_label() -> str:
     return f"Viu {ref}"
 
 
+def sha_needs_update(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, str]:
+    """Сравнить package_sha на диске с GitHub — независимо от git fetch."""
+    local = running_sha(package_root())
+    try:
+        remote = remote_sha_github(branch=branch)
+    except (OSError, RuntimeError):
+        return False, local, ""
+    if not remote:
+        return False, local, ""
+    outdated = not local or local != remote
+    return outdated, local, remote
+
+
 def update_viu_full(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, bool]:
     """Проверка → скачивание (если есть) → pip install. Возвращает (ok, текст, нужен_рестарт)."""
     lines: List[str] = []
     needs_restart = False
+    before = running_sha(package_root())[:12] or "—"
+
+    sha_outdated, local_full, remote_full = sha_needs_update(branch=branch)
+    if remote_full:
+        lines.append(
+            f"SHA на диске: {local_full[:12] or '—'} · GitHub [{branch}]: {remote_full[:12]}"
+        )
 
     status = check_for_update(branch=branch)
-    lines.append(status.message)
+    if not sha_outdated:
+        lines.append(status.message)
+    elif status.has_updates:
+        lines.append(status.message)
+    else:
+        lines.append(
+            "Git говорит «актуально», но package_sha ≠ GitHub — принудительно качаю zip."
+        )
 
-    if status.has_updates:
-        applied = apply_update_smart(branch=branch)
+    must_apply = status.has_updates or sha_outdated
+    if must_apply:
+        applied = apply_update_smart(branch=branch, hard_reset=sha_outdated)
         lines.append(applied.message)
         if applied.updated:
             needs_restart = True
@@ -551,6 +656,13 @@ def update_viu_full(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, bool]:
             lines.append(pip_msg)
             return ok and applied.ok, "\n\n".join(lines), needs_restart
 
+    after = running_sha(package_root())[:12] or "—"
+    if before != after:
+        lines.append(f"Версия: {before} → {after}")
+        needs_restart = True
+
     ok, pip_msg = install_package()
     lines.append(pip_msg)
+    if must_apply and ok and not needs_restart and sha_outdated:
+        needs_restart = True
     return ok, "\n\n".join(lines), needs_restart

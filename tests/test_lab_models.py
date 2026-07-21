@@ -16,9 +16,16 @@ from viu.lab.notify import notify_lab_awaiting_rating, notify_lab_step
 def _cfg(tmp_path: Path) -> Config:
     import os
 
+    lib = tmp_path / "Library"
+    lib.mkdir(parents=True, exist_ok=True)
     os.environ["VIU_DATA_DIR"] = str(tmp_path / ".viu")
+    os.environ["VIU_LIBRARY_ROOT"] = str(lib)
     os.environ["VIU_LAB_MODELS_INBOX"] = str(tmp_path / "models_inbox")
-    return Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
+    return Config(
+        root=tmp_path,
+        data_dir=tmp_path / ".viu",
+        library_root=str(lib),
+    ).ensure_dirs()
 
 
 def test_grade_thresholds():
@@ -63,7 +70,9 @@ def test_build_models_summary_empty(tmp_path):
 
 def test_list_model_files(tmp_path):
     cfg = _cfg(tmp_path)
-    inbox = Path(cfg.root) / "models_inbox"
+    from viu.creature_catalog.paths import creatures_inbox_dir
+
+    inbox = creatures_inbox_dir(cfg)
     inbox.mkdir(parents=True, exist_ok=True)
     (inbox / "hero.blend").write_bytes(b"fake")
     (inbox / "npc.fbx").write_bytes(b"fake")

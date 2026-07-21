@@ -26,6 +26,15 @@ from .config import Config
 from .gui_actions import ACTION_GROUPS, GUI_ACTIONS, GuiAction, actions_by_group
 from .pipeline import action_visible, get_pipeline_context
 from .health import ollama_available
+from .llm_roles import (
+    REFLECT_MODEL_CHOICES,
+    REFLECT_MODEL_IDS,
+    effective_model,
+    model_label,
+    reflect_combo_labels,
+    reflect_model_from_combo,
+    set_reflect_model,
+)
 from .integrations.unity.watcher import AnimationFolderWatcher
 from .runtime_settings import get_update_interval_min, get_window_geometry, set_window_geometry
 from .updater import (
@@ -68,7 +77,7 @@ class ViuGUI:
         self._heartbeat_notify = False
         self._lab_job: str | None = None
         self._chat_history: deque[str] = deque(maxlen=16)
-        self._llm_turns: deque[dict[str, str]] = deque(maxlen=24)
+        self._llm_turns: deque[dict[str, str]] = deque(maxlen=32)
         self._boot_sha = running_sha(package_root())
         self._geometry_save_job: str | None = None
 
@@ -94,7 +103,22 @@ class ViuGUI:
             removed = []
 
         self._build_ui()
-        self._append("система", f"{version_label()}. Модель: {self.agent.llm.name}.")
+        from .llm_roles import needs_viu_wrap_hint
+
+        self._append("система", f"{version_label()}.")
+        self._append(
+            "система",
+            "Модель чата: вторая строка сверху (выпадающий список) или меню «Чат».",
+            tag="sys",
+        )
+        if needs_viu_wrap_hint(self.agent.config):
+            self._append(
+                "система",
+                "В .env у reflect нет viu-обёртки. Поставь "
+                "VIU_MODEL_REFLECT=viu-cydonia и перезапусти "
+                "(или create_viu_ollama_models.bat, если тега нет).",
+                tag="sys",
+            )
         if getattr(self, "_story_ingest_msg", ""):
             self._append("система", self._story_ingest_msg, tag="sys")
         if removed:
@@ -135,6 +159,15 @@ class ViuGUI:
 
     def _build_ui(self) -> None:
         self.root = tk.Tk()
+        try:
+            (Path(__file__).resolve().parent.parent / ".viu_gui_started").write_text(
+                "ok\n", encoding="utf-8"
+            )
+            (Path(__file__).resolve().parent.parent / ".viu_launch_status").write_text(
+                "tk_ready", encoding="utf-8"
+            )
+        except OSError:
+            pass
         self.root.title("Вью — Анабарра")
         saved_geom = get_window_geometry(self.agent.config)
         self.root.geometry(saved_geom if saved_geom else _GUI_DEFAULT_GEOMETRY)
@@ -149,6 +182,7 @@ class ViuGUI:
 
         self._build_menu()
         self._build_top_status()
+        self.root.bind_all("<Control-KeyPress>", self._global_ctrl_key, add="+")
 
         body = ttk.Frame(self.root)
         body.pack(fill="both", expand=True)
@@ -186,20 +220,47 @@ class ViuGUI:
         self.root.destroy()
 
     def _build_top_status(self) -> None:
-        """Верхняя полоса: статус + переключатель Дома (зелёный) / Нет дома (красный)."""
-        bar = ttk.Frame(self.root)
-        bar.pack(fill="x", padx=8, pady=(6, 0))
+        """Верх: статус + отдельная строка «Модель чата» + Дома."""
+        outer = ttk.Frame(self.root)
+        outer.pack(fill="x", padx=8, pady=(6, 0))
 
+        status_row = ttk.Frame(outer)
+        status_row.pack(fill="x")
         self.top_status_var = tk.StringVar(value="…")
-        ttk.Label(bar, textvariable=self.top_status_var, font=("Segoe UI", 9)).pack(
+        ttk.Label(status_row, textvariable=self.top_status_var, font=("Segoe UI", 9)).pack(
             side="left", anchor="w"
         )
 
-        right = ttk.Frame(bar)
-        right.pack(side="right", anchor="e")
-        ttk.Label(right, text="Ты:", font=("Segoe UI", 9)).pack(side="left", padx=(0, 6))
+        tools_row = ttk.Frame(outer)
+        tools_row.pack(fill="x", pady=(5, 2))
+        ttk.Label(
+            tools_row,
+            text="Модель чата:",
+            font=("Segoe UI", 9, "bold"),
+        ).pack(side="left", padx=(0, 6))
+        self._reflect_model_var = tk.StringVar()
+        self._reflect_combo = ttk.Combobox(
+            tools_row,
+            textvariable=self._reflect_model_var,
+            values=list(REFLECT_MODEL_IDS),
+            state="readonly",
+            width=18,
+            font=("Segoe UI", 10),
+        )
+        self._reflect_combo.pack(side="left")
+        self._reflect_combo.bind("<<ComboboxSelected>>", self._on_reflect_model_pick)
+        self._attach_tooltip(
+            self._reflect_combo,
+            "Reflect для чата и Telegram:\n"
+            "viu-cydonia — чат\n"
+            "viu-command-r — GDD/квесты\n"
+            "viu-magnum — лит. NSFW\n"
+            "viu-qwen32 — общая 32B",
+        )
+        self._sync_reflect_model_combo()
+
         self._presence_btn = tk.Button(
-            right,
+            tools_row,
             text="● Дома",
             font=("Segoe UI", 10, "bold"),
             relief="raised",
@@ -209,8 +270,42 @@ class ViuGUI:
             cursor="hand2",
             command=self._toggle_presence,
         )
-        self._presence_btn.pack(side="left")
+        self._presence_btn.pack(side="right")
+        ttk.Label(tools_row, text="Ты:", font=("Segoe UI", 9)).pack(side="right", padx=(0, 6))
         self._refresh_presence_button()
+
+    def _reflect_combo_value_for(self, model_id: str) -> str:
+        mid = (model_id or "").strip()
+        if mid in REFLECT_MODEL_IDS:
+            return mid
+        for label in reflect_combo_labels():
+            if label.startswith(mid + " ·"):
+                return mid
+        return mid
+
+    def _sync_reflect_model_combo(self) -> None:
+        mid = effective_model(self.agent.config, "reflect")
+        self._reflect_model_var.set(self._reflect_combo_value_for(mid))
+        if hasattr(self, "_chat_model_var"):
+            self._chat_model_var.set(mid)
+
+    def _pick_reflect_model(self, model_id: str) -> None:
+        picked = (model_id or "").strip()
+        if not picked:
+            return
+        set_reflect_model(self.agent.config, picked)
+        self._sync_reflect_model_combo()
+        self._append(
+            "система",
+            f"Модель чата: {picked} (reflect + Telegram, в .viu/runtime.json).",
+            tag="sys",
+        )
+        self._refresh_presence_button()
+
+    def _on_reflect_model_pick(self, _event=None) -> None:
+        raw = self._reflect_model_var.get()
+        picked = reflect_model_from_combo(raw) or raw.strip()
+        self._pick_reflect_model(picked)
 
     def _toggle_presence(self) -> None:
         from .decision_queue import flush_prompt_for_home
@@ -264,7 +359,6 @@ class ViuGUI:
                     activebackground="#1b5e20",
                     activeforeground="#ffffff",
                 )
-        # legacy sidebar button (если ещё есть)
         text = "Режим: меня нет (автономно)" if away else "Режим: я дома (с вопросами)"
         for aid, b in self._action_buttons:
             if aid == "presence_toggle":
@@ -276,20 +370,19 @@ class ViuGUI:
 
         def compute() -> str:
             from .decision_queue import count_open
-            from .presence import is_away
 
             ollama = "Ollama ✓" if ollama_available(cfg.base_url) else "Ollama ✗"
             unity = Path(cfg.unity_project).name if cfg.unity_project else "Unity —"
             git = "git" if usable_git_root() else "zip"
-            mode = "автономно" if is_away(cfg) else "дома"
             qn = count_open(cfg)
             q = f" | вопросов: {qn}" if qn else ""
-            return (
-                f"{ollama}  |  {mode}{q}  |  {unity}  |  {version_label()} ({git})  |  "
-                f"Модель: {self.agent.llm.name}"
-            )
+            return f"{ollama}{q}  |  {unity}  |  {version_label()} ({git})"
 
         self._run_bg(compute, self._set_top_status)
+        try:
+            self._refresh_presence_button()
+        except Exception:  # noqa: BLE001
+            pass
         self.root.after(5000, self._refresh_status)
 
     def _set_top_status(self, result) -> None:
@@ -370,7 +463,7 @@ class ViuGUI:
 
         chat_hint = ttk.Label(
             frame,
-            text="Справа — живая Вью (чат).\nДома/Нет дома — сверху.",
+            text="Справа — живая Вью.\nМодель чата — вторая строка сверху или меню «Чат».",
             wraplength=240,
             justify="left",
             font=("Segoe UI", 9),
@@ -388,6 +481,13 @@ class ViuGUI:
             text="Живая Вью",
             font=("Segoe UI", 11, "bold"),
         ).pack(side="left")
+        self._chat_model_var = tk.StringVar(value=effective_model(self.agent.config, "reflect"))
+        ttk.Label(
+            chat_head,
+            textvariable=self._chat_model_var,
+            font=("Segoe UI", 9, "bold"),
+            foreground="#81c784",
+        ).pack(side="left", padx=(10, 0))
         ttk.Label(
             chat_head,
             text="свободный разговор · сюжет · идеи",
@@ -404,6 +504,7 @@ class ViuGUI:
             insertbackground="#e6e6e6",
             padx=8,
             pady=8,
+            exportselection=True,
         )
         self.output.pack(fill="both", expand=True, padx=(4, 8), pady=(4, 4))
         for tag, color in (
@@ -489,6 +590,14 @@ class ViuGUI:
         )
         menubar.add_cascade(label="Места", menu=m_places)
 
+        m_chat = tk.Menu(menubar, tearoff=0)
+        for mid, hint in REFLECT_MODEL_CHOICES:
+            m_chat.add_command(
+                label=f"{mid} — {hint}",
+                command=lambda m=mid: self._pick_reflect_model(m),
+            )
+        menubar.add_cascade(label="Чат", menu=m_chat)
+
         self.root.config(menu=menubar)
 
     def _attach_tooltip(self, widget: tk.Widget, text: str) -> None:
@@ -527,9 +636,16 @@ class ViuGUI:
                 menu.grab_release()
 
         widget.bind("<Button-3>", show)
-        widget.bind("<Control-KeyPress>", self._ctrl_shortcuts)
+        widget.bind("<Button-3>", show)
 
     def _bind_clipboard(self, widget: tk.Widget) -> None:
+        def _clip(event, virt: str):
+            try:
+                event.widget.event_generate(virt)
+            except tk.TclError:
+                pass
+            return "break"
+
         for seq, virt in (
             ("<Control-c>", "<<Copy>>"),
             ("<Control-C>", "<<Copy>>"),
@@ -540,9 +656,49 @@ class ViuGUI:
             ("<Control-Insert>", "<<Copy>>"),
             ("<Shift-Insert>", "<<Paste>>"),
         ):
-            widget.bind(seq, lambda e, v=virt: (e.widget.event_generate(v), "break"))
+            widget.bind(seq, lambda e, v=virt: _clip(e, v), add="+")
 
     # ---------- события ----------
+
+    def _global_ctrl_key(self, event: tk.Event) -> str | None:
+        """Ctrl+C/V/X/A — в т.ч. русская раскладка (по keycode)."""
+        if not (event.state & 0x0004):
+            return None
+        widget = event.widget
+        if not isinstance(widget, (tk.Text, tk.Entry)):
+            return None
+        kc = int(getattr(event, "keycode", 0) or 0)
+        keysym = (event.keysym or "").lower()
+        # A / ф
+        if kc == 65 or keysym in ("a", "ф"):
+            self._select_all(widget)
+            return "break"
+        # C / с — копировать (из чата тоже)
+        if kc == 67 or keysym in ("c", "с", "cyrillic_es"):
+            try:
+                widget.event_generate("<<Copy>>")
+            except tk.TclError:
+                pass
+            return "break"
+        # V / м — вставить (только поле ввода, не лог)
+        if kc == 86 or keysym in ("v", "м", "cyrillic_em"):
+            if widget is self.output:
+                return "break"
+            try:
+                widget.event_generate("<<Paste>>")
+            except tk.TclError:
+                pass
+            return "break"
+        # X / ч — вырезать (не из лога)
+        if kc == 88 or keysym in ("x", "ч", "cyrillic_che"):
+            if widget is self.output:
+                return "break"
+            try:
+                widget.event_generate("<<Cut>>")
+            except tk.TclError:
+                pass
+            return "break"
+        return None
 
     def _ctrl_shortcuts(self, event):
         if event.keysym.lower() in ("a", "ф") or event.keycode == 38:
@@ -562,7 +718,10 @@ class ViuGUI:
             self._select_all(widget)
 
     def _readonly_guard(self, event):
+        # Ctrl/Shift — не блокировать (копирование, навигация)
         if event.state & 0x0004:
+            return None
+        if event.state & 0x0001:
             return None
         if event.keysym in _NAV_KEYS:
             return None
@@ -614,6 +773,7 @@ class ViuGUI:
             "__lab_run_all__",
             "__lab_rate__",
             "__lab_comfy__",
+            "__interaction_lab__",
             "__comfy_clips__",
         } or (
             action.tool and action.tool.startswith("lab_")
@@ -660,6 +820,9 @@ class ViuGUI:
             return
         if action.tool == "__lab_comfy__":
             self._lab_comfy_action()
+            return
+        if action.tool == "__interaction_lab__":
+            self._interaction_lab_action()
             return
         if action.tool == "__lab_run_all__":
             self._lab_run_all_action()
@@ -993,6 +1156,7 @@ class ViuGUI:
                 open_creature_catalog_review(
                     self.root,
                     store,
+                    config=cfg,
                     on_finished=on_finished,
                 )
             except Exception as exc:
@@ -1215,10 +1379,14 @@ class ViuGUI:
         unity = cfg.unity_project or "(Unity не задан)"
         chat = "привязан" if self._telegram and self._telegram.enabled else "нет"
         from .integrations.telegram import settings as tg_settings
+        from .llm_roles import model_label
+        from .presence import is_away
 
         cid = tg_settings.chat_id(cfg)
+        home = "нет дома" if is_away(cfg) else "дома"
         return (
             f"{version_label()}\n"
+            f"Режим: {home} · {model_label(cfg, 'reflect')}\n"
             f"Ollama: {'ok' if ollama_available() else 'нет'}\n"
             f"Unity: {unity}\n"
             f"Занята: {getattr(self, '_busy_label', None) or ('да' if (self._tool_busy or self._llm_busy) else 'нет')}\n"
@@ -1472,7 +1640,7 @@ class ViuGUI:
         if not clean or clean.startswith("["):
             return
         role = "user" if who in ("ты", "user") else "assistant"
-        self._llm_turns.append({"role": role, "content": clean[:600]})
+        self._llm_turns.append({"role": role, "content": clean[:4000]})
 
     def _run_agent_reflect(self, task: str, *, via_telegram: bool = False, heartbeat: bool = False) -> None:
         if not via_telegram and not heartbeat:
@@ -1690,6 +1858,7 @@ class ViuGUI:
             "running",
             "paused",
             "awaiting_prompt",
+            "awaiting_lora_pick",
             "awaiting_clip_pick",
         ):
             if comfy.status == "awaiting_prompt" and auto:
@@ -1748,6 +1917,12 @@ class ViuGUI:
             if cas is not None and cas.status in ("running", "paused"):
                 pass  # fall through to cascadeur
             elif cas is None or cas.status in ("completed", "idle", "awaiting_rating"):
+                from .lab.comfy_director import invent_next_shot
+
+                probe = invent_next_shot(self.agent.config)
+                if probe.stop_cycle:
+                    self._append("Вью", probe.summary_ru(), tag="viu")
+                    return
                 self._lab_comfy_action(auto=True)
                 return
 
@@ -1788,7 +1963,13 @@ class ViuGUI:
         from .presence import is_away
 
         plan = invent_next_shot(self.agent.config)
+        if plan.stop_cycle:
+            self._append("Вью", plan.summary_ru(), tag="viu")
+            return
         self._append("Вью", plan.summary_ru(), tag="viu")
+        from .lab.comfy_director import barn_cycle_status
+
+        self._append("Вью", barn_cycle_status(self.agent.config), tag="viu")
         if not auto and not is_away(self.agent.config):
             self._append(
                 "Вью",
@@ -1812,6 +1993,34 @@ class ViuGUI:
             args,
             label="Лаборатория: Comfy MoCap",
             echo_user=not auto,
+        )
+
+    def _interaction_lab_action(self) -> None:
+        """Совместные анимации: lab topic=interaction, пилот wave 1."""
+        from .interaction_catalog import InteractionCatalogStore, interaction_catalog_path
+        from .lab.interaction_pipeline import INTERACTION_TOPIC
+
+        store = InteractionCatalogStore(interaction_catalog_path(self.agent.config)).load()
+        holes = store.holes_for_wave(wave=1)
+        slug = holes[0].slug if holes else "shanya_wolf_approach"
+        title = holes[0].title_ru if holes else "совместная сцена"
+        self._append(
+            "Вью",
+            f"Лаборатория совместных анимаций: `{slug}` — {title}\n"
+            "Шаги: blocking → master draft Comfy → …\n"
+            "Нужны: Shanya.fbx + wolf_alpha в creature_catalog (см. docs/INTERACTION_SETUP.md).",
+            tag="viu",
+        )
+        self._run_tool(
+            "lab_start",
+            {
+                "topic": INTERACTION_TOPIC,
+                "run_all": "1",
+                "reset": "1",
+                "catalog_slug": slug,
+            },
+            label="Лаборатория: совместные",
+            echo_user=True,
         )
 
     def _lab_run_all_action(self, *, reset: bool = False) -> None:
@@ -2200,10 +2409,38 @@ class ViuGUI:
             return
 
         def tick():
-            self._check_updates_async(force=True, apply=False)
+            self._periodic_auto_update()
             self._auto_update_job = self.root.after(minutes * 60_000, tick)
 
         self._auto_update_job = self.root.after(minutes * 60_000, tick)
+
+    def _periodic_auto_update(self) -> None:
+        """Тихая проверка GitHub; при новой версии — zip/git + pip + рестарт."""
+        if os.environ.get("VIU_AUTO_UPDATE", "1") != "1":
+            return
+        if self._tool_busy or self._llm_busy:
+            return
+
+        def work():
+            return auto_update_on_start(
+                branch=self.agent.config.update_branch,
+                allow_zip=True,
+            )
+
+        def done(result):
+            if isinstance(result, Exception):
+                return
+            if result.updated:
+                self._append(
+                    "система",
+                    f"Автообновление: {result.message}",
+                    tag="sys",
+                )
+                self.root.after(1500, self._restart)
+            elif result.has_updates and not result.updated:
+                self._append("система", result.message, tag="sys")
+
+        self._run_bg(work, done)
 
     def _check_updates_on_start(self) -> None:
         """Тихая проверка при старте (только git, без zip)."""
@@ -2439,15 +2676,43 @@ def acquire_single_instance(port: int = _INSTANCE_PORT):
 
 def main() -> int:
     global _instance_sock
+    root_dir = Path(__file__).resolve().parent.parent
+    status_path = root_dir / ".viu_launch_status"
+    started_path = root_dir / ".viu_gui_started"
+
+    def _status(msg: str) -> None:
+        try:
+            status_path.write_text(msg, encoding="utf-8")
+        except OSError:
+            pass
+
+    def _mark_started() -> None:
+        try:
+            started_path.write_text("ok\n", encoding="utf-8")
+            _status("running")
+        except OSError:
+            pass
+
+    _status("locking")
     _instance_sock = acquire_single_instance()
     if _instance_sock is None:
+        _status("already_running")
+        try:
+            (root_dir / "viu_startup.log").write_text(
+                "Вью уже запущена (порт 47615 занят).\n"
+                "Найди окно на панели задач или запусти fix_viu_lock.bat\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
         try:
             root = tk.Tk()
             root.withdraw()
             messagebox.showinfo(
                 "Вью уже открыта",
                 "Окно Вью уже запущено. Найди его на панели задач.\n"
-                "Если окна не видно — заверши процесс python в Диспетчере задач и запусти снова.",
+                "Если окна не видно — запусти fix_viu_lock.bat "
+                "или заверши python/pythonw в Диспетчере задач.",
             )
             root.destroy()
         except Exception:  # noqa: BLE001
@@ -2455,12 +2720,16 @@ def main() -> int:
         return 0
 
     try:
-        ViuGUI().run()
+        _status("creating_gui")
+        app = ViuGUI()
+        _mark_started()
+        app.run()
         return 0
     except Exception as exc:  # noqa: BLE001
         import traceback
 
-        log = Path(__file__).resolve().parent.parent / "viu_startup.log"
+        _status("crash")
+        log = root_dir / "viu_startup.log"
         log.write_text(traceback.format_exc(), encoding="utf-8")
         try:
             root = tk.Tk()

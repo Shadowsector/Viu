@@ -65,6 +65,28 @@ class ComfyStatusTool(Tool):
         if not ok:
             lines.append("Запуск: comfy_ensure или lab_start topic=comfy.")
             lines.append("Гайд: docs/COMFY_SETUP.md")
+        try:
+            from ..integrations.comfy.lora import ensure_registry, list_registry_status
+
+            ensure_registry(ctx.config)
+            lines.append("")
+            lines.append(list_registry_status(ctx.config))
+        except Exception as exc:
+            lines.append(f"(lora registry: {exc})")
+        try:
+            from ..integrations.comfy.pipeline_status import comfy_pipeline_status
+
+            lines.append("")
+            lines.append(comfy_pipeline_status(ctx.config))
+        except Exception as exc:
+            lines.append(f"(pipeline status: {exc})")
+        try:
+            from ..integrations.comfy.face_refs import face_refs_status
+
+            lines.append("")
+            lines.append(face_refs_status(ctx.config))
+        except Exception as exc:
+            lines.append(f"(face refs: {exc})")
         return ToolResult(True, "\n".join(lines))
 
 
@@ -79,6 +101,7 @@ class ComfyInstallTool(Tool):
         "models": "1 = скачать T2V модели (по умолчанию 1)",
         "i2v": "1 = ещё I2V+clip_vision (очень много места)",
         "pip": "1 = pip install requirements (по умолчанию 1)",
+        "reactor": "1 = ComfyUI-ReActor + inswapper (подмена лица MoCap)",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
@@ -87,16 +110,20 @@ class ComfyInstallTool(Tool):
         with_models = str(args.get("models", "1")).lower() in ("1", "true", "yes", "")
         include_i2v = str(args.get("i2v", "0")).lower() in ("1", "true", "yes")
         with_pip = str(args.get("pip", "1")).lower() in ("1", "true", "yes", "")
+        with_reactor = str(args.get("reactor", "0")).lower() in ("1", "true", "yes")
         notes: list[str] = []
 
         def progress(msg: str) -> None:
             notes.append(msg)
+            print(f"[comfy_install] {msg}", flush=True)
 
+        print("[comfy_install] старт…", flush=True)
         ok, msg = ensure_comfy_installed(
             ctx.config,
             with_models=with_models,
             include_i2v=include_i2v,
             with_pip=with_pip,
+            with_reactor=with_reactor,
             progress=progress,
         )
         body = msg
@@ -250,6 +277,7 @@ class ComfyTripleTool(Tool):
     parameters = {
         "action": "действие / описание motion",
         "slug": "префикс имени файлов",
+        "catalog_slug": "slug каталога (для LoRA)",
         "timeout": "секунд на один угол (900)",
     }
 
@@ -258,13 +286,181 @@ class ComfyTripleTool(Tool):
         if not action:
             return ToolResult(False, "Нужен action=.")
         slug = str(args.get("slug") or "mocap").strip()
+        catalog_slug = str(args.get("catalog_slug") or slug).strip()
         try:
             timeout = float(args.get("timeout") or 900)
         except (TypeError, ValueError):
             timeout = 900.0
         ok, msg, _ = run_triple_angles(
-            ctx.config, action=action, slug=slug, timeout_each=timeout
+            ctx.config,
+            action=action,
+            slug=slug,
+            catalog_slug=catalog_slug,
+            timeout_each=timeout,
         )
+        return ToolResult(ok, msg)
+
+
+class ComfyLoraListTool(Tool):
+    name = "comfy_lora_list"
+    description = (
+        "Проиндексированные LoRA из ComfyUI/models/loras/ — номера для выбора перед пулом. "
+        "scan=1 — пересканировать папку."
+    )
+    parameters = {"scan": "1 = пересканировать models/loras/"}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.lora import ensure_registry, list_registry_status, scan_loras
+
+        ensure_registry(ctx.config)
+        if str(args.get("scan") or "").lower() in ("1", "true", "yes"):
+            scan_loras(ctx.config)
+        return ToolResult(True, list_registry_status(ctx.config))
+
+
+class ComfyLoraScanTool(Tool):
+    name = "comfy_lora_scan"
+    description = "Пересканировать ComfyUI/models/loras/ и обновить индекс .viu/comfy_loras_index.json."
+    parameters = {}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.lora import format_lora_pick_message, scan_loras
+
+        entries = scan_loras(ctx.config)
+        return ToolResult(True, format_lora_pick_message(entries))
+
+
+class ComfyLoraPickTool(Tool):
+    name = "comfy_lora_pick"
+    description = (
+        "Выбрать LoRA для текущего Comfy-пула. pick=1,3 | none | all. "
+        "Работает когда Lab ждёт awaiting_lora_pick."
+    )
+    parameters = {
+        "pick": "1 | 1,3 | all | none",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.lora import load_index, parse_lora_pick_reply
+        from ..lab.comfy_pipeline import COMFY_TOPIC, apply_lora_pick_decision
+        from ..lab.session import load_session
+
+        raw = str(args.get("pick") or "").strip()
+        if not raw:
+            return ToolResult(False, "Нужен pick=1,3 или pick=none.")
+        session = load_session(ctx.config, COMFY_TOPIC)
+        if session is None:
+            return ToolResult(False, "Нет lab comfy сессии.")
+        entries = load_index(ctx.config)
+        max_idx = max((e.index for e in entries), default=0)
+        text = raw if raw.lower().startswith(("lora", "лора", "none", "нет")) else f"lora: {raw}"
+        indices = parse_lora_pick_reply(text, max_index=max_idx)
+        if indices is None:
+            return ToolResult(False, "Не поняла pick — пример: pick=1,2 или pick=none")
+        if session.status != "awaiting_lora_pick":
+            return ToolResult(
+                False,
+                f"Сейчас статус {session.status}, не awaiting_lora_pick. "
+                "Дождись шага «Выбор LoRA» после одобрения промпта.",
+            )
+        msg = apply_lora_pick_decision(ctx.config, session, indices)
+        return ToolResult(True, msg)
+
+
+class ComfyLoraNoteTool(Tool):
+    name = "comfy_lora_note"
+    description = (
+        "Заметки к файлу LoRA: trigger-слова, strength, tags. "
+        "lora_file=name.safetensors trigger=... strength=0.85 tags=wan,touch"
+    )
+    parameters = {
+        "lora_file": "имя файла в loras/",
+        "trigger": "слова в промпт",
+        "strength": "0.85",
+        "tags": "через запятую (для списка)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.lora import update_library_entry
+
+        strength_raw = args.get("strength")
+        strength = None
+        if strength_raw not in (None, ""):
+            try:
+                strength = float(strength_raw)
+            except (TypeError, ValueError):
+                strength = 0.85
+        ok, msg = update_library_entry(
+            ctx.config,
+            str(args.get("lora_file") or ""),
+            trigger=str(args.get("trigger") or ""),
+            strength=strength,
+            tags=str(args.get("tags") or ""),
+        )
+        return ToolResult(ok, msg)
+
+
+class ComfyLoraBindTool(Tool):
+    name = "comfy_lora_bind"
+    description = (
+        "Привязать LoRA к catalog_slug. catalog_slug=touch_self lora_file=name.safetensors "
+        "strength=0.85 trigger=... download_url=https://... replace=1 — заменить список."
+    )
+    parameters = {
+        "catalog_slug": "slug в animation_catalog",
+        "lora_file": "имя файла в models/loras/",
+        "strength": "0.85",
+        "trigger": "слова в промпт",
+        "subfolder": "подпапка в loras/",
+        "download_url": "прямая ссылка .safetensors (опционально)",
+        "replace": "1 = заменить loras у slug, не дописывать",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.lora import bind_slug
+
+        try:
+            strength = float(args.get("strength") or 0.85)
+        except (TypeError, ValueError):
+            strength = 0.85
+        replace = str(args.get("replace") or "").lower() in ("1", "true", "yes")
+        ok, msg = bind_slug(
+            ctx.config,
+            catalog_slug=str(args.get("catalog_slug") or ""),
+            lora_file=str(args.get("lora_file") or ""),
+            strength=strength,
+            trigger=str(args.get("trigger") or ""),
+            subfolder=str(args.get("subfolder") or ""),
+            download_url=str(args.get("download_url") or ""),
+            replace=replace,
+        )
+        return ToolResult(ok, msg)
+
+
+class ComfyLoraFetchTool(Tool):
+    name = "comfy_lora_fetch"
+    description = (
+        "Скачать LoRA из реестра (download_url). catalog_slug= — только для slug; "
+        "all=1 — все недостающие; force=1 — перекачать."
+    )
+    parameters = {
+        "catalog_slug": "скачать LoRA для одного slug",
+        "all": "1 = все недостающие из реестра",
+        "force": "1 = перекачать даже если файл есть",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.lora import ensure_registry, fetch_all_missing, fetch_for_slug
+
+        ensure_registry(ctx.config)
+        force = str(args.get("force") or "").lower() in ("1", "true", "yes")
+        if str(args.get("all") or "").lower() in ("1", "true", "yes"):
+            ok, msg = fetch_all_missing(ctx.config, force=force)
+            return ToolResult(ok, msg)
+        slug = str(args.get("catalog_slug") or "").strip()
+        if not slug:
+            return ToolResult(False, "Нужен catalog_slug= или all=1.")
+        ok, msg = fetch_for_slug(ctx.config, slug, force=force)
         return ToolResult(ok, msg)
 
 
