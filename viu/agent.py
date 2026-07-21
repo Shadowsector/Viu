@@ -261,6 +261,44 @@ class Agent:
 
         return effective_model(self.config, role)  # type: ignore[arg-type]
 
+    def _maybe_dump_reflect_request(
+        self,
+        *,
+        mode: str,
+        model: str,
+        temperature: float,
+        messages: List[Dict[str, str]],
+        attempt: int = 0,
+    ) -> None:
+        from .prompts.reflect_mode import (
+            reflect_dump_enabled,
+            reflect_no_system,
+            reflect_use_filters,
+            write_reflect_request_dump,
+        )
+
+        if not reflect_dump_enabled():
+            return
+        import os
+
+        llm = self.llm
+        write_reflect_request_dump(
+            self.config,
+            mode=mode,
+            model=model or "",
+            temperature=temperature,
+            messages=messages,
+            extra={
+                "attempt": attempt,
+                "base_url": getattr(llm, "base_url", ""),
+                "reflect_no_system": reflect_no_system(),
+                "reflect_filtered": reflect_use_filters(),
+                "ollama_num_ctx": os.environ.get("VIU_OLLAMA_NUM_CTX", ""),
+                "ollama_num_predict": os.environ.get("VIU_OLLAMA_NUM_PREDICT", ""),
+                "ollama_keep_alive": os.environ.get("VIU_OLLAMA_KEEP_ALIVE", ""),
+            },
+        )
+
     def run(
         self,
         task: str,
@@ -556,6 +594,8 @@ class Agent:
         )
         user_text = (task or "").strip()
 
+        from .prompts.reflect_mode import reflect_no_system
+
         if heartbeat:
             system = HEARTBEAT_SYSTEM
             user_msg = HEARTBEAT_TASK
@@ -563,14 +603,19 @@ class Agent:
             system = REFLECT_BARE_MINIMAL
             user_msg = user_text
 
-        messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
+        messages: List[Dict[str, str]] = []
+        if not (reflect_no_system() and not heartbeat):
+            messages.append({"role": "system", "content": system})
         hist = list(history or [])
         if hist and not heartbeat:
             messages.extend(hist[-16:])
         messages.append({"role": "user", "content": user_msg})
 
         reflect_model = self._model_for("reflect")
-        self._log(f"REFLECT bare hist={len(hist)} tg={int(echo_telegram)}")
+        self._log(
+            f"REFLECT bare hist={len(hist)} tg={int(echo_telegram)}"
+            f" no_sys={int(reflect_no_system())}"
+        )
 
         def _accept(text: str, thought: str = "") -> RunResult:
             result.inner_thought = thought
@@ -585,6 +630,13 @@ class Agent:
             return result
 
         for attempt in range(2):
+            self._maybe_dump_reflect_request(
+                mode="bare",
+                model=reflect_model,
+                temperature=temp,
+                messages=messages,
+                attempt=attempt,
+            )
             try:
                 raw = self.llm.complete(
                     messages, temperature=temp, model=reflect_model
@@ -657,6 +709,7 @@ class Agent:
             write_reflect_fail_snapshot,
             write_reflect_filter_snapshot,
             format_reflect_fail_message,
+            reflect_no_system,
         )
         from .situational_context import build_reflect_notes
 
@@ -711,7 +764,9 @@ class Agent:
         if use_notes:
             system += "\n\n--- Заметки и память сюжета ---\n" + notes
 
-        messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
+        messages: List[Dict[str, str]] = []
+        if not reflect_no_system():
+            messages.append({"role": "system", "content": system})
         if use_hist:
             messages.extend(hist[-16:])
         messages.append({"role": "user", "content": user_text})
@@ -778,6 +833,13 @@ class Agent:
             return result
 
         for attempt in range(4):
+            self._maybe_dump_reflect_request(
+                mode="filtered",
+                model=reflect_model or "",
+                temperature=temp,
+                messages=messages,
+                attempt=attempt,
+            )
             try:
                 raw = self.llm.complete(
                     messages, temperature=temp, model=reflect_model

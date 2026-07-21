@@ -85,6 +85,68 @@ def reflect_use_filters() -> bool:
     )
 
 
+def reflect_no_system() -> bool:
+    """Без system от Viu — только история и user (как чистый чат в Ollama UI)."""
+    return os.environ.get("VIU_REFLECT_NO_SYSTEM", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def reflect_dump_enabled() -> bool:
+    """Писать полный запрос в .viu/logs/reflect_last_request.json перед каждым вызовом."""
+    return os.environ.get("VIU_REFLECT_DUMP", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def reflect_request_log_path(config) -> Path:
+    return Path(config.data_dir) / "logs" / "reflect_last_request.json"
+
+
+def write_reflect_request_dump(
+    config,
+    *,
+    mode: str,
+    model: str,
+    temperature: float,
+    messages: Sequence[Dict[str, str]],
+    extra: Dict[str, object] | None = None,
+) -> None:
+    """Снимок messages[], как уходит в Ollama /v1/chat/completions."""
+    from datetime import datetime
+    import json
+
+    if not reflect_dump_enabled():
+        return
+    path = reflect_request_log_path(config)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload: Dict[str, object] = {
+            "time": datetime.now().isoformat(timespec="seconds"),
+            "mode": mode,
+            "model": model,
+            "temperature": temperature,
+            "message_count": len(messages),
+            "messages": list(messages),
+            "hint": (
+                "Ollama ещё подмешивает SYSTEM из Modelfile поверх messages[]. "
+                "Сравни с UI: та же модель, VIU_REFLECT_NO_SYSTEM=1, пустая история."
+            ),
+        }
+        if extra:
+            payload.update(extra)
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
 def select_reflect_system(half: str | None = None) -> str:
     if not reflect_use_filters():
         return REFLECT_BARE_MINIMAL

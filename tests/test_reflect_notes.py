@@ -52,6 +52,56 @@ def test_bare_reflect_accepts_model_reply(tmp_path):
     assert "Привет" in result.final
 
 
+def test_reflect_no_system_omits_system_message(tmp_path, monkeypatch):
+    from viu.agent import Agent
+    from viu.config import Config
+    from viu.llm.mock import MockLLM
+
+    monkeypatch.setenv("VIU_REFLECT_NO_SYSTEM", "1")
+    seen: list[list[dict]] = []
+
+    class CaptureLLM(MockLLM):
+        def complete(self, messages, *, temperature=None, model=None):
+            seen.append(list(messages))
+            return '{"thought":"ok","final":"только modelfile"}'
+
+    agent = Agent(
+        llm=CaptureLLM(),
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    result = agent.run_reflect("тест без system")
+    assert result.completed
+    assert seen
+    roles = [m["role"] for m in seen[0]]
+    assert "system" not in roles
+    assert roles == ["user"]
+
+
+def test_reflect_request_dump_writes_json(tmp_path, monkeypatch):
+    from viu.agent import Agent
+    from viu.config import Config
+    from viu.llm.mock import MockLLM
+    from viu.prompts.reflect_mode import reflect_request_log_path
+
+    monkeypatch.setenv("VIU_REFLECT_DUMP", "1")
+    monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
+
+    class OnceLLM(MockLLM):
+        def complete(self, messages, *, temperature=None, model=None):
+            return '{"thought":"ok","final":"дамп"}'
+
+    cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
+    agent = Agent(llm=OnceLLM(), config=cfg)
+    agent.run_reflect("покажи дамп")
+    path = reflect_request_log_path(cfg)
+    assert path.is_file()
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["mode"] == "bare"
+    assert data["messages"][-1]["content"] == "покажи дамп"
+
+
 def test_weak_scene_reply_detected():
     from viu.prompts.reflect_mode import is_roleplay_scene_prompt, is_weak_scene_reply
 
