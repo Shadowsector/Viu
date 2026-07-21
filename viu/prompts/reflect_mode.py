@@ -135,12 +135,23 @@ def reflect_no_system() -> bool:
     )
 
 
-def reflect_dump_enabled() -> bool:
-    return os.environ.get("VIU_REFLECT_DUMP", "0").strip().lower() in (
+def reflect_no_history() -> bool:
+    """Не передавать историю чата / story_memory в Ollama."""
+    return os.environ.get("VIU_REFLECT_NO_HISTORY", "0").strip().lower() in (
         "1",
         "true",
         "yes",
     )
+
+
+def reflect_dump_enabled() -> bool:
+    if os.environ.get("VIU_REFLECT_DUMP", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return True
+    return reflect_no_history()
 
 
 def reflect_request_log_path(config) -> Path:

@@ -81,13 +81,15 @@ class ViuGUI:
         self._boot_sha = running_sha(package_root())
         self._geometry_save_job: str | None = None
 
-        # Долгая сюжетная память → в RAM-историю чата
+        # Долгая сюжетная память → в RAM-историю чата (если не VIU_REFLECT_NO_HISTORY)
         try:
+            from .prompts.reflect_mode import reflect_no_history
             from .story_memory import ensure_logs_ingested, get_story_memory
 
             n, msg = ensure_logs_ingested(self.agent.config)
-            for turn in get_story_memory(self.agent.config).as_chat_history(limit=16):
-                self._llm_turns.append(turn)
+            if not reflect_no_history():
+                for turn in get_story_memory(self.agent.config).as_chat_history(limit=16):
+                    self._llm_turns.append(turn)
             self._story_ingest_msg = msg if n else ""
         except OSError:
             self._story_ingest_msg = ""
@@ -119,6 +121,31 @@ class ViuGUI:
                 "(или create_viu_ollama_models.bat, если тега нет).",
                 tag="sys",
             )
+        try:
+            from .prompts.reflect_mode import (
+                reflect_dump_enabled,
+                reflect_no_history,
+                reflect_no_system,
+                reflect_use_filters,
+            )
+
+            if reflect_no_history() or reflect_no_system() or reflect_use_filters():
+                bits = []
+                if reflect_no_history():
+                    bits.append("без истории")
+                if reflect_no_system():
+                    bits.append("без system от Viu")
+                if reflect_use_filters():
+                    bits.append("FILTERED=1 (старый retry)")
+                dump = "дамп reflect_last_request.json" if reflect_dump_enabled() else ""
+                self._append(
+                    "система",
+                    "Reflect отладка: " + ", ".join(bits)
+                    + (f"; {dump}" if dump else ""),
+                    tag="sys",
+                )
+        except Exception:  # noqa: BLE001
+            pass
         if getattr(self, "_story_ingest_msg", ""):
             self._append("система", self._story_ingest_msg, tag="sys")
         if removed:
@@ -1643,13 +1670,15 @@ class ViuGUI:
         self._llm_turns.append({"role": role, "content": clean[:4000]})
 
     def _run_agent_reflect(self, task: str, *, via_telegram: bool = False, heartbeat: bool = False) -> None:
+        from .prompts.reflect_mode import reflect_no_history
+
         if not via_telegram and not heartbeat:
             self._append("ты", task)
             self._record_llm_turn("user", task)
         self._set_llm_busy(True)
         self._last_via_telegram = via_telegram or heartbeat
         echo_tg = via_telegram
-        if heartbeat:
+        if heartbeat or reflect_no_history():
             history: list[dict[str, str]] = []
         else:
             hist = self._llm_history()

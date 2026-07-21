@@ -34,6 +34,10 @@ _ALWAYS_FROM_FILE = frozenset(
         "VIU_LAB_VRAM_GB",
         "VIU_REFLECT_TEMPERATURE",
         "VIU_REFLECT_PROMPT_HALF",
+        "VIU_REFLECT_DUMP",
+        "VIU_REFLECT_NO_SYSTEM",
+        "VIU_REFLECT_NO_HISTORY",
+        "VIU_REFLECT_FILTERED",
     }
 )
 

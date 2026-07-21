@@ -272,6 +272,7 @@ class Agent:
     ) -> None:
         from .prompts.reflect_mode import (
             reflect_dump_enabled,
+            reflect_no_history,
             reflect_no_system,
             reflect_use_filters,
             write_reflect_request_dump,
@@ -292,6 +293,7 @@ class Agent:
                 "attempt": attempt,
                 "base_url": getattr(llm, "base_url", ""),
                 "reflect_no_system": reflect_no_system(),
+                "reflect_no_history": reflect_no_history(),
                 "reflect_filtered": reflect_use_filters(),
                 "ollama_num_ctx": os.environ.get("VIU_OLLAMA_NUM_CTX", ""),
                 "ollama_num_predict": os.environ.get("VIU_OLLAMA_NUM_PREDICT", ""),
@@ -585,7 +587,10 @@ class Agent:
             HEARTBEAT_SYSTEM,
             HEARTBEAT_TASK,
             REFLECT_BARE_MINIMAL,
+            reflect_no_history,
+            reflect_no_system,
             reflect_temperature,
+            reflect_use_filters,
         )
 
         temp = reflect_temperature(self.config)
@@ -593,8 +598,6 @@ class Agent:
             final="", completed=False, chat_only=True, echo_telegram=echo_telegram
         )
         user_text = (task or "").strip()
-
-        from .prompts.reflect_mode import reflect_no_system
 
         if heartbeat:
             system = HEARTBEAT_SYSTEM
@@ -606,7 +609,7 @@ class Agent:
         messages: List[Dict[str, str]] = []
         if not (reflect_no_system() and not heartbeat):
             messages.append({"role": "system", "content": system})
-        hist = list(history or [])
+        hist = [] if reflect_no_history() else list(history or [])
         if hist and not heartbeat:
             messages.extend(hist[-16:])
         messages.append({"role": "user", "content": user_msg})
@@ -614,7 +617,8 @@ class Agent:
         reflect_model = self._model_for("reflect")
         self._log(
             f"REFLECT bare hist={len(hist)} tg={int(echo_telegram)}"
-            f" no_sys={int(reflect_no_system())}"
+            f" no_sys={int(reflect_no_system())} no_hist={int(reflect_no_history())}"
+            f" filtered={int(reflect_use_filters())}"
         )
 
         def _accept(text: str, thought: str = "") -> RunResult:
@@ -710,6 +714,7 @@ class Agent:
             write_reflect_filter_snapshot,
             format_reflect_fail_message,
             reflect_no_system,
+            reflect_no_history,
         )
         from .situational_context import build_reflect_notes
 
@@ -739,7 +744,9 @@ class Agent:
             story = None
 
         hist = scrub_poisoned_history(list(history or []))
-        if not greeting and len(hist) < 4 and story is not None:
+        if reflect_no_history():
+            hist = []
+        elif not greeting and len(hist) < 4 and story is not None:
             long_hist = scrub_poisoned_history(story.as_chat_history(limit=16))
             if long_hist:
                 hist = long_hist
@@ -752,7 +759,8 @@ class Agent:
         use_hist = bool(hist) and not greeting
 
         self._log(
-            f"REFLECT half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}"
+            f"REFLECT filtered half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}"
+            f" no_hist={int(reflect_no_history())} filtered=1"
             f"{' greeting' if greeting else ''}{' nsfw_q' if nsfw_q else ''}"
             f"{' bold_q' if bold_q else ''}{' scene_rp' if scene_rp else ''}: "
             f"{user_text[:120]}"

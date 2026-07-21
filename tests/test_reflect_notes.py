@@ -77,6 +77,55 @@ def test_reflect_no_system_omits_system_message(tmp_path, monkeypatch):
     assert roles == ["user"]
 
 
+def test_reflect_no_history_omits_history(tmp_path, monkeypatch):
+    from viu.agent import Agent
+    from viu.config import Config
+    from viu.llm.mock import MockLLM
+
+    monkeypatch.setenv("VIU_REFLECT_NO_HISTORY", "1")
+    seen: list[list[dict]] = []
+
+    class CaptureLLM(MockLLM):
+        def complete(self, messages, *, temperature=None, model=None):
+            seen.append(list(messages))
+            return '{"thought":"ok","final":"solo"}'
+
+    agent = Agent(
+        llm=CaptureLLM(),
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    result = agent.run_reflect(
+        "тест",
+        history=[
+            {"role": "user", "content": "старое"},
+            {"role": "assistant", "content": "старое ответ"},
+        ],
+    )
+    assert result.completed
+    roles = [m["role"] for m in seen[0]]
+    assert roles.count("user") == 1
+    assert seen[0][-1]["content"] == "тест"
+
+
+def test_reflect_no_history_auto_dump(tmp_path, monkeypatch):
+    from viu.agent import Agent
+    from viu.config import Config
+    from viu.llm.mock import MockLLM
+    from viu.prompts.reflect_mode import reflect_request_log_path
+
+    monkeypatch.setenv("VIU_REFLECT_NO_HISTORY", "1")
+    monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
+
+    class OnceLLM(MockLLM):
+        def complete(self, messages, *, temperature=None, model=None):
+            return '{"thought":"ok","final":"solo"}'
+
+    cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
+    agent = Agent(llm=OnceLLM(), config=cfg)
+    agent.run_reflect("одиночный")
+    assert reflect_request_log_path(cfg).is_file()
+
+
 def test_reflect_request_dump_writes_json(tmp_path, monkeypatch):
     from viu.agent import Agent
     from viu.config import Config
