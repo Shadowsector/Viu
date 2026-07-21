@@ -1,15 +1,8 @@
 @echo off
-rem Принудительное обновление Viu с GitHub (zip) — когда «Обновить Вью» врёт.
-chcp 65001 >nul
+rem Force-update Viu from GitHub (zip). ASCII-only for cmd.exe.
 cd /d "%~dp0"
-title Viu — force update
+title Viu force update
 set PYTHONUTF8=1
-
-echo.
-echo   Принудительное обновление Viu
-echo   Ветка: %VIU_UPDATE_BRANCH%
-echo   (по умолчанию cursor/viu-agent-core-65c2)
-echo.
 
 if not defined VIU_UPDATE_BRANCH set "VIU_UPDATE_BRANCH=cursor/viu-agent-core-65c2"
 
@@ -20,33 +13,42 @@ if /i not "%VIU_KEEP_PROXY%"=="1" (
   set "NO_PROXY=*"
 )
 
+echo.
+echo   Viu force update
+echo   Branch: %VIU_UPDATE_BRANCH%
+echo.
+
 where python >nul 2>&1
-if errorlevel 1 (
-  echo ERROR: Python не найден.
-  pause
-  exit /b 1
-)
+if errorlevel 1 goto no_python
 
 echo [1/2] bootstrap_update.py --apply
 python bootstrap_update.py --apply
-if errorlevel 1 (
-  echo bootstrap failed — пробую python -m viu update --apply --force
-  python -m viu update --apply --force
-  if errorlevel 1 (
-    echo Оба способа не сработали — см. вывод выше
-    pause
-    exit /b 1
-  )
-)
+if errorlevel 1 goto try_viu_cli
+goto pip_step
 
+:try_viu_cli
+echo [1/2] fallback: python -m viu update --apply --force
+python -m viu update --apply --force
+if errorlevel 1 goto update_failed
+
+:pip_step
 echo [2/2] pip install -e .
-python -m pip install -e . -q --proxy="" --disable-pip-version-check
-if errorlevel 1 (
-  python -m pip install -e . -q --proxy="" --no-build-isolation --disable-pip-version-check
-)
+python -m pip install -e . -q --proxy= --disable-pip-version-check
+if errorlevel 1 python -m pip install -e . -q --proxy= --no-build-isolation --disable-pip-version-check
 
 echo.
-echo Готово. Закрой все окна Вью и запусти Viu.cmd снова.
-echo Проверка: type viu\package_sha.txt
+echo Done. Close all Viu windows, then run Viu.cmd
+echo Check: type viu\package_sha.txt
 echo.
 pause
+exit /b 0
+
+:no_python
+echo ERROR: Python not found in PATH.
+pause
+exit /b 1
+
+:update_failed
+echo ERROR: update failed. See messages above.
+pause
+exit /b 1
