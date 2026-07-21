@@ -1648,6 +1648,7 @@ class ViuGUI:
             self._record_llm_turn("user", task)
         self._set_llm_busy(True)
         self._last_via_telegram = via_telegram or heartbeat
+        echo_tg = via_telegram
         if heartbeat:
             history: list[dict[str, str]] = []
         else:
@@ -1655,7 +1656,7 @@ class ViuGUI:
             history = hist[:-1] if hist and hist[-1].get("role") == "user" else hist
         threading.Thread(
             target=self._agent_worker,
-            args=(task, "reflect", history, heartbeat),
+            args=(task, "reflect", history, heartbeat, echo_tg),
             daemon=True,
         ).start()
 
@@ -1665,6 +1666,7 @@ class ViuGUI:
         mode: str,
         history: list | None = None,
         heartbeat: bool = False,
+        echo_telegram: bool = False,
     ) -> None:
         def on_step(step):
             if step.kind == "think":
@@ -1686,6 +1688,7 @@ class ViuGUI:
                     on_step=on_step,
                     history=history or [],
                     heartbeat=heartbeat,
+                    echo_telegram=echo_telegram,
                 )
             else:
                 result = self.agent.run(task, on_step=on_step)
@@ -1697,6 +1700,7 @@ class ViuGUI:
                     result.chat_only,
                     result.inner_thought,
                     not result.tool_errors,
+                    result.echo_telegram or echo_telegram,
                 )
             )
         except Exception as exc:  # noqa: BLE001
@@ -1715,6 +1719,7 @@ class ViuGUI:
                 item = self._queue.get_nowait()
                 inner_thought = ""
                 task_ok = True
+                echo_telegram = False
                 if isinstance(item, tuple) and len(item) == 2:
                     kind, text = item
                     waiting = False
@@ -1728,6 +1733,16 @@ class ViuGUI:
                     kind, text, waiting, chat_only, inner_thought = item
                 elif isinstance(item, tuple) and len(item) == 6:
                     kind, text, waiting, chat_only, inner_thought, task_ok = item
+                elif isinstance(item, tuple) and len(item) >= 7:
+                    kind, text, waiting, chat_only, inner_thought, task_ok, echo_telegram = (
+                        item[0],
+                        item[1],
+                        item[2],
+                        item[3],
+                        item[4],
+                        item[5],
+                        item[6],
+                    )
                 else:
                     continue
                 if kind == "step":
@@ -1752,7 +1767,7 @@ class ViuGUI:
                     if waiting:
                         self._telegram_waiting_reply = True
                         self._telegram_notify_question(text)
-                    elif chat_only and self._last_via_telegram:
+                    elif chat_only and (echo_telegram or self._last_via_telegram):
                         msg = ("💭 " + text) if self._heartbeat_notify else text
                         self._heartbeat_notify = False
                         self._telegram_notify_chat(msg)

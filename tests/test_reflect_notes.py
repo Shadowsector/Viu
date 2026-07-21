@@ -34,6 +34,24 @@ def test_meta_mode_reply_rejected():
     assert any("мета" in i for i in issues)
 
 
+def test_bare_reflect_accepts_model_reply(tmp_path):
+    from viu.agent import Agent
+    from viu.config import Config
+    from viu.llm.mock import MockLLM
+
+    class OnceLLM(MockLLM):
+        def complete(self, messages, *, temperature=None, model=None):
+            return '{"thought":"ok","final":"Привет, Ден — я здесь."}'
+
+    agent = Agent(
+        llm=OnceLLM(),
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    result = agent.run_reflect("привет")
+    assert result.completed
+    assert "Привет" in result.final
+
+
 def test_weak_scene_reply_detected():
     from viu.prompts.reflect_mode import is_roleplay_scene_prompt, is_weak_scene_reply
 

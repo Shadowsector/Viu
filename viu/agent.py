@@ -226,6 +226,7 @@ class RunResult:
     chat_only: bool = False
     inner_thought: str = ""
     tool_errors: bool = False
+    echo_telegram: bool = False
 
 
 class Agent:
@@ -512,8 +513,128 @@ class Agent:
         *,
         history: Optional[List[Dict[str, str]]] = None,
         heartbeat: bool = False,
+        echo_telegram: bool = False,
     ) -> RunResult:
-        """Один проход чата: thought + final. Без инструментов."""
+        """Чат: по умолчанию без фильтров (VIU_REFLECT_FILTERED=1 — старый режим)."""
+        from .prompts.reflect_mode import reflect_use_filters
+
+        if not reflect_use_filters():
+            return self._run_reflect_bare(
+                task,
+                on_step,
+                history=history,
+                heartbeat=heartbeat,
+                echo_telegram=echo_telegram,
+            )
+        return self._run_reflect_filtered(
+            task,
+            on_step,
+            history=history,
+            heartbeat=heartbeat,
+            echo_telegram=echo_telegram,
+        )
+
+    def _run_reflect_bare(
+        self,
+        task: str,
+        on_step=None,
+        *,
+        history: Optional[List[Dict[str, str]]] = None,
+        heartbeat: bool = False,
+        echo_telegram: bool = False,
+    ) -> RunResult:
+        from .prompts.reflect_mode import (
+            HEARTBEAT_SYSTEM,
+            HEARTBEAT_TASK,
+            REFLECT_BARE_MINIMAL,
+            reflect_temperature,
+        )
+
+        temp = reflect_temperature(self.config)
+        result = RunResult(
+            final="", completed=False, chat_only=True, echo_telegram=echo_telegram
+        )
+        user_text = (task or "").strip()
+
+        if heartbeat:
+            system = HEARTBEAT_SYSTEM
+            user_msg = HEARTBEAT_TASK
+        else:
+            system = REFLECT_BARE_MINIMAL
+            user_msg = user_text
+
+        messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
+        hist = list(history or [])
+        if hist and not heartbeat:
+            messages.extend(hist[-16:])
+        messages.append({"role": "user", "content": user_msg})
+
+        reflect_model = self._model_for("reflect")
+        self._log(f"REFLECT bare hist={len(hist)} tg={int(echo_telegram)}")
+
+        def _accept(text: str, thought: str = "") -> RunResult:
+            result.inner_thought = thought
+            result.final = text
+            result.completed = True
+            if thought and on_step:
+                on_step(Step(kind="think", thought=thought))
+            step = Step(kind="final", thought=thought, observation=text)
+            result.steps.append(step)
+            if on_step:
+                on_step(step)
+            return result
+
+        for attempt in range(2):
+            try:
+                raw = self.llm.complete(
+                    messages, temperature=temp, model=reflect_model
+                )
+            except RuntimeError as exc:
+                result.final = f"Не достучалась до модели: {exc}"
+                result.completed = True
+                return result
+            text, thought, truncated, _parsed = parse_reflect_response(raw)
+            if text and not truncated:
+                return _accept(text, thought or "")
+            if text and truncated and attempt == 1:
+                salvaged = salvage_partial_final(raw)
+                if salvaged:
+                    return _accept(salvaged, "salvage")
+                return _accept(text, thought or "")
+            if truncated:
+                messages.append({"role": "assistant", "content": raw or ""})
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": 'JSON оборвался — короче: {"thought":"…","final":"…"}',
+                    }
+                )
+                continue
+            if raw and raw.strip():
+                plain = raw.strip()[:4000]
+                return _accept(plain, "")
+            messages.append({"role": "assistant", "content": raw or "{}"})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": '{"thought":"…","final":"ответ Дену"}',
+                }
+            )
+
+        result.final = "Пустой ответ модели — попробуй ещё раз."
+        result.completed = True
+        return result
+
+    def _run_reflect_filtered(
+        self,
+        task: str,
+        on_step=None,
+        *,
+        history: Optional[List[Dict[str, str]]] = None,
+        heartbeat: bool = False,
+        echo_telegram: bool = False,
+    ) -> RunResult:
+        """Старый reflect с фильтрами тона (VIU_REFLECT_FILTERED=1)."""
         from .prompts.reflect_mode import (
             BOLD_MOCAP_FALLBACK,
             NSFW_AFFIRM_FALLBACK,
@@ -540,7 +661,9 @@ class Agent:
         from .situational_context import build_reflect_notes
 
         temp = reflect_temperature(self.config)
-        result = RunResult(final="", completed=False, chat_only=True)
+        result = RunResult(
+            final="", completed=False, chat_only=True, echo_telegram=echo_telegram
+        )
 
         if heartbeat:
             notes = build_reflect_notes(self.config)

@@ -72,7 +72,22 @@ def reflect_prompt_half() -> str:
     return "bare"
 
 
+REFLECT_BARE_MINIMAL = """Ты — Вью. Тёплая, озорная девушка рядом с Деном. Русский, «ты», женский род.
+Ответ одним JSON: {"thought":"…","final":"…"} — Дену только текст из final."""
+
+
+def reflect_use_filters() -> bool:
+    """Старые фильтры тона — только если VIU_REFLECT_FILTERED=1 в .env."""
+    return os.environ.get("VIU_REFLECT_FILTERED", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 def select_reflect_system(half: str | None = None) -> str:
+    if not reflect_use_filters():
+        return REFLECT_BARE_MINIMAL
     return REFLECT_VOICE
 
 
