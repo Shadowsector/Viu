@@ -81,15 +81,11 @@ class ViuGUI:
         self._boot_sha = running_sha(package_root())
         self._geometry_save_job: str | None = None
 
-        # Долгая сюжетная память → в RAM-историю чата (если не VIU_REFLECT_NO_HISTORY)
+        # story_memory: только ingest логов, без заливки в reflect-историю
         try:
-            from .prompts.reflect_mode import reflect_no_history
-            from .story_memory import ensure_logs_ingested, get_story_memory
+            from .story_memory import ensure_logs_ingested
 
             n, msg = ensure_logs_ingested(self.agent.config)
-            if not reflect_no_history():
-                for turn in get_story_memory(self.agent.config).as_chat_history(limit=16):
-                    self._llm_turns.append(turn)
             self._story_ingest_msg = msg if n else ""
         except OSError:
             self._story_ingest_msg = ""
@@ -124,24 +120,35 @@ class ViuGUI:
         try:
             from .prompts.reflect_mode import (
                 reflect_dump_enabled,
+                reflect_include_story_history,
                 reflect_no_history,
                 reflect_no_system,
                 reflect_use_filters,
             )
 
-            if reflect_no_history() or reflect_no_system() or reflect_use_filters():
+            if any(
+                (
+                    reflect_no_history(),
+                    reflect_use_filters(),
+                    reflect_include_story_history(),
+                    reflect_dump_enabled(),
+                    not reflect_no_system(),
+                )
+            ):
                 bits = []
                 if reflect_no_history():
-                    bits.append("без истории")
-                if reflect_no_system():
-                    bits.append("без system от Viu")
+                    bits.append("без истории (отладка)")
+                if not reflect_no_system():
+                    bits.append("system от Viu")
                 if reflect_use_filters():
                     bits.append("FILTERED=1 (старый retry)")
-                dump = "дамп reflect_last_request.json" if reflect_dump_enabled() else ""
+                if reflect_include_story_history():
+                    bits.append("story_memory в чат")
+                if reflect_dump_enabled():
+                    bits.append("дамп reflect_last_request.json")
                 self._append(
                     "система",
-                    "Reflect отладка: " + ", ".join(bits)
-                    + (f"; {dump}" if dump else ""),
+                    "Reflect отладка: " + ", ".join(bits),
                     tag="sys",
                 )
         except Exception:  # noqa: BLE001

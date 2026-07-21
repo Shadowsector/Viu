@@ -114,6 +114,7 @@ def test_reflect_no_history_auto_dump(tmp_path, monkeypatch):
     from viu.prompts.reflect_mode import reflect_request_log_path
 
     monkeypatch.setenv("VIU_REFLECT_NO_HISTORY", "1")
+    monkeypatch.setenv("VIU_REFLECT_DUMP", "1")
     monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
 
     class OnceLLM(MockLLM):
@@ -124,6 +125,19 @@ def test_reflect_no_history_auto_dump(tmp_path, monkeypatch):
     agent = Agent(llm=OnceLLM(), config=cfg)
     agent.run_reflect("одиночный")
     assert reflect_request_log_path(cfg).is_file()
+
+
+def test_reflect_no_system_default_on():
+    from viu.prompts.reflect_mode import reflect_no_system
+
+    assert reflect_no_system() is True
+
+
+def test_reflect_no_system_explicit_off(monkeypatch):
+    from viu.prompts.reflect_mode import reflect_no_system
+
+    monkeypatch.setenv("VIU_REFLECT_NO_SYSTEM", "0")
+    assert reflect_no_system() is False
 
 
 def test_reflect_request_dump_writes_json(tmp_path, monkeypatch):

@@ -587,6 +587,7 @@ class Agent:
             HEARTBEAT_SYSTEM,
             HEARTBEAT_TASK,
             REFLECT_BARE_MINIMAL,
+            reflect_include_story_history,
             reflect_no_history,
             reflect_no_system,
             reflect_temperature,
@@ -610,6 +611,20 @@ class Agent:
         if not (reflect_no_system() and not heartbeat):
             messages.append({"role": "system", "content": system})
         hist = [] if reflect_no_history() else list(history or [])
+        if (
+            not reflect_no_history()
+            and reflect_include_story_history()
+            and not heartbeat
+            and len(hist) < 4
+        ):
+            try:
+                from .story_memory import get_story_memory
+
+                long_hist = get_story_memory(self.config).as_chat_history(limit=16)
+                if long_hist:
+                    hist = long_hist
+            except OSError:
+                pass
         if hist and not heartbeat:
             messages.extend(hist[-16:])
         messages.append({"role": "user", "content": user_msg})
@@ -631,6 +646,15 @@ class Agent:
             result.steps.append(step)
             if on_step:
                 on_step(step)
+            if not heartbeat and user_text:
+                try:
+                    from .story_memory import get_story_memory
+
+                    get_story_memory(self.config).add_exchange(
+                        user_text, text, source="chat", tags=["dialog"]
+                    )
+                except OSError:
+                    pass
             return result
 
         for attempt in range(2):
@@ -713,6 +737,7 @@ class Agent:
             write_reflect_fail_snapshot,
             write_reflect_filter_snapshot,
             format_reflect_fail_message,
+            reflect_include_story_history,
             reflect_no_system,
             reflect_no_history,
         )
@@ -746,7 +771,12 @@ class Agent:
         hist = scrub_poisoned_history(list(history or []))
         if reflect_no_history():
             hist = []
-        elif not greeting and len(hist) < 4 and story is not None:
+        elif (
+            reflect_include_story_history()
+            and not greeting
+            and len(hist) < 4
+            and story is not None
+        ):
             long_hist = scrub_poisoned_history(story.as_chat_history(limit=16))
             if long_hist:
                 hist = long_hist

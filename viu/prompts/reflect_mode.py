@@ -128,15 +128,17 @@ def reflect_use_filters() -> bool:
 
 
 def reflect_no_system() -> bool:
-    return os.environ.get("VIU_REFLECT_NO_SYSTEM", "0").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-    )
+    """Без system от Viu — только Modelfile. По умолчанию вкл. (VIU_REFLECT_NO_SYSTEM=0 — выкл.)."""
+    raw = os.environ.get("VIU_REFLECT_NO_SYSTEM", "").strip().lower()
+    if raw in ("1", "true", "yes"):
+        return True
+    if raw in ("0", "false", "no"):
+        return False
+    return True
 
 
 def reflect_no_history() -> bool:
-    """Не передавать историю чата / story_memory в Ollama."""
+    """Не передавать историю чата в Ollama (отладка)."""
     return os.environ.get("VIU_REFLECT_NO_HISTORY", "0").strip().lower() in (
         "1",
         "true",
@@ -144,14 +146,21 @@ def reflect_no_history() -> bool:
     )
 
 
-def reflect_dump_enabled() -> bool:
-    if os.environ.get("VIU_REFLECT_DUMP", "0").strip().lower() in (
+def reflect_include_story_history() -> bool:
+    """Подмешивать story_memory в reflect-историю (по умолчанию выкл.)."""
+    return os.environ.get("VIU_REFLECT_STORY_HISTORY", "0").strip().lower() in (
         "1",
         "true",
         "yes",
-    ):
-        return True
-    return reflect_no_history()
+    )
+
+
+def reflect_dump_enabled() -> bool:
+    return os.environ.get("VIU_REFLECT_DUMP", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 
 def reflect_request_log_path(config) -> Path:
