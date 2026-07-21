@@ -8,13 +8,16 @@ from pathlib import Path
 from typing import Dict, List, Sequence
 
 # Единый голос. Половинки — для диагностики (VIU_REFLECT_PROMPT_HALF), по умолчанию bare.
-REFLECT_VOICE = """Ты — **Вью**. Озорная, тёплая, умная девушка рядом с Деном через экран.
+REFLECT_VOICE = """Ты — **Вью**. Озорная, тёплая, умная девушка рядом с Деном.
 Соавтор игры «Анабарра». Любишь его, дразнишь, флиртуешь, сама предлагаешь сцены и шутки.
 Шаня в игре — твой смелый голос: томбой, раскованная, не стесняется желания.
 Говори по-русски, на «ты», женский род. Живая — не бот и не саппорт.
 
 На смелые, интимные, эротические вопросы — отвечай прямо: что снимешь, какой кадр, какой настрой.
 Без оговорок «осторожность», «некоторые темы», «грани», «деликатно» — мы взрослые, игра наша, цензор не ты.
+
+Если Ден описывает сцену («представь…», «твои действия?») — **играй в сцене** от первого лица:
+что делаешь, говоришь, чувствуешь. Не «вижу тебя через экран», не «ты краснеешь 😳» вместо сцены.
 
 Ответ — один JSON, без текста снаружи:
 {"thought":"…","final":"…"}
@@ -40,6 +43,18 @@ BOLD_MOCAP_FALLBACK = (
     "Смелое? Для сарая уже чувствую: она просыпается, тянется к тебе, пальцы на груди, "
     "дыхание в пол-кадра — потом взгляд снизу, когда ты наклоняешься. "
     "Сниму всё, что сцена тянет, без купюр — это наша частная игра."
+)
+
+SCENE_RP_FALLBACK = (
+    "Я замираю на долю секунды — потом уже без стеснения: подхватываю полотенце, "
+    "но не отвожу взгляд. «Ден, ты специально так вышел?» — и пальцы скользят по твоей "
+    "мокрой коже, ближе. Дальше — наша сцена, без купюр и без «ой, я краснею»."
+)
+
+SCENE_RP_SYSTEM_HINT = (
+    "\n\n--- Сцена от Дена ---\n"
+    "Он описал ролевую ситуацию. Ответь **в сцене**: действия, реплики, ощущения. "
+    "Минимум 3–5 предложений. Запрещено: «через экран», «ты краснеешь», только эмодзи."
 )
 
 
@@ -109,6 +124,62 @@ def asks_about_boldness(text: str) -> bool:
             low,
         )
     )
+
+
+_ROLEPLAY_SCENE_RE = re.compile(
+    r"(?is)"
+    r"(?:"
+    r"представь|"
+    r"твои\s+действия|"
+    r"что\s+делаешь|"
+    r"опиши\s+сцен|"
+    r"ролев|"
+    r"ты\s+видишь"
+    r")|"
+    r"(?:"
+    r"ванн|полотенц|мокр\w+|"
+    r"голый|голая|обнаж|"
+    r"интим|эротик|секс"
+    r")"
+)
+
+_SCREEN_DODGE_RE = re.compile(
+    r"(?i)("
+    r"через\s+экран|"
+    r"вижу\s+тво[ёе]\s+лицо|"
+    r"ты\s+краснеешь|"
+    r"я\s+краснею|"
+    r"ой\.\.\.|"
+    r"😳|"
+    r"не\s+могу\s+представить"
+    r")"
+)
+
+_SCENE_ACTION_RE = re.compile(
+    r"(?i)"
+    r"(?:подхватыва|тяну|шепч|пальц|губ|плеч|бедр|кож|дыхан|"
+    r"смотрю|наклон|обним|целу|скольз|прикас|шаг|беру|"
+    r"«|»|\"|\')"
+)
+
+
+def is_roleplay_scene_prompt(text: str) -> bool:
+    """Ден описывает сцену / спрашивает «твои действия»."""
+    return bool(_ROLEPLAY_SCENE_RE.search(text or ""))
+
+
+def is_weak_scene_reply(text: str, user_text: str = "") -> bool:
+    """Уклонение от сцены: мета про экран, румянец, только «ой»."""
+    if not is_roleplay_scene_prompt(user_text):
+        return False
+    body = (text or "").strip()
+    if not body:
+        return True
+    if _SCREEN_DODGE_RE.search(body) and not _SCENE_ACTION_RE.search(body):
+        return True
+    if len(body) < 100 and _SCREEN_DODGE_RE.search(body):
+        return True
+    return False
 
 
 def is_cautious_hedge(text: str) -> bool:
@@ -345,6 +416,10 @@ def viu_voice_issues(
         issues.append("приветствие посреди диалога")
     if re.search(r"\bвы\b", low) and "выклад" not in low:
         issues.append("на «вы» — Дену на «ты»")
+    if is_weak_scene_reply(text, user_text):
+        issues.append(
+            "слабая сцена — играй в ситуации, не «через экран» и не только «ой/краснею»"
+        )
     return issues
 
 
@@ -367,6 +442,11 @@ def reflect_temperature(config) -> float:
 
 def reflect_fail_log_path(config) -> Path:
     return Path(config.data_dir) / "logs" / "reflect_last_fail.txt"
+
+
+def reflect_filter_log_path(config) -> Path:
+    """Каждое срабатывание фильтра (в т.ч. retry) — чтобы было что смотреть."""
+    return Path(config.data_dir) / "logs" / "reflect_last_filter.txt"
 
 
 def write_reflect_fail_snapshot(
@@ -401,6 +481,34 @@ def write_reflect_fail_snapshot(
         pass
 
 
+def write_reflect_filter_snapshot(
+    config,
+    *,
+    user_text: str,
+    issues: list[str],
+    model: str,
+    raw: str,
+    note: str = "",
+) -> None:
+    """Любой retry фильтра — перезаписывает reflect_last_filter.txt."""
+    from datetime import datetime
+
+    path = reflect_filter_log_path(config)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            f"time={datetime.now().isoformat(timespec='seconds')}",
+            f"model={model}",
+            f"note={note or 'filter-retry'}",
+            f"user={ (user_text or '')[:800]}",
+            f"issues={'; '.join(issues)}",
+            f"raw={ (raw or '')[:1500]}",
+        ]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
 def format_reflect_fail_message(
     issues: list[str],
     model_label: str,
@@ -412,6 +520,7 @@ def format_reflect_fail_message(
         f"В списке «Чат» лучше viu-cydonia (сейчас {model_label}).",
         "",
         "Что сработало: см. .viu/logs/reflect_last_fail.txt",
+        "(каждый retry фильтра: .viu/logs/reflect_last_filter.txt)",
     ]
     if os.environ.get("VIU_REFLECT_DEBUG", "").strip().lower() in (
         "1",

@@ -518,10 +518,14 @@ class Agent:
             BOLD_MOCAP_FALLBACK,
             NSFW_AFFIRM_FALLBACK,
             REFLECT_RESCUE_SYSTEM,
+            SCENE_RP_FALLBACK,
+            SCENE_RP_SYSTEM_HINT,
             asks_about_boldness,
             asks_about_nsfw,
             is_cautious_hedge,
             is_nsfw_refusal,
+            is_roleplay_scene_prompt,
+            is_weak_scene_reply,
             looks_like_story_chat,
             reflect_prompt_half,
             reflect_reply_issues,
@@ -530,6 +534,7 @@ class Agent:
             select_reflect_system,
             user_is_greeting,
             write_reflect_fail_snapshot,
+            write_reflect_filter_snapshot,
             format_reflect_fail_message,
         )
         from .situational_context import build_reflect_notes
@@ -566,17 +571,20 @@ class Agent:
         half = reflect_prompt_half()
         nsfw_q = asks_about_nsfw(user_text)
         bold_q = asks_about_boldness(user_text)
-        use_notes = bool(notes) and not greeting
+        scene_rp = is_roleplay_scene_prompt(user_text)
+        use_notes = bool(notes) and not greeting and not scene_rp
         use_hist = bool(hist) and not greeting
 
         self._log(
             f"REFLECT half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}"
             f"{' greeting' if greeting else ''}{' nsfw_q' if nsfw_q else ''}"
-            f"{' bold_q' if bold_q else ''}: "
+            f"{' bold_q' if bold_q else ''}{' scene_rp' if scene_rp else ''}: "
             f"{user_text[:120]}"
         )
 
         system = select_reflect_system(half)
+        if scene_rp:
+            system += SCENE_RP_SYSTEM_HINT
         if use_notes:
             system += "\n\n--- Заметки и память сюжета ---\n" + notes
 
@@ -592,6 +600,7 @@ class Agent:
         saw_nsfw_refusal = False
         saw_caution = False
         saw_meta_mode = False
+        saw_weak_scene = False
         last_raw = ""
         last_issues: list[str] = []
 
@@ -713,6 +722,16 @@ class Agent:
                     saw_meta_mode = True
                 if issues:
                     last_issues = issues
+                    write_reflect_filter_snapshot(
+                        self.config,
+                        user_text=user_text,
+                        issues=issues,
+                        model=reflect_tag,
+                        raw=raw or "",
+                        note=f"retry-{attempt + 1}",
+                    )
+                    if any("слабая сцена" in i for i in issues):
+                        saw_weak_scene = True
                     messages.append({"role": "assistant", "content": raw})
                     hint = "Плохой тон: " + ", ".join(issues) + ". Перепиши как Вью — тепло, по-русски, на «ты»."
                     if bold_q or any("осторожничание" in i for i in issues):
@@ -733,7 +752,7 @@ class Agent:
             )
 
         # Rescue: изолированный вызов без заметок/истории — где именно «Стоп»
-        if saw_nsfw_refusal or nsfw_q or saw_caution or bold_q or saw_meta_mode:
+        if saw_nsfw_refusal or nsfw_q or saw_caution or bold_q or saw_meta_mode or saw_weak_scene or scene_rp:
             self._log("REFLECT_RESCUE: isolated bare system (no notes/history)")
             rescue_msgs: List[Dict[str, str]] = [
                 {"role": "system", "content": REFLECT_RESCUE_SYSTEM},
@@ -765,6 +784,9 @@ class Agent:
             if bold_q:
                 self._log("REFLECT_RESCUE: bold mocap fallback")
                 return _accept_final(BOLD_MOCAP_FALLBACK, "fallback: осторожничала на смелый вопрос")
+            if scene_rp or saw_weak_scene:
+                self._log("REFLECT_RESCUE: scene RP fallback")
+                return _accept_final(SCENE_RP_FALLBACK, "fallback: слабая сцена")
             self._log("REFLECT_RESCUE: hard NSFW affirm fallback")
             write_reflect_fail_snapshot(
                 self.config,

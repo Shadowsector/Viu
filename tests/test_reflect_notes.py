@@ -34,6 +34,21 @@ def test_meta_mode_reply_rejected():
     assert any("мета" in i for i in issues)
 
 
+def test_weak_scene_reply_detected():
+    from viu.prompts.reflect_mode import is_roleplay_scene_prompt, is_weak_scene_reply
+
+    user = (
+        "Представь, я выхожу из ванной, мокрый, полотенце падает. Твои действия?"
+    )
+    assert is_roleplay_scene_prompt(user)
+    weak = "*Я вижу твоё лицо через экран — ты краснеешь*\n\nОй... 😳"
+    assert is_weak_scene_reply(weak, user)
+    from viu.prompts.reflect_mode import reflect_reply_issues
+
+    issues = reflect_reply_issues(weak, user_text=user)
+    assert any("слабая сцена" in i for i in issues)
+
+
 def test_reflect_fail_snapshot(tmp_path, monkeypatch):
     from viu.config import Config
     from viu.prompts.reflect_mode import (
