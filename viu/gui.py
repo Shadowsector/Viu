@@ -405,11 +405,11 @@ class ViuGUI:
         frame.pack(side="left", fill="y", padx=(0, 0))
         frame.pack_propagate(False)
 
-        header = ttk.Label(frame, text="Скрипты", font=("Segoe UI", 11, "bold"))
+        header = ttk.Label(frame, text="Действия", font=("Segoe UI", 11, "bold"))
         header.pack(anchor="w", padx=10, pady=(10, 2))
         ttk.Label(
             frame,
-            text="Заскриптованные кнопки — без «мышления» чата.",
+            text="Сверху — каждый день. Ниже — существа, анимации, сцены.",
             wraplength=240,
             justify="left",
             font=("Segoe UI", 8),

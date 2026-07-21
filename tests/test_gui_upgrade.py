@@ -13,10 +13,13 @@ from viu.updater import find_git_root, package_root, version_label
 
 def test_gui_actions_grouped():
     grouped = actions_by_group()
-    assert "Главное" in grouped
+    assert "Каждый день" in grouped
+    assert "Существа" in grouped
     assert "Редко" in grouped
-    assert ACTION_GROUPS == ["Главное", "Редко"]
-    # Минимум кнопок — не стена из 30 пунктов
+    assert ACTION_GROUPS == ["Каждый день", "Существа", "Анимации", "Сцены", "Редко"]
+    assert len(grouped["Каждый день"]) <= 5
+    assert len(grouped["Существа"]) <= 6
+    # Минимум кнопок — не стена из 30 пунктов в одной группе
     assert len(GUI_ACTIONS) <= 32
     assert any(a.action_id == "next_step" and a.tool == "__next_step__" for a in GUI_ACTIONS)
     assert any(a.action_id == "unity_overlay" and a.tool == "unity_overlay" for a in GUI_ACTIONS)
