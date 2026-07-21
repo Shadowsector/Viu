@@ -17,7 +17,7 @@ CAPABILITY_BRIEF = """
 
 Пайплайн цели:
 **Comfy (видео-референс) → Cascadeur (MoCap / чистка) → Animations/ → Unity.**
-Параллельно: Mixamo FBX → Inbox → каталог → Animator.
+Параллельно: Mixamo FBX или OSS/Mesh2Motion (`animation_oss_fetch`) → Inbox → каталог → Animator.
 
 ### Могу сама (инструменты / lab)
 - **Comfy:** `comfy_mocap` / `comfy_triple` / `comfy_clip_pick` — промпт, 3 ракурса, kept mp4 в `Lab/Refs`.

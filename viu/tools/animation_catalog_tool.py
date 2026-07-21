@@ -119,6 +119,82 @@ class AcceptAnimationInboxTool(Tool):
         return ToolResult(report.ok, body)
 
 
+class AnimationOssBootstrapTool(Tool):
+    name = "animation_oss_bootstrap"
+    description = (
+        "Скачать CC0-пакеты Mesh2Motion (GLB/Blend) в Animations/OSS/ "
+        "и создать реестр .viu/oss_animations.json."
+    )
+    parameters: Dict[str, Any] = {}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..animation_catalog.oss_library import bootstrap_sources, ensure_registry
+
+        ensure_registry(ctx.config)
+        n, lines = bootstrap_sources(ctx.config)
+        body = f"Bootstrap: {n} файл(ов).\n" + "\n".join(lines)
+        return ToolResult(n > 0, body)
+
+
+class AnimationOssStatusTool(Tool):
+    name = "animation_oss_status"
+    description = "Дыры каталога vs локальные OSS FBX (Mesh2Motion)."
+    parameters: Dict[str, Any] = {}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..animation_catalog.oss_library import ensure_registry, status_text
+
+        ensure_registry(ctx.config)
+        return ToolResult(True, status_text(ctx.config))
+
+
+class AnimationOssFetchTool(Tool):
+    name = "animation_oss_fetch"
+    description = (
+        "OSS FBX → Inbox (имя как Mixamo). slug= или auto=1; accept=1 — сразу принять Inbox."
+    )
+    parameters = {
+        "slug": "slug каталога (walk, sit_idle, …)",
+        "auto": "1 = первая дыра с готовым OSS-файлом",
+        "accept": "1 = после копирования вызвать accept_animation_inbox",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..animation_catalog.oss_library import ensure_registry, fetch_auto, fetch_to_inbox
+
+        ensure_registry(ctx.config)
+        accept = str(args.get("accept", "0")).lower() in ("1", "true", "yes")
+        slug = str(args.get("slug") or "").strip()
+        auto = str(args.get("auto", "0")).lower() in ("1", "true", "yes")
+        if auto:
+            ok, msg = fetch_auto(ctx.config, accept=accept)
+            return ToolResult(ok, msg)
+        if not slug:
+            return ToolResult(
+                False,
+                "Укажи slug=walk или auto=1. Статус: animation_oss_status",
+            )
+        ok, msg = fetch_to_inbox(ctx.config, slug, accept=accept)
+        return ToolResult(ok, msg)
+
+
+class AnimationOssPrepareTool(Tool):
+    name = "animation_oss_prepare"
+    description = "Скопировать готовые OSS FBX в Animations/OSS/_export с именами Mixamo."
+    parameters = {"wave": "макс. wave каталога (по умолчанию 1)"}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..animation_catalog.oss_library import ensure_registry, prepare_exports
+
+        ensure_registry(ctx.config)
+        try:
+            wave = int(args.get("wave") or 1)
+        except (TypeError, ValueError):
+            wave = 1
+        n, lines = prepare_exports(ctx.config, wave=max(1, wave))
+        return ToolResult(n > 0, "\n".join(lines))
+
+
 class RouteInboxTool(Tool):
     name = "route_inbox"
     description = (

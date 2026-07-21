@@ -12,7 +12,15 @@ from .models import (
     normalize_scope,
     scope_save_warning,
 )
-from .paths import animation_catalog_path, animation_staging_dir
+from .paths import animation_catalog_path, animation_staging_dir, oss_animations_dir
+from .oss_library import (
+    bootstrap_sources,
+    ensure_registry,
+    fetch_auto,
+    fetch_to_inbox,
+    prepare_exports,
+    status_text,
+)
 from .review_gui import open_animation_review
 from .store import AnimationCatalogStore
 
@@ -28,6 +36,13 @@ __all__ = [
     "all_category_ids",
     "animation_catalog_path",
     "animation_staging_dir",
+    "oss_animations_dir",
+    "bootstrap_sources",
+    "ensure_registry",
+    "fetch_auto",
+    "fetch_to_inbox",
+    "prepare_exports",
+    "status_text",
     "category_label",
     "match_fbx_to_wish",
     "open_animation_review",

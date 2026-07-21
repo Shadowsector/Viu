@@ -1,0 +1,19 @@
+{
+  "_viu_rev": 1,
+  "_note": "Локальные FBX: Anabarra/Animations/OSS/{file}. bootstrap качает GLB/Blend из Mesh2Motion.",
+  "bootstrap": {
+    "human-base-animations.glb": {
+      "url": "https://raw.githubusercontent.com/Mesh2Motion/mesh2motion-app/main/static/animations/human-base-animations.glb",
+      "dest": "_mesh2motion/human-base-animations.glb"
+    },
+    "human-addon-animations.glb": {
+      "url": "https://raw.githubusercontent.com/Mesh2Motion/mesh2motion-app/main/static/animations/human-addon-animations.glb",
+      "dest": "_mesh2motion/human-addon-animations.glb"
+    },
+    "quaternius-human-packs.blend": {
+      "url": "https://raw.githubusercontent.com/Mesh2Motion/mesh2motion-assets/main/CC0-packs/Quaternius/Quaternius-human-packs.blend",
+      "dest": "_sources/quaternius-human-packs.blend"
+    }
+  },
+  "by_slug": {}
+}

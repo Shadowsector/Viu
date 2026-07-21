@@ -81,6 +81,10 @@ from .animation_catalog_tool import (
     AcceptAnimationInboxTool,
     AnimationCatalogMatchTool,
     AnimationCatalogShowTool,
+    AnimationOssBootstrapTool,
+    AnimationOssFetchTool,
+    AnimationOssPrepareTool,
+    AnimationOssStatusTool,
     RouteInboxTool,
 )
 from .presence_tool import (
@@ -172,6 +176,10 @@ def build_default_registry() -> ToolRegistry:
         AcceptAnimationInboxTool(),
         AnimationCatalogShowTool(),
         AnimationCatalogMatchTool(),
+        AnimationOssBootstrapTool(),
+        AnimationOssStatusTool(),
+        AnimationOssFetchTool(),
+        AnimationOssPrepareTool(),
         RouteInboxTool(),
         RoadmapShowTool(),
         RoadmapUpdateTool(),

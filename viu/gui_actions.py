@@ -114,6 +114,28 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Описать новые FBX-анимации.",
     ),
     GuiAction(
+        "animation_oss_bootstrap",
+        "OSS: Mesh2Motion пакеты",
+        "Редко",
+        tool="animation_oss_bootstrap",
+        hint="Скачать GLB/Blend в Animations/OSS. Потом экспорт FBX с mesh2motion.org.",
+    ),
+    GuiAction(
+        "animation_oss_fetch",
+        "OSS: в Inbox (авто)",
+        "Редко",
+        tool="animation_oss_fetch",
+        tool_args={"auto": "1", "accept": "1"},
+        hint="Первая дыра wave 1 с локальным FBX → Inbox → Unity. Файлы: Animations/OSS/{slug}.fbx",
+    ),
+    GuiAction(
+        "animation_oss_status",
+        "OSS: статус дыр",
+        "Редко",
+        tool="animation_oss_status",
+        hint="Какие slug есть в OSS и чего не хватает.",
+    ),
+    GuiAction(
         "unity_apply",
         "Обновить аниматор",
         "Редко",

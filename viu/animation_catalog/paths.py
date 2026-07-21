@@ -20,3 +20,10 @@ def animation_staging_dir(config: Config) -> Path:
     from ..anabarra_layout import anabarra_root
 
     return anabarra_root(config) / "Animations"
+
+
+def oss_animations_dir(config: Config) -> Path:
+    """Локальная OSS-библиотека (Mesh2Motion FBX + bootstrap)."""
+    p = animation_staging_dir(config) / "OSS"
+    p.mkdir(parents=True, exist_ok=True)
+    return p

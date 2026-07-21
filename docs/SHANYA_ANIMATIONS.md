@@ -85,6 +85,16 @@ Comfy-режиссёр сначала закрывает transition wave 1 с г
 
 **По одной анимации** — так ты не забудешь, что скачал.
 
+### OSS / Mesh2Motion (без Mixamo)
+
+Альтернатива ручному mixamo.com — open-source [Mesh2Motion](https://mesh2motion.org/) (CC0).
+
+1. **«OSS: Mesh2Motion пакеты»** или `animation_oss_bootstrap` — GLB/Blend в `U:\Anabarra\Animations\OSS\`
+2. Экспорт FBX с mesh2motion.org → положи как `{slug}.fbx` (напр. `walk.fbx`, `sit_idle.fbx`)
+3. **«OSS: в Inbox (авто)»** или `animation_oss_fetch auto=1 accept=1` — первая дыра wave 1 → Inbox → Unity
+
+Статус дыр: `animation_oss_status`. Mixamo для overlay/walk Шани пока эталон — OSS клипы проверяй стопы в Unity.
+
 ## Scope (кому клип)
 
 | Scope | Шаня | NPC-девушки | Когда выбирать |
