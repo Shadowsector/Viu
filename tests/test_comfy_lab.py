@@ -84,7 +84,7 @@ def test_mocap_angles_in_prompt():
     p = mocap_prompt("sit down", angles[0])
     assert "three-quarter" in p
     assert "sit down" in p
-    assert "tanned" in p
+    assert "tabaxi" in p.lower()
     assert "white" in p.lower()
     assert "frontal" in p.lower() or "fill light" in p.lower() or "fills the frame" in p
 

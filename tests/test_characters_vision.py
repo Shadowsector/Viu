@@ -23,7 +23,7 @@ def test_ensure_creates_once(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     p1 = ensure_characters_vision(cfg)
     assert p1.is_file()
-    assert "Шаня" in p1.read_text(encoding="utf-8")
+    assert "Шанька" in p1.read_text(encoding="utf-8") or "Шаня" in p1.read_text(encoding="utf-8")
     p1.write_text("# mine\n**Типаж:** lithe\n", encoding="utf-8")
     p2 = ensure_characters_vision(cfg)
     assert p2.read_text(encoding="utf-8").startswith("# mine")

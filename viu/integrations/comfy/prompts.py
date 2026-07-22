@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .angles import CameraAngle
 from .framing import enrich_idle_action, frame_spec_for_action
+from ...lore.shanya import SHANYA_MOCAP_VISUAL
 
 _NEGATIVE = (
     "crowd, multiple people, text, watermark, logo, blur, motion blur, "
@@ -15,13 +16,13 @@ _NEGATIVE = (
 )
 
 _BASE = (
-    "simple tanned young woman, sun-kissed skin, athletic, "
-    "full body head to toe filling the frame, feet visible, "
-    "pure white studio background, seamless white backdrop, "
+    f"{SHANYA_MOCAP_VISUAL}, "
+    "pure white studio background, seamless white backdrop, no scenery, "
     "soft frontal key light, fill light from front, even face lighting, "
     "subject clearly lit from camera side, no backlight silhouette, "
-    "locked static camera, no text, no blur, clear limbs and joints, "
-    "high contrast against white, loopable short motion"
+    "locked static tripod camera, no text, no blur, clear limbs and joints, "
+    "high contrast against white, motion capture reference video, "
+    "all body joints readable for mocap software, no motion blur"
 )
 
 # Вариации дублей — чтобы A/B/C не были копиями

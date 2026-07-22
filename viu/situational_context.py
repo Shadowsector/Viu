@@ -84,12 +84,25 @@ def _read_viu_self_brief(*, max_chars: int = 1400) -> str:
         return ""
 
 
+def _append_shanya_canon(parts: list[str]) -> None:
+    try:
+        from .lore.shanya import SHANYA_REFLECT_COMPACT
+
+        parts.append(
+            "--- Шанька (канон Анабарра, не зачитывать списком) ---\n"
+            + SHANYA_REFLECT_COMPACT.strip()
+        )
+    except OSError:
+        pass
+
+
 def _build_reflect_notes_chat(config: Config) -> str:
     """Минимум: кто я в системе + граф + следующий кадр — без простыни GDD."""
     parts: list[str] = []
     brief = _read_viu_self_brief()
     if brief:
         parts.append(brief)
+    _append_shanya_canon(parts)
     try:
         from .animation_catalog import AnimationCatalogStore, animation_catalog_path
 
@@ -169,7 +182,6 @@ def _build_reflect_notes_full(config: Config) -> str:
         from .characters_vision import read_characters_vision
 
         chars = read_characters_vision(config, max_chars=2800).strip()
-        # подключать только если Ден уже что-то дописал после двоеточий
         filled = any(
             ("**" in ln and ":" in ln and len(ln.split(":", 1)[-1].strip()) > 0)
             for ln in chars.splitlines()
@@ -180,6 +192,8 @@ def _build_reflect_notes_full(config: Config) -> str:
             )
     except OSError:
         pass
+
+    _append_shanya_canon(parts)
 
     try:
         from .plot_canvas import (
