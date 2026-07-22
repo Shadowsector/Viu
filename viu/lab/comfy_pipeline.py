@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple
 
@@ -247,7 +248,7 @@ def apply_prompt_decision(
     decision: str,
     payload: str,
 ) -> str:
-    """После ответа Дена: approve/edit → running; reject → completed. Генерацию запускает GUI/lab_step."""
+    """После ответа Дена: approve/edit → running; reject → completed; redraft → новый кадр."""
     if decision == "reject":
         session.status = "completed"
         session.pause_reason = "prompt_rejected"
@@ -256,8 +257,20 @@ def apply_prompt_decision(
         append_journal(config, COMFY_TOPIC, "### Промпт отклонён\n\nСтоп по ответу Дена.")
         return "Ок, Comfy-промпт отменила."
 
+    if decision == "redraft":
+        return _redraft_comfy_prompt(config, session, note=payload)
+
     action = payload.strip() if decision == "edit" else str(session.meta.get("action") or payload)
     if decision == "edit":
+        from .comfy_director import action_for_slug
+        from ..integrations.comfy.clip_review import normalize_catalog_slug
+
+        raw_edit = action.strip()
+        if raw_edit and " " not in raw_edit and re.match(r"^[\w-]+$", raw_edit):
+            slug = normalize_catalog_slug(raw_edit)
+            if slug:
+                action = action_for_slug(config, slug)
+                session.meta["catalog_slug"] = slug
         session.meta["action"] = action
         session.meta["draft"] = draft_bundle(action)
         ensure_task_file(config, action=action)
@@ -278,6 +291,48 @@ def apply_prompt_decision(
     return (
         f"Промпт принят («{action[:80]}»).\n"
         "Дальше выберем LoRA (или без) → 3 дубля ¾."
+    )
+
+
+def _redraft_comfy_prompt(config: Config, session: LabSession, *, note: str = "") -> str:
+    from .comfy_director import invent_redraft_shot
+
+    prev_slug = str(session.meta.get("catalog_slug") or "")
+    plan = invent_redraft_shot(config, exclude_slug=prev_slug)
+    draft = draft_bundle(plan.action)
+    session.meta["catalog_slug"] = plan.catalog_slug
+    session.meta["action"] = plan.action
+    session.meta["approved_action"] = ""
+    session.meta["approved"] = False
+    session.meta["draft"] = draft
+    session.meta["enters_from"] = list(plan.enters_from)
+    session.meta["exits_to"] = list(plan.exits_to)
+    session.meta["looped"] = plan.looped
+    session.meta["shot_reason"] = plan.reason
+    session.meta.pop("lora_pick_done", None)
+    session.meta.pop("selected_loras", None)
+    session.meta.pop("auto_approved_away", None)
+    session.step = 3
+    session.status = "awaiting_prompt"
+    ensure_task_file(config, action=plan.action)
+    save_session(config, session)
+
+    sent, send_msg = send_prompt_for_approval(config, plan.action, draft)
+    session.meta["approval_sent"] = sent
+    save_session(config, session)
+    title = plan.title_ru or plan.catalog_slug
+    journal = (
+        f"### Другой кадр (redraft)\n\n"
+        f"Было: `{prev_slug or '?'}`\n"
+        f"Комментарий: {(note or '')[:300]}\n\n"
+        f"Новый: `{plan.catalog_slug}` — {plan.action[:200]}\n\n{send_msg}"
+    )
+    append_journal(config, COMFY_TOPIC, journal)
+    return (
+        f"Поняла — не тот кадр ({prev_slug or 'предыдущий'}).\n"
+        f"Новый вариант: «{title}» (`{plan.catalog_slug}`).\n"
+        f"{send_msg}\n\n"
+        "Ответь: ок | нет / другой кадр | правки: sit_down | стоп"
     )
 
 
