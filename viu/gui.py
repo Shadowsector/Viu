@@ -1689,16 +1689,21 @@ class ViuGUI:
                 )
             else:
                 result = self.agent.run(task, on_step=on_step)
-            self._queue.put(
-                (
-                    "final",
-                    result.final,
-                    result.waiting_for_user,
-                    result.chat_only,
-                    result.inner_thought,
-                    not result.tool_errors,
+            parts = result.final_parts or [result.final]
+            for idx, part in enumerate(parts):
+                is_last = idx == len(parts) - 1
+                self._queue.put(
+                    (
+                        "final",
+                        part,
+                        result.waiting_for_user and is_last,
+                        result.chat_only,
+                        result.inner_thought if idx == 0 else "",
+                        not result.tool_errors and is_last,
+                        is_last,
+                        result.final if is_last and len(parts) > 1 else "",
+                    )
                 )
-            )
         except Exception as exc:  # noqa: BLE001
             msg = str(exc)
             if "VIU_LLM_TIMEOUT" in msg or "не успела" in msg.lower():
@@ -1715,6 +1720,8 @@ class ViuGUI:
                 item = self._queue.get_nowait()
                 inner_thought = ""
                 task_ok = True
+                clear_busy = True
+                history_full = ""
                 if isinstance(item, tuple) and len(item) == 2:
                     kind, text = item
                     waiting = False
@@ -1728,6 +1735,17 @@ class ViuGUI:
                     kind, text, waiting, chat_only, inner_thought = item
                 elif isinstance(item, tuple) and len(item) == 6:
                     kind, text, waiting, chat_only, inner_thought, task_ok = item
+                elif isinstance(item, tuple) and len(item) == 8:
+                    (
+                        kind,
+                        text,
+                        waiting,
+                        chat_only,
+                        inner_thought,
+                        task_ok,
+                        clear_busy,
+                        history_full,
+                    ) = item
                 else:
                     continue
                 if kind == "step":
@@ -1747,8 +1765,16 @@ class ViuGUI:
                         self._telegram_notify_error(text)
                 elif kind == "final":
                     # thought уже показан через kind=thinking — не дублировать
-                    self._append("Вью", text, tag="viu")
-                    self._set_llm_busy(False)
+                    self._append(
+                        "Вью",
+                        text,
+                        tag="viu",
+                        record_assistant_turn=not history_full,
+                    )
+                    if history_full:
+                        self._record_llm_turn("assistant", history_full)
+                    if clear_busy:
+                        self._set_llm_busy(False)
                     if waiting:
                         self._telegram_waiting_reply = True
                         self._telegram_notify_question(text)
@@ -2534,7 +2560,14 @@ class ViuGUI:
         except OSError:
             pass
 
-    def _append(self, who: str, text: str, tag: str | None = None) -> None:
+    def _append(
+        self,
+        who: str,
+        text: str,
+        tag: str | None = None,
+        *,
+        record_assistant_turn: bool = True,
+    ) -> None:
         tag = tag or {"ты": "you", "Вью": "viu", "ошибка": "err", "система": "sys"}.get(
             who, "step"
         )
@@ -2543,7 +2576,7 @@ class ViuGUI:
         self.output.see("end")
         if who in ("ты", "Вью") and not text.startswith("["):
             self._chat_history.append(f"{who}: {text[:400]}")
-        if who == "Вью":
+        if who == "Вью" and record_assistant_turn:
             self._record_llm_turn("assistant", text)
         if who == "ты":
             try:

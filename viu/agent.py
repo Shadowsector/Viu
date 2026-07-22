@@ -226,6 +226,7 @@ class RunResult:
     chat_only: bool = False
     inner_thought: str = ""
     tool_errors: bool = False
+    final_parts: List[str] = field(default_factory=list)
 
 
 class Agent:
@@ -592,18 +593,103 @@ class Agent:
         last_raw = ""
         last_issues: list[str] = []
 
+        def _extend_reflect_parts(parts: List[str]) -> List[str]:
+            from .reflect_delivery import (
+                continuation_user_prompt,
+                reflect_max_parts,
+                reflect_max_words_per_part,
+                should_fetch_more_parts,
+                word_count,
+            )
+
+            max_parts = reflect_max_parts(self.config)
+            max_words = reflect_max_words_per_part(self.config)
+            while len(parts) < max_parts:
+                prompt = continuation_user_prompt(
+                    user_text=user_text,
+                    prior_parts=parts,
+                    part_index=len(parts),
+                    max_parts=max_parts,
+                    max_words=max_words,
+                )
+                cont_msgs: List[Dict[str, str]] = [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_text},
+                    {
+                        "role": "assistant",
+                        "content": json.dumps({"final": parts[-1]}, ensure_ascii=False),
+                    },
+                    {"role": "user", "content": prompt},
+                ]
+                try:
+                    raw_part = self.llm.complete(
+                        cont_msgs, temperature=temp, model=reflect_model
+                    )
+                except RuntimeError as exc:
+                    self._log(f"REFLECT_PART fail: {exc}")
+                    break
+                part_text, _pt, part_trunc, part_parsed = parse_reflect_response(
+                    raw_part
+                )
+                if not part_text or part_text.strip() == parts[-1].strip():
+                    break
+                parts.append(part_text.strip())
+                self._log(
+                    f"REFLECT_PART {len(parts)}/{max_parts} "
+                    f"words={word_count(part_text)}"
+                )
+                if not should_fetch_more_parts(
+                    part_text,
+                    parsed=part_parsed,
+                    truncated=part_trunc,
+                    config=self.config,
+                ):
+                    break
+            return parts
+
         def _accept_final(
-            text: str, thought: str, parsed: Optional[Dict[str, str]] = None
+            text: str,
+            thought: str,
+            parsed: Optional[Dict[str, str]] = None,
+            *,
+            initial_truncated: bool = False,
         ) -> RunResult:
+            from .reflect_delivery import (
+                reflect_max_parts,
+                reflect_max_words_per_part,
+                should_fetch_more_parts,
+            )
+
+            parts: List[str] = []
+            if parsed:
+                fps = parsed.get("final_parts")
+                if isinstance(fps, list):
+                    parts = [str(p).strip() for p in fps if str(p).strip()]
+            if not parts:
+                parts = [text.strip()]
+            if should_fetch_more_parts(
+                parts[-1],
+                parsed=parsed,
+                truncated=initial_truncated,
+                config=self.config,
+            ) and len(parts) < reflect_max_parts(self.config):
+                parts = _extend_reflect_parts(parts)
+            full = "\n\n".join(parts)
             result.inner_thought = thought
-            result.final = text
+            result.final = full
+            result.final_parts = parts if len(parts) > 1 else []
             result.completed = True
             if thought and on_step:
                 on_step(Step(kind="think", thought=thought))
-            step = Step(kind="final", thought=thought, observation=result.final)
+            step = Step(kind="final", thought=thought, observation=full)
             result.steps.append(step)
             if on_step:
                 on_step(step)
+            if len(parts) > 1:
+                self._log(
+                    f"REFLECT_MULTI parts={len(parts)} "
+                    f"max_words={reflect_max_words_per_part(self.config)}"
+                )
             if parsed:
                 try:
                     from .plot_canvas import apply_reflect_updates
@@ -617,12 +703,12 @@ class Agent:
 
                 get_story_memory(self.config).add_exchange(
                     user_text,
-                    text,
+                    full,
                     source="chat",
                     tags=["story"] if looks_like_story_chat(user_text) else [],
                 )
                 self.memory.add(
-                    f"Ден: {user_text[:200]} | Вью: {text[:200]}",
+                    f"Ден: {user_text[:200]} | Вью: {full[:200]}",
                     tags=["dialog", "story"]
                     if looks_like_story_chat(user_text)
                     else ["dialog"],
@@ -636,7 +722,7 @@ class Agent:
                     append_vision(
                         self.config,
                         "Диалог",
-                        f"**Ден:** {user_text[:500]}\n**Вью:** {text[:800]}",
+                        f"**Ден:** {user_text[:500]}\n**Вью:** {full[:800]}",
                     )
                 except OSError:
                     pass
@@ -660,17 +746,15 @@ class Agent:
             if truncated:
                 last_issues = ["оборванный JSON"]
                 messages.append({"role": "assistant", "content": raw})
-                short_hint = (
-                    "Ответ оборвался — Дену нельзя слать сырой JSON или ```json. "
-                    'Верни ОДИН JSON: {"thought":"…","final":"…"} без текста снаружи. '
+                from .reflect_delivery import (
+                    reflect_max_words_per_part,
+                    truncate_retry_hint,
                 )
-                if attempt >= 1:
-                    short_hint += (
-                        "final сожми до ~1500 символов (короче, но цельный); "
-                        "длинное — «продолжай» отдельным сообщением. "
-                    )
-                else:
-                    short_hint += "final — готовый ответ (можно короче, но законченный). "
+
+                short_hint = truncate_retry_hint(
+                    attempt=attempt,
+                    max_words=reflect_max_words_per_part(self.config),
+                )
                 messages.append({"role": "user", "content": short_hint})
                 continue
 
@@ -785,7 +869,9 @@ class Agent:
             salvaged = salvage_partial_final(last_raw)
             if salvaged:
                 self._log("REFLECT_SALVAGE: partial final after truncate")
-                return _accept_final(salvaged, "salvage-partial")
+                return _accept_final(
+                    salvaged, "salvage-partial", initial_truncated=True
+                )
             wrap = model_label(self.config, "reflect")
             result.final = (
                 "Ответ модели оборвался на середине — сырой JSON не отправила. "

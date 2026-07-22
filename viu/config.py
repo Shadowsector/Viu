@@ -68,6 +68,13 @@ class Config:
     temperature: float = field(default_factory=lambda: float(_env("VIU_TEMPERATURE", "0.2")))
     # Один запрос к Ollama/LLM (сек). 14b на холодном старте легко >2 мин.
     llm_timeout: float = field(default_factory=lambda: float(_env("VIU_LLM_TIMEOUT", "1200")))
+    # Reflect: короткие части вместо одного гигантского JSON (~300 слов режется моделью).
+    reflect_max_words: int = field(
+        default_factory=lambda: int(_env("VIU_REFLECT_MAX_WORDS", "220"))
+    )
+    reflect_max_parts: int = field(
+        default_factory=lambda: int(_env("VIU_REFLECT_MAX_PARTS", "3"))
+    )
 
     # Разрешать ли реальное выполнение shell-команд (по умолчанию — да, но в песочнице).
     allow_shell: bool = field(default_factory=lambda: _env("VIU_ALLOW_SHELL", "1") == "1")
