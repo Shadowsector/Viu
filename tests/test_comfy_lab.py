@@ -75,6 +75,18 @@ def test_parse_approval():
     d, payload = parse_approval_reply("правки: wave hello", current_action="sit")
     assert d == "edit"
     assert "wave" in payload
+    d2, _ = parse_approval_reply(
+        "нет, мы другой промт хотели снимать",
+        current_action="sleep idle",
+    )
+    assert d2 == "redraft"
+    d3, _ = parse_approval_reply(
+        "walking forward at a calm pace, natural arm swing",
+        current_action="sit",
+    )
+    assert d3 == "edit"
+    d4, _ = parse_approval_reply("другой кадр", current_action="sit")
+    assert d4 == "redraft"
 
 
 def test_mocap_angles_in_prompt():
@@ -127,6 +139,52 @@ def test_comfy_lab_awaits_telegram(tmp_path, monkeypatch):
     assert loaded2.status == "running"
     assert loaded2.meta.get("approved") is True
     assert loaded2.step >= 4
+
+
+def test_redraft_does_not_approve_complaint(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, monkeypatch)
+    (tmp_path / "Viu").mkdir(parents=True, exist_ok=True)
+    session = new_session(COMFY_TOPIC)
+    session.steps_total = 8
+    session.step = 3
+    session.status = "awaiting_prompt"
+    session.meta["action"] = "lying down sleep idle"
+    session.meta["catalog_slug"] = "sleep_idle"
+    save_session(cfg, session)
+
+    with patch(
+        "viu.lab.comfy_pipeline.send_prompt_for_approval",
+        return_value=(True, "новый промпт в Telegram"),
+    ), patch(
+        "viu.lab.comfy_director.invent_redraft_shot",
+        return_value=type(
+            "P",
+            (),
+            {
+                "action": "walking forward",
+                "catalog_slug": "walk",
+                "title_ru": "Ходьба",
+                "enters_from": [],
+                "exits_to": [],
+                "looped": True,
+                "reason": "test",
+            },
+        )(),
+    ):
+        out = apply_prompt_decision(
+            cfg,
+            load_session(cfg, COMFY_TOPIC),
+            "redraft",
+            "нет, мы другой промт хотели снимать",
+        )
+
+    assert "не тот кадр" in out.lower() or "Поняла" in out
+    assert "Промпт принят" not in out
+    loaded = load_session(cfg, COMFY_TOPIC)
+    assert loaded is not None
+    assert loaded.status == "awaiting_prompt"
+    assert loaded.meta.get("approved") is not True
+    assert loaded.meta.get("catalog_slug") == "walk"
 
 
 def test_format_lab_progress_comfy_labels():

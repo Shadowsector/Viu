@@ -431,3 +431,15 @@ def invent_shot_choices(config: Config, *, limit: int = 5) -> List[MocapShotPlan
             )
         )
     return out
+
+
+def invent_redraft_shot(config: Config, *, exclude_slug: str = "") -> MocapShotPlan:
+    """Следующий кадр по графу, не повторяя отклонённый slug."""
+    from ..integrations.comfy.clip_review import normalize_catalog_slug
+
+    skip = normalize_catalog_slug(exclude_slug)
+    for plan in invent_shot_choices(config, limit=12):
+        if skip and plan.catalog_slug == skip:
+            continue
+        return plan
+    return invent_next_shot(config)
