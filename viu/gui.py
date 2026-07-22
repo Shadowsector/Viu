@@ -66,6 +66,10 @@ class ViuGUI:
         self._queue: queue.Queue = queue.Queue()
         self._tool_busy = False  # Comfy/lab/скрипт — GPU/файлы, не LLM
         self._llm_busy = False  # агент думает — чат ждёт
+        self._activity_hint = ""
+        self._activity_work_mode = False
+        self._activity_blink_on = False
+        self._activity_view = None
         self._action_buttons: list[tuple[str, ttk.Button]] = []
         self._action_group_boxes: dict[str, ttk.LabelFrame] = {}
         self._sidebar_stage_label: ttk.Label | None = None
@@ -140,6 +144,9 @@ class ViuGUI:
         self._schedule_cursor_inbox()
         self._schedule_lab()
         self._schedule_comfy_home_watch()
+        self.root.after(450, self._tick_activity_led)
+        self.root.after(1500, self._schedule_activity_refresh)
+        self._update_activity()
         try:
             from .vision import ensure_vision
 
@@ -495,6 +502,8 @@ class ViuGUI:
             foreground="#888888",
         ).pack(side="left", padx=(8, 0))
 
+        self._build_activity_bar(frame)
+
         self.output = scrolledtext.ScrolledText(
             frame,
             wrap="word",
@@ -545,6 +554,109 @@ class ViuGUI:
             command=self._on_send,
         )
         self.send_btn.pack(side="right", fill="y", padx=(8, 0))
+
+    def _build_activity_bar(self, parent: ttk.Frame) -> None:
+        """LED + строка статуса над диалогом — что Вью делает сейчас."""
+        bar = tk.Frame(parent, bg="#252526", padx=6, pady=4)
+        bar.pack(fill="x", padx=(4, 8), pady=(0, 4))
+        self._activity_canvas = tk.Canvas(
+            bar,
+            width=14,
+            height=14,
+            bg="#252526",
+            highlightthickness=0,
+            bd=0,
+        )
+        self._activity_canvas.pack(side="left", padx=(0, 8))
+        self._activity_var = tk.StringVar(value="Готова · жду сообщение")
+        tk.Label(
+            bar,
+            textvariable=self._activity_var,
+            font=("Segoe UI", 9),
+            fg="#cccccc",
+            bg="#252526",
+            anchor="w",
+        ).pack(side="left", fill="x", expand=True)
+
+    def _update_activity(
+        self,
+        *,
+        hint: str | None = None,
+        work_mode: bool | None = None,
+        clear_hint: bool = False,
+    ) -> None:
+        if clear_hint:
+            self._activity_hint = ""
+        elif hint is not None:
+            self._activity_hint = (hint or "").strip()
+        if work_mode is not None:
+            self._activity_work_mode = work_mode
+        from .gui_activity import activity_view
+
+        view = activity_view(
+            self.agent.config,
+            llm_busy=self._llm_busy,
+            tool_busy=self._tool_busy,
+            hint=self._activity_hint,
+            work_mode=self._activity_work_mode,
+        )
+        self._activity_view = view
+        if hasattr(self, "_activity_var"):
+            self._activity_var.set(view.line)
+        self._paint_activity_led()
+
+    def _paint_activity_led(self) -> None:
+        canvas = getattr(self, "_activity_canvas", None)
+        view = self._activity_view
+        if canvas is None or view is None:
+            return
+        color = (
+            view.led_color
+            if (view.blink and self._activity_blink_on) or not view.blink
+            else view.led_dim
+        )
+        canvas.delete("all")
+        canvas.create_oval(2, 2, 12, 12, fill=color, outline="#1a1a1a")
+
+    def _tick_activity_led(self) -> None:
+        view = self._activity_view
+        if view is not None and view.blink:
+            self._activity_blink_on = not self._activity_blink_on
+            self._paint_activity_led()
+        self.root.after(450, self._tick_activity_led)
+
+    def _schedule_activity_refresh(self) -> None:
+        if self._tool_busy or self._llm_busy:
+            self._refresh_activity_bg()
+        self.root.after(2500, self._schedule_activity_refresh)
+
+    def _refresh_activity_bg(self) -> None:
+        cfg = self.agent.config
+        llm = self._llm_busy
+        tool = self._tool_busy
+        hint = self._activity_hint
+        work = self._activity_work_mode
+
+        def compute():
+            from .gui_activity import activity_view
+
+            return activity_view(
+                cfg,
+                llm_busy=llm,
+                tool_busy=tool,
+                hint=hint,
+                work_mode=work,
+            )
+
+        def apply(view) -> None:
+            if isinstance(view, Exception):
+                return
+            self._activity_view = view
+            if hasattr(self, "_activity_var"):
+                self._activity_var.set(view.line)
+            self._paint_activity_led()
+
+        self._run_bg(compute, apply)
 
     def _build_menu(self) -> None:
         menubar = tk.Menu(self.root)
@@ -903,6 +1015,7 @@ class ViuGUI:
         self._busy_label = busy_status_ru(
             tool_busy=self._tool_busy, llm_busy=self._llm_busy
         )
+        self._update_activity()
 
     def _run_tool_chain(self, action: GuiAction) -> None:
         from .gui_busy import can_start_tool
@@ -915,6 +1028,7 @@ class ViuGUI:
             )
             return
         self._append("ты", f"[{action.label}]")
+        self._update_activity(hint=action.label)
         self._set_tool_busy(True)
         threading.Thread(target=self._chain_worker, args=(action,), daemon=True).start()
 
@@ -1624,6 +1738,7 @@ class ViuGUI:
     def _run_agent_task(self, task: str, *, via_telegram: bool = False) -> None:
         if not via_telegram:
             self._append("ты", task)
+        self._update_activity(hint="задача work", work_mode=True)
         self._set_llm_busy(True)
         self._last_via_telegram = via_telegram
         threading.Thread(
@@ -1646,6 +1761,10 @@ class ViuGUI:
         if not via_telegram and not heartbeat:
             self._append("ты", task)
             self._record_llm_turn("user", task)
+        self._update_activity(
+            hint="сердцебиение" if heartbeat else "твой запрос",
+            work_mode=False,
+        )
         self._set_llm_busy(True)
         self._last_via_telegram = via_telegram or heartbeat
         if heartbeat:
@@ -1670,8 +1789,10 @@ class ViuGUI:
             if step.kind == "think":
                 preview = step.thought[:280] + ("…" if len(step.thought) > 280 else "")
                 self._queue.put(("thinking", preview))
+                self._queue.put(("activity", preview))
             elif step.kind == "action":
                 self._queue.put(("step", f"[{step.tool}] {step.thought}"))
+                self._queue.put(("activity", step.tool or "инструмент"))
                 if step.observation:
                     self._queue.put(
                         ("step", "    " + step.observation.replace("\n", "\n    "))
@@ -1713,6 +1834,13 @@ class ViuGUI:
         try:
             while True:
                 item = self._queue.get_nowait()
+                if (
+                    isinstance(item, tuple)
+                    and len(item) == 2
+                    and item[0] == "activity"
+                ):
+                    self._update_activity(hint=str(item[1] or ""))
+                    continue
                 inner_thought = ""
                 task_ok = True
                 if isinstance(item, tuple) and len(item) == 2:
@@ -1734,9 +1862,11 @@ class ViuGUI:
                     self._append("шаг", text, tag="step")
                 elif kind == "thinking":
                     self._append("размышляет", text, tag="step")
+                    self._update_activity(hint=text)
                 elif kind == "tool":
                     self._append("Вью", text, tag="tool")
                     self._set_tool_busy(False)
+                    self._update_activity(clear_hint=True)
                     from .lab.controller import lab_controller
 
                     lab_controller.clear_operator_priority()
@@ -1749,6 +1879,7 @@ class ViuGUI:
                     # thought уже показан через kind=thinking — не дублировать
                     self._append("Вью", text, tag="viu")
                     self._set_llm_busy(False)
+                    self._update_activity(clear_hint=True, work_mode=False)
                     if waiting:
                         self._telegram_waiting_reply = True
                         self._telegram_notify_question(text)
@@ -1765,6 +1896,7 @@ class ViuGUI:
                 elif kind == "error":
                     self._append("ошибка", text, tag="err")
                     self._set_llm_busy(False)
+                    self._update_activity(clear_hint=True, work_mode=False)
                     self._telegram_notify_error(text)
                 elif kind == "telegram_reply":
                     self._handle_telegram_reply(text)
