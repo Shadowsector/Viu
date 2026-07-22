@@ -319,9 +319,17 @@ def _folder_slug_from_subfolder(subfolder: str) -> str:
 
 
 def _read_sidecar_description(lora_path: Path) -> str:
-    """Описание из txt рядом с LoRA или в её подпапке."""
+    """Описание из txt рядом с LoRA: любой .txt в папке (не только description.txt)."""
     parent = lora_path.parent
     stem = lora_path.stem
+
+    def _read_text(path: Path) -> str:
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+        return text[:800] if text else ""
+
     candidates = [
         lora_path.with_suffix(lora_path.suffix + ".txt"),
         parent / f"{stem}.txt",
@@ -336,12 +344,27 @@ def _read_sidecar_description(lora_path: Path) -> str:
         seen.add(key)
         if not path.is_file():
             continue
-        try:
-            text = path.read_text(encoding="utf-8").strip()
-        except OSError:
-            continue
+        text = _read_text(path)
         if text:
-            return text[:800]
+            return text
+
+    try:
+        txts = sorted(
+            p
+            for p in parent.iterdir()
+            if p.is_file()
+            and p.suffix.lower() == ".txt"
+            and p.name.lower() not in ("readme.txt",)
+        )
+    except OSError:
+        txts = []
+    if len(txts) == 1:
+        return _read_text(txts[0])
+    for path in txts:
+        if path.stem != stem:
+            text = _read_text(path)
+            if text:
+                return text
     return ""
 
 

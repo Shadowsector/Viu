@@ -38,12 +38,12 @@ def test_triggers_from_filename_parens():
     assert _triggers_from_filename("plain.safetensors") == ""
 
 
-def test_sidecar_description_reads_folder_txt(tmp_path):
+def test_sidecar_any_txt_in_folder(tmp_path):
     lora = tmp_path / "touch_self" / "motion_(touch).safetensors"
     lora.parent.mkdir(parents=True)
     lora.write_bytes(b"x")
-    (lora.parent / "description.txt").write_text("Self-touch motion LoRA", encoding="utf-8")
-    assert "Self-touch" in _read_sidecar_description(lora)
+    (lora.parent / "notes.txt").write_text("Any txt works", encoding="utf-8")
+    assert "Any txt" in _read_sidecar_description(lora)
 
 
 def test_scan_picks_trigger_and_description(cfg, tmp_path, monkeypatch):
