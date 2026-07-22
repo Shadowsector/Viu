@@ -89,6 +89,10 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 |------|---------|
 | `VIU_COMFY_URL` | `http://127.0.0.1:8188` |
 | `VIU_COMFY_ROOT` | `U:/Viu/ComfyUI` |
+| `VIU_COMFY_FACE_SWAP` | `1` — подмена лица (FaceRefs) |
+| `VIU_COMFY_FACE_PREGEN` | `1` — I2V start_image до генерации |
+| `VIU_COMFY_LORA_FOLDER_BIND` | `1` — LoRA из `loras/<slug>/` |
+| `VIU_COMFY_LORA_AUTO` | `0` — без вопроса, если slug совпал |
 
 Нужны: `git`, интернет, место на `U:` (~10+ GB для T2V).
 
@@ -106,26 +110,36 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 - вручную крутить workflow;
 - подключить **LoRA** / эксперименты.
 
+<<<<<<< HEAD
 Если браузер пишет **403 на 127.0.0.1** — обнови Вью и перезапусти Comfy (`comfy_ensure`):
 запуск теперь с `--listen 127.0.0.1` и CORS. Либо открой `http://localhost:8188`.
 Для MoCap UI не обязателен — Вью ходит в API сама.
 
-### Подмена лица (ReActor)
-
-Чтобы Wan не рисовал случайные лица:
+### Подмена лица (I2V + ReActor)
 
 1. **Папка** `U:\Anabarra\Library\Lab\FaceRefs\` (Места → «Лица MoCap»).  
    Не `U:\Viu\Library\` — склад игры в **Anabarra\Library**.
 2. Положи **PNG/JPG** с одним чётким лицом (фронт или ¾).
    - `default.png` — всегда это лицо;
    - или несколько файлов — **случайный** на каждый batch (одинаковый на 3 дубля).
-3. Один раз: `comfy_install.bat reactor=1` (ReActor + inswapper).
-4. `comfy_ensure` — перезапуск Comfy, чтобы подхватить ноду.
+3. По умолчанию лицо подставляется **до генерации** (I2V), если есть I2V-модель (`comfy_install i2v=1`).
+   Без I2V — **ReActor** после VAEDecode.
+4. ReActor ставится автоматически при `comfy_ensure` (если `VIU_COMFY_FACE_SWAP=1`).
 
-Выключить: `VIU_COMFY_FACE_SWAP=0` в `.env`.  
+`VIU_COMFY_FACE_SWAP=0` — выкл. `VIU_COMFY_FACE_PREGEN=0` — только ReActor post.  
 Фиксированное лицо: `VIU_COMFY_FACE_REF=U:\path\to\face.png`.
 
-### LoRA — простой сценарий
+### LoRA — папки, txt, триггеры в ()
+
+1. **Сложи** `.safetensors` в `ComfyUI/models/loras/<slug>/` (подпапка = catalog slug сцены).
+2. В подпапке — **txt с описанием** (`description.txt`, `описание.txt` или `имя_лоры.txt`).
+3. **Триггер** в скобках в имени: `motion_(touching herself).safetensors`.
+4. `comfy_lora_scan` — индекс с описаниями и trigger.
+5. При совпадении slug папки — LoRA подхватится сама (`VIU_COMFY_LORA_FOLDER_BIND=1`).
+   В режиме «нет дома» — тоже. `VIU_COMFY_LORA_AUTO=1` — без вопроса в чате.
+6. Вручную: `lora: 1` / `lora: 1,3` / `lora: all` / `lora: none`.
+
+### LoRA — простой сценарий (номера)
 
 1. **Скачай** `.safetensors` в `ComfyUI/models/loras/` (можно подпапки).
 2. **Индекс:** `comfy_lora_scan` или `comfy_lora_list scan=1` — Вью нумерует файлы.

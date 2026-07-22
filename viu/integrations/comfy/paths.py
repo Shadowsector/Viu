@@ -83,7 +83,7 @@ def comfy_seed_frames_dir(config: Config) -> Path:
 
 
 def comfy_face_refs_dir(config: Config) -> Path:
-    """Эталонные лица для ReActor (PNG/JPG)."""
+    """Эталонные лица для ReActor / I2V (PNG/JPG)."""
     env = os.environ.get("VIU_COMFY_FACE_REFS", "").strip()
     if env:
         p = Path(env).expanduser()
@@ -94,7 +94,7 @@ def comfy_face_refs_dir(config: Config) -> Path:
 
 
 def comfy_input_dir(comfy_root: Path) -> Path:
-    """ComfyUI/input — LoadImage читает отсюда."""
+    """ComfyUI/input для LoadImage."""
     p = comfy_root / "input"
     p.mkdir(parents=True, exist_ok=True)
     return p

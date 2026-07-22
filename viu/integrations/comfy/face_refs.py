@@ -1,4 +1,4 @@
-"""Лица для MoCap: папка Lab/FaceRefs → ReActor в Comfy."""
+"""Лица для MoCap: папка Lab/FaceRefs → I2V (до генерации) или ReActor (после)."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ _PREFERRED_NAMES = (
     "face.jpg",
 )
 _COMFY_INPUT_NAME = "viu_face_ref.png"
-_README = """Lab/FaceRefs — эталонные лица для MoCap (ReActor)
+_README = """Lab/FaceRefs — эталонные лица для MoCap
 
 Положи сюда PNG/JPG с одним чётким лицом (фронт или ¾).
 Вью копирует выбранное фото в Comfy перед генерацией.
@@ -31,16 +31,50 @@ _README = """Lab/FaceRefs — эталонные лица для MoCap (ReActor)
   2) default.png / shanya.png (если есть)
   3) случайный файл из этой папки
 
-Выключить подмену: VIU_COMFY_FACE_SWAP=0
+По умолчанию лицо подставляется ДО генерации (I2V start_image).
+Если I2V-модели нет — fallback ReActor после VAEDecode.
 
-После первой установки: comfy_install.bat reactor=1
-Пересборка не нужна — только положи фото и снимай.
+Выключить подмену: VIU_COMFY_FACE_SWAP=0
+Только post-ReActor: VIU_COMFY_FACE_PREGEN=0
+
+ReActor ставится автоматически при comfy_ensure (если face_swap=1).
 """
 
 
 def face_swap_enabled() -> bool:
     raw = (os.environ.get("VIU_COMFY_FACE_SWAP") or "1").strip().lower()
     return raw not in ("0", "false", "no", "off")
+
+
+def face_pregen_enabled() -> bool:
+    raw = (os.environ.get("VIU_COMFY_FACE_PREGEN") or "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def reactor_auto_install_enabled() -> bool:
+    raw = (os.environ.get("VIU_COMFY_FACE_REACTOR_AUTO") or "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def _reactor_installed(root: Path) -> bool:
+    dest = root / "custom_nodes" / "ComfyUI-ReActor"
+    return dest.is_dir() and (dest / "nodes.py").is_file()
+
+
+def ensure_face_swap_ready(config: Config) -> Tuple[bool, str]:
+    """Установить ReActor + inswapper, если face_swap включён и ноды ещё нет."""
+    if not face_swap_enabled():
+        return True, "face_swap off"
+    root = resolve_comfy_root(config)
+    if root is None:
+        return False, "ComfyUI root не найден"
+    if _reactor_installed(root):
+        return True, "ReActor ok"
+    if not reactor_auto_install_enabled():
+        return False, "ReActor нет — comfy_install reactor=1"
+    from .install import ensure_reactor_installed
+
+    return ensure_reactor_installed(root)
 
 
 def ensure_face_refs_dir(config: Config) -> Path:
@@ -117,6 +151,7 @@ def face_refs_status(config: Config) -> str:
     lines = [
         f"FaceRefs: {d} ({len(refs)} фото)",
         f"face_swap: {'on' if face_swap_enabled() else 'off'}",
+        f"face_pregen (I2V): {'on' if face_pregen_enabled() else 'off'}",
     ]
     if env_ref:
         lines.append(f"VIU_COMFY_FACE_REF={env_ref}")
@@ -127,8 +162,23 @@ def face_refs_status(config: Config) -> str:
         lines.append("лица нет — положи PNG в FaceRefs (см. README.txt)")
     root = resolve_comfy_root(config)
     if root is not None:
-        reactor_dir = root / "custom_nodes" / "ComfyUI-ReActor"
+        installed = _reactor_installed(root)
         lines.append(
-            f"ReActor: {'установлен' if reactor_dir.is_dir() else 'нет — comfy_install reactor=1'}"
+            f"ReActor: {'установлен' if installed else 'нет (auto при comfy_ensure)'}"
         )
+        try:
+            from .client import ComfyClient
+
+            url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
+            client = ComfyClient(base_url=str(url), timeout=2.0)
+            ok, _ = client.ping()
+            if ok:
+                live = client.has_node_class("ReActorFaceSwap")
+                lines.append(f"ReActor в API: {'да' if live else 'нет — перезапусти Comfy'}")
+        except Exception:
+            pass
+        from .model_pref import probe_models
+
+        probe = probe_models(config)
+        lines.append(f"I2V для pre-gen: {'готов' if probe.ready_i2v else 'нет — comfy_install i2v=1'}")
     return "\n".join(lines)

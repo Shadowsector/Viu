@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Tuple
 from ...config import Config
 from .angles import CameraAngle, default_angles
 from .client import ComfyClient, ComfyError
-from .model_pref import choose_workflow_name
+from .model_pref import choose_workflow_name, probe_models
 from .paths import comfy_out_dir, comfy_refs_dir
 from .prompts import diversify_action, mocap_negative, mocap_prompt
 from .workflows import (
@@ -19,6 +19,7 @@ from .workflows import (
     inject_loras,
     inject_negative_prompt,
     inject_seed,
+    inject_start_image,
     inject_text_prompt,
     load_workflow,
     prepare_mocap_workflow,
@@ -72,7 +73,38 @@ def run_single_angle(
     )
     file_prefix = comfy_filename_prefix(display_stem)
 
-    wf_name = workflow_name or choose_workflow_name(config, has_seed_image=False)
+    face_note = ""
+    face_pregen = False
+    start_image_name = ""
+    face_input_name = ""
+    ok_face = False
+
+    from .face_refs import (
+        ensure_face_swap_ready,
+        face_pregen_enabled,
+        face_swap_enabled,
+        pick_face_ref,
+        stage_face_for_comfy,
+    )
+
+    if face_swap_enabled():
+        ensure_face_swap_ready(config)
+        face = pick_face_ref(config, seed=f"{slug}|{catalog_slug or base_slug}")
+        if face is not None:
+            ok_face, stage_msg, face_input_name = stage_face_for_comfy(config, face)
+            if ok_face:
+                probe = probe_models(config)
+                if face_pregen_enabled() and probe.ready_i2v:
+                    face_pregen = True
+                    start_image_name = face_input_name
+                    face_note = f"лицо (I2V): {face.name}"
+                else:
+                    face_note = f"лицо: {face.name}"
+            else:
+                face_note = stage_msg
+
+    has_seed = face_pregen and bool(start_image_name)
+    wf_name = workflow_name or choose_workflow_name(config, has_seed_image=has_seed)
     try:
         wf = load_workflow(config, wf_name)
     except (FileNotFoundError, ValueError, OSError) as exc:
@@ -82,30 +114,25 @@ def run_single_angle(
     wf = inject_negative_prompt(wf, negative)
     wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
     wf = inject_loras(wf, loras)
-    wf = inject_loras(wf, loras)
     wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
+
+    if face_pregen and start_image_name:
+        wf = inject_start_image(wf, start_image_name)
 
     client = _client(config)
     ok, ping = client.ping()
     if not ok:
         return False, ping, []
 
-    face_note = ""
-    from .face_refs import face_swap_enabled, pick_face_ref, stage_face_for_comfy
-
-    if face_swap_enabled():
-        face = pick_face_ref(config, seed=f"{slug}|{catalog_slug or base_slug}")
-        if face is not None:
-            ok_face, stage_msg, input_name = stage_face_for_comfy(config, face)
-            if ok_face and client.has_node_class("ReActorFaceSwap"):
-                wf = inject_face_swap(wf, face_image=input_name)
-                face_note = f"лицо: {face.name}"
-            elif ok_face:
-                face_note = (
-                    f"лицо {face.name} в input, но ReActor нет — comfy_install reactor=1"
-                )
-            else:
-                face_note = stage_msg
+    if face_swap_enabled() and ok_face and not face_pregen:
+        if client.has_node_class("ReActorFaceSwap"):
+            wf = inject_face_swap(wf, face_image=face_input_name)
+            if "ReActor" not in face_note:
+                face_note += " [ReActor post]"
+        elif face_input_name:
+            face_note = (
+                f"лицо {face_input_name} в input, но ReActor нет — перезапусти comfy_ensure"
+            )
 
     try:
         prompt_id = client.queue_prompt(wf)

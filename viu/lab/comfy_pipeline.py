@@ -285,9 +285,11 @@ def step_request_lora_pick(config: Config, session: LabSession) -> StepResult:
     """Скан папки loras/ и спросить, какие подключить к этому пулу."""
     from ..integrations.comfy.lora import (
         format_lora_pick_message,
+        lora_auto_pick_enabled,
         scan_loras,
         spec_to_dict,
         specs_from_indices,
+        suggest_loras_for_slug,
     )
 
     if session.meta.get("lora_pick_done"):
@@ -300,6 +302,18 @@ def step_request_lora_pick(config: Config, session: LabSession) -> StepResult:
         session.meta["lora_pick_done"] = True
         return True, "LoRA на диске нет — генерирую чистый Wan.", None
 
+    catalog_slug = str(session.meta.get("catalog_slug") or "").strip()
+    suggested = suggest_loras_for_slug(config, catalog_slug) if catalog_slug else []
+
+    if lora_auto_pick_enabled() and suggested:
+        session.meta["selected_loras"] = [spec_to_dict(s) for s in suggested]
+        session.meta["lora_pick_done"] = True
+        session.meta["lora_last_pick"] = [
+            e.index for e in entries if any(s.file == e.file and s.subfolder == e.subfolder for s in suggested)
+        ]
+        names = ", ".join(s.file for s in suggested)
+        return True, f"LoRA по slug {catalog_slug}: {names}.", None
+
     try:
         from ..presence import is_away
 
@@ -307,6 +321,16 @@ def step_request_lora_pick(config: Config, session: LabSession) -> StepResult:
     except Exception:
         away = False
     if away:
+        if suggested:
+            session.meta["selected_loras"] = [spec_to_dict(s) for s in suggested]
+            session.meta["lora_pick_done"] = True
+            session.meta["lora_last_pick"] = [
+                e.index
+                for e in entries
+                if any(s.file == e.file and s.subfolder == e.subfolder for s in suggested)
+            ]
+            names = ", ".join(s.file for s in suggested) if suggested else "нет"
+            return True, f"Нет дома — LoRA по папке {catalog_slug}: {names}.", None
         last = [int(x) for x in (session.meta.get("lora_last_pick") or []) if str(x).isdigit()]
         specs = specs_from_indices(config, last) if last else []
         session.meta["selected_loras"] = [spec_to_dict(s) for s in specs]

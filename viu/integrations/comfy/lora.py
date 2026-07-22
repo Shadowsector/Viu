@@ -31,6 +31,12 @@ _LORA_NONE_RE = re.compile(
     r"^\s*(?:none|нет|без|skip|пропустить|0|ничего)\b",
     re.IGNORECASE,
 )
+_TRIGGER_PARENS_RE = re.compile(r"\(([^)]+)\)")
+_SIDECAR_NAMES = (
+    "description.txt",
+    "описание.txt",
+    "readme.txt",
+)
 
 
 @dataclass(frozen=True)
@@ -51,6 +57,8 @@ class LoraIndexEntry:
     size_mb: float = 0.0
     tags: List[str] = None  # type: ignore[assignment]
     trigger: str = ""
+    description: str = ""
+    folder_slug: str = ""
     strength: float = 0.85
     mtime: float = 0.0
 
@@ -71,6 +79,8 @@ class LoraIndexEntry:
             size_mb=float(d.get("size_mb") or 0),
             tags=[str(t) for t in (tags or [])],
             trigger=str(d.get("trigger") or ""),
+            description=str(d.get("description") or ""),
+            folder_slug=str(d.get("folder_slug") or ""),
             strength=float(d.get("strength") or 0.85),
             mtime=float(d.get("mtime") or 0),
         )
@@ -186,6 +196,43 @@ def _slug_binding(data: Dict[str, Any], catalog_slug: str) -> Dict[str, Any]:
     return binding if isinstance(binding, dict) else {}
 
 
+def find_loras_for_slug(config: Config, catalog_slug: str) -> List[LoraIndexEntry]:
+    """LoRA из подпапки loras/<slug>/ (или совпадение по имени папки)."""
+    slug = (catalog_slug or "").strip().lower()
+    if not slug:
+        return []
+    entries = load_index(config)
+    out: List[LoraIndexEntry] = []
+    for entry in entries:
+        folder = (entry.folder_slug or _folder_slug_from_subfolder(entry.subfolder)).lower()
+        full = (entry.subfolder or "").replace("\\", "/").strip("/").lower()
+        if folder == slug or full == slug:
+            out.append(entry)
+    return out
+
+
+def suggest_loras_for_slug(config: Config, catalog_slug: str) -> List[LoraSpec]:
+    """Реестр by_slug + привязка по папке на диске."""
+    specs: List[LoraSpec] = []
+    seen: set[str] = set()
+
+    def _add(spec: LoraSpec) -> None:
+        key = f"{spec.subfolder}/{spec.file}".lower()
+        if key in seen:
+            return
+        seen.add(key)
+        specs.append(spec)
+
+    for spec in resolve_loras_for_slug(config, catalog_slug):
+        _add(spec)
+
+    if lora_folder_bind_enabled():
+        for entry in find_loras_for_slug(config, catalog_slug):
+            _add(entry.to_spec())
+
+    return specs
+
+
 def resolve_loras_for_slug(config: Config, catalog_slug: str) -> List[LoraSpec]:
     """LoRA только для текущего slug (+ defaults). Без slug — пусто (не грузим лишнее в VRAM)."""
     data = load_registry(config)
@@ -219,6 +266,15 @@ def resolve_loras_for_slug(config: Config, catalog_slug: str) -> List[LoraSpec]:
                         trigger=str(lib.get("trigger") or ""),
                         subfolder=spec.subfolder,
                     )
+            if not spec.trigger:
+                file_trigger = _triggers_from_filename(spec.file)
+                if file_trigger:
+                    spec = LoraSpec(
+                        file=spec.file,
+                        strength=spec.strength,
+                        trigger=file_trigger,
+                        subfolder=spec.subfolder,
+                    )
             specs.append(spec)
 
     _add(data.get("defaults"))
@@ -244,6 +300,59 @@ def _tags_from_filename(name: str) -> List[str]:
     stem = Path(name).stem.lower()
     parts = re.split(r"[_\-\s]+", stem)
     return [p for p in parts if len(p) >= 2]
+
+
+def _triggers_from_filename(name: str) -> str:
+    """Триггер из скобок в имени: my_lora_(touch_motion).safetensors."""
+    stem = Path(name).stem
+    matches = _TRIGGER_PARENS_RE.findall(stem)
+    if not matches:
+        return ""
+    return matches[-1].strip()
+
+
+def _folder_slug_from_subfolder(subfolder: str) -> str:
+    sub = (subfolder or "").strip().replace("\\", "/").strip("/")
+    if not sub:
+        return ""
+    return sub.split("/")[-1].lower()
+
+
+def _read_sidecar_description(lora_path: Path) -> str:
+    """Описание из txt рядом с LoRA или в её подпапке."""
+    parent = lora_path.parent
+    stem = lora_path.stem
+    candidates = [
+        lora_path.with_suffix(lora_path.suffix + ".txt"),
+        parent / f"{stem}.txt",
+    ]
+    for name in _SIDECAR_NAMES:
+        candidates.append(parent / name)
+    seen: set[str] = set()
+    for path in candidates:
+        key = str(path).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if text:
+            return text[:800]
+    return ""
+
+
+def lora_folder_bind_enabled() -> bool:
+    raw = (os.environ.get("VIU_COMFY_LORA_FOLDER_BIND") or "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def lora_auto_pick_enabled() -> bool:
+    raw = (os.environ.get("VIU_COMFY_LORA_AUTO") or "0").strip().lower()
+    return raw in ("1", "true", "yes", "on")
 
 
 def _library_entry(data: Dict[str, Any], filename: str) -> Dict[str, Any]:
@@ -273,6 +382,10 @@ def scan_loras(config: Config, *, save: bool = True) -> List[LoraIndexEntry]:
             subfolder = "" if rel.parent == Path(".") else str(rel.parent).replace("\\", "/")
             stat = path.stat()
             lib = _library_entry(data, path.name)
+            file_trigger = _triggers_from_filename(path.name)
+            lib_trigger = str(lib.get("trigger") or "").strip()
+            sidecar = _read_sidecar_description(path)
+            lib_desc = str(lib.get("description") or "").strip()
             tags = [str(t) for t in (lib.get("tags") or [])] or _tags_from_filename(path.name)
             found.append(
                 LoraIndexEntry(
@@ -281,7 +394,9 @@ def scan_loras(config: Config, *, save: bool = True) -> List[LoraIndexEntry]:
                     subfolder=subfolder,
                     size_mb=round(stat.st_size / (1024 * 1024), 1),
                     tags=tags,
-                    trigger=str(lib.get("trigger") or ""),
+                    trigger=lib_trigger or file_trigger,
+                    description=lib_desc or sidecar,
+                    folder_slug=_folder_slug_from_subfolder(subfolder),
                     strength=float(lib.get("strength") or 0.85),
                     mtime=stat.st_mtime,
                 )
@@ -338,7 +453,11 @@ def format_lora_pick_message(entries: List[LoraIndexEntry]) -> str:
         tag_hint = f" [{', '.join(e.tags[:4])}]" if e.tags else ""
         sub = f" ({e.subfolder}/)" if e.subfolder else ""
         trig = f' trigger="{e.trigger}"' if e.trigger else ""
-        lines.append(f"  {e.index}. {e.file}{sub} — {e.size_mb} MB{tag_hint}{trig}")
+        desc = ""
+        if e.description:
+            one_line = " ".join(e.description.split())
+            desc = f"\n      {one_line[:160]}{'…' if len(one_line) > 160 else ''}"
+        lines.append(f"  {e.index}. {e.file}{sub} — {e.size_mb} MB{tag_hint}{trig}{desc}")
     lines.extend(
         [
             "",

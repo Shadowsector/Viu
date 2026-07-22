@@ -197,36 +197,13 @@ def _next_node_id(wf: Dict[str, Any], start: int = 900) -> str:
     return str(n)
 
 
-_PREFIX_SAVER_NODES = (
-    "SaveVideo",
-    "VHS_VideoCombine",
-    "SaveAnimatedWEBP",
-    "SaveWEBM",
-    "SaveImage",
-)
-
-
-def inject_filename_prefix(workflow: Dict[str, Any], prefix: str) -> Dict[str, Any]:
-    """Подставить читаемый префикс во все узлы сохранения."""
-    prefix = (prefix or "").strip() or "viu_mocap"
-    wf = json.loads(json.dumps(workflow))
-    for node in wf.values():
-        if not isinstance(node, dict):
-            continue
-        if node.get("class_type") in _PREFIX_SAVER_NODES:
-            node.setdefault("inputs", {})["filename_prefix"] = prefix
-    return wf
-
-
 def ensure_mp4_output(
     workflow: Dict[str, Any],
     *,
     fps: float = MOCAP_FPS,
-    filename_prefix: str = "viu_mocap",
 ) -> Dict[str, Any]:
     """Заменить WEBP/GIF-сейвер на CreateVideo → SaveVideo (mp4/h264)."""
     wf = json.loads(json.dumps(workflow))
-    prefix = (filename_prefix or "").strip() or "viu_mocap"
 
     # Уже есть SaveVideo — только выставить mp4/h264/fps на CreateVideo
     has_save = any(
@@ -245,7 +222,7 @@ def ensure_mp4_output(
                 inp = node.setdefault("inputs", {})
                 inp["format"] = "mp4"
                 inp["codec"] = "h264"
-                inp["filename_prefix"] = prefix
+                inp.setdefault("filename_prefix", "viu_mocap")
         # убрать старые анимированные сейверы, если остались рядом
         for nid in list(wf.keys()):
             node = wf[nid]
@@ -285,13 +262,13 @@ def ensure_mp4_output(
         "class_type": "SaveVideo",
         "inputs": {
             "video": [create_id, 0],
-            "filename_prefix": prefix,
+            "filename_prefix": "viu_mocap",
             "format": "mp4",
             "codec": "h264",
         },
         "_meta": {"title": "SaveVideo"},
     }
-    return inject_filename_prefix(wf, prefix)
+    return wf
 
 
 def inject_loras(
@@ -358,6 +335,33 @@ def inject_loras(
     return wf
 
 
+def inject_start_image(workflow: Dict[str, Any], image_name: str) -> Dict[str, Any]:
+    """Подставить референс в LoadImage → WanImageToVideo (I2V до генерации)."""
+    image_name = (image_name or "").strip()
+    if not image_name:
+        return workflow
+    wf = json.loads(json.dumps(workflow))
+
+    load_id: Optional[str] = None
+    for _nid, node in wf.items():
+        if not isinstance(node, dict) or node.get("class_type") != "WanImageToVideo":
+            continue
+        start_ref = (node.get("inputs") or {}).get("start_image")
+        if isinstance(start_ref, list) and start_ref:
+            load_id = str(start_ref[0])
+            break
+
+    if load_id and isinstance(wf.get(load_id), dict):
+        wf[load_id].setdefault("inputs", {})["image"] = image_name
+        return wf
+
+    for _nid, node in wf.items():
+        if isinstance(node, dict) and node.get("class_type") == "LoadImage":
+            node.setdefault("inputs", {})["image"] = image_name
+            return wf
+    return wf
+
+
 def inject_face_swap(
     workflow: Dict[str, Any],
     *,
@@ -420,6 +424,24 @@ def inject_face_swap(
     return wf
 
 
+def inject_filename_prefix(workflow: Dict[str, Any], prefix: str) -> Dict[str, Any]:
+    """Подставить читаемый префикс во все узлы сохранения."""
+    prefix = (prefix or "").strip() or "viu_mocap"
+    wf = json.loads(json.dumps(workflow))
+    for node in wf.values():
+        if not isinstance(node, dict):
+            continue
+        if node.get("class_type") in (
+            "SaveVideo",
+            "VHS_VideoCombine",
+            "SaveAnimatedWEBP",
+            "SaveWEBM",
+            "SaveImage",
+        ):
+            node.setdefault("inputs", {})["filename_prefix"] = prefix
+    return wf
+
+
 def prepare_mocap_workflow(
     workflow: Dict[str, Any],
     *,
@@ -434,7 +456,7 @@ def prepare_mocap_workflow(
         workflow, width=spec.width, height=spec.height, length=spec.length
     )
     prefix = (filename_prefix or "").strip() or "viu_mocap"
-    wf = ensure_mp4_output(wf, fps=spec.fps, filename_prefix=prefix)
+    wf = ensure_mp4_output(wf, fps=spec.fps)
     return inject_filename_prefix(wf, prefix)
 
 

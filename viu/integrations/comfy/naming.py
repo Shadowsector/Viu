@@ -90,5 +90,11 @@ def next_kept_seq(config, catalog_slug: str) -> int:
     return kept_count_for_slug(config, catalog_slug) + 1
 
 
+def comfy_filename_prefix(display_stem: str) -> str:
+    """Безопасный filename_prefix для SaveVideo в Comfy."""
+    stem = re.sub(r"[^a-zA-Z0-9_]+", "_", (display_stem or "viu_mocap").strip())
+    return stem[:120] or "viu_mocap"
+
+
 def slug_at_quota(config, catalog_slug: str) -> bool:
     return kept_count_for_slug(config, catalog_slug) >= max_clips_per_action()

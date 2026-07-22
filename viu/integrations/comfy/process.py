@@ -536,10 +536,15 @@ def ensure_comfy_running(
 
     install_note = ""
     if root is None and auto_install:
+        from .face_refs import face_swap_enabled
         from .install import ensure_comfy_installed
 
         ok_i, install_note = ensure_comfy_installed(
-            config, with_models=True, include_i2v=False, with_pip=True
+            config,
+            with_models=True,
+            include_i2v=False,
+            with_pip=True,
+            with_reactor=face_swap_enabled(),
         )
         root = resolve_comfy_root(config)
         if root is not None and not looks_like_comfy_root(root):
@@ -568,6 +573,14 @@ def ensure_comfy_running(
     if install_note:
         parts.append(install_note)
     parts.append(pf_msg)
+
+    from .face_refs import ensure_face_swap_ready, face_swap_enabled
+
+    if face_swap_enabled():
+        ok_r, r_msg = ensure_face_swap_ready(config)
+        parts.append(r_msg)
+        if ok_r and "клонировала" in r_msg.lower():
+            parts.append("ReActor установлен — нужен перезапуск Comfy (ниже).")
 
     _, _, has_cuda = _torch_info(py, root)
     extra: List[str] = []

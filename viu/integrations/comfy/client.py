@@ -171,3 +171,13 @@ class ComfyClient:
                         }
                     )
         return files
+
+    def has_node_class(self, class_type: str) -> bool:
+        """Проверить, зарегистрирована ли нода (ReActor и т.п.)."""
+        try:
+            data = self._get("/object_info")
+        except ComfyError:
+            return False
+        if not isinstance(data, dict):
+            return False
+        return class_type in data
