@@ -70,11 +70,19 @@ def test_specs_from_indices(cfg, tmp_path, monkeypatch):
 
 def test_format_pick_message_lists_numbers(cfg, tmp_path, monkeypatch):
     loras = tmp_path / "loras"
-    (loras / "test.safetensors").write_bytes(b"z" * 500)
+    (loras / "Amorph" / "Tentacles").mkdir(parents=True)
+    (loras / "Amorph" / "Tentacles" / "TentaclesSex_v1.safetensors").write_bytes(b"z" * 500)
+    (loras / "Dance" / "Grinder").mkdir(parents=True)
+    (loras / "Dance" / "Grinder" / "gr1nd3r(gr1nd3r).safetensors").write_bytes(b"y" * 200)
     entries = scan_loras(cfg)
     msg = format_lora_pick_message(entries)
     assert "1." in msg
     assert "lora: none" in msg
+    assert "TentaclesSex_v1" in msg
+    assert ".safetensors" not in msg
+    assert "MB" not in msg
+    assert "Amorph / Tentacles" in msg
+    assert "Dance / Grinder" in msg
 
 
 def test_append_trigger_words_no_dup():
