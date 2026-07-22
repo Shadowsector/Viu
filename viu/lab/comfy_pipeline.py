@@ -446,18 +446,14 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
 
             t = int(comfy_timeout_each(config))
             hints.append(
-                f"Таймаут на дубль: {t}с (VIU_COMFY_TIMEOUT_EACH). "
-                "На RTX 3060 Wan часто нужен 2400+."
+                f"Таймаут на дубль: {t}с — подхватывается из config/.env автоматически."
             )
         if "зависание" in low or "пропал из очереди" in low:
             hints.append(
-                "Авто-сброс при зависании: VIU_COMFY_AUTO_RESET_ON_HANG=1, "
-                "повтор: VIU_COMFY_RETRY_ON_HANG=1."
+                "Авто-сброс и повтор уже включены по умолчанию (см. comfy_queue_reset если очередь залипла)."
             )
         if "pending=" in low or "очередь" in low:
-            hints.append(
-                "Сброс очереди: comfy_queue_reset или VIU_COMFY_LAB_CLEAR_QUEUE=1 в .env."
-            )
+            hints.append("Сброс очереди: comfy_queue_reset (или дождись окончания текущих jobs).")
         if hints:
             msg += "\n\n💡 " + " ".join(hints)
         # Connection refused / все дубли FAIL — не маскировать под успех

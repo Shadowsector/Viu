@@ -87,6 +87,73 @@ def load_env_file(*roots: Path) -> None:
                 _apply_pair(*parsed)
 
 
+# Ключи Comfy lab: дописываются в .env при старте, если ещё нет.
+COMFY_ENV_ENSURE: dict[str, str] = {
+    "VIU_COMFY_TIMEOUT_EACH": "2400",
+    "VIU_COMFY_LAB_CLEAR_QUEUE": "1",
+    "VIU_COMFY_AUTO_RESET_ON_HANG": "1",
+    "VIU_COMFY_RETRY_ON_HANG": "1",
+}
+
+# Устаревшие значения → актуальные (только точное совпадение).
+COMFY_ENV_UPGRADES: dict[str, dict[str, str]] = {
+    "VIU_COMFY_TIMEOUT_EACH": {"900": "2400"},
+}
+
+
+def _env_keys_in_text(text: str) -> set[str]:
+    keys: set[str] = set()
+    for line in text.splitlines():
+        parsed = _parse_line(line)
+        if parsed:
+            keys.add(parsed[0])
+    return keys
+
+
+def patch_env_comfy_defaults(env_path: Path) -> bool:
+    """Дописать/обновить Comfy-настройки в .env (без ручной правки Деном)."""
+    path = Path(env_path).expanduser().resolve()
+    if not path.is_file():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except OSError:
+        return False
+
+    keys_present = _env_keys_in_text(text)
+    lines_out: list[str] = []
+    changed = False
+
+    for line in text.splitlines():
+        parsed = _parse_line(line)
+        if parsed:
+            key, value = parsed
+            upgrades = COMFY_ENV_UPGRADES.get(key, {})
+            if value in upgrades:
+                lines_out.append(f"{key}={upgrades[value]}")
+                keys_present.add(key)
+                changed = True
+                continue
+        lines_out.append(line)
+
+    missing = [key for key in COMFY_ENV_ENSURE if key not in keys_present]
+    if missing:
+        if lines_out and lines_out[-1].strip():
+            lines_out.append("")
+        lines_out.append("# Comfy lab (добавлено Viu автоматически)")
+        for key in missing:
+            lines_out.append(f"{key}={COMFY_ENV_ENSURE[key]}")
+        changed = True
+
+    if not changed:
+        return False
+    try:
+        path.write_text("\n".join(lines_out).rstrip() + "\n", encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
 def ensure_env_file(root: Path) -> Path:
     """Если нет .env — копирует .env.example → .env."""
     root = Path(root).expanduser().resolve()
@@ -126,6 +193,7 @@ def bootstrap_env(install_root: Path | None = None) -> Path | None:
     roots = default_env_roots(install_root)
     primary = roots[0] if roots else Path.cwd()
     env_path = ensure_env_file(primary)
+    patch_env_comfy_defaults(env_path)
     load_env_file(*roots)
     try:
         from .ollama_vram import apply_ollama_vram_limit

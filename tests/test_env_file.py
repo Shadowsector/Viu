@@ -53,3 +53,37 @@ def test_bootstrap_env_and_github_token(tmp_path, monkeypatch):
     )
     bootstrap_env(tmp_path)
     assert github_token() == "ghp_test_token"
+
+
+def test_patch_env_comfy_defaults_adds_missing(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("VIU_GITHUB_TOKEN=ghp_x\n", encoding="utf-8")
+    from viu.env_file import patch_env_comfy_defaults
+
+    assert patch_env_comfy_defaults(env) is True
+    text = env.read_text(encoding="utf-8")
+    assert "VIU_COMFY_TIMEOUT_EACH=2400" in text
+    assert "VIU_COMFY_LAB_CLEAR_QUEUE=1" in text
+    assert "VIU_COMFY_AUTO_RESET_ON_HANG=1" in text
+    assert "VIU_COMFY_RETRY_ON_HANG=1" in text
+
+
+def test_patch_env_comfy_upgrades_stale_timeout(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text(
+        "VIU_COMFY_TIMEOUT_EACH=900\nVIU_COMFY_LAB_CLEAR_QUEUE=1\n",
+        encoding="utf-8",
+    )
+    from viu.env_file import patch_env_comfy_defaults
+
+    assert patch_env_comfy_defaults(env) is True
+    assert "VIU_COMFY_TIMEOUT_EACH=2400" in env.read_text(encoding="utf-8")
+
+
+def test_patch_env_comfy_respects_custom_timeout(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("VIU_COMFY_TIMEOUT_EACH=3600\n", encoding="utf-8")
+    from viu.env_file import patch_env_comfy_defaults
+
+    patch_env_comfy_defaults(env)
+    assert "VIU_COMFY_TIMEOUT_EACH=3600" in env.read_text(encoding="utf-8")

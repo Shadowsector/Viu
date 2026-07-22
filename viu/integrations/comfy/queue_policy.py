@@ -65,7 +65,7 @@ def prepare_queue_for_triple(
         return False, (
             f"Очередь Comfy занята: running={running} pending={pending}. "
             f"Лимит pending={limit}. "
-            "Дождись окончания, напиши comfy_queue_reset, или VIU_COMFY_LAB_CLEAR_QUEUE=1 в .env."
+            "Дождись окончания, напиши comfy_queue_reset — авто-сброс перед lab уже включён."
         )
     return True, f"Очередь: running={running} pending={pending} — продолжаю."
 
