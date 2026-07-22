@@ -1,6 +1,13 @@
 import os
 
-from viu.env_file import bootstrap_env, ensure_env_file, github_token, load_env_file, migrate_env_file
+from viu.env_file import (
+    bootstrap_env,
+    ensure_env_file,
+    ensure_env_keys,
+    github_token,
+    load_env_file,
+    migrate_env_file,
+)
 
 
 def test_load_env_file_sets_missing_only(tmp_path, monkeypatch):
@@ -53,6 +60,23 @@ def test_migrate_env_file_bumps_old_llm_timeout(tmp_path):
     assert changed == ["VIU_LLM_TIMEOUT: 1200 → 1800"]
     assert "VIU_LLM_TIMEOUT=1800" in env.read_text(encoding="utf-8")
     assert "VIU_MODEL=viu-cydonia" in env.read_text(encoding="utf-8")
+
+
+def test_ensure_env_keys_appends_missing_timeout(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("VIU_MODEL=viu-cydonia\n", encoding="utf-8")
+    added = ensure_env_keys(tmp_path)
+    assert added
+    text = env.read_text(encoding="utf-8")
+    assert "VIU_LLM_TIMEOUT=1800" in text
+
+
+def test_bootstrap_overrides_stale_viu_cmd_timeout(tmp_path, monkeypatch):
+    """Viu.cmd мог выставить 1200 до загрузки .env — файл должен перебить."""
+    monkeypatch.setenv("VIU_LLM_TIMEOUT", "1200")
+    (tmp_path / ".env").write_text("VIU_MODEL=viu-cydonia\n", encoding="utf-8")
+    bootstrap_env(tmp_path)
+    assert os.environ["VIU_LLM_TIMEOUT"] == "1800"
 
 
 def test_bootstrap_env_migrates_timeout(tmp_path, monkeypatch):

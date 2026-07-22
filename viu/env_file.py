@@ -42,6 +42,11 @@ _ENV_VALUE_MIGRATIONS: dict[str, dict[str, str]] = {
     "VIU_LLM_TIMEOUT": {"1200": "1800"},
 }
 
+# Если ключа нет в .env — дописать (перебивает Viu.cmd / системные переменные).
+_ENV_INJECT_IF_MISSING: dict[str, str] = {
+    "VIU_LLM_TIMEOUT": "1800",
+}
+
 
 _EXPORT_RE = re.compile(r"^export\s+", re.IGNORECASE)
 
@@ -135,6 +140,43 @@ def migrate_env_file(root: Path) -> list[str]:
     return changed
 
 
+def _keys_in_env_text(text: str) -> set[str]:
+    keys: set[str] = set()
+    for line in text.splitlines():
+        parsed = _parse_line(line)
+        if parsed:
+            keys.add(parsed[0])
+    return keys
+
+
+def ensure_env_keys(root: Path) -> list[str]:
+    """Дописать в .env обязательные ключи, если строки нет (иначе берётся из Viu.cmd)."""
+    path = Path(root).expanduser().resolve() / ".env"
+    if not path.is_file():
+        return []
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except OSError:
+        return []
+    present = _keys_in_env_text(text)
+    to_add: list[str] = []
+    for key, value in _ENV_INJECT_IF_MISSING.items():
+        if key not in present:
+            to_add.append(f"{key}={value}")
+    if not to_add:
+        return []
+    if text and not text.endswith("\n"):
+        text += "\n"
+    if text.strip():
+        text += "\n"
+    text += "\n".join(to_add) + "\n"
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError:
+        return []
+    return [f"{line.split('=')[0]} дописан в .env" for line in to_add]
+
+
 def default_env_roots(install_root: Path | None = None) -> list[Path]:
     """U:\\Viu и .viu — оба места, куда Ден мог положить .env."""
     roots: list[Path] = []
@@ -165,6 +207,7 @@ def bootstrap_env(install_root: Path | None = None) -> Path | None:
     primary = roots[0] if roots else Path.cwd()
     env_path = ensure_env_file(primary)
     for root in roots:
+        ensure_env_keys(root)
         migrate_env_file(root)
     load_env_file(*roots)
     try:
