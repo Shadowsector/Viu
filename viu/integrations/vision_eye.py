@@ -89,7 +89,7 @@ def ask_vision(
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    timeout = float(getattr(config, "llm_timeout", 1200) or 1200)
+    timeout = float(getattr(config, "llm_timeout", 1800) or 1800)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
             data = json.loads(resp.read().decode("utf-8", errors="replace"))

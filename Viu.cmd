@@ -35,7 +35,7 @@ rem --- дефолты, если в .env нет строки (`.env` перек�
 set VIU_PROVIDER=openai
 set VIU_BASE_URL=http://localhost:11434/v1
 set VIU_API_KEY=ollama
-set VIU_LLM_TIMEOUT=1200
+set VIU_LLM_TIMEOUT=1800
 set VIU_UNITY_PROJECT=U:\Anabarra\Unity\Anabarra
 set VIU_ANIM_STAGING=U:\Anabarra\Animations
 set VIU_QUIET_HOURS=0-7
