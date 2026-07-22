@@ -132,6 +132,32 @@ class ComfyInstallTool(Tool):
         return ToolResult(ok, body)
 
 
+class ComfyQueueResetTool(Tool):
+    name = "comfy_queue_reset"
+    description = (
+        "Сбросить очередь Comfy: interrupt + clear pending. "
+        "Когда браузер :8188 крутится бесконечно или pending много."
+    )
+    parameters = {
+        "restart": "1 = после сброса перезапустить Comfy (comfy_ensure)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        client = _client(ctx)
+        ok, msg = client.ping()
+        if not ok:
+            return ToolResult(False, msg + "\nСначала comfy_ensure.")
+        ok_r, reset_msg = client.reset_queue()
+        lines = [reset_msg, client.ping()[1]]
+        if str(args.get("restart") or "").lower() in ("1", "true", "yes"):
+            ok_e, ensure_msg = ensure_comfy_running(
+                ctx.config, wait_seconds=120.0, auto_install=False
+            )
+            lines.append(ensure_msg)
+            return ToolResult(ok_r and ok_e, "\n".join(lines))
+        return ToolResult(ok_r, "\n".join(lines))
+
+
 class ComfyEnsureTool(Tool):
     name = "comfy_ensure"
     description = (

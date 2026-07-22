@@ -65,6 +65,47 @@ class ComfyClient:
         except ComfyError as exc:
             return False, str(exc)
 
+    def ui_ready(self, *, timeout: float = 5.0) -> Tuple[bool, str]:
+        """Проверить, отдаёт ли Comfy HTML-интерфейс (не только API /queue)."""
+        old = self.timeout
+        self.timeout = timeout
+        try:
+            req = urllib.request.Request(self._url("/"), method="GET")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = resp.read(4096).decode("utf-8", errors="replace").lower()
+            if "<html" in body or "comfy" in body:
+                return True, "UI отвечает"
+            return False, "корень :8188 не похож на ComfyUI (пустой ответ)"
+        except urllib.error.URLError as exc:
+            return False, f"UI не отвечает: {exc}"
+        finally:
+            self.timeout = old
+
+    def interrupt(self) -> Tuple[bool, str]:
+        """Остановить текущий job на GPU."""
+        try:
+            self._post("/interrupt", {})
+            return True, "interrupt отправлен"
+        except ComfyError as exc:
+            return False, str(exc)
+
+    def clear_queue(self) -> Tuple[bool, str]:
+        """Сбросить pending-очередь Comfy."""
+        try:
+            self._post("/queue", {"clear": True})
+            return True, "очередь очищена"
+        except ComfyError as exc:
+            return False, str(exc)
+
+    def reset_queue(self) -> Tuple[bool, str]:
+        """interrupt + clear — когда UI висит на крутилке."""
+        parts: List[str] = []
+        ok_i, msg_i = self.interrupt()
+        parts.append(msg_i)
+        ok_c, msg_c = self.clear_queue()
+        parts.append(msg_c)
+        return ok_i or ok_c, "; ".join(parts)
+
     def queue_prompt(self, workflow: dict) -> str:
         """Поставить workflow в очередь. Возвращает prompt_id."""
         payload = {"prompt": workflow, "client_id": self.client_id}

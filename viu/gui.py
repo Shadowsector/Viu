@@ -2106,19 +2106,47 @@ class ViuGUI:
     def _open_comfy_ui(self) -> None:
         import webbrowser
 
-        url = str(getattr(self.agent.config, "comfy_url", None) or "http://127.0.0.1:8188")
+        from .integrations.comfy.client import ComfyClient
+
+        base = str(getattr(self.agent.config, "comfy_url", None) or "http://127.0.0.1:8188")
         self._append("ты", "[Открыть ComfyUI]")
-        try:
-            webbrowser.open(url)
-            self._append(
-                "Вью",
-                f"Открыла {url}\n"
-                "Обычный MoCap — кнопкой lab; сюда — LoRA, v2v, отладка очереди.\n"
-                "Файлы LoRA клади в ComfyUI/models/loras/ — потом скажи мне подключить.",
-                tag="tool",
+        client = ComfyClient(base_url=base, timeout=5.0)
+        ok, ping = client.ping()
+        lines = [f"Comfy API: {ping}"]
+        if not ok:
+            lines.append("Сервер молчит — в чате: comfy_ensure")
+            lines.append(f"Или вручную: {base}")
+            self._append("Вью", "\n".join(lines), tag="err")
+            return
+        q = client.get_queue()
+        pending = len(q.get("queue_pending") or [])
+        running = len(q.get("queue_running") or [])
+        if pending > 3 or (running and pending > 0):
+            lines.append(
+                f"⚠ Очередь забита (running={running}, pending={pending}) — "
+                "браузер может крутиться бесконечно."
             )
-        except Exception as exc:  # noqa: BLE001
-            self._append("ошибка", f"Не открыла браузер: {exc}\nОткрой сама: {url}", tag="err")
+            lines.append("Сначала в чате: comfy_queue_reset")
+        ui_ok, ui_msg = client.ui_ready(timeout=8.0)
+        if not ui_ok:
+            lines.append(f"UI: {ui_msg}")
+            lines.append("Попробуй http://localhost:8188 или comfy_ensure (перезапуск).")
+        urls = [base]
+        if "127.0.0.1" in base:
+            urls.append(base.replace("127.0.0.1", "localhost"))
+        opened = False
+        for url in urls:
+            try:
+                webbrowser.open(url)
+                opened = True
+                lines.append(f"Открыла {url}")
+                break
+            except Exception:
+                continue
+        if not opened:
+            lines.append(f"Браузер не открылся — вставь вручную: {urls[0]}")
+        lines.append("MoCap через Вью (lab); Comfy UI — очередь и отладка.")
+        self._append("Вью", "\n".join(lines), tag="tool" if ui_ok else "sys")
 
     def _open_comfy_clip_review(self) -> None:
         from .integrations.comfy.clip_review_gui import open_comfy_clip_review
