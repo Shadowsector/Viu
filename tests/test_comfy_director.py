@@ -31,6 +31,16 @@ def test_idle_not_first_while_other_holes(tmp_path, monkeypatch):
     assert plan.catalog_slug in ("sit_down", "lie_down", "stand_up", "get_up") or plan.looped is False or True
 
 
+def test_barn_cycle_prefers_sit_before_lie(tmp_path, monkeypatch):
+    from viu.lab.comfy_director import invent_shot_choices
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    choices = invent_shot_choices(cfg, limit=5)
+    slugs = [p.catalog_slug for p in choices]
+    if "sit_down" in slugs and "lie_down" in slugs:
+        assert slugs.index("sit_down") < slugs.index("lie_down")
+
+
 def test_normalize_idle_stand_slug():
     from viu.integrations.comfy.clip_review import normalize_catalog_slug
 

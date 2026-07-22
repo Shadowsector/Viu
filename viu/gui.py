@@ -771,6 +771,44 @@ class ViuGUI:
         self._on_send()
         return "break"
 
+    def _maybe_handle_comfy_reply(
+        self, text: str, *, echo_user: bool = True, notify_telegram: bool = False
+    ) -> bool:
+        """Comfy lab ждёт промпт/LoRA/клип — ответ в чате Вью, не в LLM."""
+        try:
+            from .integrations.comfy.approval import try_handle_comfy_telegram
+            from .lab.comfy_pipeline import COMFY_TOPIC
+            from .lab.session import load_session
+
+            handled, msg = try_handle_comfy_telegram(self.agent.config, text)
+            if not handled:
+                return False
+            if echo_user:
+                self._append("ты", text)
+                self._record_llm_turn("user", text)
+            self._append("Вью", msg, tag="tool")
+            if notify_telegram and self._telegram is not None:
+                self._telegram.notify_chat(msg[:1200])
+            session = load_session(self.agent.config, COMFY_TOPIC)
+            if (
+                session
+                and session.status == "running"
+                and (
+                    session.meta.get("approved")
+                    or session.meta.get("clip_kept_id")
+                    or session.meta.get("clip_rejected_all")
+                )
+                and not self._tool_busy
+            ):
+                self._run_tool(
+                    "lab_step",
+                    {"topic": COMFY_TOPIC, "run_all": "1"},
+                    label="Comfy: продолжаю lab",
+                )
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
     def _on_send(self) -> None:
         from .gui_busy import can_accept_chat
 
@@ -785,6 +823,8 @@ class ViuGUI:
             self.root.destroy()
             return
         if self._try_direct_tool_command(text):
+            return
+        if self._maybe_handle_comfy_reply(text):
             return
         from .integrations.telegram.router import route_user_message
 
@@ -1531,32 +1571,10 @@ class ViuGUI:
             return
 
         try:
-            from .integrations.comfy.approval import try_handle_comfy_telegram
-            from .lab.comfy_pipeline import COMFY_TOPIC
-            from .lab.session import load_session
-
-            handled, msg = try_handle_comfy_telegram(self.agent.config, text)
-            if handled:
+            if self._maybe_handle_comfy_reply(
+                text, echo_user=False, notify_telegram=True
+            ):
                 self._telegram_waiting_reply = False
-                self._append("Вью", msg, tag="tool")
-                if self._telegram is not None:
-                    self._telegram.notify_chat(msg[:1200])
-                session = load_session(self.agent.config, COMFY_TOPIC)
-                if (
-                    session
-                    and session.status == "running"
-                    and (
-                        session.meta.get("approved")
-                        or session.meta.get("clip_kept_id")
-                        or session.meta.get("clip_rejected_all")
-                    )
-                    and not self._tool_busy
-                ):
-                    self._run_tool(
-                        "lab_step",
-                        {"topic": COMFY_TOPIC, "run_all": "1"},
-                        label="Comfy: продолжаю lab",
-                    )
                 return
         except Exception:  # noqa: BLE001
             pass

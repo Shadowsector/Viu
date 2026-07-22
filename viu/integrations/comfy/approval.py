@@ -1,14 +1,13 @@
-"""Одобрение промпта Comfy через Telegram."""
+"""Одобрение промпта Comfy через Telegram и чат Вью."""
 
 from __future__ import annotations
 
 import re
-from typing import Optional, Tuple
+from typing import Tuple
 
 from ...config import Config
 from ..telegram.client import TelegramClient, TelegramError
 from ..telegram import settings as tg_settings
-from .prompts import draft_bundle, mocap_prompt
 
 _APPROVE_RE = re.compile(
     r"^\s*(?:ок|ok|да|yes|approve|👍|✅|принято|го)\s*[.!…]?\s*$",
@@ -22,6 +21,52 @@ _EDIT_PREFIX_RE = re.compile(
     r"^\s*(?:правк[аи]|edit|промпт)\s*[:\-–]\s*",
     re.IGNORECASE,
 )
+_REDRAFT_COMPLAINT_RE = re.compile(
+    r"(?:"
+    r"другой\s+промпт?|"
+    r"не\s+тот\s+промпт?|"
+    r"не\s+это(?:т)?\s+промпт?|"
+    r"не\s+то|"
+    r"не\s+хотел|"
+    r"wrong\s+prompt|"
+    r"another\s+prompt|"
+    r"not\s+this\s+one|"
+    r"переснять|"
+    r"другой\s+кадр|"
+    r"смени(?:ть)?\s+промпт|"
+    r"другой\s+shot"
+    r")",
+    re.IGNORECASE,
+)
+_REJECT_PREFIX_RE = re.compile(r"^\s*нет\b", re.IGNORECASE)
+_SLUG_ONLY_RE = re.compile(r"^[\w-]+$")
+
+
+def _looks_like_mocap_action(text: str) -> bool:
+    """Текст похож на EN-описание движения или slug — не на «нет, не тот промпт»."""
+    raw = (text or "").strip()
+    if len(raw) < 8:
+        return False
+    if _REDRAFT_COMPLAINT_RE.search(raw) or _REJECT_PREFIX_RE.match(raw):
+        return False
+    latin = len(re.findall(r"[A-Za-z]", raw))
+    if latin >= 18:
+        return True
+    slug = raw.lower().replace("-", "_")
+    if _SLUG_ONLY_RE.match(raw) and "_" in slug:
+        return True
+    return False
+
+
+def _is_redraft_request(text: str) -> bool:
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if _REDRAFT_COMPLAINT_RE.search(raw):
+        return True
+    if _REJECT_PREFIX_RE.match(raw) and not _REJECT_RE.match(raw):
+        return True
+    return False
 
 
 def send_prompt_for_approval(config: Config, action: str, draft_text: str) -> Tuple[bool, str]:
@@ -31,11 +76,12 @@ def send_prompt_for_approval(config: Config, action: str, draft_text: str) -> Tu
         f"{draft_text.strip()}\n\n"
         "Ответь:\n"
         "• ок — генерирую 3 видео (сбоку / ¾ / анфас)\n"
-        "• правки: <новый текст действия или полный промпт>\n"
+        "• нет / другой кадр — предложу следующий по графу\n"
+        "• правки: sit_down или полный EN-промпт\n"
         "• стоп — отменить этот промпт"
     )
     if not tg_settings.enabled(config):
-        return False, "Telegram выключен — одобри в чате Вью: ok / стоп / правки: …"
+        return False, "Telegram выключен — одобри в чате Вью: ок / стоп / правки: …"
     token = tg_settings.token(config)
     chat_id = tg_settings.chat_id(config)
     if not token or chat_id is None:
@@ -48,7 +94,10 @@ def send_prompt_for_approval(config: Config, action: str, draft_text: str) -> Tu
 
 
 def parse_approval_reply(text: str, *, current_action: str) -> Tuple[str, str]:
-    """Вернуть (decision, action_or_msg). decision: approve|reject|edit|unknown."""
+    """Вернуть (decision, action_or_msg).
+
+    decision: approve | reject | edit | redraft | unknown
+    """
     raw = (text or "").strip()
     if not raw:
         return "unknown", ""
@@ -58,11 +107,14 @@ def parse_approval_reply(text: str, *, current_action: str) -> Tuple[str, str]:
         return "reject", "Отменено."
     if _EDIT_PREFIX_RE.match(raw):
         edited = _EDIT_PREFIX_RE.sub("", raw).strip()
-        if edited:
-            return "edit", edited
-        return "unknown", ""
-    # Любой другой непустой текст = правка действия/промпта
-    if len(raw) >= 8:
+        if not edited:
+            return "unknown", ""
+        if _is_redraft_request(edited):
+            return "redraft", edited
+        return "edit", edited
+    if _is_redraft_request(raw):
+        return "redraft", raw
+    if _looks_like_mocap_action(raw):
         return "edit", raw
     return "unknown", raw
 
@@ -121,6 +173,6 @@ def try_handle_comfy_telegram(
     if decision == "unknown":
         return True, (
             "Не поняла ответ по Comfy-промпту.\n"
-            "Напиши: ок | стоп | правки: <текст>"
+            "Напиши: ок | нет / другой кадр | правки: sit_down | стоп"
         )
     return True, apply_prompt_decision(config, session, decision, payload)

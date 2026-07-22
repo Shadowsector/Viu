@@ -75,6 +75,37 @@ def test_parse_approval():
     d, payload = parse_approval_reply("правки: wave hello", current_action="sit")
     assert d == "edit"
     assert "wave" in payload
+    d2, _ = parse_approval_reply(
+        "нет, мы другой промт хотели снимать",
+        current_action="sleep idle",
+    )
+    assert d2 == "redraft"
+    d3, _ = parse_approval_reply(
+        "walking forward at a calm pace, natural arm swing",
+        current_action="sit",
+    )
+    assert d3 == "edit"
+    d4, _ = parse_approval_reply("другой кадр", current_action="sit")
+    assert d4 == "redraft"
+
+
+def test_redraft_does_not_approve_complaint(tmp_path, monkeypatch):
+    from viu.lab.comfy_pipeline import COMFY_TOPIC, apply_prompt_decision
+    from viu.lab.session import LabSession, load_session, save_session
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    session = LabSession(id="t1", topic=COMFY_TOPIC)
+    session.status = "awaiting_prompt"
+    session.meta = {"catalog_slug": "lie_down", "action": "lying down"}
+    save_session(cfg, session)
+    msg = apply_prompt_decision(
+        cfg, session, "redraft", "нет, мы другой промт хотели снимать"
+    )
+    session = load_session(cfg, COMFY_TOPIC)
+    assert session is not None
+    assert session.meta.get("approved") is False
+    assert session.status == "awaiting_prompt"
+    assert "не тот кадр" in msg.lower() or "новый вариант" in msg.lower()
 
 
 def test_mocap_angles_in_prompt():
@@ -84,7 +115,7 @@ def test_mocap_angles_in_prompt():
     p = mocap_prompt("sit down", angles[0])
     assert "three-quarter" in p
     assert "sit down" in p
-    assert "tanned" in p
+    assert "tabaxi" in p.lower()
     assert "white" in p.lower()
     assert "frontal" in p.lower() or "fill light" in p.lower() or "fills the frame" in p
 

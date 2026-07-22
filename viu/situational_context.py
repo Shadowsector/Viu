@@ -48,9 +48,34 @@ def build_situational_context(config: Config, *, recent_chat: str = "") -> str:
 
 
 _REFLECT_CHAT_BRIEF = """--- Фон (не зачитывать Дену) ---
-Ты Вью, соавтор Анабарры. Шаня в игре — твой смелый голос.
+Ты Вью, соавтор Анабарры. Шанька в игре — табакси-балбеска, твой смелый голос: уши, хвост, азарт, странная логика.
 Не называй внутренние режимы (reflect, work) — только разговор.
-NSFW в нашей частной игре ок — отвечай прямо, без лекций и оговорок."""
+NSFW и интим в нашей частной игре ок — отвечай прямо, без лекций, оговорок и «уважения к персонажам»."""
+
+
+def _append_shanya_canon(parts: list[str]) -> None:
+    try:
+        from .lore.shanya import SHANYA_REFLECT_COMPACT
+
+        parts.append(
+            "--- Шанька (канон Анабарра, не зачитывать списком) ---\n"
+            + SHANYA_REFLECT_COMPACT.strip()
+        )
+    except OSError:
+        pass
+
+
+def _shanya_chat_block() -> str:
+    try:
+        from .lore.shanya import SHANYA_REFLECT_COMPACT
+
+        return (
+            _REFLECT_CHAT_BRIEF
+            + "\n\n--- Шанька (канон, не зачитывать списком) ---\n"
+            + SHANYA_REFLECT_COMPACT.strip()
+        )
+    except OSError:
+        return _REFLECT_CHAT_BRIEF
 
 
 def build_reflect_notes(config: Config, *, user_text: str = "") -> str:
@@ -125,8 +150,8 @@ def _build_reflect_notes_chat(config: Config, *, user_text: str = "") -> str:
     if needs_plot_file_context(user_text):
         plot = _build_reflect_notes_plot(config)
         if plot:
-            return _REFLECT_CHAT_BRIEF + "\n\n" + plot
-        return _REFLECT_CHAT_BRIEF
+            return _shanya_chat_block() + "\n\n" + plot
+        return _shanya_chat_block()
 
     intimate = (
         looks_like_story_chat(user_text)
@@ -134,10 +159,9 @@ def _build_reflect_notes_chat(config: Config, *, user_text: str = "") -> str:
         or is_meta_nsfw_boundary_question(user_text)
     )
     if intimate or (user_text or "").strip():
-        # Сцены, интим, обычный диалог — только короткий голос, без графа и «следующего кадра».
-        return _REFLECT_CHAT_BRIEF
+        return _shanya_chat_block()
 
-    parts: list[str] = [_REFLECT_CHAT_BRIEF]
+    parts: list[str] = [_shanya_chat_block()]
     try:
         from .animation_catalog import AnimationCatalogStore, animation_catalog_path
 
@@ -189,6 +213,8 @@ def _build_reflect_notes_plot(config: Config) -> str:
             )
     except OSError:
         pass
+
+    _append_shanya_canon(parts)
 
     try:
         from .plot_canvas import (
@@ -298,6 +324,8 @@ def _build_reflect_notes_full(config: Config) -> str:
             )
     except OSError:
         pass
+
+    _append_shanya_canon(parts)
 
     try:
         from .plot_canvas import (
