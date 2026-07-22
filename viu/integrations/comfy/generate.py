@@ -49,6 +49,7 @@ def run_single_angle(
     looped: bool = False,
     seq: int = 0,
     lora_specs: list | None = None,
+    length_override: int | None = None,
 ) -> Tuple[bool, str, List[str]]:
     prompt = mocap_prompt(action, angle)
     negative = mocap_negative()
@@ -83,7 +84,9 @@ def run_single_angle(
     wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
     wf = inject_loras(wf, loras)
     wf = inject_loras(wf, loras)
-    wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
+    wf = prepare_mocap_workflow(
+        wf, action=action, filename_prefix=file_prefix, length_override=length_override
+    )
 
     client = _client(config)
     ok, ping = client.ping()
@@ -265,3 +268,72 @@ def run_triple_angles(
             lines.extend(f"      • {p}" for p in files)
         any_ok = any_ok or ok
     return any_ok, "\n".join(lines), results
+
+
+def run_mocap_preview(
+    config: Config,
+    *,
+    action: str,
+    catalog_slug: str = "",
+    enters_from: list | None = None,
+    looped: bool = False,
+    lora_specs: list | None = None,
+    timeout: float | None = None,
+) -> Tuple[bool, str, Dict[str, Any]]:
+    """Короткий preview-клип ¾ перед полными 3 дублями."""
+    from .angles import angle_by_id
+    from .framing import frame_spec_for_action
+
+    if timeout is None:
+        import os
+
+        try:
+            timeout = float(os.environ.get("VIU_COMFY_PREVIEW_TIMEOUT", "900"))
+        except ValueError:
+            timeout = 900.0
+
+    spec = frame_spec_for_action(action, preview=True)
+    angle = angle_by_id("take_b") or default_angles()[1]
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    base_slug = catalog_slug or "mocap"
+    slug = f"{base_slug}_preview_{stamp}"
+    ok, msg, files = run_single_angle(
+        config,
+        action=action,
+        angle=angle,
+        slug=slug,
+        catalog_slug=base_slug,
+        enters_from=enters_from,
+        looped=looped,
+        seq=0,
+        timeout=timeout,
+        seed_salt=f"preview|{stamp}",
+        lora_specs=lora_specs,
+        length_override=spec.length,
+    )
+    results: Dict[str, Any] = {
+        "action": action,
+        "slug": slug,
+        "video": files[0] if files else "",
+        "still": "",
+        "spec": {
+            "width": spec.width,
+            "height": spec.height,
+            "length": spec.length,
+            "fps": spec.fps,
+        },
+    }
+    if not ok or not files:
+        return False, msg, results
+
+    from .preview import extract_preview_still
+
+    video = Path(files[0])
+    still_ok, still_path = extract_preview_still(video)
+    if still_ok:
+        results["still"] = still_path
+    line = (
+        f"Preview MoCap ({spec.summary_ru()}): {msg}"
+        + (f"\n  кадр: {still_path}" if still_ok else "")
+    )
+    return True, line, results

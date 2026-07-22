@@ -425,13 +425,15 @@ def prepare_mocap_workflow(
     *,
     action: str = "",
     filename_prefix: str = "",
+    length_override: int | None = None,
 ) -> Dict[str, Any]:
     """Кадр/длина по действию (стоя≠лёжа) + mp4 — поверх любого t2v на диске."""
     from .framing import frame_spec_for_action
 
     spec = frame_spec_for_action(action)
+    length = int(length_override) if length_override else spec.length
     wf = inject_vertical_frame(
-        workflow, width=spec.width, height=spec.height, length=spec.length
+        workflow, width=spec.width, height=spec.height, length=length
     )
     prefix = (filename_prefix or "").strip() or "viu_mocap"
     wf = ensure_mp4_output(wf, fps=spec.fps, filename_prefix=prefix)

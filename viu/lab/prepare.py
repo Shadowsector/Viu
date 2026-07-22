@@ -56,7 +56,7 @@ def _prepare_lab_session_inner(
         if topic == "comfy":
             session.steps_total = 6
         if topic == "interaction":
-            session.steps_total = 8
+            session.steps_total = 9
         save_session(config, session)
         return session, "fresh", "\n".join(notes)
 
@@ -66,7 +66,7 @@ def _prepare_lab_session_inner(
         if topic == "comfy":
             session.steps_total = 6
         if topic == "interaction":
-            session.steps_total = 8
+            session.steps_total = 9
         save_session(config, session)
         return session, "fresh", ""
 
@@ -79,7 +79,7 @@ def _prepare_lab_session_inner(
         if topic == "comfy":
             session.steps_total = 6
         if topic == "interaction":
-            session.steps_total = 8
+            session.steps_total = 9
         save_session(config, session)
         return session, "fresh", "\n".join(notes)
 
@@ -107,7 +107,7 @@ def _prepare_lab_session_inner(
         if topic == "comfy":
             session.steps_total = 6
         if topic == "interaction":
-            session.steps_total = 8
+            session.steps_total = 9
         save_session(config, session)
         return session, "fresh", "\n".join(notes)
 

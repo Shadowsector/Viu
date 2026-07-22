@@ -116,7 +116,7 @@ def test_comfy_lab_awaits_telegram(tmp_path, monkeypatch):
     (tmp_path / "Viu").mkdir(parents=True, exist_ok=True)
     ensure_task_file(cfg, action="lean on window")
     session = new_session(COMFY_TOPIC)
-    session.steps_total = 8
+    session.steps_total = 9
     session.meta["action"] = "lean on window"
     save_session(cfg, session)
 
@@ -145,7 +145,7 @@ def test_redraft_does_not_approve_complaint(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     (tmp_path / "Viu").mkdir(parents=True, exist_ok=True)
     session = new_session(COMFY_TOPIC)
-    session.steps_total = 8
+    session.steps_total = 9
     session.step = 3
     session.status = "awaiting_prompt"
     session.meta["action"] = "lying down sleep idle"
@@ -191,7 +191,7 @@ def test_format_lab_progress_comfy_labels():
     from viu.lab.progress import format_lab_progress
 
     s = new_session(COMFY_TOPIC)
-    s.steps_total = 8
+    s.steps_total = 9
     s.step = 1
     text = format_lab_progress(s, "ok")
     assert "Comfy online" in text

@@ -129,6 +129,7 @@ def try_handle_comfy_telegram(
         COMFY_TOPIC,
         apply_clip_pick_decision,
         apply_lora_pick_decision,
+        apply_preview_decision,
         apply_prompt_decision,
     )
     from ...lab.session import load_session
@@ -166,6 +167,16 @@ def try_handle_comfy_telegram(
                 "Напиши: lora: 1 | lora: 1,3 | lora: all | lora: none"
             )
         return True, apply_lora_pick_decision(config, session, indices)
+
+    if session.status == "awaiting_preview":
+        action = str((session.meta or {}).get("approved_action") or session.meta.get("action") or "")
+        decision, payload = parse_approval_reply(text, current_action=action)
+        if decision == "unknown":
+            return True, (
+                "Не поняла ответ по preview.\n"
+                "Напиши: ок | нет / другой кадр | стоп"
+            )
+        return True, apply_preview_decision(config, session, decision, payload)
 
     if session.status != "awaiting_prompt":
         return False, ""

@@ -33,6 +33,7 @@ STEP_LABELS = [
     "Черновик промпта",
     "Одобрение Telegram",
     "Выбор LoRA",
+    "Preview MoCap",
     "3 дубля (¾)",
     "Выбор лучшего дубля",
     "Отчёт",
@@ -279,6 +280,7 @@ def apply_prompt_decision(
     session.meta["approved_action"] = action
     session.meta.pop("lora_pick_done", None)
     session.meta.pop("selected_loras", None)
+    _clear_preview_meta(session)
     session.status = "running"
     if session.step < 4:
         session.step = 4
@@ -290,8 +292,46 @@ def apply_prompt_decision(
     )
     return (
         f"Промпт принят («{action[:80]}»).\n"
-        "Дальше выберем LoRA (или без) → 3 дубля ¾."
+        "Дальше выберем LoRA → preview в Telegram → 3 дубля ¾."
     )
+
+
+def _clear_preview_meta(session: LabSession) -> None:
+    for key in (
+        "preview_approved",
+        "preview_video",
+        "preview_still",
+        "preview_sent",
+    ):
+        session.meta.pop(key, None)
+
+
+def apply_preview_decision(
+    config: Config,
+    session: LabSession,
+    decision: str,
+    payload: str,
+) -> str:
+    """После preview в Telegram: ok → 3 дубля; нет → redraft; стоп → отмена."""
+    if decision == "reject":
+        _clear_preview_meta(session)
+        session.status = "completed"
+        session.pause_reason = "preview_rejected"
+        save_session(config, session)
+        append_journal(config, COMFY_TOPIC, "### Preview отклонён\n\nСтоп по ответу Дена.")
+        return "Ок, пул отменила после preview."
+
+    if decision == "redraft":
+        _clear_preview_meta(session)
+        return _redraft_comfy_prompt(config, session, note=payload)
+
+    session.meta["preview_approved"] = True
+    session.status = "running"
+    if session.step < 6:
+        session.step = 6
+    save_session(config, session)
+    append_journal(config, COMFY_TOPIC, "### Preview одобрен\n\nЗапуск 3 дублей ¾.")
+    return "Preview ок — запускаю 3 полных дубля ¾."
 
 
 def _redraft_comfy_prompt(config: Config, session: LabSession, *, note: str = "") -> str:
@@ -312,6 +352,7 @@ def _redraft_comfy_prompt(config: Config, session: LabSession, *, note: str = ""
     session.meta.pop("lora_pick_done", None)
     session.meta.pop("selected_loras", None)
     session.meta.pop("auto_approved_away", None)
+    _clear_preview_meta(session)
     session.step = 3
     session.status = "awaiting_prompt"
     ensure_task_file(config, action=plan.action)
@@ -416,10 +457,93 @@ def apply_lora_pick_decision(
         names = ", ".join(f"{s.file}@{s.strength}" for s in specs)
         msg = f"LoRA: {names}."
     append_journal(config, COMFY_TOPIC, f"### LoRA выбраны\n\n{msg}")
-    return msg + "\nЗапускаю 3 дубля ¾."
+    return msg + "\nДальше — preview MoCap в Telegram."
+
+
+def step_generate_preview(config: Config, session: LabSession) -> StepResult:
+    """Короткий preview-клип → Telegram → одобрение перед 3 дублями."""
+    if session.meta.get("preview_approved"):
+        return True, "Preview уже одобрен.", None
+    if session.status == "awaiting_preview":
+        return True, "Жду одобрение preview в Telegram (ок / нет / стоп).", None
+    if not session.meta.get("approved"):
+        session.status = "awaiting_prompt"
+        save_session(config, session)
+        return True, "Промпт не одобрен — жду Telegram.", None
+
+    try:
+        from ..presence import is_away
+
+        away = is_away(config)
+    except Exception:
+        away = False
+    if away:
+        session.meta["preview_approved"] = True
+        save_session(config, session)
+        return True, "Нет дома — preview пропущен, сразу 3 дубля.", None
+
+    action = str(session.meta.get("approved_action") or session.meta.get("action") or "")
+    from ..integrations.comfy.lora import specs_from_session_meta
+
+    lora_specs = specs_from_session_meta(session.meta)
+    catalog_slug = str(session.meta.get("catalog_slug") or "").strip()
+
+    if not session.meta.get("preview_video"):
+        from ..integrations.comfy.generate import run_mocap_preview
+
+        ok, msg, results = run_mocap_preview(
+            config,
+            action=action,
+            catalog_slug=catalog_slug,
+            enters_from=list(session.meta.get("enters_from") or []),
+            looped=bool(session.meta.get("looped")),
+            lora_specs=lora_specs,
+        )
+        append_journal(config, COMFY_TOPIC, f"### Preview MoCap\n\n{msg}")
+        if not ok:
+            return False, msg, None
+        session.meta["preview_video"] = str(results.get("video") or "")
+        session.meta["preview_still"] = str(results.get("still") or "")
+        if results.get("video"):
+            session.append_artifact(str(results["video"]))
+        save_session(config, session)
+
+    if not session.meta.get("preview_sent"):
+        from ..integrations.comfy.preview import send_preview_for_approval
+
+        still = str(session.meta.get("preview_still") or "")
+        video = str(session.meta.get("preview_video") or "")
+        if not still and video:
+            from ..integrations.comfy.preview import extract_preview_still
+            from pathlib import Path
+
+            ok_still, still = extract_preview_still(Path(video))
+            if ok_still:
+                session.meta["preview_still"] = still
+        sent, send_msg = send_preview_for_approval(
+            config,
+            action=action,
+            still_path=still,
+            video_path=video,
+        )
+        session.meta["preview_sent"] = sent
+        save_session(config, session)
+        if not sent:
+            append_journal(config, COMFY_TOPIC, f"### Preview Telegram\n\n{send_msg}")
+            return True, send_msg + "\n(Можно ответить в чате Вью: ок / нет / стоп.)", None
+
+    session.status = "awaiting_preview"
+    save_session(config, session)
+    return True, "Preview в Telegram — ответь: ок | нет / другой кадр | стоп.", None
 
 
 def step_generate_triple(config: Config, session: LabSession) -> StepResult:
+    if session.status == "awaiting_preview":
+        return True, "Жду одобрение preview в Telegram (ок / нет / стоп).", None
+    if not session.meta.get("preview_approved"):
+        session.step = 5
+        save_session(config, session)
+        return True, "Сначала preview MoCap — шаг 6 после «ок».", None
     if session.status == "awaiting_prompt":
         return True, "Жду одобрение промпта в Telegram (ок / правки / стоп).", None
     if not session.meta.get("approved"):
@@ -639,6 +763,7 @@ STEPS: list[Callable[[Config, LabSession], StepResult]] = [
     step_draft_prompt,
     step_request_approval,
     step_request_lora_pick,
+    step_generate_preview,
     step_generate_triple,
     step_await_clip_pick,
     step_report,
@@ -653,6 +778,8 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
             "Жду выбор LoRA: `lora: 1` / `lora: 1,3` / `lora: all` / `lora: none` "
             "или tool comfy_lora_pick."
         )
+    if session.status == "awaiting_preview":
+        return True, "Жду одобрение preview MoCap в Telegram (ок / нет / стоп)."
     if session.status == "awaiting_clip_pick":
         return True, (
             "Жду выбор клипа: `лучший: front` / `лучший: side 5` / `отклонить все` "
@@ -698,11 +825,17 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
         notify_lab_step(config, step_idx, label, msg)
         return True, msg
 
+    if session.status == "awaiting_preview":
+        session.steps_total = len(STEPS)
+        save_session(config, session)
+        notify_lab_step(config, step_idx, label, msg)
+        return True, msg
+
     if session.status == "paused":
         save_session(config, session)
         return True, msg
 
-    if not ok and session.step in (0, 5):
+    if not ok and session.step in (0, 6):
         session.last_fail_step = session.step
         session.last_fail_msg = msg[:2000]
         key = str(session.step)
@@ -746,12 +879,15 @@ def run_until_done(
         if session.status in (
             "awaiting_prompt",
             "awaiting_lora_pick",
+            "awaiting_preview",
             "awaiting_clip_pick",
             "awaiting_rating",
             "completed",
         ):
             if session.status == "awaiting_prompt":
                 lines.append("Жду одобрение промпта в Telegram.")
+            elif session.status == "awaiting_preview":
+                lines.append("Жду одобрение preview MoCap в Telegram.")
             elif session.status == "awaiting_lora_pick":
                 lines.append("Жду выбор LoRA (lora: 1,2 / none).")
             elif session.status == "awaiting_clip_pick":

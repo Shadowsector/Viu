@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from .angles import CameraAngle
 from .framing import enrich_idle_action, frame_spec_for_action
 
@@ -16,13 +18,35 @@ _NEGATIVE = (
 
 _BASE = (
     "simple tanned young woman, sun-kissed skin, athletic, "
-    "full body head to toe filling the frame, feet visible, "
-    "pure white studio background, seamless white backdrop, "
+    "pure white studio background, seamless white backdrop, no scenery, "
     "soft frontal key light, fill light from front, even face lighting, "
     "subject clearly lit from camera side, no backlight silhouette, "
-    "locked static camera, no text, no blur, clear limbs and joints, "
-    "high contrast against white, loopable short motion"
+    "locked static tripod camera, no text, no blur, clear limbs and joints, "
+    "high contrast against white, motion capture reference video, "
+    "all body joints readable for mocap software, no motion blur"
 )
+
+_MOCAP_MULTI_RE = re.compile(
+    r"\b("
+    r"two|three|four|five|2|3|4|5|couple|pair|duet|group|trio|several|"
+    r"двое|трое|четверо|пятеро|пара"
+    r")\b",
+    re.I,
+)
+
+
+def character_layout_hint(action: str) -> str:
+    """Один персонаж — на весь кадр; несколько — по зонам кадра."""
+    if _MOCAP_MULTI_RE.search(action or ""):
+        return (
+            "multiple characters, each full body visible head to toe, "
+            "spread across frame zones (left third, center, right third), "
+            "no overlapping limbs, each figure clearly separated for mocap"
+        )
+    return (
+        "single character only, one person, solo, full body head to toe filling the frame, "
+        "feet and hands visible, figure fills 85 to 95 percent of frame height, centered"
+    )
 
 # Вариации дублей — чтобы A/B/C не были копиями
 _TAKE_FLAVOR = (
@@ -48,7 +72,7 @@ def diversify_action(action: str, take_index: int) -> str:
 
 def mocap_prompt(action: str, angle: CameraAngle | None = None) -> str:
     action = enrich_idle_action(action)
-    parts = [_BASE, action]
+    parts = [_BASE, character_layout_hint(action), action]
     spec = frame_spec_for_action(action)
     if spec.orientation == "vertical":
         parts.append("vertical portrait framing, figure fills the tall frame")
@@ -70,10 +94,10 @@ def draft_bundle(action: str) -> str:
     spec = frame_spec_for_action(action_e)
     return (
         f"Действие: {action_e}\n\n"
-        f"Базовый промпт (Вью снимет 3 дубля в ракурсе ¾ с разным timing/seed):\n"
+        f"Базовый промпт (сначала preview в Telegram, потом 3 дубля ¾):\n"
         f"{base}\n\n"
-        f"Кадр: {spec.summary_ru()}. Ракурс: только три четверти.\n"
-        f"Длина: Wan = кадры 4n+1, FPS={spec.fps:.0f}; "
-        f"idle длиннее (~3.4 с), жест ~2 с; переход ~2.7 с. Выход — MP4 h264.\n\n"
+        f"Кадр: {spec.summary_ru()}. Ракурс: три четверти (Cascadeur MoCap).\n"
+        f"Длина под анимацию: Wan кадры 4n+1, FPS={spec.fps:.0f} — "
+        f"idle ~3.4 с, жест ~2 с, переход ~2.7 с. Выход MP4 h264.\n\n"
         f"Negative:\n{mocap_negative()}"
     )

@@ -1483,6 +1483,7 @@ class ViuGUI:
                     and session.status == "running"
                     and (
                         session.meta.get("approved")
+                        or session.meta.get("preview_approved")
                         or session.meta.get("clip_kept_id")
                         or session.meta.get("clip_rejected_all")
                     )
@@ -1859,6 +1860,7 @@ class ViuGUI:
             "paused",
             "awaiting_prompt",
             "awaiting_lora_pick",
+            "awaiting_preview",
             "awaiting_clip_pick",
         ):
             if comfy.status == "awaiting_prompt" and auto:

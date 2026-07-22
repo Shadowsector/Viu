@@ -6,6 +6,8 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
@@ -82,6 +84,68 @@ class TelegramClient:
                 },
             )
         return last
+
+    @staticmethod
+    def _multipart_body(
+        fields: Dict[str, str],
+        files: Dict[str, tuple[str, bytes, str]],
+    ) -> tuple[bytes, str]:
+        boundary = f"----Viu{uuid.uuid4().hex}"
+        chunks: list[bytes] = []
+        for key, value in fields.items():
+            if value is None:
+                continue
+            chunks.append(f"--{boundary}\r\n".encode())
+            chunks.append(f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode())
+            chunks.append(str(value).encode("utf-8"))
+            chunks.append(b"\r\n")
+        for key, (filename, data, content_type) in files.items():
+            chunks.append(f"--{boundary}\r\n".encode())
+            chunks.append(
+                (
+                    f'Content-Disposition: form-data; name="{key}"; '
+                    f'filename="{filename}"\r\n'
+                    f"Content-Type: {content_type}\r\n\r\n"
+                ).encode()
+            )
+            chunks.append(data)
+            chunks.append(b"\r\n")
+        chunks.append(f"--{boundary}--\r\n".encode())
+        return b"".join(chunks), boundary
+
+    def send_photo(
+        self,
+        chat_id: int,
+        photo_path: Path,
+        *,
+        caption: str = "",
+    ) -> dict:
+        path = Path(photo_path)
+        if not path.is_file():
+            raise ValueError(f"photo not found: {path}")
+        ext = path.suffix.lower()
+        ctype = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+        body, boundary = self._multipart_body(
+            {"chat_id": str(chat_id), "caption": (caption or "")[:1024]},
+            {"photo": (path.name, path.read_bytes(), ctype)},
+        )
+        req = urllib.request.Request(
+            f"{self.api_base}/sendPhoto",
+            data=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise TelegramError(f"HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise TelegramError(str(exc)) from exc
+        if not payload.get("ok"):
+            raise TelegramError(str(payload.get("description") or payload))
+        return payload.get("result") or {}
 
     def get_updates(self, *, offset: int = 0, timeout: int = 25) -> List[dict]:
         payload: Dict[str, Any] = {"timeout": timeout}

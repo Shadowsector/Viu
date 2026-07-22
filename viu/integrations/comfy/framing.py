@@ -22,6 +22,8 @@ MOCAP_FPS = 24.0
 _LENGTH_IDLE = 81  # ~3.4 с — дыхание, сдвиг веса, поворот головы
 _LENGTH_ACTION = 49  # ~2.0 с — один жест / шаг
 _LENGTH_TRANSITION = 65  # ~2.7 с — sit_down / stand_up / lie_down
+# Короткий preview перед полными дублями (~1.4 с @24fps)
+PREVIEW_LENGTH = 33
 
 
 _LIE_RE = re.compile(
@@ -91,10 +93,13 @@ def choose_length(action: str) -> Tuple[int, str]:
     return _LENGTH_ACTION, "короткое действие ~2.0 с"
 
 
-def frame_spec_for_action(action: str) -> MocapFrameSpec:
+def frame_spec_for_action(action: str, *, preview: bool = False) -> MocapFrameSpec:
     orient = detect_orientation(action)
     w, h = STAND_SIZE if orient == "vertical" else LIE_SIZE
     length, reason = choose_length(action)
+    if preview:
+        length = PREVIEW_LENGTH
+        reason = f"preview MoCap (~{length / MOCAP_FPS:.1f} с); финал: {reason}"
     return MocapFrameSpec(
         orientation=orient,
         width=w,

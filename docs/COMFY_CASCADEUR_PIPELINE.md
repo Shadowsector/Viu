@@ -80,7 +80,7 @@ full body filling frame, [ACTION + micro-motions for idle],
 | 0 | Эталон Шаня + QRT в Cascadeur | сейчас |
 | 1 | Путь `U:\Viu\ComfyUI` + автозапуск API | **готово** |
 | 2 | Wan 2.1 T2V/I2V + `comfy_run` / triple | **готово** (нужен API workflow JSON один раз) |
-| 2b | Промпт → Telegram → 3 дубля ¾ | **готово** (`lab topic=comfy` / `comfy_mocap`) |
+| 2b | Промпт → Telegram → **preview** → 3 дубля ¾ | **готово** (`lab topic=comfy`) |
 | 2c | Выбор лучшего + last-frame seed + граф | **готово** (`comfy_clip_pick` / «Оценить клипы Comfy») |
 | 3 | `cascadeur_import_reference` + MoCap assist | Python / pending |
 | 4 | `cascadeur_export_clip` → Animations + catalog | |
