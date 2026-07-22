@@ -42,7 +42,7 @@ def run_single_angle(
     angle: CameraAngle,
     slug: str,
     workflow_name: str | None = None,
-    timeout: float = 900.0,
+    timeout: float | None = None,
     seed_salt: str = "",
     catalog_slug: str = "",
     enters_from: list | None = None,
@@ -50,6 +50,10 @@ def run_single_angle(
     seq: int = 0,
     lora_specs: list | None = None,
 ) -> Tuple[bool, str, List[str]]:
+    from .queue_policy import comfy_timeout_each
+
+    if timeout is None:
+        timeout = comfy_timeout_each(config)
     prompt = mocap_prompt(action, angle)
     negative = mocap_negative()
     from .lora import append_trigger_words, ensure_lora_files
@@ -81,7 +85,6 @@ def run_single_angle(
     wf = inject_text_prompt(wf, prompt)
     wf = inject_negative_prompt(wf, negative)
     wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
-    wf = inject_loras(wf, loras)
     wf = inject_loras(wf, loras)
     wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
 
@@ -212,11 +215,19 @@ def run_triple_angles(
     catalog_slug: str = "",
     enters_from: list | None = None,
     looped: bool = False,
-    timeout_each: float = 900.0,
+    timeout_each: float | None = None,
     lora_specs: list | None = None,
 ) -> Tuple[bool, str, Dict[str, Any]]:
     """Три дубля ¾ подряд (разный seed + вариация действия)."""
     from .naming import next_kept_seq, normalize_slug_for_name
+    from .queue_policy import (
+        comfy_timeout_each,
+        prepare_queue_for_triple,
+        should_stop_triple_after_fail,
+    )
+
+    if timeout_each is None:
+        timeout_each = comfy_timeout_each(config)
 
     angles = default_angles()
     base_slug = normalize_slug_for_name(catalog_slug or slug or "mocap")
@@ -234,7 +245,14 @@ def run_triple_angles(
         "files": [],
         "mode": "three_quarter_takes",
     }
-    lines: List[str] = [f"Comfy ×{len(angles)} дубля (¾) — «{action[:80]}»"]
+    client = _client(config)
+    prep_ok, prep_msg = prepare_queue_for_triple(config, client)
+    lines: List[str] = [f"Comfy ×{len(angles)} дубля (¾) — «{action[:80]}» (таймаут {int(timeout_each)}с/дубль)"]
+    if prep_msg:
+        lines.append(f"  ℹ {prep_msg}")
+    if not prep_ok:
+        return False, "\n".join(lines + [f"  [STOP] {prep_msg}"]), results
+
     any_ok = False
     for i, angle in enumerate(angles):
         take_action = diversify_action(action, i)
@@ -264,4 +282,12 @@ def run_triple_angles(
         if files:
             lines.extend(f"      • {p}" for p in files)
         any_ok = any_ok or ok
+        if not ok and should_stop_triple_after_fail(msg):
+            rest = len(angles) - i - 1
+            if rest > 0:
+                lines.append(
+                    f"  [STOP] следующие {rest} дубль(я) не ставлю — "
+                    "GPU/очередь не успели (см. comfy_queue_reset)."
+                )
+            break
     return any_ok, "\n".join(lines), results

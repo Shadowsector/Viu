@@ -37,6 +37,7 @@ def test_registry_has_comfy_tools():
     assert "comfy_status" in names
     assert "comfy_run" in names
     assert "comfy_ensure" in names
+    assert "comfy_queue_reset" in names
     assert "comfy_mocap" in names
 
 

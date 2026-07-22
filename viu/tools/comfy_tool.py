@@ -150,6 +150,27 @@ class ComfyEnsureTool(Tool):
         return ToolResult(ok, msg)
 
 
+class ComfyQueueResetTool(Tool):
+    name = "comfy_queue_reset"
+    description = (
+        "Сбросить очередь Comfy: interrupt + clear pending. "
+        "Полезно когда lab таймаутится, а running/pending > 0."
+    )
+    parameters: Dict[str, Any] = {}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        del args
+        client = _client(ctx)
+        ok_ping, ping = client.ping()
+        if not ok_ping:
+            return ToolResult(False, ping)
+        before = client.queue_summary()
+        ok, msg = client.reset_queue()
+        after = client.queue_summary()
+        body = f"Было: {before}\n{msg}\nСейчас: {after}"
+        return ToolResult(ok, body)
+
+
 class ComfyRunTool(Tool):
     name = "comfy_run"
     description = (
@@ -278,7 +299,7 @@ class ComfyTripleTool(Tool):
         "action": "действие / описание motion",
         "slug": "префикс имени файлов",
         "catalog_slug": "slug каталога (для LoRA)",
-        "timeout": "секунд на один угол (900)",
+        "timeout": "секунд на один дубль (по умолчанию VIU_COMFY_TIMEOUT_EACH=2400)",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
@@ -287,10 +308,17 @@ class ComfyTripleTool(Tool):
             return ToolResult(False, "Нужен action=.")
         slug = str(args.get("slug") or "mocap").strip()
         catalog_slug = str(args.get("catalog_slug") or slug).strip()
+        from ..integrations.comfy.queue_policy import comfy_timeout_each
+
+        raw_timeout = args.get("timeout")
         try:
-            timeout = float(args.get("timeout") or 900)
+            timeout = (
+                float(raw_timeout)
+                if raw_timeout not in (None, "")
+                else comfy_timeout_each(ctx.config)
+            )
         except (TypeError, ValueError):
-            timeout = 900.0
+            timeout = comfy_timeout_each(ctx.config)
         ok, msg, _ = run_triple_angles(
             ctx.config,
             action=action,

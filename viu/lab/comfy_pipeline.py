@@ -439,8 +439,24 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
         session.append_artifact(path)
     append_journal(config, COMFY_TOPIC, f"### 3 дубля ¾\n\n{msg}")
     if not ok:
+        low = msg.lower()
+        hints: list[str] = []
+        if "таймаут" in low or "timeout" in low:
+            from ..integrations.comfy.queue_policy import comfy_timeout_each
+
+            t = int(comfy_timeout_each(config))
+            hints.append(
+                f"Таймаут на дубль: {t}с (VIU_COMFY_TIMEOUT_EACH). "
+                "На RTX 3060 Wan часто нужен 2400+."
+            )
+        if "pending=" in low or "очередь" in low:
+            hints.append(
+                "Сброс очереди: comfy_queue_reset или VIU_COMFY_LAB_CLEAR_QUEUE=1 в .env."
+            )
+        if hints:
+            msg += "\n\n💡 " + " ".join(hints)
         # Connection refused / все дубли FAIL — не маскировать под успех
-        if "10061" in msg or "недоступен" in msg.lower() or "refused" in msg.lower():
+        if "10061" in msg or "недоступен" in low or "refused" in low:
             session.status = "paused"
             session.pause_reason = "comfy_offline"
             save_session(config, session)

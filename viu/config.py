@@ -90,6 +90,17 @@ class Config:
     comfy_root: str = field(
         default_factory=lambda: _env("VIU_COMFY_ROOT", "U:/Viu/ComfyUI")
     )
+    # Таймаут одного дубля Wan в lab (сек). RTX 3060: 2400 ≈ 40 мин.
+    comfy_timeout_each: float = field(
+        default_factory=lambda: float(_env("VIU_COMFY_TIMEOUT_EACH", "2400"))
+    )
+    # Перед «3 дубля» сбросить чужую очередь Comfy (1 по умолчанию).
+    comfy_lab_clear_queue: bool = field(
+        default_factory=lambda: _env("VIU_COMFY_LAB_CLEAR_QUEUE", "1") == "1"
+    )
+    comfy_max_pending: int = field(
+        default_factory=lambda: int(_env("VIU_COMFY_MAX_PENDING", "0"))
+    )
 
     # Unity-проект Анабарра (корень с Assets/).
     unity_project: str = field(default_factory=lambda: _env("VIU_UNITY_PROJECT", ""))

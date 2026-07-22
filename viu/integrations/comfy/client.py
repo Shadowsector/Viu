@@ -96,6 +96,34 @@ class ComfyClient:
         pending = q.get("queue_pending") or []
         return f"running={len(running)} pending={len(pending)}"
 
+    def queue_counts(self) -> tuple[int, int]:
+        q = self.get_queue()
+        running = len(q.get("queue_running") or [])
+        pending = len(q.get("queue_pending") or [])
+        return running, pending
+
+    def interrupt(self) -> Tuple[bool, str]:
+        try:
+            self._post("/interrupt", {})
+            return True, "interrupt отправлен"
+        except ComfyError as exc:
+            return False, str(exc)
+
+    def clear_queue(self) -> Tuple[bool, str]:
+        try:
+            self._post("/queue", {"clear": True})
+            return True, "очередь очищена"
+        except ComfyError as exc:
+            return False, str(exc)
+
+    def reset_queue(self) -> Tuple[bool, str]:
+        """Прервать текущий job и очистить pending."""
+        ok_i, msg_i = self.interrupt()
+        ok_c, msg_c = self.clear_queue()
+        if ok_i and ok_c:
+            return True, f"{msg_i}; {msg_c}"
+        return ok_c or ok_i, f"{msg_i}; {msg_c}"
+
     def wait_history(
         self,
         prompt_id: str,
