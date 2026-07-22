@@ -101,6 +101,21 @@ class Config:
     comfy_max_pending: int = field(
         default_factory=lambda: int(_env("VIU_COMFY_MAX_PENDING", "0"))
     )
+    # Сек без outputs при running — interrupt (0 = только общий таймаут).
+    comfy_stall_sec: float = field(
+        default_factory=lambda: float(_env("VIU_COMFY_STALL_SEC", "0"))
+    )
+    # Авто interrupt+clear при таймауте/пропаже job (1 по умолчанию).
+    comfy_auto_reset_on_hang: bool = field(
+        default_factory=lambda: _env("VIU_COMFY_AUTO_RESET_ON_HANG", "1") == "1"
+    )
+    # Повторов lab-дубля после зависания (0 = без повтора).
+    comfy_retry_on_hang: int = field(
+        default_factory=lambda: int(_env("VIU_COMFY_RETRY_ON_HANG", "1"))
+    )
+    comfy_gone_grace_sec: float = field(
+        default_factory=lambda: float(_env("VIU_COMFY_GONE_GRACE_SEC", "25"))
+    )
 
     # Unity-проект Анабарра (корень с Assets/).
     unity_project: str = field(default_factory=lambda: _env("VIU_UNITY_PROJECT", ""))

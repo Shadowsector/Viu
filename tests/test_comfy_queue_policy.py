@@ -92,4 +92,5 @@ def test_prepare_queue_blocked_when_no_autoclear(tmp_path, monkeypatch):
 def test_should_stop_triple_after_fail():
     assert should_stop_triple_after_fail("Таймаут 900s") is True
     assert should_stop_triple_after_fail("connection timeout") is True
+    assert should_stop_triple_after_fail("пропал из очереди") is True
     assert should_stop_triple_after_fail("ComfyError: node failed") is False

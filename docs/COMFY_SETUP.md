@@ -92,6 +92,9 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 | `VIU_COMFY_TIMEOUT_EACH` | `2400` (сек на один дубль «3×¾») |
 | `VIU_COMFY_LAB_CLEAR_QUEUE` | `1` — сброс очереди перед lab |
 | `VIU_COMFY_MAX_PENDING` | `0` — лимит pending, если CLEAR=0 |
+| `VIU_COMFY_AUTO_RESET_ON_HANG` | `1` — interrupt+clear при зависании |
+| `VIU_COMFY_RETRY_ON_HANG` | `1` — повтор дубля после сброса |
+| `VIU_COMFY_STALL_SEC` | `0` — принудительный interrupt (если >0) |
 | `VIU_LAB_INTERVAL_MIN` | `5` — авто-lab; `0` = не ставить в очередь сама |
 
 Нужны: `git`, интернет, место на `U:` (~10+ GB для T2V).
@@ -108,6 +111,8 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 Кнопка **«Открыть ComfyUI»** (Редко) → `http://127.0.0.1:8188` — когда нужно:
 - понять, почему таймаут (очередь / OOM / нода красная) — по умолчанию **2400s/дубль**;
 - сбросить зависшую очередь: tool **`comfy_queue_reset`** или `VIU_COMFY_LAB_CLEAR_QUEUE=1`;
+- при зависании job **авто-сброс** (`VIU_COMFY_AUTO_RESET_ON_HANG=1`) и **один повтор** (`VIU_COMFY_RETRY_ON_HANG=1`);
+- если job **пропал из очереди** (OOM) — fast-fail за ~25с, не ждать полный таймаут;
 - вручную крутить workflow;
 - подключить **LoRA** / эксперименты.
 

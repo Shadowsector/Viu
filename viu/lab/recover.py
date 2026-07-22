@@ -88,7 +88,12 @@ def _recover_comfy(config: Config, session: LabSession) -> Tuple[bool, str]:
         notify_lab_stuck(config, session, "\n".join(lines[:14]), step_label=f"RECOVER «{label}»")
         return False, "\n".join(lines)
 
-    # API жив — сброс счётчика и повтор генерации с шага 4
+    # API жив — сброс очереди и счётчика, повтор генерации
+    reset_ok, reset_msg = client.reset_queue()
+    lines.append("")
+    lines.append("--- сброс очереди Comfy ---")
+    lines.append(reset_msg if reset_ok else f"не удалось: {reset_msg}")
+
     if _fail_count(session, step) >= 6:
         session.step = 0
         session.last_fail_step = -1

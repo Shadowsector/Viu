@@ -90,6 +90,27 @@ class ComfyClient:
         except ComfyError:
             return {}
 
+    @staticmethod
+    def _prompt_ids_in_queue(queue: dict) -> dict[str, str]:
+        """prompt_id → running | pending."""
+        found: dict[str, str] = {}
+        for key, label in (("queue_running", "running"), ("queue_pending", "pending")):
+            for item in queue.get(key) or []:
+                if not isinstance(item, (list, tuple)) or len(item) < 2:
+                    continue
+                pid = str(item[1])
+                if pid not in found:
+                    found[pid] = label
+        return found
+
+    def prompt_queue_state(self, prompt_id: str) -> str:
+        """running | pending | gone | done (outputs в history)."""
+        entry = self.get_history(prompt_id)
+        if entry and entry.get("outputs") is not None:
+            return "done"
+        states = self._prompt_ids_in_queue(self.get_queue())
+        return states.get(prompt_id, "gone")
+
     def queue_summary(self) -> str:
         q = self.get_queue()
         running = q.get("queue_running") or []
@@ -130,18 +151,85 @@ class ComfyClient:
         *,
         timeout: float = 600.0,
         poll: float = 1.5,
+        gone_grace: float = 25.0,
+        stall_sec: float = 0.0,
+        ping_fail_limit: int = 3,
+        auto_reset_on_hang: bool = False,
     ) -> dict:
-        deadline = time.time() + timeout
+        """Ждать outputs; при зависании — interrupt/reset (опционально)."""
+        started = time.time()
+        deadline = started + timeout
+        seen_in_queue = False
+        running_since: float | None = None
+        ping_fails = 0
+        last_state = ""
+
+        def _hang_reset(reason: str) -> str:
+            if not auto_reset_on_hang:
+                return ""
+            ok, msg = self.reset_queue()
+            if ok:
+                return f" Авто-сброс очереди: {msg}."
+            return f" Авто-сброс не удался: {msg}."
+
         while time.time() < deadline:
-            entry = self.get_history(prompt_id)
+            try:
+                entry = self.get_history(prompt_id)
+                ping_fails = 0
+            except ComfyError as exc:
+                ping_fails += 1
+                if ping_fails >= ping_fail_limit:
+                    tail = _hang_reset("api_down")
+                    raise ComfyError(
+                        f"ComfyUI не отвечает во время job {prompt_id} "
+                        f"({ping_fails} подряд): {exc}.{tail}"
+                    ) from exc
+                time.sleep(poll)
+                continue
+
             if entry and entry.get("outputs") is not None:
                 return entry
+
+            state = self.prompt_queue_state(prompt_id)
+            if state in ("running", "pending"):
+                seen_in_queue = True
+                if state == "running":
+                    if running_since is None:
+                        running_since = time.time()
+                    elif (
+                        stall_sec > 0
+                        and time.time() - running_since >= stall_sec
+                    ):
+                        tail = _hang_reset("stall")
+                        raise ComfyError(
+                            f"Зависание job {prompt_id}: running {stall_sec:.0f}s "
+                            f"без outputs.{tail}"
+                        )
+                last_state = state
+            elif state == "done":
+                return entry or {}
+            elif seen_in_queue and (time.time() - started) >= gone_grace:
+                tail = _hang_reset("gone")
+                raise ComfyError(
+                    f"Job {prompt_id} пропал из очереди без outputs "
+                    f"(OOM/краш ноды?).{tail}"
+                )
+            elif not seen_in_queue and (time.time() - started) >= gone_grace:
+                tail = _hang_reset("never_started")
+                raise ComfyError(
+                    f"Job {prompt_id} не появился в очереди за {gone_grace:.0f}s.{tail}"
+                )
+            else:
+                last_state = state
+
             time.sleep(poll)
+
         qs = self.queue_summary()
+        tail = _hang_reset("timeout")
         raise ComfyError(
             f"Таймаут ожидания prompt_id={prompt_id} ({timeout:.0f}s). "
-            f"Очередь Comfy: {qs}. "
-            "Если running>0 — Wan ещё считает (увеличь timeout или смотри UI :8188). "
+            f"Очередь Comfy: {qs}; state={last_state or 'unknown'}.{tail} "
+            "Если running>0 — Wan ещё считает (увеличь VIU_COMFY_TIMEOUT_EACH). "
             "Если 0/0 — job упал (OOM/нода); открой ComfyUI и лог."
         )
 

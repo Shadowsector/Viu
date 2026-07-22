@@ -110,12 +110,32 @@ def run_single_angle(
             else:
                 face_note = stage_msg
 
-    try:
-        prompt_id = client.queue_prompt(wf)
-        entry = client.wait_history(prompt_id, timeout=timeout)
-        files = client.collect_output_files(entry)
-    except ComfyError as exc:
-        return False, str(exc), []
+    from .queue_policy import (
+        comfy_retry_on_hang,
+        should_retry_after_hang,
+        wait_options_for_lab,
+    )
+
+    wait_kw = wait_options_for_lab(config)
+    retries = comfy_retry_on_hang(config)
+    last_exc: ComfyError | None = None
+    attempts_used = 1
+    for attempt in range(retries + 1):
+        try:
+            prompt_id = client.queue_prompt(wf)
+            entry = client.wait_history(prompt_id, timeout=timeout, **wait_kw)
+            attempts_used = attempt + 1
+            last_exc = None
+            break
+        except ComfyError as exc:
+            last_exc = exc
+            if attempt < retries and should_retry_after_hang(str(exc)):
+                time.sleep(2.0)
+                continue
+            return False, str(exc), []
+    if last_exc is not None:
+        return False, str(last_exc), []
+    files = client.collect_output_files(entry)
 
     if not files:
         return (
@@ -200,6 +220,8 @@ def run_single_angle(
         saved.append(str(dest_ref))
 
     note = f"{angle.id}: → Lab/Refs ({len(saved)} файл(ов))"
+    if attempts_used > 1:
+        note += f" [повтор {attempts_used}/{retries + 1}]"
     if face_note:
         note += f" [{face_note}]"
     if copy_notes:
