@@ -1,6 +1,6 @@
 import os
 
-from viu.env_file import bootstrap_env, ensure_env_file, github_token, load_env_file
+from viu.env_file import bootstrap_env, ensure_env_file, github_token, load_env_file, migrate_env_file
 
 
 def test_load_env_file_sets_missing_only(tmp_path, monkeypatch):
@@ -44,6 +44,22 @@ def test_ensure_env_file_copies_example(tmp_path):
     path = ensure_env_file(tmp_path)
     assert path.is_file()
     assert path.read_text(encoding="utf-8") == example.read_text(encoding="utf-8")
+
+
+def test_migrate_env_file_bumps_old_llm_timeout(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("VIU_LLM_TIMEOUT=1200\nVIU_MODEL=viu-cydonia\n", encoding="utf-8")
+    changed = migrate_env_file(tmp_path)
+    assert changed == ["VIU_LLM_TIMEOUT: 1200 → 1800"]
+    assert "VIU_LLM_TIMEOUT=1800" in env.read_text(encoding="utf-8")
+    assert "VIU_MODEL=viu-cydonia" in env.read_text(encoding="utf-8")
+
+
+def test_bootstrap_env_migrates_timeout(tmp_path, monkeypatch):
+    monkeypatch.delenv("VIU_LLM_TIMEOUT", raising=False)
+    (tmp_path / ".env").write_text("VIU_LLM_TIMEOUT=1200\n", encoding="utf-8")
+    bootstrap_env(tmp_path)
+    assert os.environ["VIU_LLM_TIMEOUT"] == "1800"
 
 
 def test_bootstrap_env_and_github_token(tmp_path, monkeypatch):

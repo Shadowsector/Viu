@@ -37,6 +37,11 @@ _ALWAYS_FROM_FILE = frozenset(
     }
 )
 
+# Старый дефолт в .env → новый (обновление не трогает .env, мигрируем при старте).
+_ENV_VALUE_MIGRATIONS: dict[str, dict[str, str]] = {
+    "VIU_LLM_TIMEOUT": {"1200": "1800"},
+}
+
 
 _EXPORT_RE = re.compile(r"^export\s+", re.IGNORECASE)
 
@@ -97,6 +102,39 @@ def ensure_env_file(root: Path) -> Path:
     return target
 
 
+def migrate_env_file(root: Path) -> list[str]:
+    """Поднять устаревшие значения в .env (сохраняется при git/zip обновлении)."""
+    path = Path(root).expanduser().resolve() / ".env"
+    if not path.is_file():
+        return []
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except OSError:
+        return []
+    changed: list[str] = []
+    new_lines: list[str] = []
+    for line in text.splitlines():
+        parsed = _parse_line(line)
+        if parsed:
+            key, value = parsed
+            new_val = _ENV_VALUE_MIGRATIONS.get(key, {}).get(value)
+            if new_val:
+                new_lines.append(f"{key}={new_val}")
+                changed.append(f"{key}: {value} → {new_val}")
+                continue
+        new_lines.append(line)
+    if not changed:
+        return []
+    out = "\n".join(new_lines)
+    if text.endswith("\n"):
+        out += "\n"
+    try:
+        path.write_text(out, encoding="utf-8")
+    except OSError:
+        return []
+    return changed
+
+
 def default_env_roots(install_root: Path | None = None) -> list[Path]:
     """U:\\Viu и .viu — оба места, куда Ден мог положить .env."""
     roots: list[Path] = []
@@ -126,6 +164,8 @@ def bootstrap_env(install_root: Path | None = None) -> Path | None:
     roots = default_env_roots(install_root)
     primary = roots[0] if roots else Path.cwd()
     env_path = ensure_env_file(primary)
+    for root in roots:
+        migrate_env_file(root)
     load_env_file(*roots)
     try:
         from .ollama_vram import apply_ollama_vram_limit
