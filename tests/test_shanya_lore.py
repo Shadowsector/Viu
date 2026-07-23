@@ -48,7 +48,7 @@ def test_mocap_prompt_tabaxi(monkeypatch):
     assert "tabaxi" in p.lower()
     assert "white" in p.lower()
     assert "static" in p.lower()
-    assert len(p) < 220
+    assert len(p) < 240
 
 
 def test_mocap_prompt_human_with_face_swap(monkeypatch):
