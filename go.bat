@@ -7,5 +7,5 @@ title Viu
 set PYTHONUTF8=1
 set PYTHONPATH=%~dp0
 echo [go] Запуск run_gui.pyw (без bootstrap/pip)...
-python "%~dp0run_gui.pyw"
-exit /b %errorlevel%
+start "Viu" python "%~dp0run_gui.pyw"
+exit /b 0
