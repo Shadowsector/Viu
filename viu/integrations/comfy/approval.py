@@ -77,7 +77,7 @@ def send_prompt_for_approval(config: Config, action: str, draft_text: str) -> Tu
         "Ответь:\n"
         "• ок — генерирую 3 видео (сбоку / ¾ / анфас)\n"
         "• нет / другой кадр — предложу следующий по графу\n"
-        "• правки: sit_down или полный EN-промпт\n"
+        "• правки: sit_down — только slug или короткий EN (без moaning/sweat/jiggle)\n"
         "• стоп — отменить этот промпт"
     )
     if not tg_settings.enabled(config):

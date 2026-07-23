@@ -261,16 +261,29 @@ def apply_prompt_decision(
         return _redraft_comfy_prompt(config, session, note=payload)
 
     action = payload.strip() if decision == "edit" else str(session.meta.get("action") or payload)
+    note_extra = ""
     if decision == "edit":
         from .comfy_director import action_for_slug
         from ..integrations.comfy.clip_review import normalize_catalog_slug
+        from ..integrations.comfy.mocap_sanitize import extract_slug_token, sanitize_mocap_action
 
         raw_edit = action.strip()
-        if raw_edit and " " not in raw_edit and re.match(r"^[\w-]+$", raw_edit):
+        slug_tok = extract_slug_token(raw_edit)
+        if slug_tok:
+            slug = normalize_catalog_slug(slug_tok)
+            if slug:
+                canonical = action_for_slug(config, slug)
+                session.meta["catalog_slug"] = slug
+                action, note_extra = sanitize_mocap_action(raw_edit, canonical=canonical)
+        elif raw_edit and " " not in raw_edit and re.match(r"^[\w-]+$", raw_edit):
             slug = normalize_catalog_slug(raw_edit)
             if slug:
                 action = action_for_slug(config, slug)
                 session.meta["catalog_slug"] = slug
+        else:
+            slug = str(session.meta.get("catalog_slug") or "")
+            canonical = action_for_slug(config, slug) if slug else action
+            action, note_extra = sanitize_mocap_action(raw_edit, canonical=canonical)
         session.meta["action"] = action
         session.meta["draft"] = draft_bundle(action)
         ensure_task_file(config, action=action)
@@ -289,7 +302,8 @@ def apply_prompt_decision(
         f"### Промпт одобрен\n\naction: {action}\n\nДальше — выбор LoRA.",
     )
     return (
-        f"Промпт принят («{action[:80]}»).\n"
+        (note_extra + "\n" if note_extra else "")
+        + f"Промпт принят («{action[:80]}»).\n"
         "Дальше выберем LoRA (или без) → 3 дубля ¾."
     )
 
@@ -340,6 +354,7 @@ def step_request_lora_pick(config: Config, session: LabSession) -> StepResult:
     """Скан папки loras/ и спросить, какие подключить к этому пулу."""
     from ..integrations.comfy.lora import (
         format_lora_pick_message,
+        format_lora_pick_telegram,
         scan_loras,
         spec_to_dict,
         specs_from_indices,
@@ -380,10 +395,13 @@ def step_request_lora_pick(config: Config, session: LabSession) -> StepResult:
             token = tg_settings.token(config)
             chat_id = tg_settings.chat_id(config)
             if token and chat_id:
-                TelegramClient(token).send_message(
-                    chat_id,
-                    "🎛 Comfy: выбери LoRA для пула\n\n" + msg[:1800],
-                )
+                client = TelegramClient(token)
+                parts = format_lora_pick_telegram(entries)
+                for i, part in enumerate(parts):
+                    head = "🎛 Comfy: выбери LoRA для пула"
+                    if len(parts) > 1:
+                        head += f" ({i + 1}/{len(parts)})"
+                    client.send_message(chat_id, head + "\n\n" + part)
     except Exception:
         pass
     append_journal(config, COMFY_TOPIC, f"### Выбор LoRA\n\n{msg}")
@@ -611,7 +629,7 @@ def step_report(config: Config, session: LabSession) -> StepResult:
     kept = session.meta.get("clip_kept_path")
     seed = session.meta.get("clip_seed_frame")
     files = session.artifacts[-12:]
-    from .comfy_director import barn_cycle_status
+    from ..integrations.comfy.focus import focus_cycle_status
 
     report = (
         f"Comfy MoCap итерация id={session.id}\n"
@@ -623,7 +641,7 @@ def step_report(config: Config, session: LabSession) -> StepResult:
         f"файлы ({len(files)}):\n"
         + "\n".join(f"  • {f}" for f in files)
         + "\n\n"
-        + barn_cycle_status(config)
+        + focus_cycle_status(config)
         + "\n\nДальше: Cascadeur MoCap по kept mp4; next clip — I2V с seed PNG."
     )
     session.last_report = report

@@ -2136,9 +2136,9 @@ class ViuGUI:
             self._append("Вью", plan.summary_ru(), tag="viu")
             return
         self._append("Вью", plan.summary_ru(), tag="viu")
-        from .lab.comfy_director import barn_cycle_status
+        from ..integrations.comfy.focus import focus_cycle_status
 
-        self._append("Вью", barn_cycle_status(self.agent.config), tag="viu")
+        self._append("Вью", focus_cycle_status(self.agent.config), tag="viu")
         if not auto and not is_away(self.agent.config):
             self._append(
                 "Вью",

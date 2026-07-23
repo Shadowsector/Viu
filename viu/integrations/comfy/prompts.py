@@ -10,7 +10,9 @@ from ...lore.shanya import SHANYA_MOCAP_VISUAL
 # Короткий negative — Wan и так не любит длинные списки.
 _NEGATIVE = (
     "multiple people, text, watermark, blur, camera motion, zoom, "
-    "cropped limbs, busy background, clothed, tiny figure"
+    "cropped limbs, busy background, clothed, tiny figure, "
+    "moaning, sweat, jiggle, facial expression, emotional face, "
+    "pleasure, erotic acting, cinematic drama"
 )
 
 # База MoCap: не лицо/эмоции, а поза и силуэт для трекинга.
@@ -58,6 +60,7 @@ def draft_bundle(action: str) -> str:
     return (
         f"Действие: {action_e}\n\n"
         f"Промпт (MoCap ref, 3 дубля ¾, разный seed):\n{base}\n\n"
-        f"Кадр: {spec.summary_ru()}. Камера статична, без эмоций/лица — только поза.\n"
+        f"Кадр: {spec.summary_ru()}. Камера статична — **только поза и переход**, без лица/эмоций/звука.\n"
+        f"Не добавляй: moaning, sweat, jiggle, pleasure — это не MoCap.\n"
         f"Negative:\n{mocap_negative()}"
     )

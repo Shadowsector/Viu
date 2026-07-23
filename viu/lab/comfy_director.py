@@ -39,11 +39,11 @@ _SLUG_ACTION_EN = {
     "idle": "idle stand",
     "walk": "walk forward",
     "run": "run forward",
-    "sit_down": "sit down from stand",
-    "sit_idle": "sit idle",
+    "sit_down": "sit down from stand onto bed",
+    "sit_idle": "sit idle on bed",
     "stand_up": "stand up from sit",
-    "lie_down": "lie down on back",
-    "sleep_idle": "lie on back, sleep idle",
+    "lie_down": "lie down on bed from stand",
+    "sleep_idle": "lie on back on bed, sleep idle",
     "get_up": "get up from lying to stand",
     "wave": "wave hello, standing",
     "climb_up": "climb up",
@@ -56,7 +56,7 @@ _SLUG_ACTION_EN = {
     "take": "pick up object",
     "eat": "eat standing",
     "drink": "drink from cup",
-    "touch_self": "touch self, seated or lying",
+    "touch_self": "touch self while seated on bed",
 }
 
 # Парафразы — короткие варианты одного slug
