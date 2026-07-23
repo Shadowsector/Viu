@@ -132,6 +132,35 @@ def inswapper_model_path(config: Config) -> Path | None:
     return p if p.is_file() else None
 
 
+def reactor_needs_reload(config: Config, client) -> bool:
+    """Папка ReActor есть, но Comfy запущен до установки — нужен рестарт."""
+    if not face_swap_enabled():
+        return False
+    root = resolve_comfy_root(config)
+    if root is None:
+        return False
+    if not (root / "custom_nodes" / "ComfyUI-ReActor").is_dir():
+        return False
+    return reactor_face_swap_class(client) is None
+
+
+def face_swap_status_line(config: Config, *, client=None) -> str:
+    """Одна строка: ReActor готов или что сделать."""
+    if not face_swap_enabled():
+        return "face_swap: off"
+    if client is None:
+        return "face_swap: on (проверка ReActor — нужен онлайн Comfy)"
+    cls = reactor_face_swap_class(client)
+    if cls:
+        pick = pick_face_ref(config)
+        face = pick.name if pick else "нет FaceRef"
+        return f"face_swap: **OK** (ReActor {cls}, лицо: {face})"
+    root = resolve_comfy_root(config)
+    if root and (root / "custom_nodes" / "ComfyUI-ReActor").is_dir():
+        return "face_swap: **нет** — ReActor не в API → comfy_ensure restart=1"
+    return "face_swap: **нет** — comfy_install reactor=1"
+
+
 def face_refs_status(config: Config, *, client=None) -> str:
     d = ensure_face_refs_dir(config)
     refs = list_face_refs(config)
@@ -167,5 +196,6 @@ def face_refs_status(config: Config, *, client=None) -> str:
     elif root is not None:
         lines.append("inswapper: нет models/insightface/inswapper_128.onnx")
     if face_swap_enabled() and pick and not reactor_cls:
-        lines.append("⚠ face_swap on, но ReActor не загружен — подмены не будет")
+        lines.append("⚠ face_swap on, но ReActor не загружен — comfy_ensure restart=1")
+    lines.append(face_swap_status_line(config, client=client))
     return "\n".join(lines)

@@ -593,6 +593,37 @@ def bind_slug(
     return True, f"Привязано {file} (strength={strength}) → slug {slug}"
 
 
+def list_registry_status_brief(config: Config, *, catalog_slug: str = "") -> str:
+    """Кратко для comfy_status; полный список — comfy_lora_list."""
+    ensure_registry(config)
+    entries = load_index(config)
+    loras_root = comfy_loras_dir(config)
+    lines = [
+        f"LoRA: {len(entries)} в {loras_root.name}/",
+        "полный список → comfy_lora_list",
+    ]
+    slug = (catalog_slug or "").strip()
+    if slug:
+        specs = resolve_loras_for_slug(config, slug)
+        if specs:
+            lines.append(f"Привязаны к `{slug}`:")
+            for spec in specs:
+                lines.append(f"  • {_format_spec_line(config, spec)}")
+    data = load_registry(config)
+    lib = data.get("library") or {}
+    if lib and not slug:
+        lines.append("library (trigger):")
+        for name in sorted(lib.keys())[:8]:
+            entry = lib[name]
+            if not isinstance(entry, dict):
+                continue
+            trig = str(entry.get("trigger") or "")
+            lines.append(f"  • {name}" + (f' — "{trig}"' if trig else ""))
+        if len(lib) > 8:
+            lines.append(f"  … ещё {len(lib) - 8} в индексе")
+    return "\n".join(lines)
+
+
 def list_registry_status(config: Config) -> str:
     ensure_registry(config)
     entries = load_index(config)

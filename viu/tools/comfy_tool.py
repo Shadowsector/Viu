@@ -62,15 +62,23 @@ class ComfyStatusTool(Tool):
 
         ok, msg = _client(ctx).ping()
         lines.append(msg)
+        if ok:
+            from ..integrations.comfy.face_refs import face_swap_status_line
+
+            lines.append(face_swap_status_line(ctx.config, client=_client(ctx)))
         if not ok:
             lines.append("Запуск: comfy_ensure или lab_start topic=comfy.")
             lines.append("Гайд: docs/COMFY_SETUP.md")
         try:
-            from ..integrations.comfy.lora import ensure_registry, list_registry_status
+            from ..integrations.comfy.lora import ensure_registry, list_registry_status_brief
+            from ..lab.comfy_pipeline import COMFY_TOPIC
+            from ..lab.session import load_session
 
             ensure_registry(ctx.config)
+            session = load_session(ctx.config, COMFY_TOPIC)
+            slug = str(session.meta.get("catalog_slug") or "") if session else ""
             lines.append("")
-            lines.append(list_registry_status(ctx.config))
+            lines.append(list_registry_status_brief(ctx.config, catalog_slug=slug))
         except Exception as exc:
             lines.append(f"(lora registry: {exc})")
         try:
@@ -129,6 +137,17 @@ class ComfyInstallTool(Tool):
         body = msg
         if notes:
             body = "Прогресс:\n" + "\n".join(f"  • {n}" for n in notes[-20:]) + "\n\n" + msg
+        if with_reactor and ok:
+            from ..integrations.comfy.process import ensure_comfy_running
+
+            ok_r, r_msg = ensure_comfy_running(
+                ctx.config,
+                wait_seconds=120.0,
+                auto_install=False,
+                reload_if_reactor_missing=True,
+            )
+            body += f"\n\n{r_msg}"
+            ok = ok and ok_r
         return ToolResult(ok, body)
 
 
@@ -138,16 +157,37 @@ class ComfyEnsureTool(Tool):
         "Если Comfy нет — установить в U:\\Viu\\ComfyUI; затем запустить API :8188 "
         "(лог: .viu/logs/comfy_launch.log)."
     )
-    parameters = {"wait": "секунд ожидания API (по умолчанию 180)"}
+    parameters = {
+        "wait": "секунд ожидания API (по умолчанию 180)",
+        "restart": "1 — перезапустить Comfy (подхватить ReActor после install)",
+    }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         try:
             wait = float(args.get("wait") or 180)
         except (TypeError, ValueError):
             wait = 180.0
+        force_restart = str(args.get("restart") or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
         ensure_workflow_templates(ctx.config, overwrite_stubs=True)
-        ok, msg = ensure_comfy_running(ctx.config, wait_seconds=wait, auto_install=True)
-        return ToolResult(ok, msg)
+        ok, msg = ensure_comfy_running(
+            ctx.config,
+            wait_seconds=wait,
+            auto_install=True,
+            force_restart=force_restart,
+            reload_if_reactor_missing=True,
+        )
+        client = _client(ctx)
+        from ..integrations.comfy.face_refs import face_swap_status_line, face_refs_status
+
+        extra = face_swap_status_line(ctx.config, client=client if ok else None)
+        if ok:
+            return ToolResult(True, f"{msg}\n\n{extra}\n\n{face_refs_status(ctx.config, client=client)}")
+        return ToolResult(False, f"{msg}\n\n{extra}")
 
 
 class ComfyFocusTool(Tool):

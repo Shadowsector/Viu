@@ -81,6 +81,50 @@ def focus_mode_label(config: Config) -> str:
     return "+".join(slugs[:3]) + ("…" if len(slugs) > 3 else "")
 
 
+def focus_cycle_status(config: Config) -> str:
+    """Прогресс kept только по активному фокусу (NSFW — без всего сарая)."""
+    from .naming import kept_count_for_slug, max_clips_per_action
+
+    slugs = resolve_focus_slugs(config)
+    limit = max_clips_per_action()
+    if set(slugs) <= set(NSFW_FOCUS_SLUGS) and slugs:
+        lines = [f"Фокус NSFW (лимит {limit} kept на действие):"]
+        for slug in slugs:
+            n = kept_count_for_slug(config, slug)
+            mark = "✓" if n >= limit else "…"
+            lines.append(f"  {mark} {slug}: {n}/{limit}")
+        return "\n".join(lines)
+    if not slugs:
+        return f"Фокус: все действия (лимит {limit} kept)"
+    from ...lab.comfy_director import barn_cycle_status
+
+    return barn_cycle_status(config)
+
+
+def action_is_stale(config: Config, slug: str, action: str) -> bool:
+    """Старый раздутый промпт в сессии — подтянуть короткий шаблон."""
+    from ...lab.comfy_director import action_for_slug
+
+    expected = action_for_slug(config, slug).strip()
+    current = (action or "").strip()
+    if not current or current == expected:
+        return False
+    stale_markers = (
+        "intimate breathing",
+        "shy closed",
+        "invisible floor",
+        "private solo",
+        "subtle breathing",
+        "soft weight shift",
+        "micro-movement",
+        "onto invisible",
+    )
+    low = current.lower()
+    if any(m in low for m in stale_markers):
+        return True
+    return len(current) > len(expected) + 35
+
+
 def set_comfy_focus(config: Config, mode: str) -> tuple[bool, str]:
     """Записать фокус в .viu/comfy_scene_state.json."""
     from .scene_choice import load_scene_state, save_scene_state

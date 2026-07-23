@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from ...config import Config
-from ...integrations.comfy.focus import focus_mode_label
-from ...lab.comfy_director import barn_cycle_status
+from ...integrations.comfy.focus import (
+    action_is_stale,
+    focus_cycle_status,
+    focus_mode_label,
+    resolve_focus_slugs,
+)
 from ...lab.comfy_pipeline import COMFY_TOPIC, STEP_LABELS
-from ...lab.session import load_session
+from ...lab.session import load_session, save_session
 from ...presence import is_away
 from .client import ComfyClient
 from .clip_review import ComfyClipStore, clip_review_path
@@ -68,9 +72,26 @@ def comfy_pipeline_status(config: Config) -> str:
         step_label = STEP_LABELS[min(session.step, len(STEP_LABELS) - 1)] if session.step < len(STEP_LABELS) else "—"
         lines.append(f"Lab Comfy: **{session.status}** · шаг {session.step + 1}/{session.steps_total} ({step_label})")
         slug = str(session.meta.get("catalog_slug") or "")
-        action = str(session.meta.get("approved_action") or session.meta.get("action") or "")[:80]
         if slug:
-            lines.append(f"  catalog_slug: {slug}")
+            from ...lab.comfy_director import sync_session_shot_from_slug
+
+            action = str(session.meta.get("approved_action") or session.meta.get("action") or "")
+            if action_is_stale(config, slug, action):
+                synced = sync_session_shot_from_slug(config, session)
+                save_session(config, session)
+                lines.append(f"  catalog_slug: {slug}")
+                lines.append(f"  промпт: {synced} (обновлён — был старый шаблон)")
+            else:
+                if slug:
+                    lines.append(f"  catalog_slug: {slug}")
+                action = str(session.meta.get("approved_action") or session.meta.get("action") or "")[:80]
+                if action:
+                    lines.append(f"  промпт: {action}")
+        else:
+            action = str(session.meta.get("approved_action") or session.meta.get("action") or "")[:80]
+            if action:
+                lines.append(f"  промпт: {action}")
+        if slug:
             picked = session.meta.get("selected_loras") or []
             if picked:
                 names = ", ".join(
@@ -79,12 +100,6 @@ def comfy_pipeline_status(config: Config) -> str:
                 lines.append(f"  LoRA (выбраны): {names}")
             elif session.status == "awaiting_lora_pick":
                 lines.append("  LoRA: жду выбор (comfy_lora_list)")
-        if action:
-            lines.append(f"  промпт: {action}")
-        if slug and action and slug.replace("_", " ") not in action.lower() and "idle stand" in action.lower() and slug != "idle":
-            lines.append(
-                f"  ⚠ промпт не совпадает с slug ({slug}) — будет пересинхронизирован при генерации"
-            )
         if session.status == "running" and session.step == 5:
             lines.append("  → **сейчас генерирует** 3 дубля (¾) в ComfyUI")
         elif session.status == "awaiting_prompt":
@@ -136,15 +151,9 @@ def comfy_pipeline_status(config: Config) -> str:
     cand = sum(1 for c in store.clips if c.status == "candidate")
     kept = sum(1 for c in store.clips if c.status == "kept")
     lines.append(f"Клипы: kept={kept}, на оценку (candidate)={cand}")
+    lines.append(f"Фокус съёмки: {', '.join(resolve_focus_slugs(config)) or 'все'}")
     lines.append("")
-    lines.append("--- Оценка (как это устроено) ---")
-    lines.append(
-        "1) Away: 3 дубля → авто take_b (score 3) → kept в Lab/Refs/kept + ComfyOut\n"
-        "2) Дома: окно «Оценить клипы Comfy» или «лучший: take_b 5»\n"
-        "3) После 10 kept на действие — пауза, Telegram: выбор сцены 1/2/3"
-    )
-    lines.append("")
-    lines.append(barn_cycle_status(config))
+    lines.append(focus_cycle_status(config))
     if not st.awaiting_choice:
         lines.append(scene_choice_status_line(config))
     return "\n".join(lines)
