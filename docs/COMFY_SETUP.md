@@ -125,6 +125,19 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 Выключить: `VIU_COMFY_FACE_SWAP=0` в `.env`.  
 Фиксированное лицо: `VIU_COMFY_FACE_REF=U:\path\to\face.png`.
 
+**Битые mp4 ~4–5 KB (не открываются):** встроенный NSFW-filter ReActor вырезает
+NSFW-кадры → остаётся один чёрный кадр. `comfy_reactor_fix` + перезапуск Comfy.
+
+### Llava — оценка клипов (до Telegram)
+
+После тройки дублей Вью (если `VIU_COMFY_VISION=1` и `ollama pull llava`):
+
+1. Средний кадр из каждого mp4
+2. Llava → `VERDICT: OK | BLACK_FRAME | …`
+3. Плохие — в `Lab/Refs/rejected/`, в Telegram только нормальные
+
+Ручная проверка: `comfy_vision_review path=U:\...\clip.mp4 action=touch_self`
+
 ### LoRA — простой сценарий
 
 1. **Скачай** `.safetensors` в `ComfyUI/models/loras/` (можно подпапки).

@@ -79,6 +79,7 @@ from .export_asset_tool import ExportUnityAssetTool
 from .lab_tool import LabRateTool, LabRunAllTool, LabStartTool, LabStatusTool, LabStepTool
 from .comfy_tool import (
     ComfyClipPickTool,
+    ComfyVisionReviewTool,
     ComfyEnsureTool,
     ComfyReactorFixTool,
     ComfyFocusTool,
@@ -94,6 +95,7 @@ from .comfy_tool import (
     ComfyRunTool,
     ComfyStatusTool,
     ComfyTripleTool,
+    ComfyVisionReviewTool,
 )
 from .animation_catalog_tool import (
     AcceptAnimationInboxTool,
@@ -202,6 +204,7 @@ def build_default_registry() -> ToolRegistry:
         ComfyRunTool(),
         ComfyMocapTool(),
         ComfyTripleTool(),
+        ComfyVisionReviewTool(),
         ComfyClipPickTool(),
         ComfyLoraListTool(),
         ComfyLoraScanTool(),
