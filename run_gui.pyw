@@ -69,7 +69,7 @@ def main() -> int:
         from viu.env_file import bootstrap_env
         from viu.net_env import apply_proxy_scrub_to_process
 
-        _set_status("boot")
+        _set_status("loading")
         bootstrap_env(ROOT)
         apply_proxy_scrub_to_process()
         from viu.gui import main as gui_main

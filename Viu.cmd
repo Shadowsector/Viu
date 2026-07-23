@@ -1,11 +1,14 @@
 @echo off
-setlocal EnableExtensions
-rem ============================================================
-rem   VIU — запусти двойным кликом.
-rem   Лог запуска: U:\Viu\.viu_launch.log
-rem ============================================================
-chcp 65001 >nul
+rem Тонкая оболочка: всегда открывает видимую консоль (cmd /k).
 cd /d "%~dp0"
+if /i "%~1"=="_run" goto :main
+start "Viu" cmd /d /k call "%~f0" _run %*
+exit /b 0
+
+:main
+setlocal EnableExtensions EnableDelayedExpansion
+shift
+chcp 65001 >nul 2>&1
 title Viu — Anabarra
 set PYTHONUTF8=1
 set PYTHONPATH=%~dp0
@@ -16,11 +19,12 @@ set "STATUS=%~dp0.viu_launch_status"
 set "STARTED=%~dp0.viu_gui_started"
 set "STARTUP_ERR=%~dp0viu_startup.log"
 
+echo.
+echo ===== Viu %DATE% %TIME% =====
 echo ===== Viu launch %DATE% %TIME% =====> "%LAUNCH_LOG%"
 
-rem --- Мёртвый локальный прокси (Clash/V2Ray) ломает pip/GitHub ---
 if /i not "%VIU_KEEP_PROXY%"=="1" (
-  if defined HTTPS_PROXY echo [net] Снимаю HTTPS_PROXY=%HTTPS_PROXY%>> "%LAUNCH_LOG%"
+  if defined HTTPS_PROXY echo [net] HTTPS_PROXY=%HTTPS_PROXY%
   set "HTTP_PROXY="
   set "HTTPS_PROXY="
   set "ALL_PROXY="
@@ -32,7 +36,6 @@ if /i not "%VIU_KEEP_PROXY%"=="1" (
   set "no_proxy=*"
 )
 
-rem --- дефолты, если в .env нет строки (`.env` перекрывает эти ключи) ---
 set VIU_PROVIDER=openai
 set VIU_BASE_URL=http://localhost:11434/v1
 set VIU_API_KEY=ollama
@@ -41,145 +44,119 @@ set VIU_UNITY_PROJECT=U:\Anabarra\Unity\Anabarra
 set VIU_ANIM_STAGING=U:\Anabarra\Animations
 set VIU_QUIET_HOURS=0-7
 set VIU_REFLECT_TEMPERATURE=0.88
-rem Лимит VRAM для Ollama (LLM). Перезапусти Ollama из трея после смены.
 set VIU_LAB_VRAM_GB=10
 set OLLAMA_MAX_VRAM=10737418240
-rem Модели — из .env (VIU_MODEL_REFLECT=viu-cydonia …). Не форсим coder здесь.
-rem ---------------------------------
 
-echo.
-echo   Готовлю Вью...
-echo   Лог: %LAUNCH_LOG%
+echo   Папка: %~dp0
+echo   Лог:   %LAUNCH_LOG%
+if exist "%~dp0viu\package_sha.txt" (
+  echo   SHA:   & type "%~dp0viu\package_sha.txt"
+) else (
+  echo   SHA:   нет viu\package_sha.txt
+)
 echo.
 
 where python >nul 2>&1
 if errorlevel 1 (
-  echo [ОШИБКА] Python не найден.
+  echo [ОШИБКА] Python не найден в PATH.
   echo [ОШИБКА] Python не найден.>> "%LAUNCH_LOG%"
   goto :fail
 )
-
-for /f "delims=" %%V in ('python -c "from viu.updater import version_label,running_sha; s=running_sha() or ''; print(version_label(), s[:7] if s else '?')" 2^>nul') do (
-  echo   Сейчас на диске: %%V
-  echo version: %%V>> "%LAUNCH_LOG%"
-)
+python --version
 
 if /i "%~1"=="quick" goto :skip_update
 if /i "%VIU_QUICK_START%"=="1" goto :skip_update
 
-echo [1/3] Проверяю обновления с GitHub...
+echo [1/3] GitHub update (может занять несколько минут)...
 echo [1/3] updates>> "%LAUNCH_LOG%"
 if exist "%~dp0bootstrap_update.py" (
-  python bootstrap_update.py --auto >> "%LAUNCH_LOG%" 2>&1
-  if errorlevel 2 (
-    echo [net] повтор: bootstrap --apply>> "%LAUNCH_LOG%"
-    python bootstrap_update.py --apply >> "%LAUNCH_LOG%" 2>&1
+  python bootstrap_update.py --auto 2>&1
+  set "BERR=!errorlevel!"
+  echo bootstrap exit=!BERR!>> "%LAUNCH_LOG%"
+  if !BERR! GEQ 2 (
+    echo [net] повтор: bootstrap --apply
+    python bootstrap_update.py --apply 2>&1
+    set "BERR=!errorlevel!"
   )
-  if errorlevel 1 (
-    echo [warn] Обновление не удалось — запускаю текущую версию>> "%LAUNCH_LOG%"
-    echo [warn] GitHub недоступен или zip не распаковался — см. %LAUNCH_LOG%
+  if !BERR! GEQ 1 (
+    echo [warn] Обновление не удалось — запускаю текущую версию
   )
 ) else (
-  echo [warn] нет bootstrap_update.py>> "%LAUNCH_LOG%"
+  echo [warn] нет bootstrap_update.py
 )
 goto :after_update
 
 :skip_update
-echo [1/3] Пропуск обновления (quick / VIU_QUICK_START=1)>> "%LAUNCH_LOG%"
-echo   Быстрый старт — без GitHub. Для апдейта: Viu.cmd или force_update_viu.bat
+echo [1/3] Без GitHub (quick). Апдейт: force_update_viu.bat
+echo skip update>> "%LAUNCH_LOG%"
 
 :after_update
-
-echo [2/3] Файл настроек .env...
+echo [2/3] .env ...
 if not exist "%~dp0.env" if exist "%~dp0.env.example" copy /Y "%~dp0.env.example" "%~dp0.env" >nul
 
-echo [3/3] Пакет + запуск окна...
-echo [3/3] pip>> "%LAUNCH_LOG%"
+echo [3/3] pip install -e .
 python -m pip install -e . -q --proxy= --disable-pip-version-check --no-warn-script-location > "%PIP_LOG%" 2>&1
 if errorlevel 1 (
-  echo [net] setuptools + no-build-isolation...
-  echo retry setuptools>> "%LAUNCH_LOG%"
+  echo retry pip...
   python -m pip install -q setuptools wheel --proxy= >> "%PIP_LOG%" 2>&1
   python -m pip install -e . -q --proxy= --no-build-isolation --disable-pip-version-check --no-warn-script-location >> "%PIP_LOG%" 2>&1
 )
 if errorlevel 1 (
-  echo [ОШИБКА] pip не смог установить Viu — пробую запустить как есть.
-  echo ---- pip log ---->> "%LAUNCH_LOG%"
-  type "%PIP_LOG%" >> "%LAUNCH_LOG%"
+  echo [warn] pip fail — пробую GUI как есть. См. %PIP_LOG%
   type "%PIP_LOG%"
-  echo pip FAIL but continue>> "%LAUNCH_LOG%"
 )
 
-rem убрать маркеры прошлого запуска
 if exist "%STARTED%" del "%STARTED%" >nul 2>&1
 if exist "%STATUS%" del "%STATUS%" >nul 2>&1
 if exist "%STARTUP_ERR%" del "%STARTUP_ERR%" >nul 2>&1
 
-echo Запускаю GUI...
-echo starting GUI>> "%LAUNCH_LOG%"
+echo Запускаю GUI (run_gui.pyw)...
 where pythonw >nul 2>&1
-if %errorlevel%==0 (
+if not errorlevel 1 (
   start "ViuGUI" pythonw "%~dp0run_gui.pyw"
 ) else (
   start "ViuGUI" python "%~dp0run_gui.pyw"
 )
 
-rem Ждём до 90 сек: started / tk_ready / already_running / ошибка
 set /a _n=0
 :waitgui
 timeout /t 1 /nobreak >nul
 set /a _n+=1
 if exist "%STARTED%" goto :guiok
 if exist "%STATUS%" (
-  findstr /i /c:"already_running" "%STATUS%" >nul 2>&1
-  if not errorlevel 1 goto :guibusy
-  findstr /i /c:"tk_ready" "%STATUS%" >nul 2>&1
-  if not errorlevel 1 goto :guiok
-  findstr /i /c:"running" "%STATUS%" >nul 2>&1
-  if not errorlevel 1 goto :guiok
+  findstr /i /c:"already_running" "%STATUS%" >nul 2>&1 && goto :guibusy
+  findstr /i /c:"tk_ready" "%STATUS%" >nul 2>&1 && goto :guiok
+  findstr /i /c:"running" "%STATUS%" >nul 2>&1 && goto :guiok
+  findstr /i /c:"loading" "%STATUS%" >nul 2>&1 && goto :guiok
 )
 if exist "%STARTUP_ERR%" goto :guicrash
-if %_n% LSS 90 goto waitgui
+if !_n! LSS 120 goto :waitgui
 
-echo.
-echo [ОШИБКА] Окно Вью не открылось за 90 сек.
-echo Статус:
+echo [ОШИБКА] GUI не ответил за 120 сек.
 if exist "%STATUS%" type "%STATUS%"
 if exist "%STARTUP_ERR%" type "%STARTUP_ERR%"
-echo.
-echo Если Вью «висит» в фоне — Диспетчер задач: заверши python/pythonw,
-echo или запусти fix_viu_lock.bat
-echo timeout waiting for GUI>> "%LAUNCH_LOG%"
-if exist "%STATUS%" type "%STATUS%" >> "%LAUNCH_LOG%"
 goto :fail
 
 :guicrash
-echo.
-echo [ОШИБКА] GUI упал при старте:
+echo [ОШИБКА] GUI crash:
 type "%STARTUP_ERR%"
-type "%STARTUP_ERR%" >> "%LAUNCH_LOG%"
 goto :fail
 
 :guibusy
-echo.
-echo Вью уже запущена — ищи окно на панели задач.
-echo Если окна нет: fix_viu_lock.bat  затем снова Viu.cmd
-echo Или: relaunch.cmd (без обновления)
-echo already_running>> "%LAUNCH_LOG%"
-echo.
-echo Нажми клавишу...
-pause >nul
-exit /b 0
+echo Вью уже запущена. fix_viu_lock.bat или relaunch.cmd
+goto :end
 
 :guiok
-echo Окно Вью открыто.
-for /f "delims=" %%V in ('python -c "from viu.updater import version_label,running_sha; s=running_sha() or ''; print(version_label(), s[:7] if s else '?')" 2^>nul') do echo   Версия: %%V
-echo GUI started OK>> "%LAUNCH_LOG%"
-exit /b 0
+echo OK — окно Вью открыто.
+if exist "%~dp0viu\package_sha.txt" type "%~dp0viu\package_sha.txt"
+goto :end
 
 :fail
 echo.
-echo ---- Лог: %LAUNCH_LOG% ----
-echo Нажми любую клавишу, чтобы закрыть...
-pause >nul
-exit /b 1
+echo ---- см. %LAUNCH_LOG% ----
+
+:end
+echo.
+echo Консоль можно закрыть. Диагностика: diag_viu_launch.bat
+pause
+exit /b 0
