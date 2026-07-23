@@ -109,11 +109,18 @@ def parse_reflect_response(
     parsed = extract_json(body) or extract_json(candidate)
     loose_final, closed = extract_loose_final(candidate or body)
 
-    if parsed and "final" in parsed and "action" not in parsed:
-        final = str(parsed.get("final") or "").strip()
+    if parsed and "action" not in parsed:
         thought = str(parsed.get("thought") or parsed.get("inner") or "").strip()
-        truncated = bool(loose_final) and not closed
-        return final or None, thought or None, truncated, parsed
+        fps = parsed.get("final_parts")
+        if isinstance(fps, list):
+            parts = [str(p).strip() for p in fps if str(p).strip()]
+            if parts:
+                final = "\n\n".join(parts)
+                return final, thought or None, False, parsed
+        if "final" in parsed:
+            final = str(parsed.get("final") or "").strip()
+            truncated = bool(loose_final) and not closed
+            return final or None, thought or None, truncated, parsed
 
     if loose_final and closed:
         return loose_final, None, False, None
@@ -149,7 +156,10 @@ def extract_json(text: str) -> Optional[dict]:
 
     def _valid_agent(obj: Any) -> bool:
         return isinstance(obj, dict) and (
-            "final" in obj or "action" in obj or "inner" in obj
+            "final" in obj
+            or "final_parts" in obj
+            or "action" in obj
+            or "inner" in obj
         )
 
     # Пробуем весь текст целиком.
@@ -227,6 +237,7 @@ class RunResult:
     inner_thought: str = ""
     tool_errors: bool = False
     echo_telegram: bool = False
+    final_parts: List[str] = field(default_factory=list)
 
 
 class Agent:
@@ -593,6 +604,15 @@ class Agent:
             reflect_temperature,
             reflect_use_filters,
         )
+        from .reflect_delivery import (
+            collect_final_parts,
+            continuation_user_prompt,
+            list_delivery_hint,
+            reflect_max_parts,
+            reflect_max_words_per_part,
+            should_fetch_more_parts,
+            truncate_retry_hint,
+        )
 
         temp = reflect_temperature(self.config)
         result = RunResult(
@@ -609,6 +629,9 @@ class Agent:
         else:
             system = REFLECT_BARE_MINIMAL
             user_msg = user_text
+            hint = list_delivery_hint(user_text)
+            if hint:
+                system += hint
             if needs_plot_file_context(user_text):
                 plot_notes = build_reflect_notes_plot(self.config)
                 if plot_notes:
@@ -648,27 +671,85 @@ class Agent:
             f" filtered={int(reflect_use_filters())} plot_ctx={int(plot_ctx)}"
         )
 
+        def _extend_reflect_parts(parts: List[str]) -> List[str]:
+            max_p = reflect_max_parts(self.config, user_text=user_text)
+            max_words = reflect_max_words_per_part(self.config)
+            while len(parts) < max_p:
+                prompt = continuation_user_prompt(
+                    user_text=user_text,
+                    prior_parts=parts,
+                    part_index=len(parts),
+                    max_parts=max_p,
+                    max_words=max_words,
+                )
+                cont_msgs: List[Dict[str, str]] = list(messages)
+                cont_msgs.append(
+                    {
+                        "role": "assistant",
+                        "content": json.dumps({"final": parts[-1]}, ensure_ascii=False),
+                    }
+                )
+                cont_msgs.append({"role": "user", "content": prompt})
+                try:
+                    raw_part = self.llm.complete(
+                        cont_msgs, temperature=temp, model=reflect_model
+                    )
+                except RuntimeError as exc:
+                    self._log(f"REFLECT_PART fail: {exc}")
+                    break
+                part_text, _pt, part_trunc, part_parsed = parse_reflect_response(
+                    raw_part
+                )
+                if not part_text or part_text.strip() == parts[-1].strip():
+                    break
+                parts.append(part_text.strip())
+                self._log(f"REFLECT_PART {len(parts)}/{max_p}")
+                if not should_fetch_more_parts(
+                    part_text,
+                    parsed=part_parsed,
+                    truncated=part_trunc,
+                    config=self.config,
+                    user_text=user_text,
+                ):
+                    break
+            return parts
+
         def _accept(
             text: str,
             thought: str = "",
             parsed: Optional[Dict[str, str]] = None,
+            *,
+            initial_truncated: bool = False,
         ) -> RunResult:
+            parts = collect_final_parts(text, parsed)
+            if should_fetch_more_parts(
+                parts[-1] if parts else "",
+                parsed=parsed,
+                truncated=initial_truncated,
+                config=self.config,
+                user_text=user_text,
+            ) and len(parts) < reflect_max_parts(self.config, user_text=user_text):
+                parts = _extend_reflect_parts(parts)
+            full = "\n\n".join(parts)
             result.inner_thought = thought
-            result.final = text
+            result.final = full
+            result.final_parts = parts if len(parts) > 1 else []
             result.completed = True
             if thought and on_step:
                 on_step(Step(kind="think", thought=thought))
-            step = Step(kind="final", thought=thought, observation=text)
+            step = Step(kind="final", thought=thought, observation=full)
             result.steps.append(step)
             if on_step:
                 on_step(step)
+            if len(parts) > 1:
+                self._log(f"REFLECT_MULTI parts={len(parts)}")
             if not heartbeat and user_text:
                 try:
                     from .story_memory import get_story_memory
 
                     get_story_memory(self.config).add_exchange(
                         user_text,
-                        text,
+                        full,
                         source="chat",
                         tags=["dialog", "story"] if plot_ctx else ["dialog"],
                     )
@@ -684,7 +765,8 @@ class Agent:
                     pass
             return result
 
-        for attempt in range(2):
+        max_words = reflect_max_words_per_part(self.config)
+        for attempt in range(4):
             self._maybe_dump_reflect_request(
                 mode="bare",
                 model=reflect_model,
@@ -703,17 +785,19 @@ class Agent:
             text, thought, truncated, parsed = parse_reflect_response(raw)
             if text and not truncated:
                 return _accept(text, thought or "", parsed)
-            if text and truncated and attempt == 1:
+            if text and truncated and attempt >= 2:
                 salvaged = salvage_partial_final(raw)
                 if salvaged:
-                    return _accept(salvaged, "salvage", parsed)
-                return _accept(text, thought or "", parsed)
+                    return _accept(salvaged, "salvage", parsed, initial_truncated=True)
+                return _accept(text, thought or "", parsed, initial_truncated=True)
             if truncated:
                 messages.append({"role": "assistant", "content": raw or ""})
                 messages.append(
                     {
                         "role": "user",
-                        "content": 'JSON оборвался — короче: {"thought":"…","final":"…"}',
+                        "content": truncate_retry_hint(
+                            attempt=attempt, max_words=max_words
+                        ),
                     }
                 )
                 continue
@@ -768,6 +852,7 @@ class Agent:
             reflect_no_system,
             reflect_no_history,
         )
+        from .reflect_delivery import collect_final_parts, list_delivery_hint
         from .situational_context import build_reflect_notes
 
         temp = reflect_temperature(self.config)
@@ -826,6 +911,9 @@ class Agent:
         system = select_reflect_system(half)
         if scene_rp:
             system += SCENE_RP_SYSTEM_HINT
+        hint = list_delivery_hint(user_text)
+        if hint:
+            system += hint
         if use_notes:
             system += "\n\n--- Заметки и память сюжета ---\n" + notes
 
@@ -850,12 +938,15 @@ class Agent:
         def _accept_final(
             text: str, thought: str, parsed: Optional[Dict[str, str]] = None
         ) -> RunResult:
+            parts = collect_final_parts(text, parsed)
+            full = "\n\n".join(parts) if parts else text
             result.inner_thought = thought
-            result.final = text
+            result.final = full
+            result.final_parts = parts if len(parts) > 1 else []
             result.completed = True
             if thought and on_step:
                 on_step(Step(kind="think", thought=thought))
-            step = Step(kind="final", thought=thought, observation=result.final)
+            step = Step(kind="final", thought=thought, observation=full)
             result.steps.append(step)
             if on_step:
                 on_step(step)
@@ -872,12 +963,12 @@ class Agent:
 
                 get_story_memory(self.config).add_exchange(
                     user_text,
-                    text,
+                    full,
                     source="chat",
                     tags=["story"] if looks_like_story_chat(user_text) else [],
                 )
                 self.memory.add(
-                    f"Ден: {user_text[:200]} | Вью: {text[:200]}",
+                    f"Ден: {user_text[:200]} | Вью: {full[:200]}",
                     tags=["dialog", "story"]
                     if looks_like_story_chat(user_text)
                     else ["dialog"],
@@ -891,7 +982,7 @@ class Agent:
                     append_vision(
                         self.config,
                         "Диалог",
-                        f"**Ден:** {user_text[:500]}\n**Вью:** {text[:800]}",
+                        f"**Ден:** {user_text[:500]}\n**Вью:** {full[:800]}",
                     )
                 except OSError:
                     pass

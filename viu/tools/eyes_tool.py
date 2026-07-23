@@ -137,6 +137,43 @@ class VisionObserveTool(Tool):
         return ToolResult(ok, text)
 
 
+class VisionReferenceTool(Tool):
+    name = "vision_reference"
+    description = (
+        "Llava/qwen2-vl: описать референс из картинки или видео для Comfy/MoCap. "
+        "path= PNG/JPG или mp4. frame=first|middle|last для видео."
+    )
+    parameters = {
+        "path": "файл PNG/JPG или mp4/webm",
+        "frame": "для видео: first | middle | last (по умолчанию middle)",
+        "hint": "что искать на кадре (опционально)",
+        "save": "1 = сохранить JSON описания",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.reference_vision import (
+            describe_reference,
+            format_reference_report,
+        )
+
+        raw = str(args.get("path") or "").strip()
+        if not raw:
+            return ToolResult(False, "Нужен path= к картинке или видео.")
+        frame = str(args.get("frame") or "middle").strip()
+        hint = str(args.get("hint") or "").strip()
+        save = str(args.get("save", "1")).lower() not in ("0", "false", "no")
+        desc = describe_reference(
+            ctx.config,
+            raw,
+            frame=frame,
+            hint=hint,
+            save_json=save,
+        )
+        report = format_reference_report(desc)
+        ok = desc.vision_ok and desc.verdict != "EMPTY"
+        return ToolResult(ok, report)
+
+
 def _looks_bad(vision_text: str) -> bool:
     low = vision_text.lower()
     # Сначала явные провалы (даже если модель написала «Вердикт: OK»)

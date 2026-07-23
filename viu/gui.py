@@ -918,6 +918,9 @@ class ViuGUI:
         if action.tool == "__comfy_clips__":
             self._open_comfy_clip_review()
             return
+        if action.tool == "__reference_catalog__":
+            self._open_reference_catalog()
+            return
         if action.tool == "__comfy_open__":
             self._open_comfy_ui()
             return
@@ -1242,6 +1245,19 @@ class ViuGUI:
             )
 
         self.root.after(0, open_win)
+
+    def _open_reference_catalog(self) -> None:
+        from .reference_catalog import open_reference_review
+        from .reference_catalog.scanner import scan_references_inbox
+
+        cfg = self.agent.config
+        added, total = scan_references_inbox(cfg)
+        self._append(
+            "система",
+            f"Референсы: inbox +{added}, в каталоге {total}. Открываю окно…",
+            tag="sys",
+        )
+        self.root.after(0, lambda: open_reference_review(self.root, cfg))
 
     def _open_creature_catalog(self) -> None:
         """Скан Inbox → авто по именам → окно кнопок размеров."""
@@ -1815,17 +1831,22 @@ class ViuGUI:
                 )
             else:
                 result = self.agent.run(task, on_step=on_step)
-            self._queue.put(
-                (
-                    "final",
-                    result.final,
-                    result.waiting_for_user,
-                    result.chat_only,
-                    result.inner_thought,
-                    not result.tool_errors,
-                    result.echo_telegram or echo_telegram,
+            parts = result.final_parts or [result.final]
+            for idx, part in enumerate(parts):
+                is_last = idx == len(parts) - 1
+                self._queue.put(
+                    (
+                        "final",
+                        part,
+                        result.waiting_for_user and is_last,
+                        result.chat_only,
+                        result.inner_thought if idx == 0 else "",
+                        not result.tool_errors and is_last,
+                        result.echo_telegram or echo_telegram,
+                        is_last,
+                        result.final if is_last and len(parts) > 1 else "",
+                    )
                 )
-            )
         except Exception as exc:  # noqa: BLE001
             msg = str(exc)
             if "VIU_LLM_TIMEOUT" in msg or "не успела" in msg.lower():
@@ -1843,6 +1864,8 @@ class ViuGUI:
                 inner_thought = ""
                 task_ok = True
                 echo_telegram = False
+                is_last = True
+                full_for_history = ""
                 if isinstance(item, tuple) and len(item) == 2:
                     kind, text = item
                     waiting = False
@@ -1866,6 +1889,8 @@ class ViuGUI:
                         item[5],
                         item[6],
                     )
+                    is_last = item[7] if len(item) > 7 else True
+                    full_for_history = item[8] if len(item) > 8 and item[8] else text
                 else:
                     continue
                 if kind == "step":
@@ -1887,7 +1912,12 @@ class ViuGUI:
                 elif kind == "final":
                     # thought уже показан через kind=thinking — не дублировать
                     self._append("Вью", text, tag="viu")
-                    self._set_llm_busy(False)
+                    if is_last:
+                        self._set_llm_busy(False)
+                        if full_for_history and full_for_history != text:
+                            self._record_llm_turn("Вью", full_for_history)
+                        else:
+                            self._record_llm_turn("Вью", text)
                     if waiting:
                         self._telegram_waiting_reply = True
                         self._telegram_notify_question(text)

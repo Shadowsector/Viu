@@ -135,10 +135,13 @@ def project_data_dir(config: Config) -> Path:
 
 def ensure_layout(config: Config) -> List[Path]:
     """Создаёт Inbox, .viu и Library."""
+    from .inbox_layout import ensure_inbox_readme
+
     roots: List[Path] = []
     for path in (config.data_dir.resolve(), inbox_dir(config), library_root(config)):
         path.mkdir(parents=True, exist_ok=True)
         roots.append(path)
+    ensure_inbox_readme(config)
     lib = library_root(config)
     for sub in LIBRARY_SUBDIRS:
         (lib / sub).mkdir(parents=True, exist_ok=True)

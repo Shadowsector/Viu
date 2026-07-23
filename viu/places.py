@@ -142,6 +142,11 @@ def all_places() -> List[Place]:
         creatures_lineup_dir,
         creatures_processed_dir,
     )
+    from .inbox_layout import (
+        inbox_animations_dir,
+        inbox_cascadeur_dir,
+        inbox_references_dir,
+    )
     from .integrations.cascadeur.paths import cascadeur_export, cascadeur_inbox
     from .integrations.comfy.paths import (
         comfy_face_refs_dir,
@@ -156,34 +161,58 @@ def all_places() -> List[Place]:
         # --- Входы: куда класть ---
         Place(
             "viu_inbox",
-            "Inbox паков (разбор)",
+            "Inbox — паки домиков",
             "folder",
             "Входы",
-            "Один пак за раз → «Следующий шаг» / разбор. U:\\Viu\\Inbox",
+            "Корень U:\\Viu\\Inbox — blend/паки для «Что делать дальше».",
             inbox_dir,
         ),
         Place(
-            "models_inbox",
-            "Живые существа → Inbox",
+            "inbox_references",
+            "Inbox — референсы",
             "folder",
             "Входы",
-            "Тот же Inbox, что Creatures (волки, гоблины, humanoid).",
-            models_inbox_dir,
+            "Картинки и видео → «Референсы — окно» (ComfyUI).",
+            inbox_references_dir,
+        ),
+        Place(
+            "inbox_animations",
+            "Inbox — анимации",
+            "folder",
+            "Входы",
+            "FBX по одной → «Описать новые FBX».",
+            inbox_animations_dir,
+        ),
+        Place(
+            "inbox_cascadeur",
+            "Inbox — Cascadeur",
+            "folder",
+            "Входы",
+            "Очередь .fbx / .blend для Cascadeur.",
+            inbox_cascadeur_dir,
+        ),
+        Place(
+            "models_inbox",
+            "Inbox — существа",
+            "folder",
+            "Входы",
+            "U:\\Viu\\Inbox\\creatures — волки, гоблины, humanoid.",
+            creatures_inbox_dir,
         ),
         Place(
             "creatures_inbox",
-            "Живые существа → Inbox",
+            "Inbox — существа",
             "folder",
             "Входы",
-            "Единая папка: Lab/Creatures/Inbox → «Разметить» / «Студия».",
+            "То же: creatures/ → Blender — существа.",
             creatures_inbox_dir,
         ),
         Place(
             "cascadeur_inbox",
-            "Cascadeur Inbox",
+            "Inbox — Cascadeur",
             "folder",
             "Входы",
-            "FBX/blend прямо в очередь Cascadeur.",
+            "То же: cascadeur/ (если не задан legacy путь).",
             cascadeur_inbox,
         ),
         # --- Выходы: что Вью собрала ---

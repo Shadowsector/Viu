@@ -200,6 +200,13 @@ GUI_ACTIONS: List[GuiAction] = [
     ),
     # --- ComfyUI ---
     GuiAction(
+        "reference_catalog",
+        "0. Референсы — окно",
+        "ComfyUI — видео",
+        tool="__reference_catalog__",
+        hint="Inbox/references/ — картинки и видео; LLaVA-описание для MoCap.",
+    ),
+    GuiAction(
         "lab_comfy",
         "1. MoCap: снять клип",
         "ComfyUI — видео",

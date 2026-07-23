@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from .anabarra_layout import inbox_dir, library_root, unity_project_path
+from .inbox_layout import inbox_animations_dir, inbox_references_dir, ensure_inbox_readme
 from .animation_catalog import (
     AnimationCatalogStore,
     animation_catalog_path,
@@ -101,11 +102,21 @@ def _unique_dest(dest: Path) -> Path:
     return dest
 
 
-def _find_inbox_animation_fbx(inbox: Path) -> List[Path]:
+def _find_inbox_animation_fbx(inbox: Path, config: Config) -> List[Path]:
     found: List[Path] = []
-    for p in sorted(inbox.iterdir()):
-        if p.is_file() and p.suffix.lower() == ".fbx" and is_character_animation_fbx(p):
-            found.append(p)
+    roots = [inbox]
+    try:
+        anim_inbox = inbox_animations_dir(config)
+        if anim_inbox.is_dir() and anim_inbox not in roots:
+            roots.append(anim_inbox)
+    except OSError:
+        pass
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for p in sorted(root.iterdir()):
+            if p.is_file() and p.suffix.lower() == ".fbx" and is_character_animation_fbx(p):
+                found.append(p)
     return found
 
 
@@ -177,7 +188,7 @@ def accept_single_animation(
         report.errors.append(f"Inbox не найден: {inbox}")
         return report
 
-    anim_files = _find_inbox_animation_fbx(inbox)
+    anim_files = _find_inbox_animation_fbx(inbox, config)
     if not anim_files:
         report.ok = False
         report.errors.append(
@@ -242,8 +253,15 @@ def route_inbox(
     lib = library_root(config)
     unity_anim = resolve_in_unity_project(unity_project_path(config), ANIMATIONS_REL)
 
+    ensure_inbox_readme(config)
+    refs_inbox = inbox_references_dir(config)
+
     entries = sorted(
-        p for p in inbox.iterdir() if p.name not in (".", "..") and not p.name.startswith(".")
+        p
+        for p in inbox.iterdir()
+        if p.name not in (".", "..")
+        and not p.name.startswith(".")
+        and p.name not in ("creatures", "animations", "references", "cascadeur")
     )
     if not entries:
         return report
@@ -277,10 +295,12 @@ def route_inbox(
                 continue
 
             if entry.is_file() and entry.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
-                dest = _unique_dest(lib / "References" / "images" / entry.name)
+                dest = _unique_dest(refs_inbox / entry.name)
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 _move_or_copy(entry, dest, remove_from_inbox)
-                report.items.append(RoutedItem(entry, dest, "image"))
+                report.items.append(
+                    RoutedItem(entry, dest, "reference", "Inbox/references → каталог референсов")
+                )
                 continue
 
             if entry.is_dir():

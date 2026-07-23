@@ -5,12 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from ...anabarra_layout import library_root
+from ...inbox_layout import ensure_inbox_readme, inbox_cascadeur_dir
 from ...config import Config
 
 
 def cascadeur_inbox(config: Config) -> Path:
-    """Входящие для Cascadeur: .fbx или .blend (lab конвертирует в FBX)."""
-    root = library_root(config) / "Cascadeur" / "Inbox"
+    """Входящие для Cascadeur — U:\\Viu\\Inbox\\cascadeur."""
+    root = inbox_cascadeur_dir(config)
+    ensure_inbox_readme(config)
     root.mkdir(parents=True, exist_ok=True)
     readme = root / "README.txt"
     if not readme.is_file():
