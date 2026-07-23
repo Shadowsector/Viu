@@ -181,13 +181,48 @@ class ComfyEnsureTool(Tool):
             force_restart=force_restart,
             reload_if_reactor_missing=True,
         )
-        client = _client(ctx)
-        from ..integrations.comfy.face_refs import face_swap_status_line, face_refs_status
+        if ok and "face_swap:" not in msg:
+            client = _client(ctx)
+            from ..integrations.comfy.face_refs import face_refs_status
 
-        extra = face_swap_status_line(ctx.config, client=client if ok else None)
-        if ok:
-            return ToolResult(True, f"{msg}\n\n{extra}\n\n{face_refs_status(ctx.config, client=client)}")
-        return ToolResult(False, f"{msg}\n\n{extra}")
+            msg = f"{msg}\n\n{face_refs_status(ctx.config, client=client)}"
+        return ToolResult(ok, msg)
+
+
+class ComfyReactorFixTool(Tool):
+    name = "comfy_reactor_fix"
+    description = (
+        "Починить ReActor: pip зависимости, import-test, перезапуск Comfy. "
+        "Если face_swap нет после comfy_ensure."
+    )
+    parameters = {}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.process import ensure_comfy_running
+        from ..integrations.comfy.reactor_diag import (
+            probe_reactor_import,
+            reactor_diagnose,
+            repair_reactor_dependencies,
+        )
+
+        ok_fix, fix_msg = repair_reactor_dependencies(ctx.config)
+        lines = [fix_msg]
+        ok_imp, imp = probe_reactor_import(ctx.config)
+        lines.append(f"import после repair: {'OK' if ok_imp else 'FAIL'}")
+        if not ok_imp and imp:
+            lines.append(imp[-1500:])
+        ok_run, run_msg = ensure_comfy_running(
+            ctx.config,
+            wait_seconds=120.0,
+            auto_install=False,
+            force_restart=True,
+            reload_if_reactor_missing=True,
+        )
+        lines.append(run_msg)
+        client = _client(ctx)
+        if ok_run:
+            lines.append(reactor_diagnose(ctx.config, client=client))
+        return ToolResult(ok_run and ok_imp, "\n\n".join(lines))
 
 
 class ComfyFocusTool(Tool):

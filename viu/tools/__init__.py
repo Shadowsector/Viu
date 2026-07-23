@@ -80,6 +80,7 @@ from .lab_tool import LabRateTool, LabRunAllTool, LabStartTool, LabStatusTool, L
 from .comfy_tool import (
     ComfyClipPickTool,
     ComfyEnsureTool,
+    ComfyReactorFixTool,
     ComfyFocusTool,
     ComfyQueueClearTool,
     ComfyInstallTool,
@@ -195,6 +196,7 @@ def build_default_registry() -> ToolRegistry:
         ComfyStatusTool(),
         ComfyInstallTool(),
         ComfyEnsureTool(),
+        ComfyReactorFixTool(),
         ComfyFocusTool(),
         ComfyQueueClearTool(),
         ComfyRunTool(),

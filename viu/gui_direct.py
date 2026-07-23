@@ -60,6 +60,8 @@ _RU_ALIASES: Dict[str, Tuple[str, Dict[str, Any]]] = {
     "очисти очередь comfy": ("comfy_queue_clear", {"force": "1"}),
     "сброс очереди comfy": ("comfy_queue_clear", {"force": "1"}),
     "comfy queue clear": ("comfy_queue_clear", {"force": "1"}),
+    "почини reactor": ("comfy_reactor_fix", {}),
+    "comfy reactor fix": ("comfy_reactor_fix", {}),
 }
 
 

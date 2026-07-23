@@ -14,6 +14,7 @@ TOOLS_ALLOWED_DURING_LAB = frozenset(
         "comfy_ensure",  # поднять :8188, пока lab ждёт Comfy
         "comfy_focus",
         "comfy_queue_clear",
+        "comfy_reactor_fix",
     }
 )
 

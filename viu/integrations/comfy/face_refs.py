@@ -119,7 +119,13 @@ def reactor_face_swap_class(client) -> str | None:
     for cand in ("ReActorFaceSwap", "ReActorFaceSwapOpt"):
         if client.has_node_class(cand):
             return cand
-    return client.find_node_class("reactor", "faceswap")
+    from .reactor_diag import list_reactor_node_classes
+
+    found = list_reactor_node_classes(client)
+    for name in found:
+        if "faceswap" in name.lower():
+            return name
+    return found[0] if found else None
 
 
 def inswapper_model_path(config: Config) -> Path | None:
@@ -155,13 +161,19 @@ def face_swap_status_line(config: Config, *, client=None) -> str:
         pick = pick_face_ref(config)
         face = pick.name if pick else "нет FaceRef"
         return f"face_swap: **OK** (ReActor {cls}, лицо: {face})"
+    from .reactor_diag import probe_reactor_import
+
     root = resolve_comfy_root(config)
+    ok_imp, _ = probe_reactor_import(config)
     if root and (root / "custom_nodes" / "ComfyUI-ReActor").is_dir():
-        return "face_swap: **нет** — ReActor не в API → comfy_ensure restart=1"
+        if not ok_imp:
+            return "face_swap: **нет** — import ReActor падает → comfy_reactor_fix"
+        return "face_swap: **нет** — import OK, но нод нет в API → comfy_ensure restart=1"
     return "face_swap: **нет** — comfy_install reactor=1"
 
 
 def face_refs_status(config: Config, *, client=None) -> str:
+    from .reactor_diag import probe_reactor_import, reactor_errors_in_launch_log
     d = ensure_face_refs_dir(config)
     refs = list_face_refs(config)
     env_ref = (os.environ.get("VIU_COMFY_FACE_REF") or "").strip()
@@ -185,9 +197,20 @@ def face_refs_status(config: Config, *, client=None) -> str:
     elif root is not None:
         reactor_dir = root / "custom_nodes" / "ComfyUI-ReActor"
         if reactor_dir.is_dir():
-            lines.append(
-                "ReActor: папка есть, но нода не в Comfy — перезапусти Comfy (comfy_ensure)"
-            )
+            ok_imp, imp_tail = probe_reactor_import(config)
+            if ok_imp:
+                lines.append(
+                    "ReActor: import OK, но нода не в API — перезапусти Comfy (comfy_ensure restart=1)"
+                )
+            else:
+                lines.append("ReActor: **import FAIL** — comfy_reactor_fix")
+                for ln in (imp_tail or "").splitlines()[-4:]:
+                    if ln.strip():
+                        lines.append(f"  {ln.strip()[:200]}")
+                log_bit = reactor_errors_in_launch_log(config)
+                if log_bit:
+                    for ln in log_bit.splitlines()[-3:]:
+                        lines.append(f"  log: {ln.strip()[:200]}")
         else:
             lines.append("ReActor: нет — comfy_install reactor=1")
     inswap = inswapper_model_path(config)
@@ -196,6 +219,9 @@ def face_refs_status(config: Config, *, client=None) -> str:
     elif root is not None:
         lines.append("inswapper: нет models/insightface/inswapper_128.onnx")
     if face_swap_enabled() and pick and not reactor_cls:
-        lines.append("⚠ face_swap on, но ReActor не загружен — comfy_ensure restart=1")
+        if not probe_reactor_import(config)[0]:
+            lines.append("⚠ comfy_reactor_fix — доустановить зависимости ReActor")
+        else:
+            lines.append("⚠ comfy_ensure restart=1 — import OK, нужен рестарт Comfy")
     lines.append(face_swap_status_line(config, client=client))
     return "\n".join(lines)
