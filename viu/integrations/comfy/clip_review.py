@@ -194,6 +194,7 @@ def register_triple_batch(
         if not files:
             continue
         path = str(files[0])
+        v_note = str(info.get("vision_verdict") or "").strip()
         clip = ComfyClip(
             id=_clip_id(batch_id, str(angle_id), path),
             batch_id=batch_id,
@@ -202,6 +203,7 @@ def register_triple_batch(
             angle_label=str(info.get("label") or angle_id),
             path=path,
             status=STATUS_CANDIDATE,
+            notes=f"vision:{v_note}" if v_note else "",
             orientation=spec.orientation,
             width=spec.width,
             height=spec.height,
@@ -596,7 +598,8 @@ def format_candidates_message(clips: List[ComfyClip]) -> str:
         "",
     ]
     for c in clips:
-        lines.append(f"  • {c.angle} ({c.angle_label}): {Path(c.path).name}")
+        extra = f" [{c.notes}]" if c.notes else ""
+        lines.append(f"  • {c.angle} ({c.angle_label}): {Path(c.path).name}{extra}")
     return "\n".join(lines)
 
 

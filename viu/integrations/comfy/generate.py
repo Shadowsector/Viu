@@ -296,4 +296,15 @@ def run_triple_angles(
         if files:
             lines.extend(f"      • {p}" for p in files)
         any_ok = any_ok or ok
+
+    from .vision_review import review_triple_results, vision_review_enabled
+
+    if vision_review_enabled() and any_ok:
+        results, vision_msg = review_triple_results(config, results, action=action)
+        if vision_msg:
+            lines.append(vision_msg)
+        if not (results.get("files") or []):
+            any_ok = False
+            lines.append("⏸ Vision отклонила все дубли — переснять или VIU_COMFY_VISION=0.")
+
     return any_ok, "\n".join(lines), results

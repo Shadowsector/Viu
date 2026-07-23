@@ -660,6 +660,36 @@ class ComfyLoraFetchTool(Tool):
         return ToolResult(ok, msg)
 
 
+class ComfyVisionReviewTool(Tool):
+    name = "comfy_vision_review"
+    description = (
+        "Llava/qwen2-vl: оценить MoCap mp4 (кадр из видео → вердикт). "
+        "path= один файл или paths= через запятую. auto=1 — после triple в lab."
+    )
+    parameters = {
+        "path": "один mp4",
+        "paths": "несколько mp4 через запятую",
+        "action": "что должно быть в кадре (для промпта)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.vision_review import review_paths, vision_review_enabled
+
+        if not vision_review_enabled():
+            return ToolResult(
+                False,
+                "VIU_COMFY_VISION=0 — включи в .env или убери переменную.",
+            )
+        raw_paths: List[str] = []
+        if args.get("path"):
+            raw_paths.append(str(args["path"]))
+        if args.get("paths"):
+            raw_paths.extend(str(args["paths"]).split(","))
+        action = str(args.get("action") or "").strip()
+        ok, msg, _ = review_paths(ctx.config, raw_paths, action=action)
+        return ToolResult(ok, msg)
+
+
 class ComfyClipPickTool(Tool):
     name = "comfy_clip_pick"
     description = (
