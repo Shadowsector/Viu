@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
+from ..subprocess_util import run_text
 import subprocess
-import sys
-import time
-from pathlib import Path
-from typing import Any, Dict, List
-
-from ..integrations.blender.export_pipeline import ensure_home_textures_exported
 from ..integrations.unity.overlay import overlay_exe_path
 from ..integrations.unity.paths import unity_project_root
 from ..integrations.unity.process import (
@@ -142,11 +137,9 @@ class OverlayPlaytestTool(Tool):
         # Перед сборкой — bake материалов (иначе снова фиолетовый сарай).
         rebind_cmd = batch_overlay_rebind_command(root, exe)
         try:
-            rebind_proc = subprocess.run(
+            rebind_proc = run_text(
                 rebind_cmd,
                 shell=True,
-                capture_output=True,
-                text=True,
                 timeout=min(timeout, 900),
                 cwd=str(root),
             )
@@ -167,8 +160,8 @@ class OverlayPlaytestTool(Tool):
 
         cmd = batch_overlay_build_command(root, exe)
         try:
-            proc = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, timeout=timeout, cwd=str(root)
+            proc = run_text(
+                cmd, shell=True, timeout=timeout, cwd=str(root)
             )
         except subprocess.TimeoutExpired:
             return ToolResult(False, "Сборка слишком долгая. Закрой Unity и попробуй снова.")

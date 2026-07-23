@@ -110,9 +110,14 @@ if exist "%STARTED%" del "%STARTED%" >nul 2>&1
 if exist "%STATUS%" del "%STATUS%" >nul 2>&1
 if exist "%STARTUP_ERR%" del "%STARTUP_ERR%" >nul 2>&1
 
-echo Запускаю GUI (run_gui.pyw)...
-rem pythonw иногда молча падает — python надёжнее (как в cmd: python run_gui.pyw).
-start "ViuGUI" python "%~dp0run_gui.pyw"
+echo Запускаю GUI (без второй консоли)...
+where pythonw >nul 2>&1
+if errorlevel 1 (
+  echo [warn] pythonw не найден — будет видно окно Python
+  start "ViuGUI" python "%~dp0run_gui.pyw"
+) else (
+  start "" pythonw "%~dp0run_gui.pyw"
+)
 
 set /a _n=0
 :waitgui
@@ -143,7 +148,12 @@ echo Вью уже запущена. fix_viu_lock.bat или relaunch.cmd
 goto :end
 
 :guiok
-echo OK — окно Вью открыто.
+echo.
+echo ============================================
+echo   OK — окно Вью открыто.
+echo   ЭТУ консоль "Viu" можно закрыть — GUI останется.
+echo   Если видишь второе чёрное окно Python — обнови Viu.cmd.
+echo ============================================
 if exist "%~dp0viu\package_sha.txt" type "%~dp0viu\package_sha.txt"
 goto :end
 

@@ -30,6 +30,7 @@ from ..integrations.unity.process import (
     unity_lockfile,
     unity_process_running,
 )
+from ..subprocess_util import run_text
 from ..integrations.unity.verify import verify_unity_project
 from .base import AgentContext, Tool, ToolResult
 
@@ -162,11 +163,9 @@ def _run_unity_batch(
 
     timeout = float(args.get("timeout") or 900)
     try:
-        proc = subprocess.run(
+        proc = run_text(
             cmd,
             shell=True,
-            capture_output=True,
-            text=True,
             timeout=timeout,
             cwd=str(root),
         )
@@ -336,11 +335,9 @@ class UnityRunSetupTool(Tool):
         cmd = batch_setup_command(root, exe)
         timeout = float(args.get("timeout") or 600)
         try:
-            proc = subprocess.run(
+            proc = run_text(
                 cmd,
                 shell=True,
-                capture_output=True,
-                text=True,
                 timeout=timeout,
                 cwd=str(root),
             )
@@ -485,11 +482,9 @@ class UnitySyncAnimationsTool(Tool):
         cmd = batch_sync_animations_command(root, exe)
         timeout = float(args.get("timeout") or 600)
         try:
-            proc = subprocess.run(
+            proc = run_text(
                 cmd,
                 shell=True,
-                capture_output=True,
-                text=True,
                 timeout=timeout,
                 cwd=str(root),
             )
@@ -589,8 +584,8 @@ class UnityPrepareSceneTool(Tool):
         cmd = batch_setup_command(root, exe)
         timeout = float(args.get("timeout") or 600)
         try:
-            proc = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, timeout=timeout, cwd=str(root)
+            proc = run_text(
+                cmd, shell=True, timeout=timeout, cwd=str(root)
             )
         except subprocess.TimeoutExpired:
             return ToolResult(False, f"Сборка сцены заняла больше {timeout}s. Смотри viu_setup.log.")

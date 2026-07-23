@@ -1725,6 +1725,13 @@ class ViuGUI:
                 return
         if echo_user:
             self._append("ты", f"[{title}]")
+        if name == "unity_overlay" and not readonly_diag:
+            self._append(
+                "система",
+                "Сборка оверлея: Unity закроется, подожди 5–15 мин. "
+                "В чате появится OK или ОШИБКА — не путай с «уже актуально» выше.",
+                tag="sys",
+            )
         if not readonly_diag:
             self._set_tool_busy(True)
         threading.Thread(
