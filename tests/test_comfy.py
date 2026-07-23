@@ -38,6 +38,7 @@ def test_registry_has_comfy_tools():
     assert "comfy_run" in names
     assert "comfy_ensure" in names
     assert "comfy_mocap" in names
+    assert "comfy_queue_clear" in names
 
 
 def test_paths_and_readme(tmp_path, monkeypatch):

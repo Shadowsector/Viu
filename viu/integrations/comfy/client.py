@@ -103,6 +103,10 @@ class ComfyClient:
             payload["prompt_id"] = prompt_id
         self._post("/interrupt", payload)
 
+    def clear_queue(self) -> None:
+        """Очистить pending-очередь (POST /queue clear=true)."""
+        self._post("/queue", {"clear": True})
+
     def free_memory(
         self,
         *,

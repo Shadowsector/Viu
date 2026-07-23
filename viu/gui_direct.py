@@ -57,6 +57,9 @@ _RU_ALIASES: Dict[str, Tuple[str, Dict[str, Any]]] = {
     "фокус nsfw": ("comfy_focus", {"focus": "nsfw"}),
     "фокус сарай": ("comfy_focus", {"focus": "barn"}),
     "comfy фокус nsfw": ("comfy_focus", {"focus": "nsfw"}),
+    "очисти очередь comfy": ("comfy_queue_clear", {"force": "1"}),
+    "сброс очереди comfy": ("comfy_queue_clear", {"force": "1"}),
+    "comfy queue clear": ("comfy_queue_clear", {"force": "1"}),
 }
 
 

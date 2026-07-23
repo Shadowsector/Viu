@@ -85,7 +85,7 @@ def comfy_pipeline_status(config: Config) -> str:
             lines.append(
                 f"  ⚠ промпт не совпадает с slug ({slug}) — будет пересинхронизирован при генерации"
             )
-        if session.status == "running" and session.step == 4:
+        if session.status == "running" and session.step == 5:
             lines.append("  → **сейчас генерирует** 3 дубля (¾) в ComfyUI")
         elif session.status == "awaiting_prompt":
             lines.append("  → ждёт одобрение промпта (Telegram / чат: ок)")
@@ -108,6 +108,22 @@ def comfy_pipeline_status(config: Config) -> str:
             running = len(q.get("queue_running") or [])
             pending = len(q.get("queue_pending") or [])
             lines.append(f"  очередь Comfy: running={running}, pending={pending}")
+            from .queue_manage import format_queue_slugs_line, queue_stale_for_slug
+
+            slug_line = format_queue_slugs_line(client)
+            if slug_line:
+                lines.append(slug_line)
+            session_slug = ""
+            if session is not None:
+                session_slug = str(session.meta.get("catalog_slug") or "").strip()
+            if session_slug and (running or pending):
+                stale, mismatched = queue_stale_for_slug(client, session_slug)
+                if stale:
+                    sample = ", ".join(mismatched[:2])
+                    lines.append(
+                        f"  ⚠ в очереди чужие job ({sample}) — lab ждёт **{session_slug}**. "
+                        "comfy_queue_clear или дождись сброса при следующем 3×¾."
+                    )
             if running or pending:
                 lines.append(
                     "  (ComfyUI/output: Girl_<slug>_take_* — читаемые имена; "

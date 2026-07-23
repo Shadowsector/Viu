@@ -178,6 +178,52 @@ class ComfyFocusTool(Tool):
         return ToolResult(ok, msg)
 
 
+class ComfyQueueClearTool(Tool):
+    name = "comfy_queue_clear"
+    description = (
+        "Сбросить очередь ComfyUI: interrupt текущий job + очистить pending. "
+        "Полезно, если в очереди старые lie_down, а lab уже на touch_self."
+    )
+    parameters = {
+        "free": "1 — освободить VRAM после сброса",
+        "force": "1 — очистить даже если slug совпадает",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.queue_manage import clear_comfy_queue, prepare_queue_for_slug
+        from ..lab.comfy_pipeline import COMFY_TOPIC
+        from ..lab.session import load_session
+
+        client = _client(ctx)
+        ok, ping = client.ping()
+        if not ok:
+            return ToolResult(False, ping + "\nСначала comfy_ensure.")
+
+        free = str(args.get("free") or "").strip().lower() in ("1", "true", "yes", "on")
+        force = str(args.get("force") or "").strip().lower() in ("1", "true", "yes", "on")
+        session = load_session(ctx.config, COMFY_TOPIC)
+        slug = ""
+        if session is not None:
+            slug = str(session.meta.get("catalog_slug") or "").strip()
+
+        if force or not slug:
+            msg = clear_comfy_queue(client, interrupt_running=True, free_memory=free)
+            return ToolResult(True, msg)
+
+        msg = prepare_queue_for_slug(client, slug, force=False)
+        if msg:
+            if free:
+                msg += "\n" + clear_comfy_queue(
+                    client, interrupt_running=False, free_memory=True
+                )
+            return ToolResult(True, msg)
+
+        return ToolResult(
+            True,
+            f"Очередь совпадает с **{slug}** — сброс не нужен. force=1 чтобы очистить принудительно.",
+        )
+
+
 class ComfyRunTool(Tool):
     name = "comfy_run"
     description = (

@@ -217,9 +217,12 @@ def run_triple_angles(
 ) -> Tuple[bool, str, Dict[str, Any]]:
     """Три дубля ¾ подряд (разный seed + вариация действия)."""
     from .naming import next_kept_seq, normalize_slug_for_name
+    from .queue_manage import prepare_queue_for_slug
 
     angles = default_angles()
     base_slug = normalize_slug_for_name(catalog_slug or slug or "mocap")
+    client = _client(config)
+    queue_note = prepare_queue_for_slug(client, base_slug)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     slug_full = f"{base_slug}_{stamp}"
     seq = next_kept_seq(config, base_slug)
@@ -235,6 +238,8 @@ def run_triple_angles(
         "mode": "three_quarter_takes",
     }
     lines: List[str] = [f"Comfy ×{len(angles)} дубля (¾) — «{action[:80]}»"]
+    if queue_note:
+        lines.insert(0, queue_note)
     any_ok = False
     for i, angle in enumerate(angles):
         take_action = diversify_action(action, i)
