@@ -96,7 +96,7 @@ class UnityVerifyResult:
         if cs or (self.editor_log and (self.editor_log.safe_mode or self.editor_log.playmode_blockers)):
             lines.append("Вердикт: ⛔ сначала исправь компиляцию (unity_fix_manifest / новый проект).")
         elif not self.controller_found:
-            lines.append("Вердикт: 🚧 нет Animator — «Обновить аниматор» или импорт FBX.")
+            lines.append("Вердикт: 🚧 нет Animator — «Загрузить в Animator Unity» или импорт FBX.")
         elif not self.setup_log_ok or not self.locomotion_in_scene:
             lines.append(
                 "Вердикт: 🚧 Animator готов, сцена не собрана — «Тест: Шаня стоит и ходит», "
@@ -107,7 +107,7 @@ class UnityVerifyResult:
         else:
             lines.append(
                 "Вердикт: 🚧 сцена есть. Play в Unity → кликни Game → A/D. "
-                "Idle не зациклен? — «Обновить аниматор»."
+                "Idle не зациклен? — «Загрузить в Animator Unity»."
             )
 
         return "\n".join(lines)

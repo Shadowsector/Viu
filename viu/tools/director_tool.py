@@ -20,5 +20,5 @@ class RunNextStepTool(Tool):
             return ToolResult(True, body + "\n\n(Автодействие не требуется — смотри подсказку выше.)")
         return ToolResult(
             True,
-            body + f"\n\nИнструмент: {plan.tool}\n(В GUI это делает кнопка «Следующий шаг».)",
+            body + f"\n\nИнструмент: {plan.tool}\n(В GUI это делает кнопка «Что делать дальше».)",
         )

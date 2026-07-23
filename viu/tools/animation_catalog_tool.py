@@ -115,7 +115,7 @@ class AcceptAnimationInboxTool(Tool):
         )
         body = report.format()
         if report.open_animation_review:
-            body += "\n\n→ Открой «Очередь анимаций» или GUI откроет сам."
+            body += "\n\n→ Открой «Описать новые FBX» или GUI откроет сам."
         return ToolResult(report.ok, body)
 
 

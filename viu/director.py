@@ -67,7 +67,7 @@ def plan_next_step(config: Config) -> StepPlan:
                 ),
                 tool="prepare_unity_asset",
                 tool_args={"open_blender": "1"},
-                human_after="Дальше — снова «Следующий шаг» → разметка Props (окно Вью, не Blender).",
+                human_after="Дальше — снова «Что делать дальше» → разметка Props (окно Вью, не Blender).",
             ),
             ctx,
         )
@@ -106,7 +106,7 @@ def plan_next_step(config: Config) -> StepPlan:
                 message=open_wall_checklist(notes, blend_label=ctx.prepared_path.stem),
                 idle=True,
                 human_after=(
-                    "Отдели Wall_front в Blender (не удаляй!) → Ctrl+S → «Следующий шаг»."
+                    "Отдели Wall_front в Blender (не удаляй!) → Ctrl+S → «Что делать дальше»."
                 ),
             ),
             ctx,
@@ -131,14 +131,14 @@ def plan_next_step(config: Config) -> StepPlan:
         slug = ctx.prepared_name.replace(" ", "_")
         after_blender = (
             "Правил сарай в Blender (Ctrl+S)?\n"
-            "→ «Переэкспорт сарая в Unity» (Редко) → «Починить текстуры» → «▶ Запустить оверлей»."
+            "→ «Переэкспорт домика в Unity» → «Починить текстуры сцены» → «▶ Запустить тестовую сцену»."
         )
         return _with_ctx(
             StepPlan(
                 message=(
                     f"«{ctx.prepared_name}» в Unity (Assets/Environment/{slug}/).\n"
                     f"{after_blender}\n"
-                    "Новый домик → Inbox → «▶ Следующий шаг»."
+                    "Новый домик → Inbox → «▶ Что делать дальше»."
                 ),
                 idle=True,
                 human_after="После переэкспорта проверь папку Textures/ в Unity.",
@@ -151,10 +151,10 @@ def plan_next_step(config: Config) -> StepPlan:
             StepPlan(
                 message=(
                     f"Анимации — описать pending ({ctx.pending_animation_reviews}).\n"
-                    "Откроется «Очередь анимаций»."
+                    "Откроется окно «Описать новые FBX»."
                 ),
                 tool="__animation_review__",
-                human_after="После review — «Обновить аниматор».",
+                human_after="После review — «Загрузить в Animator Unity».",
             ),
             ctx,
         )
@@ -197,7 +197,7 @@ def plan_next_step(config: Config) -> StepPlan:
                 StepPlan(
                     message=(
                         "Можно запустить оверлей — Шаня на рабочем столе.\n"
-                        "Кнопка «▶ Запустить оверлей» (Unity закроется на время сборки)."
+                        "Кнопка «▶ Запустить тестовую сцену» (Unity закроется на время сборки)."
                     ),
                     tool="unity_overlay",
                     human_after="A/D — ходить. Если сарай фиолетовый — «Починить текстуры оверлея».",
@@ -212,7 +212,7 @@ def plan_next_step(config: Config) -> StepPlan:
                     "Подкрутить глубину: «Ещё — Unity → Оверлей: в глубину» (только после сборки)."
                 ),
                 idle=True,
-                human_after="Новый asset → Inbox → «Следующий шаг».",
+                human_after="Новый asset → Inbox → «Что делать дальше».",
             ),
             get_pipeline_context(config),
         )
@@ -222,7 +222,7 @@ def plan_next_step(config: Config) -> StepPlan:
             StepPlan(
                 message=(
                     f"План: «{focus.title}».\n"
-                    "Asset-пайплайн: Inbox → «Следующий шаг» (4 шага).\n"
+                    "Asset-пайплайн: Inbox → «Что делать дальше» (4 шага).\n"
                     "Или напиши в чат справа."
                 ),
                 idle=True,
@@ -232,7 +232,7 @@ def plan_next_step(config: Config) -> StepPlan:
 
     return _with_ctx(
         StepPlan(
-            message="Положи .blend в U:\\Viu\\Inbox → «Следующий шаг».",
+            message="Положи .blend в U:\\Viu\\Inbox → «Что делать дальше».",
             idle=True,
         ),
         ctx,

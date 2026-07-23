@@ -662,7 +662,7 @@ def test_gui_action_creature_catalog():
     assert "creature_lineup" in ids
     action = next(a for a in GUI_ACTIONS if a.action_id == "creature_catalog")
     assert action.tool == "__creature_catalog__"
-    assert action.group == "Существа"
+    assert action.group == "Blender — существа"
     assert any(a.action_id == "creature_prep" and a.tool == "creature_prep_open" for a in GUI_ACTIONS)
     assert any(a.action_id == "creature_blender_sync" and a.is_chain for a in GUI_ACTIONS)
     assert any(a.action_id == "creature_wardrobe" and a.tool == "creature_wardrobe_open" for a in GUI_ACTIONS)
@@ -673,7 +673,7 @@ def test_gui_action_creature_catalog():
     assert "creature_wardrobe_sync" in sync_tools
     assert "creature_studio_sync" in sync_tools
     lineup = next(a for a in GUI_ACTIONS if a.action_id == "creature_lineup")
-    assert lineup.group == "Редко"
+    assert lineup.group == "Blender — существа"
 
 
 def test_outfit_types_ids():

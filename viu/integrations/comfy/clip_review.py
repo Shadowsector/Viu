@@ -593,7 +593,7 @@ def format_candidates_message(clips: List[ComfyClip]) -> str:
     lines = [
         f"Выбери лучший дубль ¾ (batch `{batch}`):",
         f"Файлы: Lab/ComfyOut + Lab/Refs (не только ComfyUI/output).",
-        "Дома: окно «Оценить клипы Comfy» (Редко) или чат/Telegram:",
+        "Дома: окно «Выбрать лучший клип» (ComfyUI) или чат/Telegram:",
         "`лучший: take_b` / `лучший: a` / `лучший: c 5` / `отклонить все`",
         "",
     ]

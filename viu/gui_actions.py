@@ -1,4 +1,4 @@
-"""Кнопки боковой панели — по задачам, без стены из 16 пунктов в одной группе."""
+"""Кнопки боковой панели — секции по программам, подписи для человека без жаргона."""
 
 from __future__ import annotations
 
@@ -28,30 +28,26 @@ class GuiAction:
         return len(self.tool_chain) > 0
 
 
-# Порядок групп сверху вниз. «Каждый день» — не больше 4–5 кнопок.
+# Порядок секций: сверху — каждый день, ниже — по программам (Blender, ComfyUI, Unity…).
 ACTION_GROUPS: List[str] = [
     "Каждый день",
-    "Существа",
-    "Анимации",
-    "Сцены",
-    "Редко",
+    "Unity — тест на столе",
+    "Blender — существа",
+    "Blender — сцены и домик",
+    "Cascadeur — анимации",
+    "Unity — анимации",
+    "ComfyUI — видео",
+    "Сервис",
 ]
 
 GUI_ACTIONS: List[GuiAction] = [
     # --- Каждый день ---
     GuiAction(
         "next_step",
-        "▶ Следующий шаг",
+        "▶ Что делать дальше",
         "Каждый день",
         tool="__next_step__",
-        hint="Inbox → разметка → экспорт. Вью сама выбирает, что делать.",
-    ),
-    GuiAction(
-        "unity_overlay",
-        "▶ Запустить оверлей",
-        "Каждый день",
-        tool="unity_overlay",
-        hint="Собрать и запустить Шаню на рабочем столе. Unity закроется на время сборки.",
+        hint="Вью сама выберет шаг: Inbox, разметка, экспорт, анимации…",
     ),
     GuiAction(
         "update_viu",
@@ -65,215 +61,227 @@ GUI_ACTIONS: List[GuiAction] = [
         "Очередь вопросов",
         "Каждый день",
         tool="__decision_queue__",
-        hint="Что Вью отложила, пока тебя не было.",
+        hint="На что Вью ждёт твоего ответа.",
     ),
-    # --- Существа: Prep → Wardrobe → Студия (синхр. одной кнопкой) ---
+    # --- Unity: тестовая сцена (оверлей) ---
+    GuiAction(
+        "unity_overlay",
+        "▶ Запустить тестовую сцену",
+        "Unity — тест на столе",
+        tool="unity_overlay",
+        hint="Шаня на рабочем столе поверх игр. Unity закроется на время сборки.",
+    ),
+    GuiAction(
+        "unity_overlay_rebind",
+        "Починить текстуры сцены",
+        "Unity — тест на столе",
+        tool="unity_overlay_rebind",
+        hint="Если после переэкспорта домика картинки на Шане «поплыли».",
+    ),
+    # --- Blender: существа (нумерованный конвейер) ---
     GuiAction(
         "creature_prep",
-        "1. Подготовить",
-        "Существа",
+        "1. Очистить модель",
+        "Blender — существа",
         tool="creature_prep_open",
-        hint="Blender: очистка, текстуры → prepared.blend.",
+        hint="Blender: убрать мусор, навести текстуры → prepared.blend.",
     ),
     GuiAction(
         "creature_wardrobe",
-        "2. Одежда",
-        "Существа",
+        "2. Собрать комплекты одежды",
+        "Blender — существа",
         tool="creature_wardrobe_open",
-        hint="Blender Wardrobe: наборы Casual/…, кожа/волосы, genital.",
+        hint="Blender Wardrobe: Casual/…, кожа, волосы, гениталии.",
     ),
     GuiAction(
         "creature_studio",
-        "3. Студия",
-        "Существа",
+        "3. Фото роста и эталон",
+        "Blender — существа",
         tool="creature_studio_open",
         tool_args={"all": "0"},
-        hint="Blender: рост vs Шаня, скрины, эталон FBX.",
+        hint="Blender Studio: сравнить рост со Шаней, скрины, FBX-эталон.",
     ),
     GuiAction(
         "creature_blender_sync",
-        "↻ Синхр. Blender",
-        "Существа",
+        "4. Забрать правки в каталог",
+        "Blender — существа",
         tool_chain=(
             ("creature_prep_sync", {}),
             ("creature_wardrobe_sync", {}),
             ("creature_studio_sync", {}),
         ),
-        hint="Забрать prep / wardrobe / studio feedback в каталог (все три, что есть).",
+        hint="После Ctrl+S в Blender — подтянуть prep/одежду/студию во Вью.",
     ),
     GuiAction(
         "creature_catalog",
-        "Разметка (окно)",
-        "Существа",
+        "5. Размер и анатомия — окно",
+        "Blender — существа",
         tool="__creature_catalog__",
-        hint="Класс роста и анатомия без Blender — опционально.",
+        hint="Без Blender: класс роста, пол, анатомия по фото.",
     ),
     GuiAction(
         "creature_lineup",
-        "Линейка (массово)",
-        "Редко",
+        "6. Линейка всех сразу",
+        "Blender — существа",
         tool="creature_lineup",
         tool_args={"need_photos": "1", "open": "0"},
-        hint="Headless-линейка. Обычно лучше «3. Студия» по одному.",
+        hint="Массово: фронт/профиль для всех. Обычно хватает шага 3 по одному.",
     ),
-    # --- Анимации ---
+    # --- Blender: сцены и домик ---
+    GuiAction(
+        "interaction_blocking",
+        "1. Расставить героев в сцене",
+        "Blender — сцены и домик",
+        tool="interaction_blocking",
+        hint="Blender: Шаня + зверь, маркеры касания, камера студии.",
+    ),
+    GuiAction(
+        "export_unity_asset",
+        "2. Переэкспорт домика в Unity",
+        "Blender — сцены и домик",
+        tool="export_unity_asset",
+        tool_args={"force": "1"},
+        hint="После правок сарая в Blender (Ctrl+S) → FBX в Unity Assets.",
+    ),
+    GuiAction(
+        "prop_catalog",
+        "3. Разметить предметы — окно",
+        "Blender — сцены и домик",
+        tool="__prop_catalog__",
+        hint="Мебель домика: вес, можно ли взять, куда ставить.",
+    ),
+    # --- Cascadeur ---
+    GuiAction(
+        "cascadeur_batch_export",
+        "1. Выгрузить FBX пачкой",
+        "Cascadeur — анимации",
+        tool="blender_export_cascadeur_batch",
+        tool_args={"force": "1"},
+        hint="Все .blend из Inbox → папка CascadeurReady для Cascadeur.",
+    ),
+    GuiAction(
+        "lab_cascadeur",
+        "2. Lab: один тестовый шаг",
+        "Cascadeur — анимации",
+        tool="__lab_start__",
+        hint="Автотест одного шага пайплайна Cascadeur.",
+    ),
+    GuiAction(
+        "lab_cascadeur_all",
+        "3. Lab: все 9 шагов",
+        "Cascadeur — анимации",
+        tool="__lab_run_all__",
+        hint="Прогнать весь тестовый цикл до отчёта.",
+    ),
+    GuiAction(
+        "lab_rate",
+        "4. Оценить результат lab",
+        "Cascadeur — анимации",
+        tool="__lab_rate__",
+        hint="Оценки 1–5 после отчёта lab.",
+    ),
+    # --- Unity: анимации ---
     GuiAction(
         "animation_catalog",
-        "Очередь анимаций",
-        "Анимации",
+        "1. Описать новые FBX — окно",
+        "Unity — анимации",
         tool="__animation_review__",
-        hint="Описать новые FBX после Inbox.",
+        hint="Список анимаций из Inbox: что это за движение, куда в каталоге.",
     ),
     GuiAction(
         "unity_apply",
-        "Обновить аниматор",
-        "Анимации",
+        "2. Загрузить в Animator Unity",
+        "Unity — анимации",
         tool_chain=(
             ("unity_deploy_setup", {}),
             ("unity_sync_animations", {}),
         ),
-        hint="После новых Idle/Walk — пересобрать контроллер Unity.",
+        hint="После Cascadeur: скопировать FBX в проект и пересобрать контроллер.",
     ),
-    # --- Совместные сцены ---
+    # --- ComfyUI ---
     GuiAction(
-        "interaction_blocking",
-        "Blocking",
-        "Сцены",
-        tool="interaction_blocking",
-        hint="Blender: Шаня + зверь, маркеры контакта.",
+        "lab_comfy",
+        "1. MoCap: снять клип",
+        "ComfyUI — видео",
+        tool="__lab_comfy__",
+        hint="Следующий кадр из каталога → 3 ракурса → выбор лучшего mp4.",
     ),
     GuiAction(
         "interaction_master",
-        "Master ref (Comfy)",
-        "Сцены",
+        "2. Черновик видео сцены",
+        "ComfyUI — видео",
         tool_chain=(
             ("comfy_ensure", {}),
             ("interaction_master_draft", {}),
         ),
-        hint="Comfy: черновик видео сцены. Сначала Blocking.",
-    ),
-    GuiAction(
-        "lab_interaction",
-        "Lab: вся сцена",
-        "Редко",
-        tool="__interaction_lab__",
-        hint="Пилот shanya_wolf_approach — полный lab interaction.",
-    ),
-    # --- Редко ---
-    GuiAction(
-        "prop_catalog",
-        "Разметить предметы",
-        "Редко",
-        tool="__prop_catalog__",
-        hint="Вес и галочки для мебели из домика.",
-    ),
-    GuiAction(
-        "characters_vision",
-        "Персонажи",
-        "Редко",
-        tool="__characters_vision__",
-        hint="Характеры и отношения — локальный файл.",
-    ),
-    GuiAction(
-        "send_logs",
-        "Что сломалось?",
-        "Редко",
-        tool="__collect_logs__",
-        hint="Собрать логи и отправить разработчику.",
-    ),
-    GuiAction(
-        "cascadeur_batch_export",
-        "Cascadeur: batch FBX",
-        "Редко",
-        tool="blender_export_cascadeur_batch",
-        tool_args={"force": "1"},
-        hint="Все .blend из Inbox → CascadeurReady.",
-    ),
-    GuiAction(
-        "lab_cascadeur",
-        "Лаборатория: Cascadeur",
-        "Редко",
-        tool="__lab_start__",
-        hint="Один шаг lab Cascadeur.",
-    ),
-    GuiAction(
-        "lab_comfy",
-        "Лаборатория: Comfy MoCap",
-        "Редко",
-        tool="__lab_comfy__",
-        hint="Кадр из каталога → 3 ракурса → выбор клипа.",
+        hint="Comfy: master_draft.mp4. Сначала «Расставить героев в сцене».",
     ),
     GuiAction(
         "comfy_clips",
-        "Оценить клипы Comfy",
-        "Редко",
+        "3. Выбрать лучший клип — окно",
+        "ComfyUI — видео",
         tool="__comfy_clips__",
-        hint="Окно оценки после съёмки или вручную.",
+        hint="Сравнить и отметить удачные mp4 после съёмки.",
     ),
     GuiAction(
         "comfy_open",
-        "Открыть ComfyUI",
-        "Редко",
+        "4. Открыть Comfy в браузере",
+        "ComfyUI — видео",
         tool="__comfy_open__",
-        hint="Браузер :8188 — отладка вручную.",
+        hint="Ручная отладка на http://127.0.0.1:8188.",
     ),
     GuiAction(
-        "lab_cascadeur_all",
-        "Lab: весь цикл",
-        "Редко",
-        tool="__lab_run_all__",
-        hint="Все 9 шагов lab до отчёта.",
+        "lab_interaction",
+        "5. Lab: вся сцена (пилот)",
+        "ComfyUI — видео",
+        tool="__interaction_lab__",
+        hint="Полный автотест совместной сцены shanya_wolf_approach.",
     ),
-    GuiAction(
-        "lab_rate",
-        "Оценить лабораторию",
-        "Редко",
-        tool="__lab_rate__",
-        hint="Оценки 1–5 после отчёта lab.",
-    ),
-    GuiAction(
-        "export_unity_asset",
-        "Переэкспорт сарая",
-        "Редко",
-        tool="export_unity_asset",
-        tool_args={"force": "1"},
-        hint="Blender Ctrl+S → FBX в Unity Assets.",
-    ),
-    GuiAction(
-        "unity_overlay_rebind",
-        "Починить текстуры оверлея",
-        "Редко",
-        tool="unity_overlay_rebind",
-        hint="После переэкспорта сарая.",
-    ),
+    # --- Сервис ---
     GuiAction(
         "unity_open",
-        "Открыть Unity",
-        "Редко",
+        "Открыть Unity Editor",
+        "Сервис",
         tool="unity_open",
+        hint="Проект Anabarra в редакторе Unity.",
     ),
     GuiAction(
         "apps_close_unity",
         "Закрыть Unity",
-        "Редко",
+        "Сервис",
         tool="apps_close",
         tool_args={"app": "unity"},
-        hint="Перед сборкой оверлея.",
+        hint="Перед сборкой тестовой сцены или batch-импортом.",
+    ),
+    GuiAction(
+        "characters_vision",
+        "Файл персонажей",
+        "Сервис",
+        tool="__characters_vision__",
+        hint="Характеры, отношения — локальный markdown.",
+    ),
+    GuiAction(
+        "send_logs",
+        "Собрать логи",
+        "Сервис",
+        tool="__collect_logs__",
+        hint="Упаковать логи для отладки / отправки разработчику.",
     ),
     GuiAction(
         "clear_chat",
         "Очистить чат",
-        "Редко",
+        "Сервис",
         tool="__clear__",
     ),
     GuiAction(
         "roadmap",
         "План разработки",
-        "Редко",
+        "Сервис",
         tool="roadmap_show",
+        hint="Текущий фокус и дорожная карта в окне инструментов.",
     ),
-    # Места — меню «Места» сверху (дубль убран из сайдбара).
-    # accept_animation, prepare, export — через «Следующий шаг».
+    # Места — меню «Места» сверху.
+    # accept_animation, prepare, export — через «Что делать дальше».
 ]
 
 

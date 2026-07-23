@@ -72,7 +72,7 @@ def editor_scripts_healthy(project_root: Path) -> Tuple[bool, str]:
         if bad in text:
             return False, (
                 f"В Unity лежит **старый** ShanyaSetup.cs (внутри «{bad}»). "
-                "Сначала нажми **«Обновить Вью»**, потом снова «Импорт FBX» или «Обновить аниматор»."
+                "Сначала нажми **«Обновить Вью»**, потом снова «Импорт FBX» или «Загрузить в Animator Unity»."
             )
     if VIU_DEPLOY_MARKER not in text:
         return False, (

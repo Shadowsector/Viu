@@ -65,7 +65,7 @@ def next_step(config: Config) -> str:
         if non_humanoid:
             return (
                 f"Фокус: «{focus.title}». Клипы есть, но не Humanoid: "
-                f"{', '.join(non_humanoid)}. Действие: «Обновить аниматор» "
+                f"{', '.join(non_humanoid)}. Действие: «Загрузить в Animator Unity» "
                 "(unity_sync_animations) — выставит Humanoid и соберёт Animator."
             )
         return (
@@ -80,7 +80,7 @@ def next_step(config: Config) -> str:
         return (
             f"Фокус: «{focus.title}». Walk/Idle работают — дальше нормальная сцена: "
             "пол, свет, камера за Шаней, масштаб ~1.7 м. "
-            "Сначала «Обновить аниматор» (loop на FBX), потом «Что делаем дальше?»."
+            "Сначала «Загрузить в Animator Unity» (loop на FBX), потом «Что делать дальше»."
         )
 
     if "панел" in focus.title.lower() or "оверлей" in focus.title.lower() or "дом" in focus.title.lower():

@@ -454,7 +454,7 @@ class ViuGUI:
         header.pack(anchor="w", padx=10, pady=(10, 2))
         ttk.Label(
             frame,
-            text="Сверху — каждый день. Ниже — существа, анимации, сцены.",
+            text="Секции по программам: Unity, Blender, Cascadeur, ComfyUI.",
             wraplength=240,
             justify="left",
             font=("Segoe UI", 8),
@@ -1201,7 +1201,7 @@ class ViuGUI:
         if tool == "__add_animation__":
             self._add_animation()
             return
-        self._run_tool(tool, args, label="Следующий шаг")
+        self._run_tool(tool, args, label="Что делать дальше")
         self.root.after(500, self._refresh_action_visibility)
 
     def _open_prop_catalog(self) -> None:
@@ -2130,7 +2130,7 @@ class ViuGUI:
         self._run_tool(
             "lab_start",
             args,
-            label="Лаборатория: Comfy MoCap",
+            label="MoCap: снять клип",
             echo_user=not auto,
         )
 
@@ -2221,7 +2221,7 @@ class ViuGUI:
             return
         self._append(
             "система",
-            "Lab готова к оценке — «Оценить лабораторию» в Редко.",
+            "Lab готова к оценке — «Оценить результат lab» в Cascadeur.",
             tag="sys",
         )
 

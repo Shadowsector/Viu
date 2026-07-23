@@ -263,7 +263,7 @@ class AnimationReviewWindow:
             return
         self._load_next()
         if self._current is None:
-            messagebox.showinfo("Вью", "Все анимации разметены.\nДальше: «Обновить аниматор».")
+            messagebox.showinfo("Вью", "Все анимации разметены.\nДальше: «Загрузить в Animator Unity».")
 
     def _skip_defaults(self) -> None:
         if self._current is None:
