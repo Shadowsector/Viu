@@ -159,7 +159,16 @@ def _build_reflect_notes_chat(config: Config, *, user_text: str = "") -> str:
         or is_meta_nsfw_boundary_question(user_text)
     )
     if intimate or (user_text or "").strip():
-        return _shanya_chat_block()
+        block = _shanya_chat_block()
+        try:
+            from .viu_memory import format_reflect_block
+
+            mem = format_reflect_block(config, max_chars=1800)
+            if mem:
+                return block + "\n\n" + mem
+        except OSError:
+            pass
+        return block
 
     parts: list[str] = [_shanya_chat_block()]
     try:
@@ -283,6 +292,15 @@ def _build_reflect_notes_full(config: Config) -> str:
         recent = MemoryStore(config.data_dir / "memory.json").recent(limit=2)
         if recent:
             parts.append("Память: " + "; ".join(r.text[:120] for r in recent))
+    except OSError:
+        pass
+
+    try:
+        from .viu_memory import format_reflect_block
+
+        mem = format_reflect_block(config, max_chars=2000)
+        if mem:
+            parts.append(mem)
     except OSError:
         pass
 

@@ -77,6 +77,12 @@ def _vision(config: Config) -> Path:
     return ensure_vision(config)
 
 
+def _viu_memory(config: Config) -> Path:
+    from .viu_memory import ensure_viu_memory
+
+    return ensure_viu_memory(config)
+
+
 def _characters(config: Config) -> Path:
     from .characters_vision import ensure_characters_vision
 
@@ -313,6 +319,14 @@ def all_places() -> List[Place]:
             "Файлы",
             "Общие идеи, сюжет, техбэклог — .viu/vision.md",
             _vision,
+        ),
+        Place(
+            "viu_memory",
+            "VIU_MEMORY (память Вью)",
+            "file",
+            "Файлы",
+            "Редактируемая память: «запомни», привычки, референсы, итоги чатов — U:\\Viu\\VIU_MEMORY.md",
+            _viu_memory,
         ),
         Place(
             "characters_vision",

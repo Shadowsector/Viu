@@ -33,10 +33,15 @@ def merge_ollama_dir(src: Path, dest: Path) -> None:
 
 
 def copy_install_tree_item(item: Path, dest_root: Path) -> None:
-    """Один элемент из zip (файл или папка) → dest_root, с merge для ollama/."""
+    """Один элемент из zip (файл или папка) → dest_root, с merge для ollama/ и Inbox/."""
     target = dest_root / item.name
     if item.is_dir() and item.name == "ollama":
         merge_ollama_dir(item, target)
+        return
+    if item.is_dir() and item.name.lower() == "inbox":
+        from .inbox_merge import merge_inbox_dir
+
+        merge_inbox_dir(item, target)
         return
     if item.is_dir():
         if target.exists():

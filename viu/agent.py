@@ -967,11 +967,13 @@ class Agent:
                     source="chat",
                     tags=["story"] if looks_like_story_chat(user_text) else [],
                 )
-                self.memory.add(
-                    f"Ден: {user_text[:200]} | Вью: {full[:200]}",
-                    tags=["dialog", "story"]
-                    if looks_like_story_chat(user_text)
-                    else ["dialog"],
+            except OSError:
+                pass
+            try:
+                from .viu_memory import process_reflect_exchange
+
+                process_reflect_exchange(
+                    self.config, user_text, full, source="chat"
                 )
             except OSError:
                 pass
