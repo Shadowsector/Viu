@@ -19,10 +19,12 @@ namespace Viu.Runtime
 
         OverlayCameraPresets _presets;
         ShanyaDesktopOverlay _overlay;
+        OverlayCameraBlend _blend;
 
         void Awake()
         {
             _presets = Camera.main != null ? Camera.main.GetComponent<OverlayCameraPresets>() : null;
+            _blend = Camera.main != null ? Camera.main.GetComponent<OverlayCameraBlend>() : null;
             _overlay = GetComponent<ShanyaDesktopOverlay>();
             if (_overlay == null)
                 _overlay = FindFirstObjectByType<ShanyaDesktopOverlay>();
@@ -47,7 +49,12 @@ namespace Viu.Runtime
             mode = next;
             if (_presets == null && Camera.main != null)
                 _presets = Camera.main.GetComponent<OverlayCameraPresets>();
-            _presets?.Apply(next);
+            if (_blend == null && Camera.main != null)
+                _blend = Camera.main.GetComponent<OverlayCameraBlend>();
+            if (_blend != null)
+                _blend.BlendTo(next, instant: force);
+            else
+                _presets?.Apply(next);
             if (_overlay == null)
                 _overlay = FindFirstObjectByType<ShanyaDesktopOverlay>();
             _overlay?.ApplyDisplayMode(next);

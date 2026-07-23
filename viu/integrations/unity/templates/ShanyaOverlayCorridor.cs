@@ -152,6 +152,14 @@ namespace Viu.Runtime
             Debug.Log("[Viu] Corridor → ENTER home (Instance preset)");
         }
 
+        /// <summary>Готовка / сон / игра — чуть ближе (activity preset). Вызывать из affordance.</summary>
+        public void EnterActivityCloseUp()
+        {
+            var blend = Camera.main != null ? Camera.main.GetComponent<OverlayCameraBlend>() : null;
+            if (blend != null)
+                blend.BlendToActivity();
+        }
+
         void ExitHome()
         {
             _inside = false;
