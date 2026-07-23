@@ -111,12 +111,8 @@ if exist "%STATUS%" del "%STATUS%" >nul 2>&1
 if exist "%STARTUP_ERR%" del "%STARTUP_ERR%" >nul 2>&1
 
 echo Запускаю GUI (run_gui.pyw)...
-where pythonw >nul 2>&1
-if not errorlevel 1 (
-  start "ViuGUI" pythonw "%~dp0run_gui.pyw"
-) else (
-  start "ViuGUI" python "%~dp0run_gui.pyw"
-)
+rem pythonw иногда молча падает — python надёжнее (как в cmd: python run_gui.pyw).
+start "ViuGUI" python "%~dp0run_gui.pyw"
 
 set /a _n=0
 :waitgui
