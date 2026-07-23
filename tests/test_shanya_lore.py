@@ -42,10 +42,20 @@ def test_shanya_seed_does_not_overwrite_user_edit(tmp_path, monkeypatch):
     assert "моя версия" in path.read_text(encoding="utf-8")
 
 
-def test_mocap_prompt_tabaxi():
+def test_mocap_prompt_tabaxi(monkeypatch):
+    monkeypatch.setenv("VIU_COMFY_FACE_SWAP", "0")
     p = mocap_prompt("idle stand", None)
     assert "tabaxi" in p.lower()
     assert "white" in p.lower()
+    assert "static" in p.lower()
+    assert len(p) < 220
+
+
+def test_mocap_prompt_human_with_face_swap(monkeypatch):
+    monkeypatch.setenv("VIU_COMFY_FACE_SWAP", "1")
+    p = mocap_prompt("lie down on back", None)
+    assert "young woman" in p.lower()
+    assert "tabaxi" not in p.lower()
 
 
 def test_reflect_notes_include_shanya_canon(tmp_path, monkeypatch):

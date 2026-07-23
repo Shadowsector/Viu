@@ -61,7 +61,7 @@ def test_sync_session_shot_from_slug(tmp_path, monkeypatch):
         "action": "idle stand, subtle breathing",
     }
     action = sync_session_shot_from_slug(cfg, session)
-    assert "lying" in action.lower()
+    assert "lie down" in action.lower()
     assert "idle stand" not in action.lower()
     assert session.meta["approved_action"] == action
 

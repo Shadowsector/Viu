@@ -84,7 +84,7 @@ class ComfyStatusTool(Tool):
             from ..integrations.comfy.face_refs import face_refs_status
 
             lines.append("")
-            lines.append(face_refs_status(ctx.config))
+            lines.append(face_refs_status(ctx.config, client=_client(ctx)))
         except Exception as exc:
             lines.append(f"(face refs: {exc})")
         return ToolResult(True, "\n".join(lines))

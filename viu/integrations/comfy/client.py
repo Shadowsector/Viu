@@ -174,6 +174,21 @@ class ComfyClient:
             return False
         return class_type in info
 
+    def find_node_class(self, *needles: str) -> str | None:
+        """Найти class_type по подстрокам (регистронезависимо)."""
+        try:
+            info = self._get("/object_info")
+        except ComfyError:
+            return None
+        if not isinstance(info, dict):
+            return None
+        lows = [n.lower() for n in needles if n]
+        for name in info:
+            low = name.lower()
+            if all(n in low for n in lows):
+                return name
+        return None
+
     def collect_output_files(self, history_entry: dict) -> List[Dict[str, str]]:
         """Список файлов из outputs (images / gifs / videos)."""
         files: List[Dict[str, str]] = []

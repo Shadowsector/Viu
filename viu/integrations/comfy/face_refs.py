@@ -110,7 +110,29 @@ def stage_face_for_comfy(config: Config, face_path: Path) -> Tuple[bool, str, st
     return True, str(dest), _COMFY_INPUT_NAME
 
 
-def face_refs_status(config: Config) -> str:
+def reactor_face_swap_class(client) -> str | None:
+    """Класс ReActor в запущенном Comfy (папка ≠ загруженная нода)."""
+    from .client import ComfyClient
+
+    if not isinstance(client, ComfyClient):
+        return None
+    for cand in ("ReActorFaceSwap", "ReActorFaceSwapOpt"):
+        if client.has_node_class(cand):
+            return cand
+    return client.find_node_class("reactor", "faceswap")
+
+
+def inswapper_model_path(config: Config) -> Path | None:
+    from .paths import resolve_comfy_root
+
+    root = resolve_comfy_root(config)
+    if root is None:
+        return None
+    p = root / "models" / "insightface" / "inswapper_128.onnx"
+    return p if p.is_file() else None
+
+
+def face_refs_status(config: Config, *, client=None) -> str:
     d = ensure_face_refs_dir(config)
     refs = list_face_refs(config)
     env_ref = (os.environ.get("VIU_COMFY_FACE_REF") or "").strip()
@@ -126,9 +148,24 @@ def face_refs_status(config: Config) -> str:
     else:
         lines.append("лица нет — положи PNG в FaceRefs (см. README.txt)")
     root = resolve_comfy_root(config)
-    if root is not None:
+    reactor_cls = None
+    if client is not None:
+        reactor_cls = reactor_face_swap_class(client)
+    if reactor_cls:
+        lines.append(f"ReActor: нода **{reactor_cls}** в Comfy :8188")
+    elif root is not None:
         reactor_dir = root / "custom_nodes" / "ComfyUI-ReActor"
-        lines.append(
-            f"ReActor: {'установлен' if reactor_dir.is_dir() else 'нет — comfy_install reactor=1'}"
-        )
+        if reactor_dir.is_dir():
+            lines.append(
+                "ReActor: папка есть, но нода не в Comfy — перезапусти Comfy (comfy_ensure)"
+            )
+        else:
+            lines.append("ReActor: нет — comfy_install reactor=1")
+    inswap = inswapper_model_path(config)
+    if inswap:
+        lines.append(f"inswapper: {inswap.name}")
+    elif root is not None:
+        lines.append("inswapper: нет models/insightface/inswapper_128.onnx")
+    if face_swap_enabled() and pick and not reactor_cls:
+        lines.append("⚠ face_swap on, но ReActor не загружен — подмены не будет")
     return "\n".join(lines)

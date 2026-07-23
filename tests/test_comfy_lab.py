@@ -115,18 +115,18 @@ def test_mocap_angles_in_prompt():
     p = mocap_prompt("sit down", angles[0])
     assert "three-quarter" in p
     assert "sit down" in p
-    assert "tabaxi" in p.lower()
+    assert "static" in p.lower()
+    assert "mocap" in p.lower()
     assert "white" in p.lower()
-    assert "frontal" in p.lower() or "fill light" in p.lower() or "fills the frame" in p
+    assert len(p) < 280
 
 
-def test_diversify_takes_differ():
+def test_diversify_takes_same_prompt():
     from viu.integrations.comfy.prompts import diversify_action
 
-    a = diversify_action("walking forward", 0)
-    b = diversify_action("walking forward", 1)
-    c = diversify_action("walking forward", 2)
-    assert a != b and b != c
+    a = diversify_action("walk forward", 0)
+    b = diversify_action("walk forward", 1)
+    assert a == b == "walk forward"
 
 
 

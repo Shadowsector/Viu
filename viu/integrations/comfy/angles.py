@@ -21,8 +21,7 @@ class CameraAngle:
 THREE_QUARTER = CameraAngle(
     "three_quarter",
     "три четверти",
-    "three-quarter view, camera 45 degrees off front, "
-    "full body visible head to toe, limbs unoccluded",
+    "three-quarter view, full body",
 )
 
 # Устаревшие ракурсы — оставлены для ручного comfy_mocap angle=… и старых клипов.

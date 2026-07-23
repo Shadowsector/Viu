@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import re
 
-# Comfy / Wan — EN, полный рост, белый фон (остальное в prompts._BASE).
-SHANYA_MOCAP_VISUAL = (
-    "young tabaxi woman, cat ears, long expressive tail, sun-kissed athletic build, "
-    "tanned fur and skin, feminine tomboy, agile feline proportions"
-)
+# Comfy / Wan — минимум слов: силуэт табакси для MoCap (остальное в prompts._BASE).
+SHANYA_MOCAP_VISUAL = "nude tabaxi woman, cat ears, tail, athletic body"
 
 # Коротко для reflect / situational_context (не зачитывать списком).
 SHANYA_REFLECT_COMPACT = """Шанька — юная табакси из Анабарры. Балбеска с глубиной: эмоциональная, азартная,

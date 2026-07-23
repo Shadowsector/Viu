@@ -34,66 +34,39 @@ BARN_SHED_CYCLE: tuple[str, ...] = (
     "touch_self",
 )
 
-# Базовые EN-шаблоны по slug — Wan лучше ест EN.
+# Базовые EN-шаблоны по slug — коротко: MoCap ref, не кино.
 _SLUG_ACTION_EN = {
-    "idle": (
-        "idle stand, subtle breathing, soft weight shift, "
-        "small head turn, slight finger micro-movements, natural idle loop"
-    ),
-    "walk": "walking forward at a calm pace, natural arm swing, full body gait cycle",
-    "run": "running forward, athletic stride, arms pumping, full body visible",
-    "sit_down": "sitting down from standing onto an invisible seat, controlled motion",
-    "sit_idle": "seated idle on invisible chair, subtle breathing, small posture shifts",
-    "stand_up": "standing up from a seated pose to full standing, smooth rise",
-    "lie_down": "lying down onto the back from standing or sitting, onto invisible floor",
-    "sleep_idle": (
-        "lying on the back asleep, subtle breathing, small restless shifts, "
-        "gentle head movement, sleep-idle loop"
-    ),
-    "get_up": "getting up from lying on the back to standing, push with arms",
-    "wave": "standing wave hello with one hand, friendly gesture, feet planted",
-    "climb_up": "climbing upward, reaching hands and stepping feet, vertical effort",
-    "jump": "standing jump up and land, knees bend, arms assist",
-    "fall": "falling backward or sideways from stand, loss of balance",
-    "pickup": "bending to pick up a small object from the floor, then stand again",
-    "lean": "leaning against invisible wall or table edge, relaxed weight shift, one elbow on surface",
-    "look_around": "standing, turning head left and right, examining surroundings, curious gaze",
-    "look_window": "standing at window, looking outside, hand on frame optional, thoughtful pause",
-    "take": "bending to pick up object from floor or table, then standing with item in hand",
-    "eat": "standing or sitting, bringing food to mouth, chewing, holding plate or apple",
-    "drink": "raising cup or bottle to lips, small sip, lowering hand",
-    "touch_self": (
-        "private solo moment, seated or lying, slow self-touch, intimate breathing, "
-        "shy closed eyes, loopable subtle motion"
-    ),
+    "idle": "idle stand",
+    "walk": "walk forward",
+    "run": "run forward",
+    "sit_down": "sit down from stand",
+    "sit_idle": "sit idle",
+    "stand_up": "stand up from sit",
+    "lie_down": "lie down on back",
+    "sleep_idle": "lie on back, sleep idle",
+    "get_up": "get up from lying to stand",
+    "wave": "wave hello, standing",
+    "climb_up": "climb up",
+    "jump": "jump in place",
+    "fall": "fall from stand",
+    "pickup": "pick up from floor",
+    "lean": "lean on surface",
+    "look_around": "look around, standing",
+    "look_window": "look out window",
+    "take": "pick up object",
+    "eat": "eat standing",
+    "drink": "drink from cup",
+    "touch_self": "touch self, seated or lying",
 }
 
-# Парафразы — чтобы повтор одного slug не был дословной копией
+# Парафразы — короткие варианты одного slug
 _SLUG_PARAPHRASE = {
-    "idle": (
-        "standing idle loop, quiet breath, tiny shoulder rolls, soft gaze drift",
-        "neutral stand, micro weight transfer left-right, fingers relax, calm presence",
-    ),
-    "walk": (
-        "steady walk cycle forward, relaxed arms, even footsteps, full body",
-        "casual stroll forward, natural hip sway, arms swing opposite legs",
-    ),
-    "wave": (
-        "friendly hello wave with right hand, smile energy, planted feet",
-        "raise hand and wave once then twice, cheerful greeting, stand in place",
-    ),
-    "sit_down": (
-        "from stand, lower onto invisible chair, knees bend, sit controlled",
-        "take a seat motion: bend, touch invisible seat, settle upright",
-    ),
-    "sit_idle": (
-        "sitting still on invisible chair, soft breath, tiny torso sway",
-        "seated rest, hands on thighs, slight head tilt, quiet idle",
-    ),
-    "stand_up": (
-        "rise from sit to stand, push lightly, straighten spine",
-        "get up from chair pose to full standing, smooth continuous rise",
-    ),
+    "idle": ("idle stand", "standing still"),
+    "walk": ("walk forward", "walk cycle"),
+    "wave": ("wave hand", "hello wave"),
+    "sit_down": ("sit down", "lower to sit"),
+    "sit_idle": ("sit idle", "seated still"),
+    "stand_up": ("stand up", "rise to stand"),
 }
 
 
@@ -155,10 +128,7 @@ def _wish_to_action(wish: AnimationWish, *, paraphrase_i: int = 0) -> str:
             base = f"{words}, full body character motion, clear limbs, loopable short clip"
     if wish_is_looped(wish):
         if "seamless loop" not in base.lower() and "loopable" not in base.lower():
-            base = (
-                f"{base}, seamless loop, matching first and last pose, "
-                "continuous cycle, no freeze at end"
-            )
+            base = f"{base}, loop"
     return base
 
 

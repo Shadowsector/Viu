@@ -82,7 +82,6 @@ def run_single_angle(
     wf = inject_negative_prompt(wf, negative)
     wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
     wf = inject_loras(wf, loras)
-    wf = inject_loras(wf, loras)
     wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
 
     client = _client(config)
@@ -91,18 +90,34 @@ def run_single_angle(
         return False, ping, []
 
     face_note = ""
-    from .face_refs import face_swap_enabled, pick_face_ref, stage_face_for_comfy
+    from .face_refs import (
+        face_swap_enabled,
+        inswapper_model_path,
+        pick_face_ref,
+        reactor_face_swap_class,
+        stage_face_for_comfy,
+    )
 
     if face_swap_enabled():
         face = pick_face_ref(config, seed=f"{slug}|{catalog_slug or base_slug}")
         if face is not None:
             ok_face, stage_msg, input_name = stage_face_for_comfy(config, face)
-            if ok_face and client.has_node_class("ReActorFaceSwap"):
-                wf = inject_face_swap(wf, face_image=input_name)
-                face_note = f"лицо: {face.name}"
-            elif ok_face:
+            reactor_cls = reactor_face_swap_class(client)
+            inswap = inswapper_model_path(config)
+            if ok_face and reactor_cls and inswap:
+                wf = inject_face_swap(
+                    wf, face_image=input_name, reactor_class=reactor_cls
+                )
+                face_note = f"лицо: {face.name} (ReActor {reactor_cls})"
+            elif ok_face and reactor_cls and not inswap:
                 face_note = (
-                    f"лицо {face.name} в input, но ReActor нет — comfy_install reactor=1"
+                    f"лицо {face.name}, ReActor есть, но нет inswapper_128.onnx — "
+                    "comfy_install reactor=1"
+                )
+            elif ok_face and not reactor_cls:
+                face_note = (
+                    f"лицо {face.name} в input, но ReActor не в Comfy — "
+                    "comfy_ensure (перезапуск) или comfy_install reactor=1"
                 )
             else:
                 face_note = stage_msg
