@@ -1,17 +1,17 @@
-"""MoCap-клипы: кадр из mp4 → Ollama VL (llava) → вердикт до Telegram."""
+"""MoCap-клипы: первый и последний кадр mp4 → Ollama VL (llava) → вердикт до Telegram."""
 
 from __future__ import annotations
 
 import os
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from ...config import Config
 from ..vision_eye import ask_vision, pick_vision_model
-from .clip_review import extract_last_frame
+from .clip_review import extract_first_frame, extract_last_frame
 from .paths import comfy_refs_dir
 
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
@@ -29,14 +29,37 @@ _BAD_VERDICTS = frozenset(
     }
 )
 
+_VERDICT_RANK = {
+    "OK": 0,
+    "UNKNOWN": 1,
+    "WRONG_POSE": 2,
+    "FACE_MISSING": 3,
+    "ARTIFACTS": 4,
+    "NO_PERSON": 5,
+    "CORRUPT": 6,
+    "BLACK_FRAME": 7,
+    "EMPTY": 7,
+    "BROKEN": 8,
+}
+
 _REVIEW_PROMPT = """Это кадр из сгенерированного AI MoCap-видео (персонаж для 3D-анимации).
-Действие в клипе: {action}
+Кадр: {which}. Действие в клипе: {action}
 
 Ответь кратко по-русски, СТРОГО в формате (без markdown):
 ISSUES: <через запятую конкретные проблемы или «нет»>
 VERDICT: OK | BLACK_FRAME | NO_PERSON | WRONG_POSE | ARTIFACTS | FACE_MISSING | CORRUPT
 
 BLACK_FRAME — чёрный/пустой кадр. NO_PERSON — нет цельной фигуры. CORRUPT — глитч, лишние конечности."""
+
+
+@dataclass
+class FrameVisionReview:
+    which: str
+    verdict: str
+    issues: str
+    vision_ok: bool
+    vision_text: str
+    frame_path: str = ""
 
 
 @dataclass
@@ -48,6 +71,7 @@ class ClipVisionReview:
     vision_ok: bool
     vision_text: str
     frame_path: str = ""
+    frames: List[FrameVisionReview] = field(default_factory=list)
 
     @property
     def bad(self) -> bool:
@@ -86,6 +110,12 @@ def _parse_verdict(text: str) -> Tuple[str, str]:
         elif any(x in low for x in ("глитч", "артефакт", "лишн", "искаж")):
             verdict = "CORRUPT"
     return verdict, issues
+
+
+def _worst_verdict(verdicts: List[str]) -> str:
+    if not verdicts:
+        return "UNKNOWN"
+    return max(verdicts, key=lambda v: _VERDICT_RANK.get(v, 1))
 
 
 def extract_middle_frame(video: Path, dest: Path) -> Tuple[bool, str]:
@@ -139,6 +169,28 @@ def extract_middle_frame(video: Path, dest: Path) -> Tuple[bool, str]:
     return extract_last_frame(video, dest)
 
 
+def _review_single_frame(
+    config: Config,
+    frame: Path,
+    *,
+    which: str,
+    action: str,
+) -> FrameVisionReview:
+    prompt = _REVIEW_PROMPT.format(action=(action or "mocap")[:200], which=which)
+    v_ok, v_text = ask_vision(frame, prompt=prompt, config=config)
+    verdict, issues = _parse_verdict(v_text if v_ok else "")
+    if not v_ok:
+        verdict = "UNKNOWN"
+    return FrameVisionReview(
+        which=which,
+        verdict=verdict,
+        issues=issues,
+        vision_ok=v_ok,
+        vision_text=v_text if v_ok else v_text,
+        frame_path=str(frame),
+    )
+
+
 def _move_to_rejected(config: Config, paths: List[str]) -> None:
     import shutil
 
@@ -165,7 +217,7 @@ def review_mocap_clip(
     action: str = "",
     angle: str = "",
 ) -> ClipVisionReview:
-    """Один mp4 → llava → вердикт."""
+    """Один mp4 → llava на первом и последнем кадре → сводный вердикт."""
     path = Path(video)
     if not pick_vision_model(config.base_url):
         return ClipVisionReview(
@@ -179,31 +231,53 @@ def review_mocap_clip(
 
     shots = comfy_refs_dir(config) / "vision_review"
     shots.mkdir(parents=True, exist_ok=True)
-    frame = shots / f"{path.stem}_mid.png"
-    ok_f, fmsg = extract_middle_frame(path, frame)
-    if not ok_f:
-        return ClipVisionReview(
-            path=str(path),
-            angle=angle,
-            verdict="CORRUPT",
-            issues=fmsg,
-            vision_ok=False,
-            vision_text=f"кадр не извлечь: {fmsg}",
+    checks: List[Tuple[str, Path, Any]] = [
+        ("первый", shots / f"{path.stem}_first.png", extract_first_frame),
+        ("последний", shots / f"{path.stem}_last.png", extract_last_frame),
+    ]
+    frame_reviews: List[FrameVisionReview] = []
+    extract_errors: List[str] = []
+
+    for label, frame_path, extractor in checks:
+        ok_f, fmsg = extractor(path, frame_path)
+        if not ok_f:
+            extract_errors.append(f"{label}: {fmsg}")
+            frame_reviews.append(
+                FrameVisionReview(
+                    which=label,
+                    verdict="CORRUPT",
+                    issues=fmsg,
+                    vision_ok=False,
+                    vision_text=f"кадр не извлечь: {fmsg}",
+                )
+            )
+            continue
+        frame_reviews.append(
+            _review_single_frame(config, frame_path, which=label, action=action)
         )
 
-    prompt = _REVIEW_PROMPT.format(action=(action or "mocap")[:200])
-    v_ok, v_text = ask_vision(frame, prompt=prompt, config=config)
-    verdict, issues = _parse_verdict(v_text if v_ok else "")
-    if not v_ok:
-        verdict = "UNKNOWN"
+    verdicts = [fr.verdict for fr in frame_reviews]
+    worst = _worst_verdict(verdicts)
+    issues_parts = [
+        f"{fr.which}: {fr.verdict}" + (f" ({fr.issues})" if fr.issues else "")
+        for fr in frame_reviews
+        if fr.verdict != "OK" or fr.issues
+    ]
+    if extract_errors:
+        issues_parts.extend(extract_errors)
+    issues = "; ".join(issues_parts)
+    vision_ok = any(fr.vision_ok for fr in frame_reviews)
+    text_blocks = [f"[{fr.which}] {fr.vision_text}" for fr in frame_reviews if fr.vision_text]
+    last_frame = next((fr.frame_path for fr in reversed(frame_reviews) if fr.frame_path), "")
     return ClipVisionReview(
         path=str(path),
         angle=angle,
-        verdict=verdict,
+        verdict=worst,
         issues=issues,
-        vision_ok=v_ok,
-        vision_text=v_text if v_ok else v_text,
-        frame_path=str(frame),
+        vision_ok=vision_ok,
+        vision_text="\n\n".join(text_blocks),
+        frame_path=last_frame,
+        frames=frame_reviews,
     )
 
 
@@ -222,7 +296,7 @@ def review_triple_results(
     if not angles:
         return results, ""
 
-    lines: List[str] = ["--- vision (llava) ---"]
+    lines: List[str] = ["--- vision (llava, 1-й+посл. кадр) ---"]
     rejected_paths: List[str] = []
     good_files: List[str] = []
 
@@ -236,14 +310,14 @@ def review_triple_results(
         act = str(info.get("action_variant") or action or "")
         rev = review_mocap_clip(config, path, action=act, angle=str(angle_id))
         mark = "✗" if rev.bad else "✓"
+        frame_bits = ", ".join(f"{fr.which}={fr.verdict}" for fr in rev.frames) or rev.verdict
         lines.append(
-            f"{mark} {angle_id}: {rev.verdict}"
-            + (f" ({rev.issues})" if rev.issues else "")
-            + f" — {path.name}"
+            f"{mark} {angle_id}: {rev.verdict} [{frame_bits}]"
+            + (f" — {path.name}")
         )
         if rev.vision_ok and rev.vision_text:
             snippet = rev.vision_text.splitlines()
-            for ln in snippet[-4:]:
+            for ln in snippet[-6:]:
                 if ln.strip():
                     lines.append(f"    {ln.strip()[:160]}")
         if rev.bad and auto_reject:
@@ -274,7 +348,8 @@ def format_vision_summary(reviews: List[ClipVisionReview]) -> str:
     lines = ["Vision:"]
     for r in reviews:
         mark = "✗" if r.bad else "✓"
-        lines.append(f"  {mark} {r.angle or '?'}: {r.verdict} — {Path(r.path).name}")
+        bits = ", ".join(f"{fr.which}={fr.verdict}" for fr in r.frames) or r.verdict
+        lines.append(f"  {mark} {r.angle or '?'}: {bits} — {Path(r.path).name}")
     return "\n".join(lines)
 
 

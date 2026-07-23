@@ -553,6 +553,7 @@ class Agent:
         *,
         history: Optional[List[Dict[str, str]]] = None,
         heartbeat: bool = False,
+        away_ping: bool = False,
         echo_telegram: bool = False,
     ) -> RunResult:
         """Чат: по умолчанию без фильтров (VIU_REFLECT_FILTERED=1 — старый режим)."""
@@ -564,6 +565,7 @@ class Agent:
                 on_step,
                 history=history,
                 heartbeat=heartbeat,
+                away_ping=away_ping,
                 echo_telegram=echo_telegram,
             )
         return self._run_reflect_filtered(
@@ -571,6 +573,7 @@ class Agent:
             on_step,
             history=history,
             heartbeat=heartbeat,
+            away_ping=away_ping,
             echo_telegram=echo_telegram,
         )
 
@@ -581,9 +584,12 @@ class Agent:
         *,
         history: Optional[List[Dict[str, str]]] = None,
         heartbeat: bool = False,
+        away_ping: bool = False,
         echo_telegram: bool = False,
     ) -> RunResult:
         from .prompts.reflect_mode import (
+            AWAY_PING_SYSTEM,
+            AWAY_PING_TASK,
             HEARTBEAT_SYSTEM,
             HEARTBEAT_TASK,
             REFLECT_BARE_MINIMAL,
@@ -604,8 +610,12 @@ class Agent:
 
         plot_ctx = False
         if heartbeat:
-            system = HEARTBEAT_SYSTEM
-            user_msg = HEARTBEAT_TASK
+            if away_ping:
+                system = AWAY_PING_SYSTEM
+                user_msg = AWAY_PING_TASK
+            else:
+                system = HEARTBEAT_SYSTEM
+                user_msg = HEARTBEAT_TASK
         else:
             system = REFLECT_BARE_MINIMAL
             user_msg = user_text
@@ -739,6 +749,7 @@ class Agent:
         *,
         history: Optional[List[Dict[str, str]]] = None,
         heartbeat: bool = False,
+        away_ping: bool = False,
         echo_telegram: bool = False,
     ) -> RunResult:
         """Старый reflect с фильтрами тона (VIU_REFLECT_FILTERED=1)."""
@@ -777,7 +788,9 @@ class Agent:
 
         if heartbeat:
             notes = build_reflect_notes(self.config)
-            return self._run_reflect_heartbeat(on_step, temp=temp, notes=notes)
+            return self._run_reflect_heartbeat(
+                on_step, temp=temp, notes=notes, away_ping=away_ping
+            )
 
         user_text = task.strip()
         notes = build_reflect_notes(self.config, user_text=user_text)
@@ -1097,18 +1110,30 @@ class Agent:
         *,
         temp: float,
         notes: str,
+        away_ping: bool = False,
     ) -> RunResult:
-        from .prompts.reflect_mode import HEARTBEAT_SYSTEM, HEARTBEAT_TASK, reflect_reply_issues
+        from .prompts.reflect_mode import (
+            AWAY_PING_SYSTEM,
+            AWAY_PING_TASK,
+            HEARTBEAT_SYSTEM,
+            HEARTBEAT_TASK,
+            reflect_reply_issues,
+        )
 
-        system = HEARTBEAT_SYSTEM
+        if away_ping:
+            system = AWAY_PING_SYSTEM
+            user_msg = AWAY_PING_TASK
+        else:
+            system = HEARTBEAT_SYSTEM
+            user_msg = HEARTBEAT_TASK
         if notes:
             system += "\n\n--- Заметки ---\n" + notes
         messages: List[Dict[str, str]] = [
             {"role": "system", "content": system},
-            {"role": "user", "content": HEARTBEAT_TASK},
+            {"role": "user", "content": user_msg},
         ]
         result = RunResult(final="", completed=False, chat_only=True)
-        self._log("REFLECT_HEARTBEAT")
+        self._log("REFLECT_AWAY_PING" if away_ping else "REFLECT_HEARTBEAT")
 
         for attempt in range(2):
             raw = self.llm.complete(
@@ -1139,6 +1164,10 @@ class Agent:
                 {"role": "user", "content": 'Нужен JSON: {"final":"живая мысль…"}.'}
             )
 
-        result.final = "Проснулась. Когда вернёшься — поговорим про снежинку или анимации?"
+        result.final = (
+            "Скучаю. Когда вернёшься — покажу новые кадры или придумаем сцену."
+            if away_ping
+            else "Проснулась. Когда вернёшься — поговорим про снежинку или анимации?"
+        )
         result.completed = True
         return result

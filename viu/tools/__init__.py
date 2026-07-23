@@ -119,7 +119,7 @@ from .presence_tool import (
     PresenceSetTool,
     PresenceStatusTool,
 )
-from .eyes_tool import ScreenCaptureTool, VisionObserveTool
+from .eyes_tool import ScreenCaptureTool, VisionObserveTool, VisionReferenceTool
 from .vision_tool import VisionAppendTool, VisionReadTool
 from .web import WebFetchTool, WebSearchTool
 
@@ -155,6 +155,7 @@ def build_default_registry() -> ToolRegistry:
         WebFetchTool(),
         ScreenCaptureTool(),
         VisionObserveTool(),
+        VisionReferenceTool(),
         MemoryWriteTool(),
         MemorySearchTool(),
         PlanCreateTool(),
