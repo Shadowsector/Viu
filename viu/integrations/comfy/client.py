@@ -133,6 +133,18 @@ class ComfyClient:
         while time.time() < deadline:
             entry = self.get_history(prompt_id)
             if entry and entry.get("outputs") is not None:
+                status = entry.get("status") if isinstance(entry.get("status"), dict) else {}
+                if status.get("status_str") == "error":
+                    msgs = status.get("messages") or []
+                    tail = ""
+                    for item in msgs[-3:]:
+                        if isinstance(item, dict):
+                            tail += str(item.get("message") or item)[:400] + "\n"
+                        else:
+                            tail += str(item)[:400] + "\n"
+                    raise ComfyError(
+                        f"Comfy job error prompt_id={prompt_id}:\n{tail.strip() or status}"
+                    )
                 return entry
             time.sleep(poll)
         qs = self.queue_summary()
