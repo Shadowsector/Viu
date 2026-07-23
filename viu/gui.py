@@ -176,6 +176,12 @@ class ViuGUI:
         self._schedule_lab()
         self._schedule_comfy_home_watch()
         try:
+            from .integrations.comfy.focus import maybe_migrate_focus_from_env
+
+            maybe_migrate_focus_from_env(self.agent.config)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
             from .vision import ensure_vision
 
             ensure_vision(self.agent.config)
@@ -1687,9 +1693,9 @@ class ViuGUI:
         from .gui_busy import can_start_tool
 
         title = label or name
-        from .gui_busy import READ_ONLY_WHILE_TOOL_BUSY, can_start_tool
+        from .gui_busy import TOOLS_ALLOWED_DURING_LAB, can_start_tool
 
-        readonly_diag = name in READ_ONLY_WHILE_TOOL_BUSY and self._tool_busy
+        readonly_diag = name in TOOLS_ALLOWED_DURING_LAB and self._tool_busy
         if not readonly_diag:
             if not can_start_tool(tool_busy=self._tool_busy, tool_name=name):
                 msg = (
@@ -2264,9 +2270,14 @@ class ViuGUI:
                 self._append(
                     "Вью",
                     f"ComfyUI **не отвечает** на {url}\n{ping}\n\n"
-                    "Браузер откроется, но страница может висеть, пока сервер не поднят.\n"
-                    "Напиши **comfy_ensure** или запусти lab — Вью поднимет Comfy сама.",
+                    "Запускаю **comfy_ensure**…",
                     tag="sys",
+                )
+                self._run_tool(
+                    "comfy_ensure",
+                    {"wait": "180"},
+                    label="comfy_ensure (авто)",
+                    echo_user=False,
                 )
             try:
                 webbrowser.open(url)
@@ -2282,7 +2293,11 @@ class ViuGUI:
                     tag="tool",
                 )
             else:
-                self._append("система", f"Браузер открыт на {url} — жди comfy_ensure.", tag="sys")
+                self._append(
+                    "система",
+                    f"Браузер открыт на {url}. Когда ensure закончит — обнови страницу (F5).",
+                    tag="sys",
+                )
 
         self._run_bg(work, done)
 

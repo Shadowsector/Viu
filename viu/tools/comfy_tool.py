@@ -150,6 +150,34 @@ class ComfyEnsureTool(Tool):
         return ToolResult(ok, msg)
 
 
+class ComfyFocusTool(Tool):
+    name = "comfy_focus"
+    description = (
+        "Фокус Comfy MoCap: nsfw (touch_self, shower, bath) или barn (цикл сарая). "
+        "Бытовые sit/walk — Mixamo; Comfy — NSFW."
+    )
+    parameters = {
+        "focus": "nsfw | barn | all — что снимать дальше",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.focus import set_comfy_focus
+
+        mode = str(args.get("focus") or args.get("mode") or "").strip()
+        if not mode:
+            from ..integrations.comfy.focus import focus_mode_label, resolve_focus_slugs
+
+            slugs = resolve_focus_slugs(ctx.config)
+            return ToolResult(
+                True,
+                f"Сейчас фокус: **{focus_mode_label(ctx.config)}**\n"
+                f"slugs: {', '.join(slugs) or '(все)'}\n"
+                "Сменить: comfy_focus focus=nsfw | focus=barn",
+            )
+        ok, msg = set_comfy_focus(ctx.config, mode)
+        return ToolResult(ok, msg)
+
+
 class ComfyRunTool(Tool):
     name = "comfy_run"
     description = (

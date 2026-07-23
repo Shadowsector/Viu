@@ -131,6 +131,9 @@ class Config:
     comfy_barn_cycle: bool = field(
         default_factory=lambda: _env("VIU_COMFY_BARN_CYCLE", "1") == "1"
     )
+    comfy_focus: str = field(
+        default_factory=lambda: _env("VIU_COMFY_FOCUS", "").strip().lower()
+    )
 
     # Ветка git для автообновления GUI.
     update_branch: str = field(

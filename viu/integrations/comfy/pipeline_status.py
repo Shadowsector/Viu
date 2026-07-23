@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ...config import Config
+from ...integrations.comfy.focus import focus_mode_label
 from ...lab.comfy_director import barn_cycle_status
 from ...lab.comfy_pipeline import COMFY_TOPIC, STEP_LABELS
 from ...lab.session import load_session
@@ -33,6 +34,7 @@ def comfy_pipeline_status_brief(config: Config) -> str:
     )
     slug = str(session.meta.get("catalog_slug") or "").strip()
     slug_bit = f" · {slug}" if slug else ""
+    focus_bit = f" · фокус {focus_mode_label(config)}"
     st = session.status
     if st == "awaiting_prompt":
         hint = "жду промпт"
@@ -46,7 +48,7 @@ def comfy_pipeline_status_brief(config: Config) -> str:
         hint = f"пауза: {(session.pause_reason or '')[:40]}"
     else:
         hint = st
-    return f"Comfy {api} · {hint}{slug_bit}"
+    return f"Comfy {api} · {hint}{slug_bit}{focus_bit}"
 
 
 def comfy_pipeline_status(config: Config) -> str:
