@@ -125,6 +125,11 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 Выключить: `VIU_COMFY_FACE_SWAP=0` в `.env`.  
 Фиксированное лицо: `VIU_COMFY_FACE_REF=U:\path\to\face.png`.
 
+**Битые mp4 ~4–5 KB (не открываются):** встроенный NSFW-filter ReActor вырезает
+NSFW-кадры → остаётся один чёрный кадр. Вью патчит `reactor_sfw.py` при
+`comfy_install reactor=1` / `comfy_reactor_fix`. После патча — `comfy_ensure restart=1`
+и переснять. Временно без лица: `VIU_COMFY_FACE_SWAP=0`.
+
 ### LoRA — простой сценарий
 
 1. **Скачай** `.safetensors` в `ComfyUI/models/loras/` (можно подпапки).

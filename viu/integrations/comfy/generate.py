@@ -209,6 +209,18 @@ def run_single_angle(
                 + "; ".join(copy_notes),
                 saved,
             )
+
+        from .video_health import reactor_black_frame_hint, validate_mocap_mp4
+
+        v_ok, v_msg = validate_mocap_mp4(dest_ref)
+        if not v_ok:
+            hint = reactor_black_frame_hint() if face_note else ""
+            return (
+                False,
+                f"битый mp4 угол {angle.id}: {v_msg}. {hint}".strip(),
+                saved,
+            )
+
         saved.append(str(dest_ref))
 
     note = f"{angle.id}: → Lab/Refs ({len(saved)} файл(ов))"

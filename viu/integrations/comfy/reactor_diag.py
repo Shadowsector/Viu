@@ -257,6 +257,12 @@ def repair_reactor_dependencies(
     lines.append(f"deps после pip: {'OK' if deps_ok2 else 'FAIL'}")
     if deps_msg2 and not deps_ok2:
         lines.append(deps_msg2[-800:])
+
+    from .reactor_diag import patch_reactor_nsfw_filter
+
+    ok_patch, patch_msg = patch_reactor_nsfw_filter(root)
+    lines.append(patch_msg)
+
     lines.append("→ перезапуск Comfy (comfy_ensure restart=1)")
     return deps_ok2, "\n".join(lines)
 
@@ -311,3 +317,32 @@ def wait_for_reactor_node(client, *, timeout: float = 45.0, poll: float = 2.0) -
             return cls
         time.sleep(poll)
     return None
+
+
+_VIU_NSFW_PATCH_MARKER = "# viu: mocap — NSFW filter off (ReActor black-frame bug)"
+
+
+def patch_reactor_nsfw_filter(root: Path) -> Tuple[bool, str]:
+    """Отключить ReActor NSFW-detector — иначе NSFW MoCap → 1 чёрный кадр → ~4 KB mp4."""
+    sfw = root / "custom_nodes" / _REACTOR_DIR / "scripts" / "reactor_sfw.py"
+    if not sfw.is_file():
+        return False, "reactor_sfw.py не найден"
+    try:
+        text = sfw.read_text(encoding="utf-8")
+    except OSError as exc:
+        return False, f"не читается reactor_sfw.py: {exc}"
+    if _VIU_NSFW_PATCH_MARKER in text:
+        return True, "ReActor NSFW filter уже отключён (Viu)"
+    patch = f"""
+
+{_VIU_NSFW_PATCH_MARKER}
+def nsfw_image(img_data, model_path: str):
+    \"\"\"Viu MoCap: не резать кадры (иначе пустой mp4).\"\"\"
+    return False
+"""
+    try:
+        sfw.write_text(text.rstrip() + patch, encoding="utf-8")
+    except OSError as exc:
+        return False, f"не записать reactor_sfw.py: {exc}"
+    return True, "ReActor NSFW filter отключён — перезапусти Comfy (comfy_ensure restart=1)"
+
