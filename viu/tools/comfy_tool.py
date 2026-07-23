@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from ..integrations.comfy import (
     ComfyClient,
@@ -195,34 +195,81 @@ class ComfyReactorFixTool(Tool):
         "Починить ReActor: pip зависимости, import-test, перезапуск Comfy. "
         "Если face_swap нет после comfy_ensure."
     )
-    parameters = {}
+    parameters = {
+        "skip_restart": "1 — только pip/deps, без рестарта Comfy",
+    }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.face_refs import face_swap_status_line, reactor_face_swap_class
         from ..integrations.comfy.process import ensure_comfy_running
         from ..integrations.comfy.reactor_diag import (
-            probe_reactor_import,
             reactor_diagnose,
+            reactor_errors_in_launch_log,
             repair_reactor_dependencies,
         )
 
-        ok_fix, fix_msg = repair_reactor_dependencies(ctx.config)
-        lines = [fix_msg]
-        ok_imp, imp = probe_reactor_import(ctx.config)
-        lines.append(f"import после repair: {'OK' if ok_imp else 'FAIL'}")
-        if not ok_imp and imp:
-            lines.append(imp[-1500:])
-        ok_run, run_msg = ensure_comfy_running(
-            ctx.config,
-            wait_seconds=120.0,
-            auto_install=False,
-            force_restart=True,
-            reload_if_reactor_missing=True,
+        skip_restart = str(args.get("skip_restart") or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
         )
-        lines.append(run_msg)
+        lines: List[str] = ["=== comfy_reactor_fix ==="]
+        notes: List[str] = []
+
+        def progress(msg: str) -> None:
+            notes.append(msg)
+            print(f"[comfy_reactor_fix] {msg}", flush=True)
+
+        log_bit = reactor_errors_in_launch_log(ctx.config)
+        if log_bit:
+            lines.append("Лог Comfy (ReActor):")
+            lines.extend(f"  {ln}" for ln in log_bit.splitlines()[-6:])
+
+        try:
+            lines.append("Шаг 1/3: зависимости venv…")
+            ok_fix, fix_msg = repair_reactor_dependencies(ctx.config, progress=progress)
+            lines.append(fix_msg)
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"Шаг 1: сбой — {exc}")
+            ok_fix = False
+
+        if notes:
+            lines.append("Прогресс: " + "; ".join(notes[-8:]))
+
         client = _client(ctx)
-        if ok_run:
+        if skip_restart:
             lines.append(reactor_diagnose(ctx.config, client=client))
-        return ToolResult(ok_run and ok_imp, "\n\n".join(lines))
+            lines.append(face_swap_status_line(ctx.config, client=client))
+            return ToolResult(ok_fix, "\n\n".join(lines))
+
+        try:
+            lines.append("Шаг 2/3: перезапуск Comfy…")
+            ok_run, run_msg = ensure_comfy_running(
+                ctx.config,
+                wait_seconds=90.0,
+                auto_install=False,
+                force_restart=True,
+                reload_if_reactor_missing=True,
+            )
+            lines.append(run_msg)
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"Шаг 2: сбой — {exc}")
+            ok_run = False
+
+        try:
+            lines.append("Шаг 3/3: проверка API…")
+            client = _client(ctx)
+            cls = reactor_face_swap_class(client)
+            if cls:
+                lines.append(f"✓ ReActor в API: **{cls}**")
+            else:
+                lines.append(reactor_diagnose(ctx.config, client=client))
+            lines.append(face_swap_status_line(ctx.config, client=client))
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"Шаг 3: {exc}")
+
+        ok = bool(reactor_face_swap_class(_client(ctx)))
+        return ToolResult(ok, "\n\n".join(lines))
 
 
 class ComfyFocusTool(Tool):

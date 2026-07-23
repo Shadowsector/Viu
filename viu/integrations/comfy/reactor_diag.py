@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import Callable, List, Tuple
 
 from ...config import Config
 from .paths import resolve_comfy_root
@@ -27,10 +26,20 @@ _LOG_MARKERS = (
     "traceback",
 )
 
-_EXTRA_PIP = (
-    "insightface>=0.7.3",
-    "onnxruntime>=1.16.0",
-    "opencv-python-headless>=4.7.0",
+# Минимум для ReActor; ultralytics/sam тянутся из requirements.txt отдельно.
+_CORE_DEPS = (
+    "numpy",
+    "onnx",
+    "cv2",
+    "onnxruntime",
+    "insightface",
+    "torch",
+)
+
+_PIP_STEPS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("opencv", ("opencv-python-headless>=4.7.0",)),
+    ("onnxruntime", ("onnxruntime>=1.16.0",)),
+    ("insightface", ("insightface>=0.7.3",)),
 )
 
 
@@ -82,8 +91,71 @@ def reactor_errors_in_launch_log(config: Config, *, tail_lines: int = 80) -> str
     return block
 
 
-def probe_reactor_import(config: Config) -> Tuple[bool, str]:
-    """Импорт nodes.py тем же python, что и Comfy."""
+def _run_py_snippet(
+    config: Config,
+    code: str,
+    *,
+    timeout: float = 45.0,
+    cwd: Path | None = None,
+) -> Tuple[bool, str]:
+    root = resolve_comfy_root(config)
+    if root is None:
+        return False, "ComfyUI root не найден"
+    py = _python_for_comfy(root)
+    try:
+        proc = subprocess.run(
+            [str(py), "-c", code],
+            cwd=str(cwd or root),
+            capture_output=True,
+            text=True,
+            timeout=max(5.0, timeout),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return False, f"таймаут {exc.timeout}s (python -c)"
+    except OSError as exc:
+        return False, str(exc)
+    out = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+    if proc.returncode == 0:
+        return True, out.splitlines()[-1] if out else "OK"
+    return False, out[-2000:] if out else f"exit {proc.returncode}"
+
+
+def probe_reactor_deps(config: Config, *, timeout: float = 45.0) -> Tuple[bool, str, List[str]]:
+    """Быстро: есть ли базовые модули в venv Comfy (без import nodes.py)."""
+    checks = "\n".join(
+        f"    importlib.import_module({mod!r})"
+        for mod in ("numpy", "onnx", "cv2", "onnxruntime", "insightface", "torch")
+    )
+    code = f"""
+import importlib, sys
+missing = []
+for mod in {list(_CORE_DEPS)!r}:
+    try:
+        importlib.import_module('cv2' if mod == 'cv2' else mod)
+    except Exception as exc:
+        missing.append(f"{{mod}}: {{exc}}")
+if missing:
+    print("MISSING")
+    print("\\n".join(missing))
+    sys.exit(1)
+print("OK deps")
+"""
+    ok, msg = _run_py_snippet(config, code, timeout=timeout)
+    missing: List[str] = []
+    if not ok and msg:
+        for ln in msg.splitlines():
+            if ": " in ln and not ln.startswith("MISSING"):
+                missing.append(ln.split(":", 1)[0].strip())
+    return ok, msg, missing
+
+
+def probe_reactor_import(config: Config, *, full: bool = False, timeout: float = 120.0) -> Tuple[bool, str]:
+    """full=True — тяжёлый import nodes.py (может занять минуты)."""
+    if not full:
+        ok, msg, _ = probe_reactor_deps(config, timeout=min(timeout, 60.0))
+        return ok, msg
+
     root = resolve_comfy_root(config)
     if root is None:
         return False, "ComfyUI root не найден"
@@ -91,7 +163,6 @@ def probe_reactor_import(config: Config) -> Tuple[bool, str]:
     nodes_py = reactor / "nodes.py"
     if not nodes_py.is_file():
         return False, f"нет {reactor}"
-    py = _python_for_comfy(root)
     code = f"""
 import traceback
 import importlib.util
@@ -106,56 +177,91 @@ except Exception:
     traceback.print_exc()
     raise SystemExit(1)
 """
+    return _run_py_snippet(config, code, timeout=timeout)
+
+
+def _pip_install(
+    py: Path,
+    root: Path,
+    args: List[str],
+    *,
+    timeout: float = 300.0,
+    label: str = "",
+) -> Tuple[bool, str]:
     try:
         proc = subprocess.run(
-            [str(py), "-c", code],
+            [str(py), "-m", "pip", "install", *args],
             cwd=str(root),
             capture_output=True,
             text=True,
-            timeout=180,
+            timeout=max(30.0, timeout),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return False, str(exc)
-    out = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
-    if proc.returncode == 0:
-        return True, out.splitlines()[-1] if out else "OK"
-    return False, out[-2000:] if out else f"exit {proc.returncode}"
+    except subprocess.TimeoutExpired:
+        return False, f"{label or 'pip'}: таймаут {int(timeout)}s — повтори или поставь вручную в Comfy venv"
+    tail = ((proc.stdout or "") + (proc.stderr or ""))[-400:]
+    if proc.returncode != 0:
+        return False, f"{label or 'pip'}: код {proc.returncode}\n{tail.strip()}"
+    return True, f"{label or 'pip'}: ok"
 
 
-def repair_reactor_dependencies(config: Config) -> Tuple[bool, str]:
-    """pip install requirements + insightface/onnxruntime в venv Comfy."""
+def repair_reactor_dependencies(
+    config: Config,
+    *,
+    progress: Callable[[str], None] | None = None,
+    skip_requirements: bool = False,
+) -> Tuple[bool, str]:
+    """pip install по шагам; без тяжёлого import nodes.py."""
     from .install import ensure_reactor_installed
+
+    def _note(msg: str) -> None:
+        if progress:
+            progress(msg)
 
     root = resolve_comfy_root(config)
     if root is None:
         return False, "ComfyUI root не найден"
     ok, msg = ensure_reactor_installed(root)
-    lines = [msg]
+    lines: List[str] = [msg]
     py = _python_for_comfy(root)
     req = root / "custom_nodes" / _REACTOR_DIR / "requirements.txt"
-    if req.is_file():
-        proc = subprocess.run(
-            [str(py), "-m", "pip", "install", "-r", str(req), *_EXTRA_PIP],
-            cwd=str(root),
-            capture_output=True,
-            text=True,
-            timeout=1800,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0,
+
+    deps_ok, deps_msg, missing = probe_reactor_deps(config, timeout=40.0)
+    lines.append(f"deps: {'OK' if deps_ok else 'MISSING'}")
+    if not deps_ok and deps_msg:
+        for ln in deps_msg.splitlines()[-6:]:
+            if ln.strip():
+                lines.append(f"  {ln.strip()[:200]}")
+
+    if not skip_requirements and req.is_file() and not deps_ok:
+        _note("pip: ReActor requirements.txt…")
+        ok_req, req_msg = _pip_install(
+            py, root, ["-r", str(req)], timeout=420.0, label="requirements.txt"
         )
-        tail = ((proc.stdout or "") + (proc.stderr or ""))[-600:]
-        lines.append("pip ReActor+deps: " + ("ok" if proc.returncode == 0 else f"код {proc.returncode}"))
-        if tail.strip():
-            lines.append(tail.strip())
-        if proc.returncode != 0:
+        lines.append(req_msg)
+        if not ok_req:
             return False, "\n".join(lines)
-    ok_imp, imp = probe_reactor_import(config)
-    lines.append(f"import test: {'OK' if ok_imp else 'FAIL'}")
-    lines.append(imp[:1200])
-    return ok_imp, "\n".join(lines)
+        deps_ok, deps_msg, missing = probe_reactor_deps(config, timeout=45.0)
+
+    for label, pkgs in _PIP_STEPS:
+        if deps_ok:
+            break
+        _note(f"pip: {label}…")
+        ok_p, p_msg = _pip_install(py, root, list(pkgs), timeout=300.0, label=label)
+        lines.append(p_msg)
+        if not ok_p:
+            return False, "\n".join(lines)
+        deps_ok, deps_msg, missing = probe_reactor_deps(config, timeout=45.0)
+
+    deps_ok2, deps_msg2, _ = probe_reactor_deps(config, timeout=60.0)
+    lines.append(f"deps после pip: {'OK' if deps_ok2 else 'FAIL'}")
+    if deps_msg2 and not deps_ok2:
+        lines.append(deps_msg2[-800:])
+    lines.append("→ перезапуск Comfy (comfy_ensure restart=1)")
+    return deps_ok2, "\n".join(lines)
 
 
-def reactor_diagnose(config: Config, client=None) -> str:
+def reactor_diagnose(config: Config, client=None, *, full_import: bool = False) -> str:
     from .face_refs import reactor_face_swap_class
 
     lines: List[str] = []
@@ -164,11 +270,18 @@ def reactor_diagnose(config: Config, client=None) -> str:
         return "ReActor diag: ComfyUI root не найден"
     reactor_dir = root / "custom_nodes" / _REACTOR_DIR
     lines.append(f"ReActor папка: {'есть' if reactor_dir.is_dir() else 'нет'}")
-    ok_imp, imp = probe_reactor_import(config)
-    lines.append(f"import nodes.py: {'OK' if ok_imp else 'FAIL'}")
-    if imp:
-        for ln in imp.splitlines()[-8:]:
-            lines.append(f"  {ln.rstrip()}")
+    ok_dep, dep_msg, missing = probe_reactor_deps(config)
+    lines.append(f"venv deps: {'OK' if ok_dep else 'MISSING ' + ', '.join(missing[:5])}")
+    if dep_msg and not ok_dep:
+        for ln in dep_msg.splitlines()[-4:]:
+            if ln.strip():
+                lines.append(f"  {ln.rstrip()}")
+    if full_import:
+        ok_imp, imp = probe_reactor_import(config, full=True, timeout=90.0)
+        lines.append(f"import nodes.py: {'OK' if ok_imp else 'FAIL/timeout'}")
+        if imp:
+            for ln in imp.splitlines()[-4:]:
+                lines.append(f"  {ln.rstrip()}")
     if client is not None:
         found = list_reactor_node_classes(client)
         cls = reactor_face_swap_class(client)
@@ -177,23 +290,21 @@ def reactor_diagnose(config: Config, client=None) -> str:
         elif found:
             lines.append(f"API :8188: ReActor-похожие: {', '.join(found[:5])}")
         else:
-            lines.append("API :8188: ReActor нод нет (custom_nodes не загрузились)")
+            lines.append("API :8188: ReActor нод нет")
     log_bit = reactor_errors_in_launch_log(config)
     if log_bit:
-        lines.append("comfy_launch.log (ReActor):")
-        for ln in log_bit.splitlines()[-12:]:
+        lines.append("comfy_launch.log:")
+        for ln in log_bit.splitlines()[-8:]:
             lines.append(f"  {ln}")
-    if not ok_imp:
-        lines.append("→ comfy_reactor_fix (или comfy_install reactor=1)")
     return "\n".join(lines)
 
 
-def wait_for_reactor_node(client, *, timeout: float = 90.0, poll: float = 3.0) -> str | None:
+def wait_for_reactor_node(client, *, timeout: float = 45.0, poll: float = 2.0) -> str | None:
     import time
 
     from .face_refs import reactor_face_swap_class
 
-    deadline = time.time() + max(10.0, timeout)
+    deadline = time.time() + max(8.0, timeout)
     while time.time() < deadline:
         cls = reactor_face_swap_class(client)
         if cls:

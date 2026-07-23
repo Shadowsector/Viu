@@ -161,10 +161,10 @@ def face_swap_status_line(config: Config, *, client=None) -> str:
         pick = pick_face_ref(config)
         face = pick.name if pick else "нет FaceRef"
         return f"face_swap: **OK** (ReActor {cls}, лицо: {face})"
-    from .reactor_diag import probe_reactor_import
+    from .reactor_diag import probe_reactor_deps
 
     root = resolve_comfy_root(config)
-    ok_imp, _ = probe_reactor_import(config)
+    ok_imp, _, _ = probe_reactor_deps(config, timeout=30.0)
     if root and (root / "custom_nodes" / "ComfyUI-ReActor").is_dir():
         if not ok_imp:
             return "face_swap: **нет** — import ReActor падает → comfy_reactor_fix"
@@ -173,7 +173,7 @@ def face_swap_status_line(config: Config, *, client=None) -> str:
 
 
 def face_refs_status(config: Config, *, client=None) -> str:
-    from .reactor_diag import probe_reactor_import, reactor_errors_in_launch_log
+    from .reactor_diag import probe_reactor_deps, probe_reactor_import, reactor_errors_in_launch_log
     d = ensure_face_refs_dir(config)
     refs = list_face_refs(config)
     env_ref = (os.environ.get("VIU_COMFY_FACE_REF") or "").strip()
@@ -197,7 +197,7 @@ def face_refs_status(config: Config, *, client=None) -> str:
     elif root is not None:
         reactor_dir = root / "custom_nodes" / "ComfyUI-ReActor"
         if reactor_dir.is_dir():
-            ok_imp, imp_tail = probe_reactor_import(config)
+            ok_imp, imp_tail, _ = probe_reactor_deps(config, timeout=30.0)
             if ok_imp:
                 lines.append(
                     "ReActor: import OK, но нода не в API — перезапусти Comfy (comfy_ensure restart=1)"
@@ -219,7 +219,7 @@ def face_refs_status(config: Config, *, client=None) -> str:
     elif root is not None:
         lines.append("inswapper: нет models/insightface/inswapper_128.onnx")
     if face_swap_enabled() and pick and not reactor_cls:
-        if not probe_reactor_import(config)[0]:
+        if not probe_reactor_deps(config, timeout=20.0)[0]:
             lines.append("⚠ comfy_reactor_fix — доустановить зависимости ReActor")
         else:
             lines.append("⚠ comfy_ensure restart=1 — import OK, нужен рестарт Comfy")

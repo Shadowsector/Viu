@@ -488,7 +488,7 @@ def _finalize_comfy_start(
     """После старта Comfy: дождаться ReActor, при FAIL — repair + второй рестарт."""
     from .face_refs import face_swap_status_line, reactor_needs_reload
     from .reactor_diag import (
-        probe_reactor_import,
+        probe_reactor_deps,
         reactor_diagnose,
         repair_reactor_dependencies,
         wait_for_reactor_node,
@@ -503,9 +503,9 @@ def _finalize_comfy_start(
         parts.append(face_swap_status_line(config, client=client))
         return True, "\n".join(parts)
 
-    ok_imp, _ = probe_reactor_import(config)
+    ok_imp, _ = probe_reactor_deps(config, timeout=30.0)
     if not ok_imp:
-        parts.append("ReActor import FAIL — comfy_reactor_fix (ставлю зависимости)…")
+        parts.append("ReActor deps MISSING — pip…")
         ok_fix, fix_msg = repair_reactor_dependencies(config)
         parts.append(fix_msg)
         if ok_fix:
