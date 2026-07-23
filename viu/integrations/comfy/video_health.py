@@ -32,6 +32,7 @@ def validate_mocap_mp4(path: Path, *, min_bytes: int = MIN_MOCAP_MP4_BYTES) -> t
 
 def reactor_black_frame_hint() -> str:
     return (
-        "Частая причина: ReActor NSFW-filter вырезал все кадры → 1 чёрный кадр (~4–5 KB). "
-        "comfy_reactor_fix → перезапуск Comfy; или VIU_COMFY_FACE_SWAP=0."
+        "ReActor вырезал все кадры (NSFW-filter) → чёрный 512×512 mp4. "
+        "Вью: полная замена reactor_sfw.py + рестарт Comfy (comfy_reactor_fix). "
+        "Повтор без лица — автоматически; или VIU_COMFY_FACE_SWAP=0."
     )

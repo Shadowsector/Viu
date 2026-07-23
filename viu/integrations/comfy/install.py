@@ -504,9 +504,9 @@ def ensure_reactor_installed(
         if not ok:
             lines.append("⚠ inswapper не скачался — ReActor может скачать сам при первом swap.")
 
-    from .reactor_diag import patch_reactor_nsfw_filter
+    from .reactor_diag import is_reactor_nsfw_patched, patch_reactor_nsfw_filter
 
-    ok_patch, patch_msg = patch_reactor_nsfw_filter(root)
+    ok_patch, patch_msg = patch_reactor_nsfw_filter(root, force=not is_reactor_nsfw_patched(root))
     lines.append(patch_msg)
     if not ok_patch:
         lines.append("⚠ NSFW-патч не применился — MoCap NSFW может давать 4 KB mp4.")

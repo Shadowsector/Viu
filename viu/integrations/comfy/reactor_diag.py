@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Callable, List, Tuple
 
@@ -42,9 +44,121 @@ _PIP_STEPS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("insightface", ("insightface>=0.7.3",)),
 )
 
+_VIU_NSFW_PATCH_MARKER = "# viu: mocap — NSFW filter off (ReActor black-frame bug)"
+
+_REACTOR_SFW_STUB = f"""{_VIU_NSFW_PATCH_MARKER}
+# ReActor NSFW detector disabled for Viu MoCap (NSFW clips → black 512×512 mp4).
+# Backup: reactor_sfw.py.viu_orig next to this file.
+
+
+def ensure_nsfw_model(nsfwdet_model_path):
+    return True
+
+
+def nsfw_image(img_data, model_path: str):
+    return False
+"""
+
 
 def _launch_log_path_for_config(config: Config, root: Path) -> Path:
     return _launch_log_path(config, root)
+
+
+def _reactor_sfw_path(root: Path) -> Path:
+    return root / "custom_nodes" / _REACTOR_DIR / "scripts" / "reactor_sfw.py"
+
+
+def _patch_state_path(config: Config) -> Path:
+    return config.data_dir / "reactor_nsfw_patch.json"
+
+
+def is_reactor_nsfw_patched(root: Path) -> bool:
+    """Файл reactor_sfw.py — viu-stub (nsfw_image всегда False)."""
+    sfw = _reactor_sfw_path(root)
+    if not sfw.is_file():
+        return False
+    try:
+        text = sfw.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if _VIU_NSFW_PATCH_MARKER not in text:
+        return False
+    return "def nsfw_image" in text and "return False" in text
+
+
+def patch_reactor_nsfw_filter(root: Path, *, force: bool = False) -> Tuple[bool, str]:
+    """Заменить reactor_sfw.py на stub — иначе NSFW MoCap → 1 чёрный кадр → ~4 KB mp4."""
+    sfw = _reactor_sfw_path(root)
+    if not sfw.parent.is_dir():
+        return False, "reactor_sfw.py не найден (нет scripts/)"
+    if not force and is_reactor_nsfw_patched(root):
+        return True, "ReActor NSFW filter уже отключён (Viu stub)"
+    backup = sfw.with_suffix(".py.viu_orig")
+    try:
+        if sfw.is_file() and not backup.is_file():
+            backup.write_text(sfw.read_text(encoding="utf-8"), encoding="utf-8")
+        sfw.write_text(_REACTOR_SFW_STUB + "\n", encoding="utf-8")
+    except OSError as exc:
+        return False, f"не записать reactor_sfw.py: {exc}"
+    if not is_reactor_nsfw_patched(root):
+        return False, "патч записан, но проверка stub не прошла"
+    return True, "ReActor NSFW filter отключён (полная замена reactor_sfw.py)"
+
+
+def record_reactor_patch_applied(config: Config, root: Path) -> None:
+    try:
+        sfw = _reactor_sfw_path(root)
+        payload = {
+            "applied_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "sfw_mtime": sfw.stat().st_mtime if sfw.is_file() else 0,
+            "needs_comfy_restart": True,
+        }
+        path = _patch_state_path(config)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def mark_reactor_patch_reloaded(config: Config) -> None:
+    path = _patch_state_path(config)
+    if not path.is_file():
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["needs_comfy_restart"] = False
+        data["reloaded_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except (OSError, json.JSONDecodeError):
+        pass
+
+
+def reactor_patch_needs_restart(config: Config) -> bool:
+    path = _patch_state_path(config)
+    if not path.is_file():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return bool(data.get("needs_comfy_restart"))
+
+
+def ensure_reactor_nsfw_patch(
+    config: Config,
+    *,
+    force: bool = False,
+) -> Tuple[bool, str, bool]:
+    """Патч на диске. Возвращает (ok, msg, changed). changed → нужен рестарт Comfy."""
+    root = resolve_comfy_root(config)
+    if root is None:
+        return False, "ComfyUI root не найден", False
+    was_patched = is_reactor_nsfw_patched(root)
+    ok, msg = patch_reactor_nsfw_filter(root, force=force or not was_patched)
+    changed = ok and (force or not was_patched or not is_reactor_nsfw_patched(root))
+    if ok and (changed or not was_patched):
+        record_reactor_patch_applied(config, root)
+    return ok, msg, changed
 
 
 def list_reactor_node_classes(client) -> List[str]:
@@ -123,10 +237,6 @@ def _run_py_snippet(
 
 def probe_reactor_deps(config: Config, *, timeout: float = 45.0) -> Tuple[bool, str, List[str]]:
     """Быстро: есть ли базовые модули в venv Comfy (без import nodes.py)."""
-    checks = "\n".join(
-        f"    importlib.import_module({mod!r})"
-        for mod in ("numpy", "onnx", "cv2", "onnxruntime", "insightface", "torch")
-    )
     code = f"""
 import importlib, sys
 missing = []
@@ -258,13 +368,11 @@ def repair_reactor_dependencies(
     if deps_msg2 and not deps_ok2:
         lines.append(deps_msg2[-800:])
 
-    from .reactor_diag import patch_reactor_nsfw_filter
-
-    ok_patch, patch_msg = patch_reactor_nsfw_filter(root)
+    ok_patch, patch_msg, _changed = ensure_reactor_nsfw_patch(config, force=True)
     lines.append(patch_msg)
 
-    lines.append("→ перезапуск Comfy (comfy_ensure restart=1)")
-    return deps_ok2, "\n".join(lines)
+    lines.append("→ перезапуск Comfy обязателен (comfy_ensure restart=1)")
+    return deps_ok2 and ok_patch, "\n".join(lines)
 
 
 def reactor_diagnose(config: Config, client=None, *, full_import: bool = False) -> str:
@@ -276,6 +384,10 @@ def reactor_diagnose(config: Config, client=None, *, full_import: bool = False) 
         return "ReActor diag: ComfyUI root не найден"
     reactor_dir = root / "custom_nodes" / _REACTOR_DIR
     lines.append(f"ReActor папка: {'есть' if reactor_dir.is_dir() else 'нет'}")
+    patched = is_reactor_nsfw_patched(root)
+    lines.append(f"NSFW stub: {'OK' if patched else 'НЕТ — comfy_reactor_fix'}")
+    if reactor_patch_needs_restart(config):
+        lines.append("⚠ патч на диске есть, но Comfy ещё не перезапускали — старый reactor_sfw в RAM")
     ok_dep, dep_msg, missing = probe_reactor_deps(config)
     lines.append(f"venv deps: {'OK' if ok_dep else 'MISSING ' + ', '.join(missing[:5])}")
     if dep_msg and not ok_dep:
@@ -317,32 +429,3 @@ def wait_for_reactor_node(client, *, timeout: float = 45.0, poll: float = 2.0) -
             return cls
         time.sleep(poll)
     return None
-
-
-_VIU_NSFW_PATCH_MARKER = "# viu: mocap — NSFW filter off (ReActor black-frame bug)"
-
-
-def patch_reactor_nsfw_filter(root: Path) -> Tuple[bool, str]:
-    """Отключить ReActor NSFW-detector — иначе NSFW MoCap → 1 чёрный кадр → ~4 KB mp4."""
-    sfw = root / "custom_nodes" / _REACTOR_DIR / "scripts" / "reactor_sfw.py"
-    if not sfw.is_file():
-        return False, "reactor_sfw.py не найден"
-    try:
-        text = sfw.read_text(encoding="utf-8")
-    except OSError as exc:
-        return False, f"не читается reactor_sfw.py: {exc}"
-    if _VIU_NSFW_PATCH_MARKER in text:
-        return True, "ReActor NSFW filter уже отключён (Viu)"
-    patch = f"""
-
-{_VIU_NSFW_PATCH_MARKER}
-def nsfw_image(img_data, model_path: str):
-    \"\"\"Viu MoCap: не резать кадры (иначе пустой mp4).\"\"\"
-    return False
-"""
-    try:
-        sfw.write_text(text.rstrip() + patch, encoding="utf-8")
-    except OSError as exc:
-        return False, f"не записать reactor_sfw.py: {exc}"
-    return True, "ReActor NSFW filter отключён — перезапусти Comfy (comfy_ensure restart=1)"
-

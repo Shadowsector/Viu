@@ -35,21 +35,91 @@ def _seed_for(action: str, take_id: str, *, salt: str = "") -> int:
     return int(h[:8], 16) % (2**31 - 1)
 
 
-def run_single_angle(
+def _ensure_reactor_ready_for_faceswap(config: Config) -> str:
+    """Патч reactor_sfw + рестарт Comfy если stub только что записан."""
+    from .face_refs import face_swap_enabled
+
+    if not face_swap_enabled():
+        return ""
+    from .reactor_diag import ensure_reactor_nsfw_patch, reactor_patch_needs_restart
+    from .process import ensure_comfy_running
+
+    ok_patch, patch_msg, changed = ensure_reactor_nsfw_patch(config)
+    notes: List[str] = []
+    if patch_msg:
+        notes.append(patch_msg)
+    if ok_patch and (changed or reactor_patch_needs_restart(config)):
+        ok_r, r_msg = ensure_comfy_running(
+            config,
+            wait_seconds=120.0,
+            auto_install=False,
+            force_restart=True,
+            reload_if_reactor_missing=True,
+        )
+        notes.append(r_msg if r_msg else ("Comfy restart OK" if ok_r else "Comfy restart FAIL"))
+    return "; ".join(n for n in notes if n)
+
+
+def _apply_face_swap_to_workflow(
+    config: Config,
+    client: ComfyClient,
+    wf: dict,
+    *,
+    slug: str,
+    catalog_slug: str,
+    base_slug: str,
+) -> Tuple[dict, str, bool]:
+    from .face_refs import (
+        face_swap_enabled,
+        inswapper_model_path,
+        pick_face_ref,
+        reactor_face_swap_class,
+        stage_face_for_comfy,
+    )
+
+    if not face_swap_enabled():
+        return wf, "", False
+    face = pick_face_ref(config, seed=f"{slug}|{catalog_slug or base_slug}")
+    if face is None:
+        return wf, "", False
+    ok_face, stage_msg, input_name = stage_face_for_comfy(config, face)
+    reactor_cls = reactor_face_swap_class(client)
+    inswap = inswapper_model_path(config)
+    if ok_face and reactor_cls and inswap:
+        wf = inject_face_swap(wf, face_image=input_name, reactor_class=reactor_cls)
+        return wf, f"лицо: {face.name} (ReActor {reactor_cls})", True
+    if ok_face and reactor_cls and not inswap:
+        return (
+            wf,
+            f"лицо {face.name}, ReActor есть, но нет inswapper_128.onnx — comfy_install reactor=1",
+            False,
+        )
+    if ok_face and not reactor_cls:
+        return (
+            wf,
+            f"лицо {face.name} в input, но ReActor не в Comfy — comfy_ensure restart=1",
+            False,
+        )
+    return wf, stage_msg, False
+
+
+def _run_single_angle_attempt(
     config: Config,
     *,
     action: str,
     angle: CameraAngle,
     slug: str,
-    workflow_name: str | None = None,
-    timeout: float = 900.0,
-    seed_salt: str = "",
-    catalog_slug: str = "",
-    enters_from: list | None = None,
-    looped: bool = False,
-    seq: int = 0,
-    lora_specs: list | None = None,
-) -> Tuple[bool, str, List[str]]:
+    workflow_name: str | None,
+    timeout: float,
+    seed_salt: str,
+    catalog_slug: str,
+    enters_from: list | None,
+    looped: bool,
+    seq: int,
+    lora_specs: list | None,
+    use_face_swap: bool,
+) -> Tuple[bool, str, List[str], bool]:
+    """Один прогон угла. Возвращает (ok, msg, saved, bad_mp4_after_faceswap)."""
     prompt = mocap_prompt(action, angle)
     negative = mocap_negative()
     from .lora import append_trigger_words, ensure_lora_files
@@ -57,7 +127,7 @@ def run_single_angle(
     loras = list(lora_specs or [])
     loras_ok, lora_notes = ensure_lora_files(config, loras, auto_fetch=False)
     if loras and not loras_ok:
-        return False, "LoRA: " + "; ".join(lora_notes), []
+        return False, "LoRA: " + "; ".join(lora_notes), [], False
     prompt = append_trigger_words(prompt, loras)
 
     from .naming import comfy_filename_prefix, display_video_stem, normalize_slug_for_name
@@ -76,7 +146,7 @@ def run_single_angle(
     try:
         wf = load_workflow(config, wf_name)
     except (FileNotFoundError, ValueError, OSError) as exc:
-        return False, str(exc), []
+        return False, str(exc), [], False
 
     wf = inject_text_prompt(wf, prompt)
     wf = inject_negative_prompt(wf, negative)
@@ -87,47 +157,26 @@ def run_single_angle(
     client = _client(config)
     ok, ping = client.ping()
     if not ok:
-        return False, ping, []
+        return False, ping, [], False
 
     face_note = ""
-    from .face_refs import (
-        face_swap_enabled,
-        inswapper_model_path,
-        pick_face_ref,
-        reactor_face_swap_class,
-        stage_face_for_comfy,
-    )
-
-    if face_swap_enabled():
-        face = pick_face_ref(config, seed=f"{slug}|{catalog_slug or base_slug}")
-        if face is not None:
-            ok_face, stage_msg, input_name = stage_face_for_comfy(config, face)
-            reactor_cls = reactor_face_swap_class(client)
-            inswap = inswapper_model_path(config)
-            if ok_face and reactor_cls and inswap:
-                wf = inject_face_swap(
-                    wf, face_image=input_name, reactor_class=reactor_cls
-                )
-                face_note = f"лицо: {face.name} (ReActor {reactor_cls})"
-            elif ok_face and reactor_cls and not inswap:
-                face_note = (
-                    f"лицо {face.name}, ReActor есть, но нет inswapper_128.onnx — "
-                    "comfy_install reactor=1"
-                )
-            elif ok_face and not reactor_cls:
-                face_note = (
-                    f"лицо {face.name} в input, но ReActor не в Comfy — "
-                    "comfy_ensure (перезапуск) или comfy_install reactor=1"
-                )
-            else:
-                face_note = stage_msg
+    used_swap = False
+    if use_face_swap:
+        wf, face_note, used_swap = _apply_face_swap_to_workflow(
+            config,
+            client,
+            wf,
+            slug=slug,
+            catalog_slug=catalog_slug,
+            base_slug=base_slug,
+        )
 
     try:
         prompt_id = client.queue_prompt(wf)
         entry = client.wait_history(prompt_id, timeout=timeout)
         files = client.collect_output_files(entry)
     except ComfyError as exc:
-        return False, str(exc), []
+        return False, str(exc), [], False
 
     if not files:
         return (
@@ -135,6 +184,7 @@ def run_single_angle(
             f"prompt_id={prompt_id} без outputs (угол {angle.id}). "
             "Проверь SaveVideo / VHS_VideoCombine в workflow.",
             [],
+            False,
         )
 
     files = sorted(
@@ -152,6 +202,7 @@ def run_single_angle(
     out_dir = comfy_out_dir(config)
     saved: List[str] = []
     copy_notes: List[str] = []
+    bad_mp4 = False
     for i, meta in enumerate(files):
         ext = Path(meta["filename"]).suffix or ".mp4"
         name = f"{display_stem}{ext}" if i == 0 else f"{display_stem}_{i}{ext}"
@@ -164,7 +215,7 @@ def run_single_angle(
                 dest=dest_out,
             )
         except ComfyError as exc:
-            return False, str(exc), saved
+            return False, str(exc), saved, used_swap
 
         dest_ref = refs / name
         copied = False
@@ -174,7 +225,6 @@ def run_single_angle(
         except OSError as exc:
             copy_notes.append(f"copy Lab/ComfyOut→Refs fail: {exc}")
 
-        # Fallback: взять файл прямо из U:\Viu\ComfyUI\output\ (native SaveVideo)
         if not copied:
             from .paths import resolve_comfy_root
 
@@ -208,17 +258,26 @@ def run_single_angle(
                 f"Native Comfy: output/; staging: {dest_out}. "
                 + "; ".join(copy_notes),
                 saved,
+                used_swap,
             )
 
         from .video_health import reactor_black_frame_hint, validate_mocap_mp4
 
         v_ok, v_msg = validate_mocap_mp4(dest_ref)
         if not v_ok:
-            hint = reactor_black_frame_hint() if face_note else ""
+            bad_mp4 = used_swap
+            hint = reactor_black_frame_hint() if used_swap else ""
+            for p in (dest_ref, dest_out):
+                try:
+                    if p.is_file():
+                        p.unlink()
+                except OSError:
+                    pass
             return (
                 False,
                 f"битый mp4 угол {angle.id}: {v_msg}. {hint}".strip(),
                 saved,
+                bad_mp4,
             )
 
         saved.append(str(dest_ref))
@@ -228,7 +287,74 @@ def run_single_angle(
         note += f" [{face_note}]"
     if copy_notes:
         note += " [" + "; ".join(copy_notes[:3]) + "]"
-    return True, note, saved
+    return True, note, saved, used_swap
+
+
+def run_single_angle(
+    config: Config,
+    *,
+    action: str,
+    angle: CameraAngle,
+    slug: str,
+    workflow_name: str | None = None,
+    timeout: float = 900.0,
+    seed_salt: str = "",
+    catalog_slug: str = "",
+    enters_from: list | None = None,
+    looped: bool = False,
+    seq: int = 0,
+    lora_specs: list | None = None,
+) -> Tuple[bool, str, List[str]]:
+    from .face_refs import face_swap_enabled
+
+    prep = _ensure_reactor_ready_for_faceswap(config)
+    want_swap = face_swap_enabled()
+    ok, msg, saved, bad_mp4 = _run_single_angle_attempt(
+        config,
+        action=action,
+        angle=angle,
+        slug=slug,
+        workflow_name=workflow_name,
+        timeout=timeout,
+        seed_salt=seed_salt,
+        catalog_slug=catalog_slug,
+        enters_from=enters_from,
+        looped=looped,
+        seq=seq,
+        lora_specs=lora_specs,
+        use_face_swap=want_swap,
+    )
+    if ok:
+        if prep:
+            msg = f"{msg} [{prep}]"
+        return ok, msg, saved
+
+    if want_swap and bad_mp4:
+        ok2, msg2, saved2, _ = _run_single_angle_attempt(
+            config,
+            action=action,
+            angle=angle,
+            slug=slug,
+            workflow_name=workflow_name,
+            timeout=timeout,
+            seed_salt=seed_salt + "|no_reactor",
+            catalog_slug=catalog_slug,
+            enters_from=enters_from,
+            looped=looped,
+            seq=seq,
+            lora_specs=lora_specs,
+            use_face_swap=False,
+        )
+        if ok2:
+            retry_note = "retry без ReActor (битый mp4 с face swap)"
+            if prep:
+                retry_note += f"; {prep}"
+            return True, f"{msg2} [{retry_note}]", saved2
+        msg = f"{msg} | retry без ReActor: {msg2}"
+
+    if prep and "битый mp4" in msg:
+        msg = f"{msg} [{prep}]"
+    return ok, msg, saved
 
 
 def run_triple_angles(

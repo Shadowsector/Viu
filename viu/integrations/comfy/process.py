@@ -494,12 +494,16 @@ def _finalize_comfy_start(
         wait_for_reactor_node,
     )
 
+    from .reactor_diag import mark_reactor_patch_reloaded
+
     if not reactor_needs_reload(config, client):
+        mark_reactor_patch_reloaded(config)
         parts.append(face_swap_status_line(config, client=client))
         return True, "\n".join(parts)
 
     cls = wait_for_reactor_node(client, timeout=min(60.0, wait_seconds))
     if cls:
+        mark_reactor_patch_reloaded(config)
         parts.append(face_swap_status_line(config, client=client))
         return True, "\n".join(parts)
 
@@ -572,6 +576,13 @@ def ensure_comfy_running(
     ok, msg = client.ping()
 
     root = resolve_comfy_root(config)
+    patch_restart = False
+    if root is not None:
+        from .reactor_diag import ensure_reactor_nsfw_patch, reactor_patch_needs_restart
+
+        _ok_p, _p_msg, changed = ensure_reactor_nsfw_patch(config)
+        if changed or reactor_patch_needs_restart(config):
+            patch_restart = True
     if root is not None and not looks_like_comfy_root(root):
         try:
             config.comfy_root = ""
@@ -586,10 +597,12 @@ def ensure_comfy_running(
 
         return reactor_needs_reload(config, client)
 
-    if ok and (force_restart or _reactor_reload_needed()):
+    if ok and (force_restart or patch_restart or _reactor_reload_needed()):
         reason = (
             "принудительный restart"
             if force_restart
+            else "NSFW-патч ReActor — нужен рестарт"
+            if patch_restart
             else "ReActor в папке, но нода не в API"
         )
         parts_reload: List[str] = [f"Comfy на :{port} — {reason}, перезапускаю…", stop_comfy_on_port(port)]

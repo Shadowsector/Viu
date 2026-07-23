@@ -226,7 +226,11 @@ class ComfyReactorFixTool(Tool):
             lines.extend(f"  {ln}" for ln in log_bit.splitlines()[-6:])
 
         try:
-            lines.append("Шаг 1/3: зависимости venv…")
+            lines.append("Шаг 1/3: NSFW-патч + зависимости venv…")
+            from ..integrations.comfy.reactor_diag import ensure_reactor_nsfw_patch
+
+            ok_patch, patch_msg, _ = ensure_reactor_nsfw_patch(ctx.config, force=True)
+            lines.append(patch_msg)
             ok_fix, fix_msg = repair_reactor_dependencies(ctx.config, progress=progress)
             lines.append(fix_msg)
         except Exception as exc:  # noqa: BLE001
