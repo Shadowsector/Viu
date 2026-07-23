@@ -12,6 +12,43 @@ from .clip_review import ComfyClipStore, clip_review_path
 from .scene_choice import load_scene_state, scene_choice_status_line
 
 
+def comfy_pipeline_status_brief(config: Config) -> str:
+    """Одна строка для статус-бара GUI."""
+    session = load_session(config, COMFY_TOPIC)
+    url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
+    api = "?"
+    try:
+        ok, _ = ComfyClient(base_url=str(url), timeout=2.0).ping()
+        api = "8188✓" if ok else "8188✗"
+    except Exception:
+        api = "8188✗"
+
+    if session is None:
+        return f"Comfy {api} · lab нет"
+
+    step_label = (
+        STEP_LABELS[min(session.step, len(STEP_LABELS) - 1)]
+        if session.step < len(STEP_LABELS)
+        else "—"
+    )
+    slug = str(session.meta.get("catalog_slug") or "").strip()
+    slug_bit = f" · {slug}" if slug else ""
+    st = session.status
+    if st == "awaiting_prompt":
+        hint = "жду промпт"
+    elif st == "awaiting_lora_pick":
+        hint = "жду LoRA"
+    elif st == "awaiting_clip_pick":
+        hint = "жду клип"
+    elif st == "running":
+        hint = f"шаг {session.step + 1}/{session.steps_total} {step_label}"
+    elif st == "paused":
+        hint = f"пауза: {(session.pause_reason or '')[:40]}"
+    else:
+        hint = st
+    return f"Comfy {api} · {hint}{slug_bit}"
+
+
 def comfy_pipeline_status(config: Config) -> str:
     lines = [
         "=== Comfy MoCap — что происходит ===",

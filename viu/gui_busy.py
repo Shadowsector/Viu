@@ -5,6 +5,15 @@ Comfy крутит GPU — LLM свободна. Блокировать чат/T
 
 from __future__ import annotations
 
+# Только чтение — можно вызывать, пока lab/Comfy крутится в фоне.
+READ_ONLY_WHILE_TOOL_BUSY = frozenset(
+    {
+        "comfy_status",
+        "lab_status",
+        "comfy_lora_list",
+    }
+)
+
 
 def can_accept_chat(*, llm_busy: bool) -> bool:
     """Чат и Telegram-болтовня: только пока модель не думает."""
@@ -20,9 +29,11 @@ def can_accept_scripts(*, tool_busy: bool, llm_busy: bool) -> bool:
     return not llm_busy
 
 
-def can_start_tool(*, tool_busy: bool) -> bool:
-    """Второй параллельный tool (ещё один lab) — нет."""
-    return not tool_busy
+def can_start_tool(*, tool_busy: bool, tool_name: str = "") -> bool:
+    """Второй параллельный tool (ещё один lab) — нет. Статус/diag — да."""
+    if not tool_busy:
+        return True
+    return (tool_name or "").strip().lower() in READ_ONLY_WHILE_TOOL_BUSY
 
 
 def can_run_background_tick(*, tool_busy: bool, llm_busy: bool) -> bool:

@@ -405,20 +405,24 @@ class ViuGUI:
 
         def compute() -> str:
             from .decision_queue import count_open
+            from .integrations.comfy.pipeline_status import comfy_pipeline_status_brief
 
             ollama = "Ollama ✓" if ollama_available(cfg.base_url) else "Ollama ✗"
             unity = Path(cfg.unity_project).name if cfg.unity_project else "Unity —"
             git = "git" if usable_git_root() else "zip"
             qn = count_open(cfg)
             q = f" | вопросов: {qn}" if qn else ""
-            return f"{ollama}{q}  |  {unity}  |  {version_label()} ({git})"
+            comfy = comfy_pipeline_status_brief(cfg)
+            mid = f"  |  {comfy}" if comfy else ""
+            return f"{ollama}{q}{mid}  |  {unity}  |  {version_label()} ({git})"
 
         self._run_bg(compute, self._set_top_status)
         try:
             self._refresh_presence_button()
         except Exception:  # noqa: BLE001
             pass
-        self.root.after(5000, self._refresh_status)
+        interval = 2000 if self._tool_busy else 5000
+        self.root.after(interval, self._refresh_status)
 
     def _set_top_status(self, result) -> None:
         if isinstance(result, Exception):
@@ -1001,7 +1005,16 @@ class ViuGUI:
             if self._llm_busy:
                 status.config(text="Вью думает…")
             elif self._tool_busy:
-                status.config(text=f"{ver} | lab/Comfy… (чат свободен)")
+                try:
+                    from .integrations.comfy.pipeline_status import comfy_pipeline_status_brief
+
+                    brief = comfy_pipeline_status_brief(self.agent.config)
+                except Exception:
+                    brief = ""
+                if brief:
+                    status.config(text=f"{ver} | {brief} · чат свободен")
+                else:
+                    status.config(text=f"{ver} | lab/Comfy… (чат свободен)")
             else:
                 status.config(text=f"{ver} | {self.agent.llm.name}")
         self._busy_label = busy_status_ru(
@@ -1011,10 +1024,11 @@ class ViuGUI:
     def _run_tool_chain(self, action: GuiAction) -> None:
         from .gui_busy import can_start_tool
 
-        if not can_start_tool(tool_busy=self._tool_busy):
+        if not can_start_tool(tool_busy=self._tool_busy, tool_name=action.tool or ""):
             self._append(
                 "система",
-                f"Уже крутится lab/Comfy — «{action.label}» подождёт. Чат свободен.",
+                f"Уже крутится lab/Comfy — «{action.label}» подождёт. "
+                "Статус: comfy_status или lab_status topic=comfy.",
                 tag="sys",
             )
             return
@@ -1105,8 +1119,20 @@ class ViuGUI:
 
     def _refresh_action_visibility(self) -> None:
         ctx = get_pipeline_context(self.agent.config)
+        label = ctx.step_label
+        try:
+            from .integrations.comfy.pipeline_status import comfy_pipeline_status_brief
+            from .lab.comfy_pipeline import COMFY_TOPIC
+            from .lab.session import load_session
+
+            if load_session(self.agent.config, COMFY_TOPIC) is not None:
+                brief = comfy_pipeline_status_brief(self.agent.config)
+                if brief:
+                    label = brief
+        except Exception:
+            pass
         if self._sidebar_stage_label is not None:
-            self._sidebar_stage_label.config(text=ctx.step_label)
+            self._sidebar_stage_label.config(text=label)
         visible_by_group: dict[str, int] = {g: 0 for g in ACTION_GROUPS}
         action_map = {a.action_id: a for a in GUI_ACTIONS}
         for aid, btn in self._action_buttons:
@@ -1661,26 +1687,33 @@ class ViuGUI:
         from .gui_busy import can_start_tool
 
         title = label or name
-        if not can_start_tool(tool_busy=self._tool_busy):
-            msg = (
-                f"Уже крутится lab/Comfy — «{title}» подождёт.\n"
-                "Чат и Telegram свободны; ComfyUI: http://127.0.0.1:8188"
-            )
-            self._append("система", msg, tag="sys")
-            if notify_telegram and self._telegram is not None:
-                self._telegram.notify_chat(msg)
-            return
+        from .gui_busy import READ_ONLY_WHILE_TOOL_BUSY, can_start_tool
+
+        readonly_diag = name in READ_ONLY_WHILE_TOOL_BUSY and self._tool_busy
+        if not readonly_diag:
+            if not can_start_tool(tool_busy=self._tool_busy, tool_name=name):
+                msg = (
+                    f"Уже крутится lab/Comfy — «{title}» подождёт.\n"
+                    "Статус в любой момент: **comfy_status** или **lab_status topic=comfy**.\n"
+                    "ComfyUI: http://127.0.0.1:8188 (если пусто — comfy_ensure)"
+                )
+                self._append("система", msg, tag="sys")
+                if notify_telegram and self._telegram is not None:
+                    self._telegram.notify_chat(msg)
+                return
         if echo_user:
             self._append("ты", f"[{title}]")
-        self._set_tool_busy(True)
+        if not readonly_diag:
+            self._set_tool_busy(True)
         threading.Thread(
             target=self._tool_worker,
-            args=(name, args, title, notify_telegram),
+            args=(name, args, title, notify_telegram, readonly_diag),
             daemon=True,
         ).start()
 
     def _tool_worker(
-        self, name: str, args: dict, title: str, notify_telegram: bool = False
+        self, name: str, args: dict, title: str, notify_telegram: bool = False,
+        readonly_diag: bool = False,
     ) -> None:
         try:
             from .lab.controller import LAB_TOOL_NAMES, lab_controller
@@ -1694,12 +1727,12 @@ class ViuGUI:
             result = tool.run(args, self.agent.ctx)
             prefix = "OK" if result.ok else "ОШИБКА"
             body = f"[{title}] {prefix}\n{result.content}"
-            self._queue.put(("tool", body))
+            self._queue.put(("tool_diag" if readonly_diag else "tool", body))
             if notify_telegram and self._telegram is not None:
                 self._telegram.notify_chat(body[:1500])
         except Exception as exc:  # noqa: BLE001
             body = f"[{title}] ОШИБКА\n{exc}"
-            self._queue.put(("tool", body))
+            self._queue.put(("tool_diag" if readonly_diag else "tool", body))
             if notify_telegram and self._telegram is not None:
                 self._telegram.notify_error(body[:1500])
 
@@ -1833,12 +1866,13 @@ class ViuGUI:
                     self._append("шаг", text, tag="step")
                 elif kind == "thinking":
                     self._append("размышляет", text, tag="step")
-                elif kind == "tool":
+                elif kind in ("tool", "tool_diag"):
                     self._append("Вью", text, tag="tool")
-                    self._set_tool_busy(False)
-                    from .lab.controller import lab_controller
+                    if kind == "tool":
+                        self._set_tool_busy(False)
+                        from .lab.controller import lab_controller
 
-                    lab_controller.clear_operator_priority()
+                        lab_controller.clear_operator_priority()
                     self._refresh_action_visibility()
                     self._maybe_prompt_lab_rating()
                     self._maybe_prompt_comfy_clip_pick()
@@ -2207,17 +2241,50 @@ class ViuGUI:
 
         url = str(getattr(self.agent.config, "comfy_url", None) or "http://127.0.0.1:8188")
         self._append("ты", "[Открыть ComfyUI]")
-        try:
-            webbrowser.open(url)
-            self._append(
-                "Вью",
-                f"Открыла {url}\n"
-                "Обычный MoCap — кнопкой lab; сюда — LoRA, v2v, отладка очереди.\n"
-                "Файлы LoRA клади в ComfyUI/models/loras/ — потом скажи мне подключить.",
-                tag="tool",
-            )
-        except Exception as exc:  # noqa: BLE001
-            self._append("ошибка", f"Не открыла браузер: {exc}\nОткрой сама: {url}", tag="err")
+
+        def work() -> tuple[bool, str]:
+            from .integrations.comfy.client import ComfyClient
+
+            try:
+                ok, msg = ComfyClient(base_url=url, timeout=3.0).ping()
+                return ok, msg
+            except Exception as exc:  # noqa: BLE001
+                return False, str(exc)
+
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                self._append(
+                    "ошибка",
+                    f"Не проверила Comfy: {result}\nОткрой сам: {url}",
+                    tag="err",
+                )
+                return
+            ok, ping = result
+            if not ok:
+                self._append(
+                    "Вью",
+                    f"ComfyUI **не отвечает** на {url}\n{ping}\n\n"
+                    "Браузер откроется, но страница может висеть, пока сервер не поднят.\n"
+                    "Напиши **comfy_ensure** или запусти lab — Вью поднимет Comfy сама.",
+                    tag="sys",
+                )
+            try:
+                webbrowser.open(url)
+            except Exception as exc:  # noqa: BLE001
+                self._append("ошибка", f"Не открыла браузер: {exc}\nОткрой сама: {url}", tag="err")
+                return
+            if ok:
+                self._append(
+                    "Вью",
+                    f"Открыла {url}\n"
+                    "Обычный MoCap — кнопкой lab; сюда — LoRA, v2v, очередь.\n"
+                    "LoRA → ComfyUI/models/loras/ → comfy_lora_list.",
+                    tag="tool",
+                )
+            else:
+                self._append("система", f"Браузер открыт на {url} — жди comfy_ensure.", tag="sys")
+
+        self._run_bg(work, done)
 
     def _open_comfy_clip_review(self) -> None:
         from .integrations.comfy.clip_review_gui import open_comfy_clip_review

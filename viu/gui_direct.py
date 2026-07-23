@@ -45,6 +45,12 @@ _RU_ALIASES: Dict[str, Tuple[str, Dict[str, Any]]] = {
     "master ref сцены": ("interaction_master_draft", {}),
     "master ref": ("interaction_master_draft", {}),
     "совместные анимации": ("interaction_catalog_show", {"mode": "holes"}),
+    "статус comfy": ("comfy_status", {}),
+    "статус comfi": ("comfy_status", {}),
+    "comfy статус": ("comfy_status", {}),
+    "что делает comfy": ("comfy_status", {}),
+    "lab статус": ("lab_status", {"topic": "comfy"}),
+    "статус lab": ("lab_status", {"topic": "comfy"}),
 }
 
 
