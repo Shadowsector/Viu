@@ -218,6 +218,12 @@ def face_refs_status(config: Config, *, client=None) -> str:
         lines.append(f"inswapper: {inswap.name}")
     elif root is not None:
         lines.append("inswapper: нет models/insightface/inswapper_128.onnx")
+    if face_swap_enabled() and root is not None:
+        from .reactor_diag import reactor_nsfw_status_line
+
+        nsfw_line = reactor_nsfw_status_line(config)
+        if nsfw_line:
+            lines.append(nsfw_line)
     if face_swap_enabled() and pick and not reactor_cls:
         if not probe_reactor_deps(config, timeout=20.0)[0]:
             lines.append("⚠ comfy_reactor_fix — доустановить зависимости ReActor")

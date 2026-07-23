@@ -2,10 +2,12 @@
 
 from pathlib import Path
 
+from viu.config import Config
 from viu.integrations.comfy.reactor_diag import (
     _VIU_NSFW_PATCH_MARKER,
     is_reactor_nsfw_patched,
     patch_reactor_nsfw_filter,
+    reactor_nsfw_status_line,
 )
 
 
@@ -35,3 +37,35 @@ def test_patch_idempotent(tmp_path):
     ok2, msg2 = patch_reactor_nsfw_filter(root)
     assert ok2
     assert "уже отключён" in msg2
+
+
+def test_nsfw_status_line_unpatched(tmp_path):
+    cfg = Config(root=tmp_path / "Viu", data_dir=tmp_path / ".viu")
+    root = tmp_path / "ComfyUI"
+    root.mkdir()
+    (root / "main.py").write_text("#\n", encoding="utf-8")
+    (root / "folder_paths.py").write_text("", encoding="utf-8")
+    (root / "custom_nodes" / "ComfyUI-ReActor" / "scripts").mkdir(parents=True)
+    (root / "custom_nodes" / "ComfyUI-ReActor" / "scripts" / "reactor_sfw.py").write_text(
+        "def nsfw_image(): return True\n", encoding="utf-8"
+    )
+    cfg.comfy_root = str(root)
+    line = reactor_nsfw_status_line(cfg)
+    assert "НЕТ" in line
+
+
+def test_nsfw_status_line_ok(tmp_path):
+    cfg = Config(root=tmp_path / "Viu", data_dir=tmp_path / ".viu")
+    root = tmp_path / "ComfyUI"
+    root.mkdir()
+    (root / "main.py").write_text("#\n", encoding="utf-8")
+    (root / "folder_paths.py").write_text("", encoding="utf-8")
+    (root / "custom_nodes" / "ComfyUI-ReActor").mkdir(parents=True)
+    ok, _ = patch_reactor_nsfw_filter(root)
+    assert ok
+    cfg.comfy_root = str(root)
+    from viu.integrations.comfy.reactor_diag import mark_reactor_patch_reloaded
+
+    mark_reactor_patch_reloaded(cfg)
+    line = reactor_nsfw_status_line(cfg)
+    assert "OK" in line

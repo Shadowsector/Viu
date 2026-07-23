@@ -63,9 +63,14 @@ class ComfyStatusTool(Tool):
         ok, msg = _client(ctx).ping()
         lines.append(msg)
         if ok:
-            from ..integrations.comfy.face_refs import face_swap_status_line
+            from ..integrations.comfy.face_refs import face_swap_enabled, face_swap_status_line
+            from ..integrations.comfy.reactor_diag import reactor_nsfw_status_line
 
             lines.append(face_swap_status_line(ctx.config, client=_client(ctx)))
+            if face_swap_enabled():
+                nsfw = reactor_nsfw_status_line(ctx.config)
+                if nsfw:
+                    lines.append(nsfw)
         if not ok:
             lines.append("Запуск: comfy_ensure или lab_start topic=comfy.")
             lines.append("Гайд: docs/COMFY_SETUP.md")

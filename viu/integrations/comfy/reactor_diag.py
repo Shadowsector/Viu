@@ -88,13 +88,15 @@ def is_reactor_nsfw_patched(root: Path) -> bool:
 
 def patch_reactor_nsfw_filter(root: Path, *, force: bool = False) -> Tuple[bool, str]:
     """Заменить reactor_sfw.py на stub — иначе NSFW MoCap → 1 чёрный кадр → ~4 KB mp4."""
+    reactor_dir = root / "custom_nodes" / _REACTOR_DIR
     sfw = _reactor_sfw_path(root)
-    if not sfw.parent.is_dir():
-        return False, "reactor_sfw.py не найден (нет scripts/)"
+    if not reactor_dir.is_dir() and not sfw.is_file():
+        return False, "ComfyUI-ReActor не установлен (comfy_install reactor=1)"
     if not force and is_reactor_nsfw_patched(root):
         return True, "ReActor NSFW filter уже отключён (Viu stub)"
     backup = sfw.with_suffix(".py.viu_orig")
     try:
+        sfw.parent.mkdir(parents=True, exist_ok=True)
         if sfw.is_file() and not backup.is_file():
             backup.write_text(sfw.read_text(encoding="utf-8"), encoding="utf-8")
         sfw.write_text(_REACTOR_SFW_STUB + "\n", encoding="utf-8")
@@ -159,6 +161,25 @@ def ensure_reactor_nsfw_patch(
     if ok and (changed or not was_patched):
         record_reactor_patch_applied(config, root)
     return ok, msg, changed
+
+
+def reactor_nsfw_status_line(config: Config) -> str:
+    """Одна строка для comfy_status: применён ли stub reactor_sfw.py."""
+    root = resolve_comfy_root(config)
+    if root is None:
+        return ""
+    if not (root / "custom_nodes" / _REACTOR_DIR).is_dir():
+        return ""
+    patched = is_reactor_nsfw_patched(root)
+    needs = reactor_patch_needs_restart(config)
+    if patched and not needs:
+        return "ReActor NSFW stub: **OK** (filter выкл)"
+    if patched and needs:
+        return (
+            "ReActor NSFW stub: на диске OK, но **Comfy не перезапускали** "
+            "→ comfy_reactor_fix или comfy_ensure restart=1"
+        )
+    return "ReActor NSFW stub: **НЕТ** → comfy_reactor_fix (иначе чёрный mp4 на NSFW)"
 
 
 def list_reactor_node_classes(client) -> List[str]:
