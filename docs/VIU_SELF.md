@@ -42,6 +42,9 @@
 - Запуск через **Viu.cmd** — bootstrap сам качает zip с GitHub.
 - Кнопка «Обновить Вью» — сравнивает `package_sha` с GitHub; при расхождении zip или hard reset (git «актуально» больше не обманывает).
 - Застряло? Закрой Вью → **`force_update_viu.bat`** или `python -m viu update --apply --force` → снова **Viu.cmd**.
+- **Viu.cmd** тянет GitHub и делает pip (может занять минуты). **relaunch.cmd** — только перезапуск окна, **без апдейта**.
+- Быстрый старт без GitHub: `Viu.cmd quick` или `set VIU_QUICK_START=1`.
+- Зависла «уже запущена»? → **fix_viu_lock.bat**, потом **Viu.cmd**.
 - После обновления GUI **перезапускается** сам (иначе старый код в памяти).
 - Версия на диске: `viu/package_sha.txt` (сравни с GitHub ветки).
 

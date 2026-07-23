@@ -2902,8 +2902,8 @@ def main() -> int:
 
     try:
         _status("creating_gui")
-        app = ViuGUI()
         _mark_started()
+        app = ViuGUI()
         app.run()
         return 0
     except Exception as exc:  # noqa: BLE001
