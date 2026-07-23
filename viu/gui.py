@@ -91,6 +91,13 @@ class ViuGUI:
         except OSError:
             self._story_ingest_msg = ""
 
+        try:
+            from .viu_memory import ensure_viu_memory
+
+            ensure_viu_memory(self.agent.config)
+        except OSError:
+            pass
+
         stamp = time.strftime("%Y%m%d_%H%M%S")
         self.log_path = self.agent.config.data_dir / "logs" / f"chat_{stamp}.txt"
         self.log_path.parent.mkdir(parents=True, exist_ok=True)

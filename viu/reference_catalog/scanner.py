@@ -26,6 +26,12 @@ def _entry_id(path: Path) -> str:
 
 def scan_references_inbox(config: Config) -> tuple[int, int]:
     """Вернуть (новых, всего в каталоге)."""
+    try:
+        from .migrate import migrate_legacy_references
+
+        migrate_legacy_references(config, copy=True)
+    except OSError:
+        pass
     inbox = references_inbox_dir(config)
     store = ReferenceCatalogStore(reference_catalog_path(config)).load()
     known_paths = {e.path.lower() for e in store.all_entries()}

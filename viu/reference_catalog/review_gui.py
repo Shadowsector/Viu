@@ -148,6 +148,13 @@ class ReferenceReviewWindow:
         e.reviewed = bool(e.ru or e.en_pose)
         self.store.upsert(e)
         self.store.save()
+        try:
+            from ..viu_memory import record_reference_inspiration
+
+            if e.reviewed:
+                record_reference_inspiration(self.config, e)
+        except OSError:
+            pass
         self._rescan()
 
     def _vision(self) -> None:
@@ -180,6 +187,13 @@ class ReferenceReviewWindow:
         self.store.upsert(e)
         self.store.save()
         self._on_select()
+        if e.reviewed and (e.ru or e.en_pose):
+            try:
+                from ..viu_memory import record_reference_inspiration
+
+                record_reference_inspiration(self.config, e)
+            except OSError:
+                pass
         messagebox.showinfo("LLaVA", format_reference_report(desc)[:1500])
 
     def _close(self) -> None:
