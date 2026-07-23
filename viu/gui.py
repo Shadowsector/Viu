@@ -105,6 +105,15 @@ class ViuGUI:
         from .llm_roles import needs_viu_wrap_hint
 
         self._append("система", f"{version_label()}.")
+        if os.environ.get("VIU_AUTO_UPDATE", "1") == "1":
+            iv = get_update_interval_min(self.agent.config)
+            if iv > 0:
+                self._append(
+                    "система",
+                    f"Авто-проверка GitHub: каждые {iv} мин "
+                    "(viu/package_sha.txt → скачает и перезапустит при новой версии).",
+                    tag="sys",
+                )
         self._append(
             "система",
             "Модель чата: вторая строка сверху (выпадающий список) или меню «Чат».",
@@ -2761,7 +2770,7 @@ class ViuGUI:
         self._run_bg(work, done)
 
     def _check_updates_on_start(self) -> None:
-        """Тихая проверка при старте (только git, без zip)."""
+        """Тихая проверка при старте: SHA на GitHub vs package_sha → zip/git + рестарт."""
         if os.environ.get("VIU_AUTO_UPDATE", "1") != "1":
             return
         self._append("система", "Проверка обновлений…", tag="sys")
