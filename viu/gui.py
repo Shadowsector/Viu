@@ -183,6 +183,14 @@ class ViuGUI:
         except Exception:  # noqa: BLE001
             pass
         try:
+            from .reference_catalog.migrate import migrate_legacy_reference_files
+
+            n, msg = migrate_legacy_reference_files(self.agent.config)
+            if msg:
+                self._append("система", msg, tag="sys")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
             from .vision import ensure_vision
 
             ensure_vision(self.agent.config)
