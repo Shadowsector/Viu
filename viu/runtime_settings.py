@@ -162,7 +162,7 @@ def sanitize_window_geometry(
     if not raw:
         return default
     m = re.match(
-        r"^(\d+)x(\d+)([+-]\d+)([+-]\d+)$",
+        r"^(\d+)x(\d+)([+-]-?\d+)([+-]-?\d+)$",
         raw,
     )
     if not m:
@@ -170,8 +170,10 @@ def sanitize_window_geometry(
         if re.match(r"^\d+x\d+$", raw):
             return raw
         return default
-    w, h, xs, ys = int(m.group(1)), int(m.group(2)), m.group(3), m.group(4)
-    x, y = int(xs), int(ys)
+    w, h = int(m.group(1)), int(m.group(2))
+    # Tk: «+-1029» = X=-1029 (плюс-разделитель + отрицательное число)
+    x = int(m.group(3).replace("+-", "-"))
+    y = int(m.group(4).replace("+-", "-"))
     if w < min_w // 2 or h < min_h // 2:
         return default
     # Сильно за левый/верхний край виртуального рабочего стола
