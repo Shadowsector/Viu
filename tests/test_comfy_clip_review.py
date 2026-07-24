@@ -37,6 +37,31 @@ def test_mocap_take_count():
     assert len(default_angles()) == 5
 
 
+def test_is_prompt_show_request():
+    from viu.integrations.comfy.prompt_edit import is_prompt_show_request
+
+    assert is_prompt_show_request("Покажи промпт")
+    assert is_prompt_show_request("[Telegram] покажи wan промпт")
+    assert is_prompt_show_request("что за промпт comfy")
+
+
+def test_parse_wan_editor():
+    from viu.integrations.comfy.prompt_edit import _WAN_ACT_MARK, _WAN_NEG_MARK, _WAN_POS_MARK, parse_wan_editor_text
+
+    raw = (
+        f"{_WAN_POS_MARK}\n"
+        "nude, idle, bed\n\n"
+        f"{_WAN_NEG_MARK}\n"
+        "blur\n\n"
+        f"{_WAN_ACT_MARK}\n"
+        "touch self slow\n"
+    )
+    p = parse_wan_editor_text(raw)
+    assert "nude" in p["positive"]
+    assert "blur" in p["negative"]
+    assert "touch" in p["action"]
+
+
 def test_parse_edited_draft():
     from viu.integrations.comfy.prompt_edit import parse_edited_draft
 

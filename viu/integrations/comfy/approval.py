@@ -123,11 +123,13 @@ def parse_approval_reply(text: str, *, current_action: str) -> Tuple[str, str]:
 def try_handle_comfy_telegram(
     config: Config,
     text: str,
+    *,
+    for_telegram: bool = False,
 ) -> Tuple[bool, str]:
     """Если lab/comfy ждёт промпт, выбор клипа или сцены — обработать ответ."""
     from .prompt_edit import try_handle_comfy_prompt_chat
 
-    handled, out = try_handle_comfy_prompt_chat(config, text)
+    handled, out = try_handle_comfy_prompt_chat(config, text, for_telegram=for_telegram)
     if handled:
         return True, out
 

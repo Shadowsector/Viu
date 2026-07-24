@@ -795,6 +795,7 @@ class ComfyPromptTool(Tool):
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         from ..integrations.comfy.prompt_edit import (
             apply_draft_text,
+            format_wan_editor_text,
             prompt_draft_text,
             prompt_help_footer,
         )
@@ -814,7 +815,9 @@ class ComfyPromptTool(Tool):
             ok, msg = apply_draft_text(ctx.config, text, approve=approve_f)
             return ToolResult(ok, msg)
 
-        body = prompt_draft_text(ctx.config)
+        body = format_wan_editor_text(ctx.config)
+        if str(args.get("full") or "").lower() in ("1", "true", "bundle"):
+            body = prompt_draft_text(ctx.config)
         if action_only:
             body = draft_bundle(action_only)
         return ToolResult(True, body + prompt_help_footer())

@@ -168,6 +168,7 @@ class ViuGUI:
         self.root.after(300, self._check_updates_on_start)
         self.root.after(600, self._show_next_step_banner)
         self.root.after(2500, self._maybe_prompt_comfy_clip_pick)
+        self.root.after(4000, self._maybe_prompt_comfy_wan_editor)
         self._refresh_status()
         self._schedule_auto_update()
         self._start_telegram()
@@ -790,7 +791,9 @@ class ViuGUI:
             from .lab.comfy_pipeline import COMFY_TOPIC
             from .lab.session import load_session
 
-            handled, msg = try_handle_comfy_telegram(self.agent.config, text)
+            handled, msg = try_handle_comfy_telegram(
+                self.agent.config, text, for_telegram=notify_telegram
+            )
             if not handled:
                 return False
             if echo_user:
@@ -798,7 +801,8 @@ class ViuGUI:
                 self._record_llm_turn("user", text)
             self._append("Вью", msg, tag="tool")
             if notify_telegram and self._telegram is not None:
-                self._telegram.notify_chat(msg[:1200])
+                limit = 3800 if "--- POSITIVE" in msg else 1200
+                self._telegram.notify_chat(msg[:limit])
             session = load_session(self.agent.config, COMFY_TOPIC)
             if (
                 session
@@ -1622,6 +1626,17 @@ class ViuGUI:
             return
 
         try:
+            from .integrations.comfy.prompt_edit import is_prompt_show_request
+
+            if is_prompt_show_request(text) and self._maybe_handle_comfy_reply(
+                text, echo_user=False, notify_telegram=True
+            ):
+                self._telegram_waiting_reply = False
+                return
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
             if self._maybe_handle_comfy_reply(
                 text, echo_user=False, notify_telegram=True
             ):
@@ -2215,6 +2230,32 @@ class ViuGUI:
             self.root.after(20_000, tick)
 
         self.root.after(8_000, tick)
+
+    def _maybe_prompt_comfy_wan_editor(self) -> None:
+        """Дома: если ждут одобрения промпта — открыть редактор Wan."""
+        from .lab.comfy_pipeline import COMFY_TOPIC
+        from .lab.session import load_session
+        from .presence import is_away
+
+        if is_away(self.agent.config):
+            return
+        if getattr(self, "_comfy_prompt_prompt_open", False):
+            return
+        if self._tool_busy:
+            return
+        session = load_session(self.agent.config, COMFY_TOPIC)
+        if session is None or session.status != "awaiting_prompt":
+            return
+        self._comfy_prompt_prompt_open = True
+        self._append(
+            "Вью",
+            "Жду одобрение — открою «Промпт Wan → Comfy» (или напиши «покажи промпт»).",
+            tag="viu",
+        )
+        try:
+            self._open_comfy_prompt_editor()
+        finally:
+            self.root.after(60_000, lambda: setattr(self, "_comfy_prompt_prompt_open", False))
 
     def _maybe_prompt_comfy_clip_pick(self) -> None:
         from .lab.comfy_pipeline import COMFY_TOPIC
