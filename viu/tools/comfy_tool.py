@@ -154,8 +154,9 @@ class ComfyInstallTool(Tool):
 class ComfyEnsureTool(Tool):
     name = "comfy_ensure"
     description = (
-        "Если Comfy нет — установить в U:\\Viu\\ComfyUI; затем запустить API :8188 "
-        "(лог: .viu/logs/comfy_launch.log)."
+        "Если Comfy нет — установить в U:\\Viu\\ComfyUI; затем запустить API :8188. "
+        "На Windows откроется консоль с прогрессом и браузер (отдельного окна Comfy нет). "
+        "Лог шапки: .viu/logs/comfy_launch.log."
     )
     parameters = {
         "wait": "секунд ожидания API (по умолчанию 180)",
