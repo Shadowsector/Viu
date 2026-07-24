@@ -1482,7 +1482,10 @@ class ViuGUI:
         self._set_busy(True)
 
         def work():
-            return update_viu_full(branch=self.agent.config.update_branch)
+            return update_viu_full(
+                branch=self.agent.config.update_branch,
+                full_sync=True,
+            )
 
         def done(result):
             self._set_busy(False)
