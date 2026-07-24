@@ -161,6 +161,10 @@ class LabStartTool(Tool):
                 "exits_to": _csv("exits_to"),
                 "shot_reason": str(args.get("shot_reason") or "").strip(),
             }
+            if str(args.get("looped") or "").lower() in ("1", "true", "yes"):
+                meta_extra["looped"] = True
+            elif str(args.get("looped") or "").lower() in ("0", "false", "no"):
+                meta_extra["looped"] = False
             if str(args.get("shoot") or "").lower() in ("1", "true", "yes"):
                 meta_extra["shoot_intent"] = True
         elif topic == "interaction":

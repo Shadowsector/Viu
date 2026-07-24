@@ -85,11 +85,14 @@ class MocapShotPlan:
     def summary_ru(self) -> str:
         if self.stop_cycle:
             return f"⏸ Comfy MoCap: {self.reason}"
+        from ..integrations.comfy.angles import mocap_take_count
+
+        n = mocap_take_count()
         kind = "цикл (looped)" if self.looped else "переход / one-shot"
         lines = [
             f"Снимаю «{self.title_ru or self.catalog_slug}»: {self.action}",
             f"Тип: {kind}. Почему: {self.reason}",
-            "Ракурс: только ¾ · 3 разных дубля (seed + timing).",
+            f"Ракурс: только ¾ · {n} разных дублей (seed + timing).",
             f"Граф: {self.enters_from or '—'} → `{self.catalog_slug}` → {self.exits_to or '—'}",
         ]
         if self.alternatives:

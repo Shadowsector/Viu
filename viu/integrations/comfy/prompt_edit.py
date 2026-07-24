@@ -198,6 +198,7 @@ def apply_draft_to_session(
 
     session.meta["draft"] = (text or "").strip() or draft_bundle(action or current_action(config))
     session.meta["prompt_user_edited"] = True
+    session.meta["prompt_edit_slug"] = str(session.meta.get("catalog_slug") or "").strip()
     if rebuild_draft and _WAN_POS_MARK not in (text or ""):
         base_action = action or current_action(config)
         session.meta["draft"] = draft_bundle(base_action)

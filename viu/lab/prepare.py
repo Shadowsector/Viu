@@ -55,20 +55,9 @@ def _prepare_lab_session_inner(
         if topic == "comfy":
             old = load_session(config, topic)
             if old is not None:
-                for key in (
-                    "wan_positive",
-                    "wan_negative",
-                    "draft",
-                    "action",
-                    "approved_action",
-                    "catalog_slug",
-                    "enters_from",
-                    "exits_to",
-                    "shot_reason",
-                    "prompt_user_edited",
-                    "selected_loras",
-                    "lora_last_pick",
-                ):
+                # Только LoRA-пресет между кадрами. Промпт/slug/action — НЕ тащить:
+                # иначе «sit on a bed» залипает на новый touch_self и Wan снимает не то.
+                for key in ("lora_last_pick", "selected_loras"):
                     val = (old.meta or {}).get(key)
                     if val is None or val == "" or val == []:
                         continue
@@ -76,7 +65,7 @@ def _prepare_lab_session_inner(
         session = new_session(topic)
         if preserved:
             session.meta.update(preserved)
-            notes.append("Промпт/кадр с прошлой сессии сохранён.")
+            notes.append("Пресет LoRA с прошлой сессии сохранён.")
         session.viu_build_stamp = current_stamp
         if topic == "comfy":
             session.steps_total = 6

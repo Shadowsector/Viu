@@ -2250,7 +2250,34 @@ class ViuGUI:
         """Вью сама выбирает кадр (каталог/граф). Без диалога idle stand."""
         from .lab.comfy_director import invent_next_shot
         from .lab.comfy_pipeline import COMFY_TOPIC
+        from .lab.session import load_session
         from .presence import is_away
+
+        existing = load_session(self.agent.config, COMFY_TOPIC)
+        # Уже ждём промпт/LoRA по этому кадру — не reset (иначе сотрём правки).
+        if (
+            not auto
+            and existing is not None
+            and existing.status in ("awaiting_prompt", "awaiting_lora_pick")
+        ):
+            slug = str(existing.meta.get("catalog_slug") or "")
+            self._append(
+                "Вью",
+                f"Продолжаю кадр `{slug or '…'}` — одобряю и запускаю Comfy "
+                f"(без смены slug; промпт из редактора сохранится).",
+                tag="viu",
+            )
+            self._run_tool(
+                "lab_start",
+                {
+                    "topic": COMFY_TOPIC,
+                    "run_all": "1",
+                    "shoot": "1",
+                },
+                label="MoCap: продолжить съёмку",
+                echo_user=True,
+            )
+            return
 
         plan = invent_next_shot(self.agent.config)
         if plan.stop_cycle:
@@ -2264,8 +2291,8 @@ class ViuGUI:
             self._append(
                 "Вью",
                 "Сначала подниму ComfyUI (если спит), затем сниму.\n"
-                "Промпт можно править в «Промпт Wan → Comfy» — «Отправить в Comfy».\n"
-                "Кнопка MoCap = одобрение + генерация (не нужен отдельный «ок» в Telegram).",
+                "Промпт: «Промпт Wan → Comfy» или Студия Comfy.\n"
+                "Кнопка MoCap = одобрение + генерация.",
                 tag="viu",
             )
         args = {
@@ -2278,6 +2305,7 @@ class ViuGUI:
             "enters_from": ",".join(plan.enters_from),
             "exits_to": ",".join(plan.exits_to),
             "shot_reason": plan.reason,
+            "looped": "1" if plan.looped else "0",
         }
         self._run_tool(
             "lab_start",
