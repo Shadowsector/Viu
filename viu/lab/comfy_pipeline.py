@@ -203,20 +203,28 @@ def step_request_approval(config: Config, session: LabSession) -> StepResult:
         away = is_away(config)
     except Exception:
         away = False
-    if away:
+    shoot_intent = bool(session.meta.get("shoot_intent"))
+    if shoot_intent or away:
+        session.meta.pop("shoot_intent", None)
         session.meta["approved"] = True
-        session.meta["approved_action"] = action
-        session.meta["auto_approved_away"] = True
+        session.meta["approved_action"] = str(
+            session.meta.get("approved_action")
+            or session.meta.get("action")
+            or action
+        )
+        session.meta["auto_approved_away"] = away
+        if shoot_intent and not away:
+            session.meta["auto_approved_shoot"] = True
         session.meta.pop("lora_pick_done", None)
         session.meta.pop("selected_loras", None)
         session.status = "running"
-        # step не трогаем — run_one_step сделает 3→4 (generate)
         save_session(config, session)
+        who = "Нет дома" if away else "Кнопка MoCap"
         msg = (
-            f"Нет дома — сама одобрила съёмку «{action[:80]}».\n"
-            f"Дальше {mocap_take_count()} дублей в ракурсе ¾ (разный seed/timing) без ожидания Telegram."
+            f"{who} — одобрила съёмку «{action[:80]}».\n"
+            f"Дальше {mocap_take_count()} дублей в ракурсе ¾ (разный seed/timing)."
         )
-        append_journal(config, COMFY_TOPIC, f"### Авто-одобрение (away)\n\n{msg}\n\n{draft}")
+        append_journal(config, COMFY_TOPIC, f"### Авто-одобрение ({who})\n\n{msg}\n\n{draft}")
         return True, msg, None
 
     sent, msg = send_prompt_for_approval(config, action, draft)
@@ -816,10 +824,12 @@ def run_until_done(
 
     while steps_run < max_steps:
         session = load_session(config, COMFY_TOPIC) or session
-        if session.status == "awaiting_prompt" and is_away(config):
+        if session.status == "awaiting_prompt" and (
+            is_away(config) or session.meta.get("shoot_intent")
+        ):
             action = str(session.meta.get("action") or "")
             apply_prompt_decision(config, session, "approve", action)
-            lines.append("Нет дома — авто-одобрила промпт.")
+            lines.append("Одобрила промпт — продолжаю lab.")
             steps_run += 1
             continue
         if session.status == "awaiting_lora_pick" and is_away(config):

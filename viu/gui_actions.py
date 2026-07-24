@@ -218,7 +218,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "1. MoCap: снять клип",
         "ComfyUI — видео",
         tool="__lab_comfy__",
-        hint="Следующий кадр из каталога → 5 дублей ¾ → выбор лучшего mp4.",
+        hint="Поднимает ComfyUI → Wan 5×¾ → выбор mp4. Промпт: «Промпт Wan → Comfy».",
     ),
     GuiAction(
         "interaction_master",

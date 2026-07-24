@@ -197,6 +197,7 @@ def apply_draft_to_session(
         session.meta.pop("wan_negative", None)
 
     session.meta["draft"] = (text or "").strip() or draft_bundle(action or current_action(config))
+    session.meta["prompt_user_edited"] = True
     if rebuild_draft and _WAN_POS_MARK not in (text or ""):
         base_action = action or current_action(config)
         session.meta["draft"] = draft_bundle(base_action)

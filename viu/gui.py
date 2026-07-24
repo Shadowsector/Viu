@@ -2158,15 +2158,16 @@ class ViuGUI:
         if not auto and not is_away(self.agent.config):
             self._append(
                 "Вью",
-                "Дома: сейчас спрошу одобрение промпта (Telegram/чат: «ок» / "
-                "«правки: sit_down» / «стоп»). Без твоего «ок» снимать не начну.\n"
-                "После тройки дублей окно выбора откроется само.",
+                "Сначала подниму ComfyUI (если спит), затем сниму.\n"
+                "Промпт можно править в «Промпт Wan → Comfy» — «Отправить в Comfy».\n"
+                "Кнопка MoCap = одобрение + генерация (не нужен отдельный «ок» в Telegram).",
                 tag="viu",
             )
         args = {
             "topic": COMFY_TOPIC,
             "run_all": "1",
             "reset": "1",
+            "shoot": "1",
             "action": plan.action,
             "catalog_slug": plan.catalog_slug,
             "enters_from": ",".join(plan.enters_from),
@@ -2225,6 +2226,7 @@ class ViuGUI:
 
                 if not is_away(self.agent.config):
                     self._maybe_prompt_comfy_clip_pick()
+                    self._maybe_prompt_comfy_wan_editor()
             except Exception:
                 pass
             self.root.after(20_000, tick)
