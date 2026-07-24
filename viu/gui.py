@@ -2322,38 +2322,61 @@ class ViuGUI:
             not auto
             and existing is not None
             and (
-                existing.status in ("awaiting_prompt", "awaiting_lora_pick")
+                existing.status
+                in (
+                    "awaiting_prompt",
+                    "awaiting_lora_pick",
+                    "awaiting_rating",
+                    "awaiting_clip_pick",
+                )
                 or has_user_prompt
             )
         ):
+            from .lab.comfy_director import infer_slug_from_action
             from .lab.session import save_session
 
-            slug = str(existing.meta.get("catalog_slug") or "")
             action = str(
                 existing.meta.get("approved_action")
                 or existing.meta.get("action")
                 or ""
             )
-            # completed/idle + ручной промпт: иначе prepare сделает new_session и сотрёт Wan.
-            if existing.status in ("completed", "idle"):
+            slug = str(existing.meta.get("catalog_slug") or "")
+            inferred = infer_slug_from_action(action)
+            # Ручной sit-промпт не должен оставаться на slug touch_self.
+            if inferred and inferred != slug:
+                slug = inferred
+                existing.meta["catalog_slug"] = slug
+                existing.meta["prompt_edit_slug"] = slug
+            # Оценка / idle / completed не должны стопорить съёмку.
+            if existing.status in (
+                "completed",
+                "idle",
+                "awaiting_rating",
+                "awaiting_clip_pick",
+            ):
+                if existing.status == "awaiting_rating":
+                    existing.rating_notes = (
+                        existing.rating_notes or "auto-skip: MoCap shoot"
+                    )
                 existing.status = "running"
-                if existing.step >= 6 or existing.step < 0:
-                    existing.step = 0
+                existing.step = 0
             existing.meta["shoot_intent"] = True
             existing.meta["auto_approved_shoot"] = True
             existing.meta["approved"] = True
             if action:
                 existing.meta["approved_action"] = action
+                existing.meta["action"] = action
             existing.meta.pop("lora_pick_done", None)
+            existing.meta.pop("clip_batch_id", None)
+            existing.meta.pop("clip_candidate_ids", None)
             save_session(self.agent.config, existing)
             self._append(
                 "Вью",
                 f"Снимаю сохранённый кадр `{slug or '…'}`"
                 + (f" — {action[:80]}" if action else "")
                 + ".\n"
-                "Без смены slug (промпт из редактора). "
-                "В браузере Comfy граф может быть пустым — очередь идёт через API; "
-                "смотри Студию / `.viu/logs/comfy_launch.log`.",
+                "Очередь через API → Студия Comfy / `.viu/logs/comfy_launch.log` "
+                "(браузерный canvas для съёмки не нужен).",
                 tag="viu",
             )
             start_args = {
@@ -2385,8 +2408,8 @@ class ViuGUI:
             self._append(
                 "Вью",
                 "Сначала подниму ComfyUI (если спит), затем ставлю jobs в очередь API.\n"
-                "Пустой «Unsaved Workflow» в браузере — норма. "
-                "Прогресс: Студия Comfy / лог comfy_launch.",
+                "Управление — Студия Comfy; браузерный canvas для MoCap не нужен.\n"
+                "В логе должно появиться `got prompt` и загрузка GPU.",
                 tag="viu",
             )
         args = {
@@ -2596,9 +2619,11 @@ class ViuGUI:
                 return
             self._append(
                 "Вью",
-                f"ComfyUI отвечает — открыла {url}\n"
-                "Пустой «Unsaved Workflow» — норма: MoCap идёт через API, не через этот граф.\n"
-                "Съёмка — «MoCap: снять клип» / Студия. Прогресс — в `.viu/logs/comfy_launch.log`.",
+                f"ComfyUI отвечает на {url} — сервер жив.\n"
+                "Съёмка не через этот canvas: «MoCap: снять клип» / **Студия Comfy**.\n"
+                "Браузер открыла только как монитор :8188; пустой Unsaved Workflow — ожидаемо.\n"
+                "Прогресс GPU/очереди — Студия и `.viu/logs/comfy_launch.log` "
+                "(должно появиться `got prompt`).",
                 tag="tool",
             )
 

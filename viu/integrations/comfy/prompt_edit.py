@@ -195,6 +195,14 @@ def apply_draft_to_session(
     if action:
         session.meta["action"] = action
         session.meta["approved_action"] = action
+        from ...lab.comfy_director import infer_slug_from_action
+
+        inferred = infer_slug_from_action(action)
+        if inferred:
+            cur = str(session.meta.get("catalog_slug") or "").strip()
+            if not cur or cur != inferred:
+                session.meta["catalog_slug"] = inferred
+                session.meta["prompt_edit_slug"] = inferred
     if positive:
         session.meta["wan_positive"] = positive
     else:
