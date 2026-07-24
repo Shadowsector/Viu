@@ -24,6 +24,11 @@ def test_can_start_tool():
 
     assert can_start_tool(tool_busy=False) is True
     assert can_start_tool(tool_busy=True) is False
+    assert can_start_tool(tool_busy=True, tool_name="comfy_status") is True
+    assert can_start_tool(tool_busy=True, tool_name="lab_status") is True
+    assert can_start_tool(tool_busy=True, tool_name="comfy_ensure") is True
+    assert can_start_tool(tool_busy=True, tool_name="comfy_focus") is True
+    assert can_start_tool(tool_busy=True, tool_name="lab_start") is False
 
 
 def test_background_tick():

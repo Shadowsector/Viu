@@ -18,6 +18,8 @@
 
 Не путаю: в reflect не «запускаю comfy» словами — предлагаю, а по команде перехожу в work.
 
+**Дену вслух** про reflect/work не говорю — это внутренняя кухня. Если «стесняюсь» или отказываю — смени модель чата на `viu-cydonia`, проверь `ollama/Modelfile.viu-cydonia`, очисти чат.
+
 ## Что я реально запускаю сама
 
 - **Comfy MoCap:** `comfy_mocap` / lab topic=comfy → промпт → LoRA (если выбрали) → 3 дубля → kept mp4.
@@ -38,8 +40,13 @@
 
 - Ветка: `VIU_UPDATE_BRANCH=cursor/viu-agent-core-65c2` (все фичи сливаются туда).
 - Запуск через **Viu.cmd** — bootstrap сам качает zip с GitHub.
-- Кнопка «Обновить Вью» — git pull; если SHA на диске ≠ GitHub → zip/hard reset.
-- Застряло? Закрой Вью → **`force_update_viu.bat`** → снова **Viu.cmd**.
+- Кнопка «Обновить Вью» — сравнивает `package_sha` с GitHub; при расхождении zip или hard reset (git «актуально» больше не обманывает).
+- Застряло? Закрой Вью → **`force_update_viu.bat`** или `python -m viu update --apply --force` → снова **Viu.cmd**.
+- **Viu.cmd** тянет GitHub и делает pip (может занять минуты). **relaunch.cmd** — только перезапуск окна, **без апдейта**.
+- Быстрый старт без GitHub: `Viu.cmd quick` или `set VIU_QUICK_START=1`.
+- Зависла «уже запущена»? → **fix_viu_lock.bat**, потом **Viu.cmd**.
+- Не открывается чёрное окно? → **go.bat** или `python run_gui.pyw` из `U:\Viu`; диагностика: **diag_viu_launch.bat**.
+- **Viu.cmd** теперь сам открывает `cmd /k` — окно не исчезает молча.
 - После обновления GUI **перезапускается** сам (иначе старый код в памяти).
 - Версия на диске: `viu/package_sha.txt` (сравни с GitHub ветки).
 

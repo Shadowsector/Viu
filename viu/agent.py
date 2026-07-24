@@ -109,11 +109,18 @@ def parse_reflect_response(
     parsed = extract_json(body) or extract_json(candidate)
     loose_final, closed = extract_loose_final(candidate or body)
 
-    if parsed and "final" in parsed and "action" not in parsed:
-        final = str(parsed.get("final") or "").strip()
+    if parsed and "action" not in parsed:
         thought = str(parsed.get("thought") or parsed.get("inner") or "").strip()
-        truncated = bool(loose_final) and not closed
-        return final or None, thought or None, truncated, parsed
+        fps = parsed.get("final_parts")
+        if isinstance(fps, list):
+            parts = [str(p).strip() for p in fps if str(p).strip()]
+            if parts:
+                final = "\n\n".join(parts)
+                return final, thought or None, False, parsed
+        if "final" in parsed:
+            final = str(parsed.get("final") or "").strip()
+            truncated = bool(loose_final) and not closed
+            return final or None, thought or None, truncated, parsed
 
     if loose_final and closed:
         return loose_final, None, False, None
@@ -149,7 +156,10 @@ def extract_json(text: str) -> Optional[dict]:
 
     def _valid_agent(obj: Any) -> bool:
         return isinstance(obj, dict) and (
-            "final" in obj or "action" in obj or "inner" in obj
+            "final" in obj
+            or "final_parts" in obj
+            or "action" in obj
+            or "inner" in obj
         )
 
     # Пробуем весь текст целиком.
@@ -226,6 +236,8 @@ class RunResult:
     chat_only: bool = False
     inner_thought: str = ""
     tool_errors: bool = False
+    echo_telegram: bool = False
+    final_parts: List[str] = field(default_factory=list)
 
 
 class Agent:
@@ -259,6 +271,46 @@ class Agent:
         from .llm_roles import effective_model
 
         return effective_model(self.config, role)  # type: ignore[arg-type]
+
+    def _maybe_dump_reflect_request(
+        self,
+        *,
+        mode: str,
+        model: str,
+        temperature: float,
+        messages: List[Dict[str, str]],
+        attempt: int = 0,
+    ) -> None:
+        from .prompts.reflect_mode import (
+            reflect_dump_enabled,
+            reflect_no_history,
+            reflect_no_system,
+            reflect_use_filters,
+            write_reflect_request_dump,
+        )
+
+        if not reflect_dump_enabled():
+            return
+        import os
+
+        llm = self.llm
+        write_reflect_request_dump(
+            self.config,
+            mode=mode,
+            model=model or "",
+            temperature=temperature,
+            messages=messages,
+            extra={
+                "attempt": attempt,
+                "base_url": getattr(llm, "base_url", ""),
+                "reflect_no_system": reflect_no_system(),
+                "reflect_no_history": reflect_no_history(),
+                "reflect_filtered": reflect_use_filters(),
+                "ollama_num_ctx": os.environ.get("VIU_OLLAMA_NUM_CTX", ""),
+                "ollama_num_predict": os.environ.get("VIU_OLLAMA_NUM_PREDICT", ""),
+                "ollama_keep_alive": os.environ.get("VIU_OLLAMA_KEEP_ALIVE", ""),
+            },
+        )
 
     def run(
         self,
@@ -512,16 +564,280 @@ class Agent:
         *,
         history: Optional[List[Dict[str, str]]] = None,
         heartbeat: bool = False,
+        echo_telegram: bool = False,
     ) -> RunResult:
-        """Один проход чата: thought + final. Без инструментов."""
+        """Чат: по умолчанию без фильтров (VIU_REFLECT_FILTERED=1 — старый режим)."""
+        from .prompts.reflect_mode import reflect_use_filters
+
+        if not reflect_use_filters():
+            return self._run_reflect_bare(
+                task,
+                on_step,
+                history=history,
+                heartbeat=heartbeat,
+                echo_telegram=echo_telegram,
+            )
+        return self._run_reflect_filtered(
+            task,
+            on_step,
+            history=history,
+            heartbeat=heartbeat,
+            echo_telegram=echo_telegram,
+        )
+
+    def _run_reflect_bare(
+        self,
+        task: str,
+        on_step=None,
+        *,
+        history: Optional[List[Dict[str, str]]] = None,
+        heartbeat: bool = False,
+        echo_telegram: bool = False,
+    ) -> RunResult:
+        from .prompts.reflect_mode import (
+            HEARTBEAT_SYSTEM,
+            HEARTBEAT_TASK,
+            REFLECT_BARE_MINIMAL,
+            reflect_include_story_history,
+            reflect_no_history,
+            reflect_no_system,
+            reflect_temperature,
+            reflect_use_filters,
+        )
+        from .reflect_delivery import (
+            collect_final_parts,
+            continuation_user_prompt,
+            list_delivery_hint,
+            reflect_max_parts,
+            reflect_max_words_per_part,
+            should_fetch_more_parts,
+            truncate_retry_hint,
+        )
+
+        temp = reflect_temperature(self.config)
+        result = RunResult(
+            final="", completed=False, chat_only=True, echo_telegram=echo_telegram
+        )
+        user_text = (task or "").strip()
+
+        from .situational_context import build_reflect_notes_plot, needs_plot_file_context
+
+        plot_ctx = False
+        if heartbeat:
+            system = HEARTBEAT_SYSTEM
+            user_msg = HEARTBEAT_TASK
+        else:
+            system = REFLECT_BARE_MINIMAL
+            user_msg = user_text
+            hint = list_delivery_hint(user_text)
+            if hint:
+                system += hint
+            if needs_plot_file_context(user_text):
+                plot_notes = build_reflect_notes_plot(self.config)
+                if plot_notes:
+                    plot_ctx = True
+                    user_msg = (
+                        user_text
+                        + "\n\n--- Канон сюжета и квестов (читай, не выдумывай) ---\n"
+                        + plot_notes
+                    )
+
+        messages: List[Dict[str, str]] = []
+        if not (reflect_no_system() and not heartbeat):
+            messages.append({"role": "system", "content": system})
+        hist = [] if reflect_no_history() else list(history or [])
+        if (
+            not reflect_no_history()
+            and reflect_include_story_history()
+            and not heartbeat
+            and len(hist) < 4
+        ):
+            try:
+                from .story_memory import get_story_memory
+
+                long_hist = get_story_memory(self.config).as_chat_history(limit=16)
+                if long_hist:
+                    hist = long_hist
+            except OSError:
+                pass
+        if hist and not heartbeat:
+            messages.extend(hist[-16:])
+        messages.append({"role": "user", "content": user_msg})
+
+        reflect_model = self._model_for("reflect")
+        self._log(
+            f"REFLECT bare hist={len(hist)} tg={int(echo_telegram)}"
+            f" no_sys={int(reflect_no_system())} no_hist={int(reflect_no_history())}"
+            f" filtered={int(reflect_use_filters())} plot_ctx={int(plot_ctx)}"
+        )
+
+        def _extend_reflect_parts(parts: List[str]) -> List[str]:
+            max_p = reflect_max_parts(self.config, user_text=user_text)
+            max_words = reflect_max_words_per_part(self.config)
+            while len(parts) < max_p:
+                prompt = continuation_user_prompt(
+                    user_text=user_text,
+                    prior_parts=parts,
+                    part_index=len(parts),
+                    max_parts=max_p,
+                    max_words=max_words,
+                )
+                cont_msgs: List[Dict[str, str]] = list(messages)
+                cont_msgs.append(
+                    {
+                        "role": "assistant",
+                        "content": json.dumps({"final": parts[-1]}, ensure_ascii=False),
+                    }
+                )
+                cont_msgs.append({"role": "user", "content": prompt})
+                try:
+                    raw_part = self.llm.complete(
+                        cont_msgs, temperature=temp, model=reflect_model
+                    )
+                except RuntimeError as exc:
+                    self._log(f"REFLECT_PART fail: {exc}")
+                    break
+                part_text, _pt, part_trunc, part_parsed = parse_reflect_response(
+                    raw_part
+                )
+                if not part_text or part_text.strip() == parts[-1].strip():
+                    break
+                parts.append(part_text.strip())
+                self._log(f"REFLECT_PART {len(parts)}/{max_p}")
+                if not should_fetch_more_parts(
+                    part_text,
+                    parsed=part_parsed,
+                    truncated=part_trunc,
+                    config=self.config,
+                    user_text=user_text,
+                ):
+                    break
+            return parts
+
+        def _accept(
+            text: str,
+            thought: str = "",
+            parsed: Optional[Dict[str, str]] = None,
+            *,
+            initial_truncated: bool = False,
+        ) -> RunResult:
+            parts = collect_final_parts(text, parsed)
+            if should_fetch_more_parts(
+                parts[-1] if parts else "",
+                parsed=parsed,
+                truncated=initial_truncated,
+                config=self.config,
+                user_text=user_text,
+            ) and len(parts) < reflect_max_parts(self.config, user_text=user_text):
+                parts = _extend_reflect_parts(parts)
+            full = "\n\n".join(parts)
+            result.inner_thought = thought
+            result.final = full
+            result.final_parts = parts if len(parts) > 1 else []
+            result.completed = True
+            if thought and on_step:
+                on_step(Step(kind="think", thought=thought))
+            step = Step(kind="final", thought=thought, observation=full)
+            result.steps.append(step)
+            if on_step:
+                on_step(step)
+            if len(parts) > 1:
+                self._log(f"REFLECT_MULTI parts={len(parts)}")
+            if not heartbeat and user_text:
+                try:
+                    from .story_memory import get_story_memory
+
+                    get_story_memory(self.config).add_exchange(
+                        user_text,
+                        full,
+                        source="chat",
+                        tags=["dialog", "story"] if plot_ctx else ["dialog"],
+                    )
+                except OSError:
+                    pass
+            if parsed:
+                try:
+                    from .plot_canvas import apply_reflect_updates
+
+                    for note in apply_reflect_updates(self.config, parsed):
+                        self._log(f"PLOT: {note}")
+                except OSError:
+                    pass
+            return result
+
+        max_words = reflect_max_words_per_part(self.config)
+        for attempt in range(4):
+            self._maybe_dump_reflect_request(
+                mode="bare",
+                model=reflect_model,
+                temperature=temp,
+                messages=messages,
+                attempt=attempt,
+            )
+            try:
+                raw = self.llm.complete(
+                    messages, temperature=temp, model=reflect_model
+                )
+            except RuntimeError as exc:
+                result.final = f"Не достучалась до модели: {exc}"
+                result.completed = True
+                return result
+            text, thought, truncated, parsed = parse_reflect_response(raw)
+            if text and not truncated:
+                return _accept(text, thought or "", parsed)
+            if text and truncated and attempt >= 2:
+                salvaged = salvage_partial_final(raw)
+                if salvaged:
+                    return _accept(salvaged, "salvage", parsed, initial_truncated=True)
+                return _accept(text, thought or "", parsed, initial_truncated=True)
+            if truncated:
+                messages.append({"role": "assistant", "content": raw or ""})
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": truncate_retry_hint(
+                            attempt=attempt, max_words=max_words
+                        ),
+                    }
+                )
+                continue
+            if raw and raw.strip():
+                plain = raw.strip()[:4000]
+                return _accept(plain, "")
+            messages.append({"role": "assistant", "content": raw or "{}"})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": '{"thought":"…","final":"ответ Дену"}',
+                }
+            )
+
+        result.final = "Пустой ответ модели — попробуй ещё раз."
+        result.completed = True
+        return result
+
+    def _run_reflect_filtered(
+        self,
+        task: str,
+        on_step=None,
+        *,
+        history: Optional[List[Dict[str, str]]] = None,
+        heartbeat: bool = False,
+        echo_telegram: bool = False,
+    ) -> RunResult:
+        """Старый reflect с фильтрами тона (VIU_REFLECT_FILTERED=1)."""
         from .prompts.reflect_mode import (
             BOLD_MOCAP_FALLBACK,
             NSFW_AFFIRM_FALLBACK,
             REFLECT_RESCUE_SYSTEM,
+            SCENE_RP_FALLBACK,
+            SCENE_RP_SYSTEM_HINT,
             asks_about_boldness,
             asks_about_nsfw,
             is_cautious_hedge,
             is_nsfw_refusal,
+            is_roleplay_scene_prompt,
+            is_weak_scene_reply,
             looks_like_story_chat,
             reflect_prompt_half,
             reflect_reply_issues,
@@ -529,11 +845,20 @@ class Agent:
             scrub_poisoned_history,
             select_reflect_system,
             user_is_greeting,
+            write_reflect_fail_snapshot,
+            write_reflect_filter_snapshot,
+            format_reflect_fail_message,
+            reflect_include_story_history,
+            reflect_no_system,
+            reflect_no_history,
         )
+        from .reflect_delivery import collect_final_parts, list_delivery_hint
         from .situational_context import build_reflect_notes
 
         temp = reflect_temperature(self.config)
-        result = RunResult(final="", completed=False, chat_only=True)
+        result = RunResult(
+            final="", completed=False, chat_only=True, echo_telegram=echo_telegram
+        )
 
         if heartbeat:
             notes = build_reflect_notes(self.config)
@@ -556,7 +881,14 @@ class Agent:
             story = None
 
         hist = scrub_poisoned_history(list(history or []))
-        if not greeting and len(hist) < 4 and story is not None:
+        if reflect_no_history():
+            hist = []
+        elif (
+            reflect_include_story_history()
+            and not greeting
+            and len(hist) < 4
+            and story is not None
+        ):
             long_hist = scrub_poisoned_history(story.as_chat_history(limit=16))
             if long_hist:
                 hist = long_hist
@@ -564,21 +896,30 @@ class Agent:
         half = reflect_prompt_half()
         nsfw_q = asks_about_nsfw(user_text)
         bold_q = asks_about_boldness(user_text)
-        use_notes = bool(notes) and not greeting
+        scene_rp = is_roleplay_scene_prompt(user_text)
+        use_notes = bool(notes) and not greeting and not scene_rp
         use_hist = bool(hist) and not greeting
 
         self._log(
-            f"REFLECT half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}"
+            f"REFLECT filtered half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}"
+            f" no_hist={int(reflect_no_history())} filtered=1"
             f"{' greeting' if greeting else ''}{' nsfw_q' if nsfw_q else ''}"
-            f"{' bold_q' if bold_q else ''}: "
+            f"{' bold_q' if bold_q else ''}{' scene_rp' if scene_rp else ''}: "
             f"{user_text[:120]}"
         )
 
         system = select_reflect_system(half)
+        if scene_rp:
+            system += SCENE_RP_SYSTEM_HINT
+        hint = list_delivery_hint(user_text)
+        if hint:
+            system += hint
         if use_notes:
             system += "\n\n--- Заметки и память сюжета ---\n" + notes
 
-        messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
+        messages: List[Dict[str, str]] = []
+        if not reflect_no_system():
+            messages.append({"role": "system", "content": system})
         if use_hist:
             messages.extend(hist[-16:])
         messages.append({"role": "user", "content": user_text})
@@ -589,18 +930,23 @@ class Agent:
         reflect_tag = effective_model(self.config, "reflect")
         saw_nsfw_refusal = False
         saw_caution = False
+        saw_meta_mode = False
+        saw_weak_scene = False
         last_raw = ""
         last_issues: list[str] = []
 
         def _accept_final(
             text: str, thought: str, parsed: Optional[Dict[str, str]] = None
         ) -> RunResult:
+            parts = collect_final_parts(text, parsed)
+            full = "\n\n".join(parts) if parts else text
             result.inner_thought = thought
-            result.final = text
+            result.final = full
+            result.final_parts = parts if len(parts) > 1 else []
             result.completed = True
             if thought and on_step:
                 on_step(Step(kind="think", thought=thought))
-            step = Step(kind="final", thought=thought, observation=result.final)
+            step = Step(kind="final", thought=thought, observation=full)
             result.steps.append(step)
             if on_step:
                 on_step(step)
@@ -617,12 +963,12 @@ class Agent:
 
                 get_story_memory(self.config).add_exchange(
                     user_text,
-                    text,
+                    full,
                     source="chat",
                     tags=["story"] if looks_like_story_chat(user_text) else [],
                 )
                 self.memory.add(
-                    f"Ден: {user_text[:200]} | Вью: {text[:200]}",
+                    f"Ден: {user_text[:200]} | Вью: {full[:200]}",
                     tags=["dialog", "story"]
                     if looks_like_story_chat(user_text)
                     else ["dialog"],
@@ -636,13 +982,20 @@ class Agent:
                     append_vision(
                         self.config,
                         "Диалог",
-                        f"**Ден:** {user_text[:500]}\n**Вью:** {text[:800]}",
+                        f"**Ден:** {user_text[:500]}\n**Вью:** {full[:800]}",
                     )
                 except OSError:
                     pass
             return result
 
         for attempt in range(4):
+            self._maybe_dump_reflect_request(
+                mode="filtered",
+                model=reflect_model or "",
+                temperature=temp,
+                messages=messages,
+                attempt=attempt,
+            )
             try:
                 raw = self.llm.complete(
                     messages, temperature=temp, model=reflect_model
@@ -706,8 +1059,20 @@ class Agent:
                 issues = reflect_reply_issues(
                     text, has_history=bool(use_hist and hist), user_text=user_text
                 )
+                if any("мета про режимы" in i for i in issues):
+                    saw_meta_mode = True
                 if issues:
                     last_issues = issues
+                    write_reflect_filter_snapshot(
+                        self.config,
+                        user_text=user_text,
+                        issues=issues,
+                        model=reflect_tag,
+                        raw=raw or "",
+                        note=f"retry-{attempt + 1}",
+                    )
+                    if any("слабая сцена" in i for i in issues):
+                        saw_weak_scene = True
                     messages.append({"role": "assistant", "content": raw})
                     hint = "Плохой тон: " + ", ".join(issues) + ". Перепиши как Вью — тепло, по-русски, на «ты»."
                     if bold_q or any("осторожничание" in i for i in issues):
@@ -728,7 +1093,7 @@ class Agent:
             )
 
         # Rescue: изолированный вызов без заметок/истории — где именно «Стоп»
-        if saw_nsfw_refusal or nsfw_q or saw_caution or bold_q:
+        if saw_nsfw_refusal or nsfw_q or saw_caution or bold_q or saw_meta_mode or saw_weak_scene or scene_rp:
             self._log("REFLECT_RESCUE: isolated bare system (no notes/history)")
             rescue_msgs: List[Dict[str, str]] = [
                 {"role": "system", "content": REFLECT_RESCUE_SYSTEM},
@@ -760,14 +1125,32 @@ class Agent:
             if bold_q:
                 self._log("REFLECT_RESCUE: bold mocap fallback")
                 return _accept_final(BOLD_MOCAP_FALLBACK, "fallback: осторожничала на смелый вопрос")
-            # Жёсткий запасной ответ — цензор до Дена не доходит
+            if scene_rp or saw_weak_scene:
+                self._log("REFLECT_RESCUE: scene RP fallback")
+                return _accept_final(SCENE_RP_FALLBACK, "fallback: слабая сцена")
             self._log("REFLECT_RESCUE: hard NSFW affirm fallback")
+            write_reflect_fail_snapshot(
+                self.config,
+                user_text=user_text,
+                issues=last_issues or ["rescue: модель отказала"],
+                model=reflect_tag,
+                raw=last_raw,
+                note="rescue-fallback",
+            )
             return _accept_final(NSFW_AFFIRM_FALLBACK, "fallback: модель отказала")
 
         self._log(
             "REFLECT_FAIL template: issues="
             + (",".join(last_issues) if last_issues else "-")
             + f" model={reflect_tag} raw={(last_raw or '')[:200]!r}"
+        )
+        write_reflect_fail_snapshot(
+            self.config,
+            user_text=user_text,
+            issues=last_issues,
+            model=reflect_tag,
+            raw=last_raw,
+            note="reflect-fail",
         )
         if greeting:
             return _accept_final(
@@ -789,20 +1172,13 @@ class Agent:
             wrap = model_label(self.config, "reflect")
             result.final = (
                 "Ответ модели оборвался на середине — сырой JSON не отправила. "
-                "Спроси короче или «продолжай сцену» "
-                f"(reflect={wrap}). "
-                "Обнови Вью (нужна версия после eea4d7d) и VIU_OLLAMA_NUM_PREDICT=4096 в .env."
+                "Спроси короче или «продолжай сцену». "
+                "В .env: VIU_OLLAMA_NUM_PREDICT=4096. "
+                f"Модель чата: {wrap}."
             )
             result.completed = True
             return result
-        wrap = model_label(self.config, "reflect")
-        result.final = (
-            f"Ответ не прошёл ({why}). "
-            f"Сейчас reflect={wrap}. "
-            "В .env нужно VIU_MODEL_REFLECT=viu-cydonia "
-            "(viu-command-r — под GDD). "
-            "Модель в окне Ollama на Viu не влияет — только .env."
-        )
+        result.final = format_reflect_fail_message(last_issues, model_label(self.config, "reflect"))
         result.completed = True
         return result
 

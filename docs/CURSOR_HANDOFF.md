@@ -2279,3 +2279,31 @@ push ok
 
 web_search (`Unity 6 cursor_handoff_with_logs [OK] Handoff + push OK. push ok Локально: /workspace/docs/CURSOR_HANDOFF.md`):
 Ничего не найдено по запросу.
+
+
+---
+
+## 2026-07-23 16:56 — ESCALATE `list_dir` (Viu)
+
+ЭСКАЛАЦИЯ: инструмент `list_dir` не справился.
+
+Ошибка / лог:
+[OK] .viu/
+Inbox/
+
+web_search (`Unity 6 list_dir [OK] .viu/ Inbox/`):
+Ничего не найдено по запросу.
+
+
+---
+
+## 2026-07-23 16:57 — ESCALATE `list_dir` (Viu)
+
+ЭСКАЛАЦИЯ: инструмент `list_dir` не справился.
+
+Ошибка / лог:
+[OK] .viu/
+Inbox/
+
+web_search (`Unity 6 list_dir [OK] .viu/ Inbox/`):
+Ничего не найдено по запросу.

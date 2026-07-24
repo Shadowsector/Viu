@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from ..integrations.comfy import (
     ComfyClient,
@@ -62,15 +62,23 @@ class ComfyStatusTool(Tool):
 
         ok, msg = _client(ctx).ping()
         lines.append(msg)
+        if ok:
+            from ..integrations.comfy.face_refs import face_swap_status_line
+
+            lines.append(face_swap_status_line(ctx.config, client=_client(ctx)))
         if not ok:
             lines.append("Запуск: comfy_ensure или lab_start topic=comfy.")
             lines.append("Гайд: docs/COMFY_SETUP.md")
         try:
-            from ..integrations.comfy.lora import ensure_registry, list_registry_status
+            from ..integrations.comfy.lora import ensure_registry, list_registry_status_brief
+            from ..lab.comfy_pipeline import COMFY_TOPIC
+            from ..lab.session import load_session
 
             ensure_registry(ctx.config)
+            session = load_session(ctx.config, COMFY_TOPIC)
+            slug = str(session.meta.get("catalog_slug") or "") if session else ""
             lines.append("")
-            lines.append(list_registry_status(ctx.config))
+            lines.append(list_registry_status_brief(ctx.config, catalog_slug=slug))
         except Exception as exc:
             lines.append(f"(lora registry: {exc})")
         try:
@@ -84,7 +92,7 @@ class ComfyStatusTool(Tool):
             from ..integrations.comfy.face_refs import face_refs_status
 
             lines.append("")
-            lines.append(face_refs_status(ctx.config))
+            lines.append(face_refs_status(ctx.config, client=_client(ctx)))
         except Exception as exc:
             lines.append(f"(face refs: {exc})")
         return ToolResult(True, "\n".join(lines))
@@ -129,6 +137,17 @@ class ComfyInstallTool(Tool):
         body = msg
         if notes:
             body = "Прогресс:\n" + "\n".join(f"  • {n}" for n in notes[-20:]) + "\n\n" + msg
+        if with_reactor and ok:
+            from ..integrations.comfy.process import ensure_comfy_running
+
+            ok_r, r_msg = ensure_comfy_running(
+                ctx.config,
+                wait_seconds=120.0,
+                auto_install=False,
+                reload_if_reactor_missing=True,
+            )
+            body += f"\n\n{r_msg}"
+            ok = ok and ok_r
         return ToolResult(ok, body)
 
 
@@ -138,16 +157,193 @@ class ComfyEnsureTool(Tool):
         "Если Comfy нет — установить в U:\\Viu\\ComfyUI; затем запустить API :8188 "
         "(лог: .viu/logs/comfy_launch.log)."
     )
-    parameters = {"wait": "секунд ожидания API (по умолчанию 180)"}
+    parameters = {
+        "wait": "секунд ожидания API (по умолчанию 180)",
+        "restart": "1 — перезапустить Comfy (подхватить ReActor после install)",
+    }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         try:
             wait = float(args.get("wait") or 180)
         except (TypeError, ValueError):
             wait = 180.0
+        force_restart = str(args.get("restart") or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
         ensure_workflow_templates(ctx.config, overwrite_stubs=True)
-        ok, msg = ensure_comfy_running(ctx.config, wait_seconds=wait, auto_install=True)
+        ok, msg = ensure_comfy_running(
+            ctx.config,
+            wait_seconds=wait,
+            auto_install=True,
+            force_restart=force_restart,
+            reload_if_reactor_missing=True,
+        )
+        if ok and "face_swap:" not in msg:
+            client = _client(ctx)
+            from ..integrations.comfy.face_refs import face_refs_status
+
+            msg = f"{msg}\n\n{face_refs_status(ctx.config, client=client)}"
         return ToolResult(ok, msg)
+
+
+class ComfyReactorFixTool(Tool):
+    name = "comfy_reactor_fix"
+    description = (
+        "Починить ReActor: pip зависимости, import-test, перезапуск Comfy. "
+        "Если face_swap нет после comfy_ensure."
+    )
+    parameters = {
+        "skip_restart": "1 — только pip/deps, без рестарта Comfy",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.face_refs import face_swap_status_line, reactor_face_swap_class
+        from ..integrations.comfy.process import ensure_comfy_running
+        from ..integrations.comfy.reactor_diag import (
+            reactor_diagnose,
+            reactor_errors_in_launch_log,
+            repair_reactor_dependencies,
+        )
+
+        skip_restart = str(args.get("skip_restart") or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        lines: List[str] = ["=== comfy_reactor_fix ==="]
+        notes: List[str] = []
+
+        def progress(msg: str) -> None:
+            notes.append(msg)
+            print(f"[comfy_reactor_fix] {msg}", flush=True)
+
+        log_bit = reactor_errors_in_launch_log(ctx.config)
+        if log_bit:
+            lines.append("Лог Comfy (ReActor):")
+            lines.extend(f"  {ln}" for ln in log_bit.splitlines()[-6:])
+
+        try:
+            lines.append("Шаг 1/3: зависимости venv…")
+            ok_fix, fix_msg = repair_reactor_dependencies(ctx.config, progress=progress)
+            lines.append(fix_msg)
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"Шаг 1: сбой — {exc}")
+            ok_fix = False
+
+        if notes:
+            lines.append("Прогресс: " + "; ".join(notes[-8:]))
+
+        client = _client(ctx)
+        if skip_restart:
+            lines.append(reactor_diagnose(ctx.config, client=client))
+            lines.append(face_swap_status_line(ctx.config, client=client))
+            return ToolResult(ok_fix, "\n\n".join(lines))
+
+        try:
+            lines.append("Шаг 2/3: перезапуск Comfy…")
+            ok_run, run_msg = ensure_comfy_running(
+                ctx.config,
+                wait_seconds=90.0,
+                auto_install=False,
+                force_restart=True,
+                reload_if_reactor_missing=True,
+            )
+            lines.append(run_msg)
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"Шаг 2: сбой — {exc}")
+            ok_run = False
+
+        try:
+            lines.append("Шаг 3/3: проверка API…")
+            client = _client(ctx)
+            cls = reactor_face_swap_class(client)
+            if cls:
+                lines.append(f"✓ ReActor в API: **{cls}**")
+            else:
+                lines.append(reactor_diagnose(ctx.config, client=client))
+            lines.append(face_swap_status_line(ctx.config, client=client))
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"Шаг 3: {exc}")
+
+        ok = bool(reactor_face_swap_class(_client(ctx)))
+        return ToolResult(ok, "\n\n".join(lines))
+
+
+class ComfyFocusTool(Tool):
+    name = "comfy_focus"
+    description = (
+        "Фокус Comfy MoCap: nsfw (touch_self, shower, bath) или barn (цикл сарая). "
+        "Бытовые sit/walk — Mixamo; Comfy — NSFW."
+    )
+    parameters = {
+        "focus": "nsfw | barn | all — что снимать дальше",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.focus import set_comfy_focus
+
+        mode = str(args.get("focus") or args.get("mode") or "").strip()
+        if not mode:
+            from ..integrations.comfy.focus import focus_mode_label, resolve_focus_slugs
+
+            slugs = resolve_focus_slugs(ctx.config)
+            return ToolResult(
+                True,
+                f"Сейчас фокус: **{focus_mode_label(ctx.config)}**\n"
+                f"slugs: {', '.join(slugs) or '(все)'}\n"
+                "Сменить: comfy_focus focus=nsfw | focus=barn",
+            )
+        ok, msg = set_comfy_focus(ctx.config, mode)
+        return ToolResult(ok, msg)
+
+
+class ComfyQueueClearTool(Tool):
+    name = "comfy_queue_clear"
+    description = (
+        "Сбросить очередь ComfyUI: interrupt текущий job + очистить pending. "
+        "Полезно, если в очереди старые lie_down, а lab уже на touch_self."
+    )
+    parameters = {
+        "free": "1 — освободить VRAM после сброса",
+        "force": "1 — очистить даже если slug совпадает",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.queue_manage import clear_comfy_queue, prepare_queue_for_slug
+        from ..lab.comfy_pipeline import COMFY_TOPIC
+        from ..lab.session import load_session
+
+        client = _client(ctx)
+        ok, ping = client.ping()
+        if not ok:
+            return ToolResult(False, ping + "\nСначала comfy_ensure.")
+
+        free = str(args.get("free") or "").strip().lower() in ("1", "true", "yes", "on")
+        force = str(args.get("force") or "").strip().lower() in ("1", "true", "yes", "on")
+        session = load_session(ctx.config, COMFY_TOPIC)
+        slug = ""
+        if session is not None:
+            slug = str(session.meta.get("catalog_slug") or "").strip()
+
+        if force or not slug:
+            msg = clear_comfy_queue(client, interrupt_running=True, free_memory=free)
+            return ToolResult(True, msg)
+
+        msg = prepare_queue_for_slug(client, slug, force=False)
+        if msg:
+            if free:
+                msg += "\n" + clear_comfy_queue(
+                    client, interrupt_running=False, free_memory=True
+                )
+            return ToolResult(True, msg)
+
+        return ToolResult(
+            True,
+            f"Очередь совпадает с **{slug}** — сброс не нужен. force=1 чтобы очистить принудительно.",
+        )
 
 
 class ComfyRunTool(Tool):
@@ -464,6 +660,36 @@ class ComfyLoraFetchTool(Tool):
         return ToolResult(ok, msg)
 
 
+class ComfyVisionReviewTool(Tool):
+    name = "comfy_vision_review"
+    description = (
+        "Llava/qwen2-vl: оценить MoCap mp4 (кадр из видео → вердикт). "
+        "path= один файл или paths= через запятую. auto=1 — после triple в lab."
+    )
+    parameters = {
+        "path": "один mp4",
+        "paths": "несколько mp4 через запятую",
+        "action": "что должно быть в кадре (для промпта)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.vision_review import review_paths, vision_review_enabled
+
+        if not vision_review_enabled():
+            return ToolResult(
+                False,
+                "VIU_COMFY_VISION=0 — включи в .env или убери переменную.",
+            )
+        raw_paths: List[str] = []
+        if args.get("path"):
+            raw_paths.append(str(args["path"]))
+        if args.get("paths"):
+            raw_paths.extend(str(args["paths"]).split(","))
+        action = str(args.get("action") or "").strip()
+        ok, msg, _ = review_paths(ctx.config, raw_paths, action=action)
+        return ToolResult(ok, msg)
+
+
 class ComfyClipPickTool(Tool):
     name = "comfy_clip_pick"
     description = (
@@ -485,7 +711,7 @@ class ComfyClipPickTool(Tool):
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
-        from ..integrations.comfy.clip_review import keep_best_by_angle, reject_batch
+        from ..integrations.comfy.clip_review import keep_best_take, reject_batch
         from ..lab.comfy_pipeline import COMFY_TOPIC, apply_clip_pick_decision
         from ..lab.session import load_session
 
@@ -539,7 +765,7 @@ class ComfyClipPickTool(Tool):
             )
             return ToolResult(True, msg)
 
-        ok, msg, _ = keep_best_by_angle(
+        ok, msg, _ = keep_best_take(
             ctx.config,
             batch,
             angle,
@@ -550,3 +776,48 @@ class ComfyClipPickTool(Tool):
             exits_to=_csv("exits_to"),
         )
         return ToolResult(ok, msg)
+
+
+class ComfyPromptTool(Tool):
+    name = "comfy_prompt"
+    description = (
+        "Показать или применить черновик Wan MoCap. "
+        "show=1 — текст; apply=1 + text= — сохранить; approve=1 — одобрить съёмку."
+    )
+    parameters = {
+        "show": "1 — показать (по умолчанию)",
+        "apply": "1 — записать text в lab/comfy",
+        "approve": "1 — после apply одобрить (если ждёт промпт)",
+        "text": "черновик или строка действия",
+        "action": "короткая правка только EN-действия",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.prompt_edit import (
+            apply_draft_text,
+            format_wan_editor_text,
+            prompt_draft_text,
+            prompt_help_footer,
+        )
+        from ..integrations.comfy.prompts import draft_bundle
+
+        apply_f = str(args.get("apply") or "").lower() in ("1", "true", "yes")
+        approve_f = str(args.get("approve") or "").lower() in ("1", "true", "yes")
+        text = str(args.get("text") or "").strip()
+        action_only = str(args.get("action") or "").strip()
+
+        if action_only and not text:
+            text = draft_bundle(action_only)
+
+        if apply_f or approve_f:
+            if not text:
+                return ToolResult(False, "Нужен text= или action=.")
+            ok, msg = apply_draft_text(ctx.config, text, approve=approve_f)
+            return ToolResult(ok, msg)
+
+        body = format_wan_editor_text(ctx.config)
+        if str(args.get("full") or "").lower() in ("1", "true", "bundle"):
+            body = prompt_draft_text(ctx.config)
+        if action_only:
+            body = draft_bundle(action_only)
+        return ToolResult(True, body + prompt_help_footer())

@@ -96,6 +96,32 @@ class ComfyClient:
         pending = q.get("queue_pending") or []
         return f"running={len(running)} pending={len(pending)}"
 
+    def interrupt(self, *, prompt_id: str | None = None) -> None:
+        """Остановить текущий prompt (POST /interrupt)."""
+        payload: dict = {}
+        if prompt_id:
+            payload["prompt_id"] = prompt_id
+        self._post("/interrupt", payload)
+
+    def clear_queue(self) -> None:
+        """Очистить pending-очередь (POST /queue clear=true)."""
+        self._post("/queue", {"clear": True})
+
+    def free_memory(
+        self,
+        *,
+        unload_models: bool = True,
+        free_memory: bool = True,
+    ) -> None:
+        """Освободить VRAM на следующем idle-тике executor (POST /free)."""
+        self._post(
+            "/free",
+            {
+                "unload_models": bool(unload_models),
+                "free_memory": bool(free_memory),
+            },
+        )
+
     def wait_history(
         self,
         prompt_id: str,
@@ -107,6 +133,18 @@ class ComfyClient:
         while time.time() < deadline:
             entry = self.get_history(prompt_id)
             if entry and entry.get("outputs") is not None:
+                status = entry.get("status") if isinstance(entry.get("status"), dict) else {}
+                if status.get("status_str") == "error":
+                    msgs = status.get("messages") or []
+                    tail = ""
+                    for item in msgs[-3:]:
+                        if isinstance(item, dict):
+                            tail += str(item.get("message") or item)[:400] + "\n"
+                        else:
+                            tail += str(item)[:400] + "\n"
+                    raise ComfyError(
+                        f"Comfy job error prompt_id={prompt_id}:\n{tail.strip() or status}"
+                    )
                 return entry
             time.sleep(poll)
         qs = self.queue_summary()
@@ -147,6 +185,21 @@ class ComfyClient:
         if not isinstance(info, dict):
             return False
         return class_type in info
+
+    def find_node_class(self, *needles: str) -> str | None:
+        """Найти class_type по подстрокам (регистронезависимо)."""
+        try:
+            info = self._get("/object_info")
+        except ComfyError:
+            return None
+        if not isinstance(info, dict):
+            return None
+        lows = [n.lower() for n in needles if n]
+        for name in info:
+            low = name.lower()
+            if all(n in low for n in lows):
+                return name
+        return None
 
     def collect_output_files(self, history_entry: dict) -> List[Dict[str, str]]:
         """Список файлов из outputs (images / gifs / videos)."""

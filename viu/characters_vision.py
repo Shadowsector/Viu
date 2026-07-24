@@ -118,8 +118,25 @@ def ensure_characters_vision(config: Config) -> Path:
     """Создать каркас, если файла ещё нет. Существующий не перезаписывать."""
     config.ensure_dirs()
     path = characters_vision_path(config)
+    created = False
     if not path.is_file():
         path.write_text(DEFAULT_CHARACTERS_VISION, encoding="utf-8")
+        created = True
+    try:
+        from .lore.shanya import (
+            SHANYA_CHARACTERS_VISION_BLOCK,
+            replace_shanya_section,
+            shanya_section_needs_seed,
+        )
+
+        text = path.read_text(encoding="utf-8")
+        if created or shanya_section_needs_seed(text):
+            path.write_text(
+                replace_shanya_section(text, SHANYA_CHARACTERS_VISION_BLOCK),
+                encoding="utf-8",
+            )
+    except OSError:
+        pass
     return path
 
 

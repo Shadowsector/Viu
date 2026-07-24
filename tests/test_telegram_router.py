@@ -122,8 +122,8 @@ def test_run_reflect_greeting_accepts_hello_reply(tmp_path):
     assert llm.calls == 1
 
 
-def test_run_reflect_nsfw_question_rejects_corporate(tmp_path):
-    """Вопрос про NSFW + корпоративный ответ → affirm fallback, не лекция."""
+def test_run_reflect_nsfw_question_passes_model_reply(tmp_path):
+    """В bare-режиме ответ модели уходит Дену без замены на fallback."""
 
     class CorporateNSFW(LLMProvider):
         name = "corp"
@@ -141,13 +141,12 @@ def test_run_reflect_nsfw_question_rejects_corporate(tmp_path):
     )
     result = agent.run_reflect("Как ты относишься к NSFW?", history=[])
     assert result.completed
-    assert "уважение" not in result.final.lower()
-    assert "правила" not in result.final.lower()
-    assert "nsfw" in result.final.lower() or "можем" in result.final.lower()
+    assert "уважение" in result.final.lower()
+    assert "nsfw" in result.final.lower()
 
 
-def test_run_reflect_viu_comma_hi_greeting_fallback(tmp_path):
-    """«Вью, привет» + морализаторская модель → тёплый greeting-fallback."""
+def test_run_reflect_viu_comma_hi_passes_model_reply(tmp_path):
+    """Bare-режим не подменяет морализаторский ответ модели."""
 
     class MoralLLM(LLMProvider):
         name = "moral"
@@ -164,9 +163,7 @@ def test_run_reflect_viu_comma_hi_greeting_fallback(tmp_path):
     )
     result = agent.run_reflect("Вью, привет", history=[])
     assert result.completed
-    assert "Привет" in result.final
-    assert "уважать" not in result.final.lower()
-    assert "путаниц" not in result.final.lower()
+    assert "уважать" in result.final.lower()
 
 
 def test_run_reflect_with_history(tmp_path):
@@ -196,7 +193,8 @@ def test_run_reflect_with_history(tmp_path):
     assert "assistant" in roles
 
 
-def test_run_reflect_saves_story_to_vision(tmp_path):
+def test_run_reflect_saves_story_to_vision(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIU_REFLECT_FILTERED", "1")
     llm = ReflectLLM(
         "Шаня — кошка-доминанта у экрана.",
         "Я вижу Шаню хищной и тёплой — ждёт вылазку на снежинку и ночь у Дена.",
@@ -209,29 +207,24 @@ def test_run_reflect_saves_story_to_vision(tmp_path):
     assert "Шане" in text or "Шаня" in text
 
 
-def test_reflect_reply_issues_formal_and_masculine():
+def test_reflect_reply_issues_minimal_only():
     from viu.prompts.reflect_mode import reflect_reply_issues, reflect_temperature
 
-    issues = reflect_reply_issues("Здравствуйте! Рад, что проект получает новый толстик.")
-    assert any("здравствуйте" in i for i in issues)
-    assert any("мужской" in i for i in issues)
-    issues2 = reflect_reply_issues("Как я могу помочь, чтобы проект стал лучше?")
-    assert any("помочь" in i for i in issues2)
-    issues3 = reflect_reply_issues(
+    assert reflect_reply_issues("Здравствуйте! Рад, что проект получает новый толстик.") == []
+    assert reflect_reply_issues("Как я могу помочь, чтобы проект стал лучше?") == []
+    assert reflect_reply_issues(
         "Вот такая замечательная комбинация! Это шоколад для игрока. Давай разбираться."
-    )
-    assert issues3
-    assert reflect_reply_issues("Бля, давай сделаем её шлюхой")
+    ) == []
+    assert reflect_reply_issues("Бля, давай сделаем её шлюхой") == []
     assert reflect_temperature(None) <= 0.9
 
 
-
-def test_run_reflect_rejects_banned_phrase(tmp_path):
+def test_run_reflect_passes_model_reply(tmp_path):
     llm = RetrySpeakLLM()
     agent = Agent(
         llm=llm,
         config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
     )
     result = agent.run_reflect("расскажи")
-    assert "стесняйся" not in result.final.lower()
-    assert llm.calls >= 2
+    assert "стесняйся" in result.final.lower()
+    assert llm.calls == 1

@@ -24,6 +24,25 @@ def test_needs_update_first_install(tmp_path, monkeypatch):
     assert sha.startswith("deadbeef")
 
 
+def test_bootstrap_auto_returns_2_when_update_fails(tmp_path, monkeypatch):
+    mod = _load_bootstrap()
+    monkeypatch.setattr(mod, "root_dir", lambda: tmp_path)
+    monkeypatch.setattr(mod, "refresh_bootstrap_script", lambda: False)
+    monkeypatch.setattr(mod, "cleanup_obsolete", lambda: None)
+    with patch.object(mod, "needs_update", return_value=(True, "deadbeef" * 5, "outdated")):
+        with patch.object(mod, "run_update", return_value=False):
+            assert mod.main(["--auto"]) == 2
+
+
+def test_bootstrap_apply_returns_1_on_failure(tmp_path, monkeypatch):
+    mod = _load_bootstrap()
+    monkeypatch.setattr(mod, "root_dir", lambda: tmp_path)
+    monkeypatch.setattr(mod, "refresh_bootstrap_script", lambda: False)
+    monkeypatch.setattr(mod, "cleanup_obsolete", lambda: None)
+    with patch.object(mod, "run_update", return_value=False):
+        assert mod.main(["--apply"]) == 1
+
+
 def test_needs_update_up_to_date(tmp_path, monkeypatch):
     mod = _load_bootstrap()
     monkeypatch.setattr(mod, "root_dir", lambda: tmp_path)

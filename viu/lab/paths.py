@@ -124,7 +124,7 @@ def lab_monitor_index(config: Config) -> int:
 def lab_interval_min(config: Config) -> int:
     raw = os.environ.get("VIU_LAB_INTERVAL_MIN") or _runtime_get(config, "lab_interval_min", "5")
     try:
-        return max(1, int(raw))
+        return max(0, int(raw))
     except (TypeError, ValueError):
         return 5
 

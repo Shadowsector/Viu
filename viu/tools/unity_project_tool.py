@@ -71,7 +71,7 @@ def _overlay_human_summary(root: Path, log_name: str, *, ok: bool, ok_label: str
                     lines.append("")
                     lines.append("→ Сначала «Overlay: rebind материалы», потом снова «Проверить».")
                 if any("Walk" in f or "Avatar" in f for f in fails):
-                    lines.append("→ «Обновить аниматор» в меню анимаций.")
+                    lines.append("→ «Загрузить в Animator Unity» в секции Unity — анимации.")
         if warns:
             lines.append("")
             lines.append("Замечания (не блокируют, если нет «Что мешает»):")
@@ -90,7 +90,7 @@ def _overlay_human_summary(root: Path, log_name: str, *, ok: bool, ok_label: str
             lines.append(last[-1])
         if ok:
             lines.append("")
-            lines.append("→ Дальше: «▶ Запустить оверлей».")
+            lines.append("→ Дальше: «▶ Запустить тестовую сцену».")
         else:
             lines.append("")
             lines.append(
@@ -506,7 +506,7 @@ class UnitySyncAnimationsTool(Tool):
             body += (
                 "\n\n→ В проекте всё ещё старый ShanyaSetup.cs. "
                 "Нажми «Обновить Вью», дождись «Зависимости установлены», "
-                "затем «Обновить аниматор»."
+                "затем «Загрузить в Animator Unity»."
             )
         return ToolResult(ok_run, body)
 

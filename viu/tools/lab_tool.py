@@ -42,6 +42,7 @@ class LabStartTool(Tool):
         "enters_from": "через запятую",
         "exits_to": "через запятую",
         "shot_reason": "почему этот кадр",
+        "shoot": "1 = одобрить промпт и снять (кнопка MoCap); поднять Comfy",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
@@ -50,6 +51,22 @@ class LabStartTool(Tool):
         run_all = _run_all_flag(args)
         verify = _verify_flag(args)
         action = str(args.get("action") or "").strip()
+        ensure_prefix = ""
+        if topic == "comfy":
+            from ..integrations.comfy.process import ensure_comfy_running
+
+            ok_e, msg_e = ensure_comfy_running(
+                ctx.config, auto_install=True, wait_seconds=180.0
+            )
+            ensure_prefix = msg_e.strip() + "\n\n"
+            if not ok_e:
+                return ToolResult(
+                    False,
+                    ensure_prefix
+                    + "ComfyUI не запустился — генерация невозможна.\n"
+                    "Проверь U:\\Viu\\ComfyUI и `.viu/logs/comfy_launch.log`, "
+                    "или отдельно «подними comfy» / comfy_ensure.",
+                )
         if topic == CASCADEUR_TOPIC:
             ensure_task_file(ctx.config)
         if topic == "comfy":
@@ -104,9 +121,29 @@ class LabStartTool(Tool):
             )
 
         if not reset and session and session.status == "awaiting_prompt":
+            if str(args.get("shoot") or "").lower() in ("1", "true", "yes"):
+                session.meta["shoot_intent"] = True
+                save_session(ctx.config, session)
+                ok, msg, session = run_lab_prepared(
+                    ctx.config,
+                    topic,
+                    force_reset=False,
+                    run_all=run_all,
+                    action=action,
+                    meta_extra={"shoot_intent": True},
+                )
+                session = session or load_session(ctx.config, topic)
+                body = format_lab_progress(session, msg)
+                if run_all:
+                    body = "Lab: полный цикл (автономно).\n" + body
+                if ensure_prefix:
+                    body = ensure_prefix + body
+                return ToolResult(ok, body)
             return ToolResult(
                 True,
-                "Жду одобрение Comfy-промпта в Telegram (ок / правки: … / стоп).",
+                ensure_prefix
+                + "Жду одобрение Comfy-промпта (ок / правки: … / стоп).\n"
+                "Или снова «MoCap: снять клип» — одобрю и запущу Comfy.",
             )
 
         if not reset and topic == CASCADEUR_TOPIC:
@@ -124,6 +161,8 @@ class LabStartTool(Tool):
                 "exits_to": _csv("exits_to"),
                 "shot_reason": str(args.get("shot_reason") or "").strip(),
             }
+            if str(args.get("shoot") or "").lower() in ("1", "true", "yes"):
+                meta_extra["shoot_intent"] = True
         elif topic == "interaction":
             meta_extra = {
                 "catalog_slug": str(args.get("catalog_slug") or "").strip(),
@@ -145,6 +184,8 @@ class LabStartTool(Tool):
         body = format_lab_progress(session, msg, continued=continued)
         if run_all:
             body = "Lab: полный цикл (автономно).\n" + body
+        if ensure_prefix:
+            body = ensure_prefix + body
         return ToolResult(ok, body)
 
 

@@ -34,6 +34,14 @@ _ALWAYS_FROM_FILE = frozenset(
         "VIU_LAB_VRAM_GB",
         "VIU_REFLECT_TEMPERATURE",
         "VIU_REFLECT_PROMPT_HALF",
+        "VIU_REFLECT_DUMP",
+        "VIU_REFLECT_NO_SYSTEM",
+        "VIU_REFLECT_NO_HISTORY",
+        "VIU_REFLECT_STORY_HISTORY",
+        "VIU_REFLECT_FILTERED",
+        "VIU_COMFY_YIELD_ON_CHAT",
+        "VIU_COMFY_YIELD_FREE_VRAM",
+        "VIU_LAB_INTERVAL_MIN",
     }
 )
 
@@ -121,11 +129,31 @@ def default_env_roots(install_root: Path | None = None) -> list[Path]:
     return roots
 
 
+def patch_env_comfy_focus(env_path: Path) -> bool:
+    """Добавить VIU_COMFY_FOCUS=nsfw в .env, если ключа нет (Mixamo для быта, Comfy для NSFW)."""
+    if not env_path.is_file():
+        return False
+    try:
+        text = env_path.read_text(encoding="utf-8-sig")
+    except OSError:
+        return False
+    if re.search(r"^VIU_COMFY_FOCUS=", text, re.MULTILINE):
+        return False
+    block = (
+        "\n# Comfy MoCap: nsfw = touch_self/shower/bath; barn = цикл сарая\n"
+        "VIU_COMFY_FOCUS=nsfw\n"
+    )
+    env_path.write_text(text.rstrip() + block, encoding="utf-8")
+    os.environ["VIU_COMFY_FOCUS"] = "nsfw"
+    return True
+
+
 def bootstrap_env(install_root: Path | None = None) -> Path | None:
     """Шаблон .env + загрузка. Вызывать при старте GUI/CLI."""
     roots = default_env_roots(install_root)
     primary = roots[0] if roots else Path.cwd()
     env_path = ensure_env_file(primary)
+    patch_env_comfy_focus(env_path)
     load_env_file(*roots)
     try:
         from .ollama_vram import apply_ollama_vram_limit

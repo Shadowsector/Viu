@@ -50,7 +50,7 @@ def find_blend_for_prepare(
             raise FileNotFoundError(
                 f"{exc}\n\n"
                 "«Принять asset» работает только с Inbox.\n"
-                "Положи папку или .blend в U:\\Viu\\Inbox и нажми «▶ Следующий шаг».\n"
+                "Положи папку или .blend в U:\\Anabarra\\Inbox и нажми «▶ Следующий шаг».\n"
                 "Переprepare старого файла из Library — укажи путь в чате или "
                 "allow_library_fallback=1 (агент)."
             ) from exc
@@ -72,7 +72,7 @@ def find_blend_for_prepare(
             f"Нет .blend для подготовки.\n"
             f"  Inbox: {inbox} — пуст\n"
             f"  Library: {lib / 'Blender'} — тоже пуст\n"
-            "Положи blend+textures в U:\\Viu\\Inbox."
+            "Положи blend+textures в U:\\Anabarra\\Inbox."
         )
     latest = max(candidates, key=lambda p: p.stat().st_mtime)
     return latest, f"Library ({latest.name})"

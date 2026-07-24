@@ -111,19 +111,22 @@ def scene_state_path(config: Config) -> Path:
 
 
 def load_scene_state(config: Config) -> ComfySceneState:
+    from .focus import _default_focus_slugs, maybe_migrate_focus_from_env
+
+    maybe_migrate_focus_from_env(config)
     path = scene_state_path(config)
     if not path.is_file():
-        st = ComfySceneState(focus_slugs=list(BARN_SHED_CYCLE))
+        st = ComfySceneState(focus_slugs=_default_focus_slugs(config))
         save_scene_state(config, st)
         return st
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         st = ComfySceneState.from_dict(data)
         if not st.focus_slugs:
-            st.focus_slugs = list(BARN_SHED_CYCLE)
+            st.focus_slugs = _default_focus_slugs(config)
         return st
     except (OSError, json.JSONDecodeError):
-        return ComfySceneState(focus_slugs=list(BARN_SHED_CYCLE))
+        return ComfySceneState(focus_slugs=_default_focus_slugs(config))
 
 
 def save_scene_state(config: Config, state: ComfySceneState) -> None:
@@ -137,7 +140,9 @@ def is_paused_for_scene_choice(config: Config) -> bool:
 
 
 def get_focus_slugs(config: Config) -> List[str]:
-    return list(load_scene_state(config).focus_slugs or BARN_SHED_CYCLE)
+    from .focus import resolve_focus_slugs
+
+    return resolve_focus_slugs(config)
 
 
 def _slug_title(slug: str) -> str:

@@ -112,7 +112,7 @@ class Config:
 
     # Библиотека ассетов и каталог предметов.
     library_root: str = field(default_factory=lambda: _env("VIU_LIBRARY_ROOT", ""))
-    # Inbox — один пак за раз (U:\Viu\Inbox). Не Windows Downloads на C:.
+    # Inbox — один пак за раз (U:\Anabarra\Inbox). Не Windows Downloads на C:.
     inbox_dir: str = field(
         default_factory=lambda: _env("VIU_INBOX_DIR", "") or _env("VIU_DOWNLOADS_DIR", "")
     )
@@ -130,6 +130,9 @@ class Config:
     )
     comfy_barn_cycle: bool = field(
         default_factory=lambda: _env("VIU_COMFY_BARN_CYCLE", "1") == "1"
+    )
+    comfy_focus: str = field(
+        default_factory=lambda: _env("VIU_COMFY_FOCUS", "").strip().lower()
     )
 
     # Ветка git для автообновления GUI.

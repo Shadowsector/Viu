@@ -66,6 +66,7 @@ class ViuGUI:
         self._queue: queue.Queue = queue.Queue()
         self._tool_busy = False  # Comfy/lab/скрипт — GPU/файлы, не LLM
         self._llm_busy = False  # агент думает — чат ждёт
+        self._llm_comfy_yield = False
         self._action_buttons: list[tuple[str, ttk.Button]] = []
         self._action_group_boxes: dict[str, ttk.LabelFrame] = {}
         self._sidebar_stage_label: ttk.Label | None = None
@@ -81,13 +82,11 @@ class ViuGUI:
         self._boot_sha = running_sha(package_root())
         self._geometry_save_job: str | None = None
 
-        # Долгая сюжетная память → в RAM-историю чата
+        # story_memory: только ingest логов, без заливки в reflect-историю
         try:
-            from .story_memory import ensure_logs_ingested, get_story_memory
+            from .story_memory import ensure_logs_ingested
 
             n, msg = ensure_logs_ingested(self.agent.config)
-            for turn in get_story_memory(self.agent.config).as_chat_history(limit=16):
-                self._llm_turns.append(turn)
             self._story_ingest_msg = msg if n else ""
         except OSError:
             self._story_ingest_msg = ""
@@ -119,6 +118,42 @@ class ViuGUI:
                 "(или create_viu_ollama_models.bat, если тега нет).",
                 tag="sys",
             )
+        try:
+            from .prompts.reflect_mode import (
+                reflect_dump_enabled,
+                reflect_include_story_history,
+                reflect_no_history,
+                reflect_no_system,
+                reflect_use_filters,
+            )
+
+            if any(
+                (
+                    reflect_no_history(),
+                    reflect_use_filters(),
+                    reflect_include_story_history(),
+                    reflect_dump_enabled(),
+                    not reflect_no_system(),
+                )
+            ):
+                bits = []
+                if reflect_no_history():
+                    bits.append("без истории (отладка)")
+                if not reflect_no_system():
+                    bits.append("system от Viu")
+                if reflect_use_filters():
+                    bits.append("FILTERED=1 (старый retry)")
+                if reflect_include_story_history():
+                    bits.append("story_memory в чат")
+                if reflect_dump_enabled():
+                    bits.append("дамп reflect_last_request.json")
+                self._append(
+                    "система",
+                    "Reflect отладка: " + ", ".join(bits),
+                    tag="sys",
+                )
+        except Exception:  # noqa: BLE001
+            pass
         if getattr(self, "_story_ingest_msg", ""):
             self._append("система", self._story_ingest_msg, tag="sys")
         if removed:
@@ -133,6 +168,7 @@ class ViuGUI:
         self.root.after(300, self._check_updates_on_start)
         self.root.after(600, self._show_next_step_banner)
         self.root.after(2500, self._maybe_prompt_comfy_clip_pick)
+        self.root.after(4000, self._maybe_prompt_comfy_wan_editor)
         self._refresh_status()
         self._schedule_auto_update()
         self._start_telegram()
@@ -140,6 +176,28 @@ class ViuGUI:
         self._schedule_cursor_inbox()
         self._schedule_lab()
         self._schedule_comfy_home_watch()
+        try:
+            from .integrations.comfy.focus import maybe_migrate_focus_from_env
+
+            maybe_migrate_focus_from_env(self.agent.config)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from .reference_catalog.migrate import migrate_legacy_reference_files
+
+            n, msg = migrate_legacy_reference_files(self.agent.config)
+            if msg:
+                self._append("система", msg, tag="sys")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from .anabarra_layout import migrate_inbox_to_anabarra
+
+            moved, mig = migrate_inbox_to_anabarra(self.agent.config)
+            if moved and mig:
+                self._append("система", mig, tag="sys")
+        except Exception:  # noqa: BLE001
+            pass
         try:
             from .vision import ensure_vision
 
@@ -370,20 +428,24 @@ class ViuGUI:
 
         def compute() -> str:
             from .decision_queue import count_open
+            from .integrations.comfy.pipeline_status import comfy_pipeline_status_brief
 
             ollama = "Ollama ✓" if ollama_available(cfg.base_url) else "Ollama ✗"
             unity = Path(cfg.unity_project).name if cfg.unity_project else "Unity —"
             git = "git" if usable_git_root() else "zip"
             qn = count_open(cfg)
             q = f" | вопросов: {qn}" if qn else ""
-            return f"{ollama}{q}  |  {unity}  |  {version_label()} ({git})"
+            comfy = comfy_pipeline_status_brief(cfg)
+            mid = f"  |  {comfy}" if comfy else ""
+            return f"{ollama}{q}{mid}  |  {unity}  |  {version_label()} ({git})"
 
         self._run_bg(compute, self._set_top_status)
         try:
             self._refresh_presence_button()
         except Exception:  # noqa: BLE001
             pass
-        self.root.after(5000, self._refresh_status)
+        interval = 2000 if self._tool_busy else 5000
+        self.root.after(interval, self._refresh_status)
 
     def _set_top_status(self, result) -> None:
         if isinstance(result, Exception):
@@ -405,11 +467,11 @@ class ViuGUI:
         frame.pack(side="left", fill="y", padx=(0, 0))
         frame.pack_propagate(False)
 
-        header = ttk.Label(frame, text="Скрипты", font=("Segoe UI", 11, "bold"))
+        header = ttk.Label(frame, text="Действия", font=("Segoe UI", 11, "bold"))
         header.pack(anchor="w", padx=10, pady=(10, 2))
         ttk.Label(
             frame,
-            text="Заскриптованные кнопки — без «мышления» чата.",
+            text="Секции по программам: Unity, Blender, Cascadeur, ComfyUI.",
             wraplength=240,
             justify="left",
             font=("Segoe UI", 8),
@@ -736,6 +798,47 @@ class ViuGUI:
         self._on_send()
         return "break"
 
+    def _maybe_handle_comfy_reply(
+        self, text: str, *, echo_user: bool = True, notify_telegram: bool = False
+    ) -> bool:
+        """Comfy lab ждёт промпт/LoRA/клип — ответ в чате Вью, не в LLM."""
+        try:
+            from .integrations.comfy.approval import try_handle_comfy_telegram
+            from .lab.comfy_pipeline import COMFY_TOPIC
+            from .lab.session import load_session
+
+            handled, msg = try_handle_comfy_telegram(
+                self.agent.config, text, for_telegram=notify_telegram
+            )
+            if not handled:
+                return False
+            if echo_user:
+                self._append("ты", text)
+                self._record_llm_turn("user", text)
+            self._append("Вью", msg, tag="tool")
+            if notify_telegram and self._telegram is not None:
+                limit = 3800 if "--- POSITIVE" in msg else 1200
+                self._telegram.notify_chat(msg[:limit])
+            session = load_session(self.agent.config, COMFY_TOPIC)
+            if (
+                session
+                and session.status == "running"
+                and (
+                    session.meta.get("approved")
+                    or session.meta.get("clip_kept_id")
+                    or session.meta.get("clip_rejected_all")
+                )
+                and not self._tool_busy
+            ):
+                self._run_tool(
+                    "lab_step",
+                    {"topic": COMFY_TOPIC, "run_all": "1"},
+                    label="Comfy: продолжаю lab",
+                )
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
     def _on_send(self) -> None:
         from .gui_busy import can_accept_chat
 
@@ -750,6 +853,8 @@ class ViuGUI:
             self.root.destroy()
             return
         if self._try_direct_tool_command(text):
+            return
+        if self._maybe_handle_comfy_reply(text):
             return
         from .integrations.telegram.router import route_user_message
 
@@ -775,6 +880,7 @@ class ViuGUI:
             "__lab_comfy__",
             "__interaction_lab__",
             "__comfy_clips__",
+            "__comfy_studio__",
         } or (
             action.tool and action.tool.startswith("lab_")
         ):
@@ -833,6 +939,15 @@ class ViuGUI:
         if action.tool == "__comfy_clips__":
             self._open_comfy_clip_review()
             return
+        if action.tool == "__comfy_studio__":
+            self._open_comfy_studio()
+            return
+        if action.tool == "__comfy_prompt__":
+            self._open_comfy_prompt_editor()
+            return
+        if action.tool == "__reference_catalog__":
+            self._open_reference_catalog()
+            return
         if action.tool == "__comfy_open__":
             self._open_comfy_ui()
             return
@@ -862,8 +977,37 @@ class ViuGUI:
         self._refresh_busy_ui()
 
     def _set_llm_busy(self, busy: bool) -> None:
+        was_busy = self._llm_busy
         self._llm_busy = busy
+        if busy and not was_busy:
+            self._maybe_yield_comfy_for_llm()
+        elif was_busy and not busy:
+            self._release_comfy_yield()
         self._refresh_busy_ui()
+
+    def _maybe_yield_comfy_for_llm(self) -> None:
+        from .integrations.comfy.gpu_yield import (
+            comfy_yield_on_chat_enabled,
+            yield_comfy_for_llm,
+        )
+        from .lab.controller import lab_controller
+
+        if not comfy_yield_on_chat_enabled():
+            return
+        lab_controller.request_operator_priority("reflect чат")
+        self._llm_comfy_yield = True
+        note = yield_comfy_for_llm(self.agent.config)
+        if note:
+            self.agent._log(note)
+
+    def _release_comfy_yield(self) -> None:
+        if not self._llm_comfy_yield:
+            return
+        self._llm_comfy_yield = False
+        from .lab.controller import lab_controller
+
+        lab_controller.clear_operator_priority()
+        self.agent._log("comfy_yield: released (lab продолжит по таймеру, если «меня нет»)")
 
     def _set_busy(self, busy: bool) -> None:
         """Совместимость: полная блокировка (и tool, и LLM)."""
@@ -897,7 +1041,16 @@ class ViuGUI:
             if self._llm_busy:
                 status.config(text="Вью думает…")
             elif self._tool_busy:
-                status.config(text=f"{ver} | lab/Comfy… (чат свободен)")
+                try:
+                    from .integrations.comfy.pipeline_status import comfy_pipeline_status_brief
+
+                    brief = comfy_pipeline_status_brief(self.agent.config)
+                except Exception:
+                    brief = ""
+                if brief:
+                    status.config(text=f"{ver} | {brief} · чат свободен")
+                else:
+                    status.config(text=f"{ver} | lab/Comfy… (чат свободен)")
             else:
                 status.config(text=f"{ver} | {self.agent.llm.name}")
         self._busy_label = busy_status_ru(
@@ -907,10 +1060,11 @@ class ViuGUI:
     def _run_tool_chain(self, action: GuiAction) -> None:
         from .gui_busy import can_start_tool
 
-        if not can_start_tool(tool_busy=self._tool_busy):
+        if not can_start_tool(tool_busy=self._tool_busy, tool_name=action.tool or ""):
             self._append(
                 "система",
-                f"Уже крутится lab/Comfy — «{action.label}» подождёт. Чат свободен.",
+                f"Уже крутится lab/Comfy — «{action.label}» подождёт. "
+                "Статус: comfy_status или lab_status topic=comfy.",
                 tag="sys",
             )
             return
@@ -1001,8 +1155,20 @@ class ViuGUI:
 
     def _refresh_action_visibility(self) -> None:
         ctx = get_pipeline_context(self.agent.config)
+        label = ctx.step_label
+        try:
+            from .integrations.comfy.pipeline_status import comfy_pipeline_status_brief
+            from .lab.comfy_pipeline import COMFY_TOPIC
+            from .lab.session import load_session
+
+            if load_session(self.agent.config, COMFY_TOPIC) is not None:
+                brief = comfy_pipeline_status_brief(self.agent.config)
+                if brief:
+                    label = brief
+        except Exception:
+            pass
         if self._sidebar_stage_label is not None:
-            self._sidebar_stage_label.config(text=ctx.step_label)
+            self._sidebar_stage_label.config(text=label)
         visible_by_group: dict[str, int] = {g: 0 for g in ACTION_GROUPS}
         action_map = {a.action_id: a for a in GUI_ACTIONS}
         for aid, btn in self._action_buttons:
@@ -1065,7 +1231,7 @@ class ViuGUI:
         if tool == "__add_animation__":
             self._add_animation()
             return
-        self._run_tool(tool, args, label="Следующий шаг")
+        self._run_tool(tool, args, label="Что делать дальше")
         self.root.after(500, self._refresh_action_visibility)
 
     def _open_prop_catalog(self) -> None:
@@ -1106,6 +1272,19 @@ class ViuGUI:
             )
 
         self.root.after(0, open_win)
+
+    def _open_reference_catalog(self) -> None:
+        from .reference_catalog import open_reference_review
+        from .reference_catalog.scanner import scan_references_inbox
+
+        cfg = self.agent.config
+        added, total = scan_references_inbox(cfg)
+        self._append(
+            "система",
+            f"Референсы: inbox +{added}, в каталоге {total}. Открываю окно…",
+            tag="sys",
+        )
+        self.root.after(0, lambda: open_reference_review(self.root, cfg))
 
     def _open_creature_catalog(self) -> None:
         """Скан Inbox → авто по именам → окно кнопок размеров."""
@@ -1330,7 +1509,10 @@ class ViuGUI:
         self._set_busy(True)
 
         def work():
-            return update_viu_full(branch=self.agent.config.update_branch)
+            return update_viu_full(
+                branch=self.agent.config.update_branch,
+                full_sync=True,
+            )
 
         def done(result):
             self._set_busy(False)
@@ -1467,32 +1649,21 @@ class ViuGUI:
             return
 
         try:
-            from .integrations.comfy.approval import try_handle_comfy_telegram
-            from .lab.comfy_pipeline import COMFY_TOPIC
-            from .lab.session import load_session
+            from .integrations.comfy.prompt_edit import is_prompt_show_request
 
-            handled, msg = try_handle_comfy_telegram(self.agent.config, text)
-            if handled:
+            if is_prompt_show_request(text) and self._maybe_handle_comfy_reply(
+                text, echo_user=False, notify_telegram=True
+            ):
                 self._telegram_waiting_reply = False
-                self._append("Вью", msg, tag="tool")
-                if self._telegram is not None:
-                    self._telegram.notify_chat(msg[:1200])
-                session = load_session(self.agent.config, COMFY_TOPIC)
-                if (
-                    session
-                    and session.status == "running"
-                    and (
-                        session.meta.get("approved")
-                        or session.meta.get("clip_kept_id")
-                        or session.meta.get("clip_rejected_all")
-                    )
-                    and not self._tool_busy
-                ):
-                    self._run_tool(
-                        "lab_step",
-                        {"topic": COMFY_TOPIC, "run_all": "1"},
-                        label="Comfy: продолжаю lab",
-                    )
+                return
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            if self._maybe_handle_comfy_reply(
+                text, echo_user=False, notify_telegram=True
+            ):
+                self._telegram_waiting_reply = False
                 return
         except Exception:  # noqa: BLE001
             pass
@@ -1579,26 +1750,33 @@ class ViuGUI:
         from .gui_busy import can_start_tool
 
         title = label or name
-        if not can_start_tool(tool_busy=self._tool_busy):
-            msg = (
-                f"Уже крутится lab/Comfy — «{title}» подождёт.\n"
-                "Чат и Telegram свободны; ComfyUI: http://127.0.0.1:8188"
-            )
-            self._append("система", msg, tag="sys")
-            if notify_telegram and self._telegram is not None:
-                self._telegram.notify_chat(msg)
-            return
+        from .gui_busy import TOOLS_ALLOWED_DURING_LAB, can_start_tool
+
+        readonly_diag = name in TOOLS_ALLOWED_DURING_LAB and self._tool_busy
+        if not readonly_diag:
+            if not can_start_tool(tool_busy=self._tool_busy, tool_name=name):
+                msg = (
+                    f"Уже крутится lab/Comfy — «{title}» подождёт.\n"
+                    "Статус в любой момент: **comfy_status** или **lab_status topic=comfy**.\n"
+                    "ComfyUI: http://127.0.0.1:8188 (если пусто — comfy_ensure)"
+                )
+                self._append("система", msg, tag="sys")
+                if notify_telegram and self._telegram is not None:
+                    self._telegram.notify_chat(msg)
+                return
         if echo_user:
             self._append("ты", f"[{title}]")
-        self._set_tool_busy(True)
+        if not readonly_diag:
+            self._set_tool_busy(True)
         threading.Thread(
             target=self._tool_worker,
-            args=(name, args, title, notify_telegram),
+            args=(name, args, title, notify_telegram, readonly_diag),
             daemon=True,
         ).start()
 
     def _tool_worker(
-        self, name: str, args: dict, title: str, notify_telegram: bool = False
+        self, name: str, args: dict, title: str, notify_telegram: bool = False,
+        readonly_diag: bool = False,
     ) -> None:
         try:
             from .lab.controller import LAB_TOOL_NAMES, lab_controller
@@ -1612,12 +1790,12 @@ class ViuGUI:
             result = tool.run(args, self.agent.ctx)
             prefix = "OK" if result.ok else "ОШИБКА"
             body = f"[{title}] {prefix}\n{result.content}"
-            self._queue.put(("tool", body))
+            self._queue.put(("tool_diag" if readonly_diag else "tool", body))
             if notify_telegram and self._telegram is not None:
                 self._telegram.notify_chat(body[:1500])
         except Exception as exc:  # noqa: BLE001
             body = f"[{title}] ОШИБКА\n{exc}"
-            self._queue.put(("tool", body))
+            self._queue.put(("tool_diag" if readonly_diag else "tool", body))
             if notify_telegram and self._telegram is not None:
                 self._telegram.notify_error(body[:1500])
 
@@ -1643,19 +1821,22 @@ class ViuGUI:
         self._llm_turns.append({"role": role, "content": clean[:4000]})
 
     def _run_agent_reflect(self, task: str, *, via_telegram: bool = False, heartbeat: bool = False) -> None:
+        from .prompts.reflect_mode import reflect_no_history
+
         if not via_telegram and not heartbeat:
             self._append("ты", task)
             self._record_llm_turn("user", task)
         self._set_llm_busy(True)
         self._last_via_telegram = via_telegram or heartbeat
-        if heartbeat:
+        echo_tg = via_telegram
+        if heartbeat or reflect_no_history():
             history: list[dict[str, str]] = []
         else:
             hist = self._llm_history()
             history = hist[:-1] if hist and hist[-1].get("role") == "user" else hist
         threading.Thread(
             target=self._agent_worker,
-            args=(task, "reflect", history, heartbeat),
+            args=(task, "reflect", history, heartbeat, echo_tg),
             daemon=True,
         ).start()
 
@@ -1665,6 +1846,7 @@ class ViuGUI:
         mode: str,
         history: list | None = None,
         heartbeat: bool = False,
+        echo_telegram: bool = False,
     ) -> None:
         def on_step(step):
             if step.kind == "think":
@@ -1686,19 +1868,26 @@ class ViuGUI:
                     on_step=on_step,
                     history=history or [],
                     heartbeat=heartbeat,
+                    echo_telegram=echo_telegram,
                 )
             else:
                 result = self.agent.run(task, on_step=on_step)
-            self._queue.put(
-                (
-                    "final",
-                    result.final,
-                    result.waiting_for_user,
-                    result.chat_only,
-                    result.inner_thought,
-                    not result.tool_errors,
+            parts = result.final_parts or [result.final]
+            for idx, part in enumerate(parts):
+                is_last = idx == len(parts) - 1
+                self._queue.put(
+                    (
+                        "final",
+                        part,
+                        result.waiting_for_user and is_last,
+                        result.chat_only,
+                        result.inner_thought if idx == 0 else "",
+                        not result.tool_errors and is_last,
+                        result.echo_telegram or echo_telegram,
+                        is_last,
+                        result.final if is_last and len(parts) > 1 else "",
+                    )
                 )
-            )
         except Exception as exc:  # noqa: BLE001
             msg = str(exc)
             if "VIU_LLM_TIMEOUT" in msg or "не успела" in msg.lower():
@@ -1715,6 +1904,9 @@ class ViuGUI:
                 item = self._queue.get_nowait()
                 inner_thought = ""
                 task_ok = True
+                echo_telegram = False
+                is_last = True
+                full_for_history = ""
                 if isinstance(item, tuple) and len(item) == 2:
                     kind, text = item
                     waiting = False
@@ -1728,18 +1920,31 @@ class ViuGUI:
                     kind, text, waiting, chat_only, inner_thought = item
                 elif isinstance(item, tuple) and len(item) == 6:
                     kind, text, waiting, chat_only, inner_thought, task_ok = item
+                elif isinstance(item, tuple) and len(item) >= 7:
+                    kind, text, waiting, chat_only, inner_thought, task_ok, echo_telegram = (
+                        item[0],
+                        item[1],
+                        item[2],
+                        item[3],
+                        item[4],
+                        item[5],
+                        item[6],
+                    )
+                    is_last = item[7] if len(item) > 7 else True
+                    full_for_history = item[8] if len(item) > 8 and item[8] else text
                 else:
                     continue
                 if kind == "step":
                     self._append("шаг", text, tag="step")
                 elif kind == "thinking":
                     self._append("размышляет", text, tag="step")
-                elif kind == "tool":
+                elif kind in ("tool", "tool_diag"):
                     self._append("Вью", text, tag="tool")
-                    self._set_tool_busy(False)
-                    from .lab.controller import lab_controller
+                    if kind == "tool":
+                        self._set_tool_busy(False)
+                        from .lab.controller import lab_controller
 
-                    lab_controller.clear_operator_priority()
+                        lab_controller.clear_operator_priority()
                     self._refresh_action_visibility()
                     self._maybe_prompt_lab_rating()
                     self._maybe_prompt_comfy_clip_pick()
@@ -1748,11 +1953,16 @@ class ViuGUI:
                 elif kind == "final":
                     # thought уже показан через kind=thinking — не дублировать
                     self._append("Вью", text, tag="viu")
-                    self._set_llm_busy(False)
+                    if is_last:
+                        self._set_llm_busy(False)
+                        if full_for_history and full_for_history != text:
+                            self._record_llm_turn("Вью", full_for_history)
+                        else:
+                            self._record_llm_turn("Вью", text)
                     if waiting:
                         self._telegram_waiting_reply = True
                         self._telegram_notify_question(text)
-                    elif chat_only and self._last_via_telegram:
+                    elif chat_only and (echo_telegram or self._last_via_telegram):
                         msg = ("💭 " + text) if self._heartbeat_notify else text
                         self._heartbeat_notify = False
                         self._telegram_notify_chat(msg)
@@ -1870,16 +2080,14 @@ class ViuGUI:
                 )
                 return
             if comfy.status == "awaiting_clip_pick" and auto:
-                # away: авто-выбор дубля B (¾)
                 from .integrations.comfy.angles import AWAY_AUTO_TAKE_ID
                 from .lab.session import load_session as _ls
-                from .lab.session import save_session as _ss
 
                 sess = _ls(self.agent.config, COMFY_TOPIC)
                 pick_args = {
                     "angle": AWAY_AUTO_TAKE_ID,
                     "score": "3",
-                    "notes": "auto away take_b",
+                    "notes": "auto away (fallback a/c если нет b)",
                 }
                 # не затирать catalog_slug / граф
                 if sess is not None:
@@ -1967,21 +2175,22 @@ class ViuGUI:
             self._append("Вью", plan.summary_ru(), tag="viu")
             return
         self._append("Вью", plan.summary_ru(), tag="viu")
-        from .lab.comfy_director import barn_cycle_status
+        from ..integrations.comfy.focus import focus_cycle_status
 
-        self._append("Вью", barn_cycle_status(self.agent.config), tag="viu")
+        self._append("Вью", focus_cycle_status(self.agent.config), tag="viu")
         if not auto and not is_away(self.agent.config):
             self._append(
                 "Вью",
-                "Дома: сейчас спрошу одобрение промпта (Telegram/чат: «ок» / "
-                "«правки: sit_down» / «стоп»). Без твоего «ок» снимать не начну.\n"
-                "После тройки дублей окно выбора откроется само.",
+                "Сначала подниму ComfyUI (если спит), затем сниму.\n"
+                "Промпт можно править в «Промпт Wan → Comfy» — «Отправить в Comfy».\n"
+                "Кнопка MoCap = одобрение + генерация (не нужен отдельный «ок» в Telegram).",
                 tag="viu",
             )
         args = {
             "topic": COMFY_TOPIC,
             "run_all": "1",
             "reset": "1",
+            "shoot": "1",
             "action": plan.action,
             "catalog_slug": plan.catalog_slug,
             "enters_from": ",".join(plan.enters_from),
@@ -1991,7 +2200,7 @@ class ViuGUI:
         self._run_tool(
             "lab_start",
             args,
-            label="Лаборатория: Comfy MoCap",
+            label="MoCap: снять клип",
             echo_user=not auto,
         )
 
@@ -2040,11 +2249,38 @@ class ViuGUI:
 
                 if not is_away(self.agent.config):
                     self._maybe_prompt_comfy_clip_pick()
+                    self._maybe_prompt_comfy_wan_editor()
             except Exception:
                 pass
             self.root.after(20_000, tick)
 
         self.root.after(8_000, tick)
+
+    def _maybe_prompt_comfy_wan_editor(self) -> None:
+        """Дома: если ждут одобрения промпта — открыть редактор Wan."""
+        from .lab.comfy_pipeline import COMFY_TOPIC
+        from .lab.session import load_session
+        from .presence import is_away
+
+        if is_away(self.agent.config):
+            return
+        if getattr(self, "_comfy_prompt_prompt_open", False):
+            return
+        if self._tool_busy:
+            return
+        session = load_session(self.agent.config, COMFY_TOPIC)
+        if session is None or session.status != "awaiting_prompt":
+            return
+        self._comfy_prompt_prompt_open = True
+        self._append(
+            "Вью",
+            "Жду одобрение — открою «Промпт Wan → Comfy» (или напиши «покажи промпт»).",
+            tag="viu",
+        )
+        try:
+            self._open_comfy_prompt_editor()
+        finally:
+            self.root.after(60_000, lambda: setattr(self, "_comfy_prompt_prompt_open", False))
 
     def _maybe_prompt_comfy_clip_pick(self) -> None:
         from .lab.comfy_pipeline import COMFY_TOPIC
@@ -2082,7 +2318,7 @@ class ViuGUI:
             return
         self._append(
             "система",
-            "Lab готова к оценке — «Оценить лабораторию» в Редко.",
+            "Lab готова к оценке — «Оценить результат lab» в Cascadeur.",
             tag="sys",
         )
 
@@ -2108,17 +2344,59 @@ class ViuGUI:
 
         url = str(getattr(self.agent.config, "comfy_url", None) or "http://127.0.0.1:8188")
         self._append("ты", "[Открыть ComfyUI]")
-        try:
-            webbrowser.open(url)
-            self._append(
-                "Вью",
-                f"Открыла {url}\n"
-                "Обычный MoCap — кнопкой lab; сюда — LoRA, v2v, отладка очереди.\n"
-                "Файлы LoRA клади в ComfyUI/models/loras/ — потом скажи мне подключить.",
-                tag="tool",
-            )
-        except Exception as exc:  # noqa: BLE001
-            self._append("ошибка", f"Не открыла браузер: {exc}\nОткрой сама: {url}", tag="err")
+
+        def work() -> tuple[bool, str]:
+            from .integrations.comfy.client import ComfyClient
+
+            try:
+                ok, msg = ComfyClient(base_url=url, timeout=3.0).ping()
+                return ok, msg
+            except Exception as exc:  # noqa: BLE001
+                return False, str(exc)
+
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                self._append(
+                    "ошибка",
+                    f"Не проверила Comfy: {result}\nОткрой сам: {url}",
+                    tag="err",
+                )
+                return
+            ok, ping = result
+            if not ok:
+                self._append(
+                    "Вью",
+                    f"ComfyUI **не отвечает** на {url}\n{ping}\n\n"
+                    "Запускаю **comfy_ensure**…",
+                    tag="sys",
+                )
+                self._run_tool(
+                    "comfy_ensure",
+                    {"wait": "180"},
+                    label="comfy_ensure (авто)",
+                    echo_user=False,
+                )
+            try:
+                webbrowser.open(url)
+            except Exception as exc:  # noqa: BLE001
+                self._append("ошибка", f"Не открыла браузер: {exc}\nОткрой сама: {url}", tag="err")
+                return
+            if ok:
+                self._append(
+                    "Вью",
+                    f"Открыла {url}\n"
+                    "Обычный MoCap — кнопкой lab; сюда — LoRA, v2v, очередь.\n"
+                    "LoRA → ComfyUI/models/loras/ → comfy_lora_list.",
+                    tag="tool",
+                )
+            else:
+                self._append(
+                    "система",
+                    f"Браузер открыт на {url}. Когда ensure закончит — обнови страницу (F5).",
+                    tag="sys",
+                )
+
+        self._run_bg(work, done)
 
     def _open_comfy_clip_review(self) -> None:
         from .integrations.comfy.clip_review_gui import open_comfy_clip_review
@@ -2142,6 +2420,46 @@ class ViuGUI:
                 )
 
         open_comfy_clip_review(self.root, self.agent.config, on_finished=done)
+
+    def _open_comfy_prompt_editor(self) -> None:
+        from .integrations.comfy.prompt_gui import open_comfy_prompt_editor
+        from .lab.comfy_pipeline import COMFY_TOPIC
+        from .lab.session import load_session
+
+        def done(ok: bool, msg: str) -> None:
+            self._append("Вью", msg, tag="tool" if ok else "sys")
+            session = load_session(self.agent.config, COMFY_TOPIC)
+            if (
+                ok
+                and session
+                and session.status == "running"
+                and not self._tool_busy
+            ):
+                self._run_tool(
+                    "lab_step",
+                    {"topic": COMFY_TOPIC, "run_all": "1"},
+                    label="Comfy: продолжаю после промпта",
+                    echo_user=False,
+                )
+
+        open_comfy_prompt_editor(self.root, self.agent.config, on_finished=done)
+
+    def _open_comfy_studio(self) -> None:
+        from .integrations.comfy.studio_gui import ComfyStudioCallbacks, open_comfy_studio
+
+        cb = ComfyStudioCallbacks(
+            on_ensure_comfy=lambda: self._run_tool(
+                "comfy_ensure",
+                {},
+                label="ComfyUI",
+                echo_user=True,
+            ),
+            on_mocap_shoot=lambda: self._lab_comfy_action(),
+            on_edit_prompt=lambda: self._open_comfy_prompt_editor(),
+            on_pick_clips=lambda: self._open_comfy_clip_review(),
+            on_open_browser=lambda: self._open_comfy_ui(),
+        )
+        open_comfy_studio(self.root, self.agent.config, cb)
 
     def _schedule_cursor_inbox(self) -> None:
         """Раз в несколько минут — забрать задачи Cursor с GitHub и выполнить без Дена."""
@@ -2721,8 +3039,8 @@ def main() -> int:
 
     try:
         _status("creating_gui")
-        app = ViuGUI()
         _mark_started()
+        app = ViuGUI()
         app.run()
         return 0
     except Exception as exc:  # noqa: BLE001

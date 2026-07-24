@@ -24,6 +24,8 @@ _TEMPLATE_OVERLAY_MATFIX = Path(__file__).parent / "templates" / "ShanyaOverlayM
 _TEMPLATE_OVERLAY_ANCHOR = Path(__file__).parent / "templates" / "OverlaySceneAnchor.cs"
 _TEMPLATE_OVERLAY_PRESETS = Path(__file__).parent / "templates" / "OverlayCameraPresets.cs"
 _TEMPLATE_OVERLAY_MODE = Path(__file__).parent / "templates" / "OverlayModeController.cs"
+_TEMPLATE_OVERLAY_BLEND = Path(__file__).parent / "templates" / "OverlayCameraBlend.cs"
+_TEMPLATE_WORLD_ORBIT = Path(__file__).parent / "templates" / "WorldOrbitController.cs"
 _TEMPLATE_DOLLHOUSE = Path(__file__).parent / "templates" / "DollhouseWall.cs"
 _TEMPLATE_OVERLAY_SETUP = Path(__file__).parent / "templates" / "ShanyaOverlaySetup.cs"
 _TEMPLATE_MANIFEST = Path(__file__).parent / "templates" / "viu_clips.json"
@@ -43,10 +45,12 @@ _OVERLAY_MATFIX_REL = f"{_RUNTIME_DIR}/ShanyaOverlayMaterialFix.cs"
 _OVERLAY_ANCHOR_REL = f"{_RUNTIME_DIR}/OverlaySceneAnchor.cs"
 _OVERLAY_PRESETS_REL = f"{_RUNTIME_DIR}/OverlayCameraPresets.cs"
 _OVERLAY_MODE_REL = f"{_RUNTIME_DIR}/OverlayModeController.cs"
+_OVERLAY_BLEND_REL = f"{_RUNTIME_DIR}/OverlayCameraBlend.cs"
+_WORLD_ORBIT_REL = f"{_RUNTIME_DIR}/WorldOrbitController.cs"
 _DOLLHOUSE_REL = f"{_RUNTIME_DIR}/DollhouseWall.cs"
 _MANIFEST_REL = f"{ANIMATIONS_REL}/{MANIFEST_NAME}"
 
-VIU_DEPLOY_REV = "53"
+VIU_DEPLOY_REV = "54"
 VIU_DEPLOY_MARKER = f"@viu-deploy-rev {VIU_DEPLOY_REV}"
 _BROKEN_EDITOR_MARKERS = (
     "activeInputHandler",
@@ -72,7 +76,7 @@ def editor_scripts_healthy(project_root: Path) -> Tuple[bool, str]:
         if bad in text:
             return False, (
                 f"В Unity лежит **старый** ShanyaSetup.cs (внутри «{bad}»). "
-                "Сначала нажми **«Обновить Вью»**, потом снова «Импорт FBX» или «Обновить аниматор»."
+                "Сначала нажми **«Обновить Вью»**, потом снова «Импорт FBX» или «Загрузить в Animator Unity»."
             )
     if VIU_DEPLOY_MARKER not in text:
         return False, (
@@ -155,6 +159,8 @@ def deploy_runtime_scripts(project_root: Path) -> Tuple[bool, str]:
         (_TEMPLATE_OVERLAY_ANCHOR, _OVERLAY_ANCHOR_REL),
         (_TEMPLATE_OVERLAY_PRESETS, _OVERLAY_PRESETS_REL),
         (_TEMPLATE_OVERLAY_MODE, _OVERLAY_MODE_REL),
+        (_TEMPLATE_OVERLAY_BLEND, _OVERLAY_BLEND_REL),
+        (_TEMPLATE_WORLD_ORBIT, _WORLD_ORBIT_REL),
         (_TEMPLATE_DOLLHOUSE, _DOLLHOUSE_REL),
     ):
         if not src.is_file():

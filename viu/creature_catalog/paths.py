@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from ..anabarra_layout import library_root, project_data_dir
+from ..inbox_layout import ensure_inbox_readme, inbox_creatures_dir
 from ..config import Config
 
 
@@ -14,12 +15,13 @@ def creature_catalog_path(config: Config) -> Path:
 
 
 def creatures_inbox_dir(config: Config) -> Path:
-    """Входящие модели монстров / существ."""
+    """Входящие модели монстров / существ — U:\\Anabarra\\Inbox\\creatures."""
     env = os.environ.get("VIU_CREATURES_INBOX", "").strip()
     if env:
         p = Path(env).expanduser()
     else:
-        p = library_root(config) / "Lab" / "Creatures" / "Inbox"
+        ensure_inbox_readme(config)
+        p = inbox_creatures_dir(config)
     p.mkdir(parents=True, exist_ok=True)
     readme = p / "README.txt"
     if not readme.is_file():

@@ -49,9 +49,11 @@ def run_single_angle(
     looped: bool = False,
     seq: int = 0,
     lora_specs: list | None = None,
+    prompt_override: str = "",
+    negative_override: str = "",
 ) -> Tuple[bool, str, List[str]]:
-    prompt = mocap_prompt(action, angle)
-    negative = mocap_negative()
+    prompt = mocap_prompt(action, angle, positive_override=prompt_override)
+    negative = mocap_negative(negative_override=negative_override)
     from .lora import append_trigger_words, ensure_lora_files
 
     loras = list(lora_specs or [])
@@ -82,7 +84,6 @@ def run_single_angle(
     wf = inject_negative_prompt(wf, negative)
     wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
     wf = inject_loras(wf, loras)
-    wf = inject_loras(wf, loras)
     wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
 
     client = _client(config)
@@ -91,18 +92,34 @@ def run_single_angle(
         return False, ping, []
 
     face_note = ""
-    from .face_refs import face_swap_enabled, pick_face_ref, stage_face_for_comfy
+    from .face_refs import (
+        face_swap_enabled,
+        inswapper_model_path,
+        pick_face_ref,
+        reactor_face_swap_class,
+        stage_face_for_comfy,
+    )
 
     if face_swap_enabled():
         face = pick_face_ref(config, seed=f"{slug}|{catalog_slug or base_slug}")
         if face is not None:
             ok_face, stage_msg, input_name = stage_face_for_comfy(config, face)
-            if ok_face and client.has_node_class("ReActorFaceSwap"):
-                wf = inject_face_swap(wf, face_image=input_name)
-                face_note = f"лицо: {face.name}"
-            elif ok_face:
+            reactor_cls = reactor_face_swap_class(client)
+            inswap = inswapper_model_path(config)
+            if ok_face and reactor_cls and inswap:
+                wf = inject_face_swap(
+                    wf, face_image=input_name, reactor_class=reactor_cls
+                )
+                face_note = f"лицо: {face.name} (ReActor {reactor_cls})"
+            elif ok_face and reactor_cls and not inswap:
                 face_note = (
-                    f"лицо {face.name} в input, но ReActor нет — comfy_install reactor=1"
+                    f"лицо {face.name}, ReActor есть, но нет inswapper_128.onnx — "
+                    "comfy_install reactor=1"
+                )
+            elif ok_face and not reactor_cls:
+                face_note = (
+                    f"лицо {face.name} в input, но ReActor не в Comfy — "
+                    "comfy_ensure (перезапуск) или comfy_install reactor=1"
                 )
             else:
                 face_note = stage_msg
@@ -194,6 +211,18 @@ def run_single_angle(
                 + "; ".join(copy_notes),
                 saved,
             )
+
+        from .video_health import reactor_black_frame_hint, validate_mocap_mp4
+
+        v_ok, v_msg = validate_mocap_mp4(dest_ref)
+        if not v_ok:
+            hint = reactor_black_frame_hint() if face_note else ""
+            return (
+                False,
+                f"битый mp4 угол {angle.id}: {v_msg}. {hint}".strip(),
+                saved,
+            )
+
         saved.append(str(dest_ref))
 
     note = f"{angle.id}: → Lab/Refs ({len(saved)} файл(ов))"
@@ -214,12 +243,17 @@ def run_triple_angles(
     looped: bool = False,
     timeout_each: float = 900.0,
     lora_specs: list | None = None,
+    prompt_override: str = "",
+    negative_override: str = "",
 ) -> Tuple[bool, str, Dict[str, Any]]:
-    """Три дубля ¾ подряд (разный seed + вариация действия)."""
+    """Пять дублей ¾ подряд (разный seed + вариация действия)."""
     from .naming import next_kept_seq, normalize_slug_for_name
+    from .queue_manage import prepare_queue_for_slug
 
     angles = default_angles()
     base_slug = normalize_slug_for_name(catalog_slug or slug or "mocap")
+    client = _client(config)
+    queue_note = prepare_queue_for_slug(client, base_slug)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     slug_full = f"{base_slug}_{stamp}"
     seq = next_kept_seq(config, base_slug)
@@ -235,6 +269,8 @@ def run_triple_angles(
         "mode": "three_quarter_takes",
     }
     lines: List[str] = [f"Comfy ×{len(angles)} дубля (¾) — «{action[:80]}»"]
+    if queue_note:
+        lines.insert(0, queue_note)
     any_ok = False
     for i, angle in enumerate(angles):
         take_action = diversify_action(action, i)
@@ -250,6 +286,8 @@ def run_triple_angles(
             timeout=timeout_each,
             seed_salt=f"{stamp}|{i}|{angle.id}",
             lora_specs=lora_specs,
+            prompt_override=prompt_override,
+            negative_override=negative_override,
         )
         results["angles"][angle.id] = {
             "ok": ok,
@@ -264,4 +302,15 @@ def run_triple_angles(
         if files:
             lines.extend(f"      • {p}" for p in files)
         any_ok = any_ok or ok
+
+    from .vision_review import review_triple_results, vision_review_enabled
+
+    if vision_review_enabled() and any_ok:
+        results, vision_msg = review_triple_results(config, results, action=action)
+        if vision_msg:
+            lines.append(vision_msg)
+        if not (results.get("files") or []):
+            any_ok = False
+            lines.append("⏸ Vision отклонила все дубли — переснять или VIU_COMFY_VISION=0.")
+
     return any_ok, "\n".join(lines), results

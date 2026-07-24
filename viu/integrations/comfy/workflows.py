@@ -364,6 +364,7 @@ def inject_face_swap(
     face_image: str,
     decode_node_id: str = "",
     create_video_node_id: str = "",
+    reactor_class: str = "ReActorFaceSwap",
 ) -> Dict[str, Any]:
     """ReActor: VAEDecode → face swap → CreateVideo. face_image — имя в ComfyUI/input/."""
     if not (face_image or "").strip():
@@ -396,7 +397,7 @@ def inject_face_swap(
         "_meta": {"title": "Viu FaceRef"},
     }
     wf[reactor_id] = {
-        "class_type": "ReActorFaceSwap",
+        "class_type": reactor_class or "ReActorFaceSwap",
         "inputs": {
             "enabled": True,
             "input_image": [decode_id, 0],

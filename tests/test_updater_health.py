@@ -202,6 +202,7 @@ def test_apply_git_update_writes_package_sha(tmp_path, monkeypatch):
     monkeypatch.setattr(updater, "_run_git", lambda args, cwd, timeout=120.0, retries=1: (0, "ok"))
     monkeypatch.setattr(updater, "current_commit", lambda repo=None: "deadbeefcafe")
     monkeypatch.setattr(updater, "cleanup_obsolete", lambda root=None: [])
+    monkeypatch.setattr(updater, "_sha_mismatch_with_github", lambda branch: (False, "", ""))
 
     result = updater.apply_git_update(tmp_path)
     assert result.updated
@@ -219,12 +220,98 @@ def test_sha_needs_update_detects_mismatch(monkeypatch):
     assert remote == "bbb222"
 
 
+def test_apply_git_update_hard_reset_when_git_says_current(tmp_path, monkeypatch):
+    """Git behind=0, но hard_reset — всё равно сбрасываем к origin."""
+    from viu import updater
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "viu").mkdir()
+    monkeypatch.setattr(updater, "usable_git_root", lambda start=None: tmp_path)
+    monkeypatch.setattr(
+        updater,
+        "check_for_update",
+        lambda repo=None, branch=updater.DEFAULT_BRANCH, remote="origin": updater.UpdateResult(
+            ok=True,
+            checked=True,
+            has_updates=False,
+            behind=0,
+            local_ref="aaa",
+            remote_ref="bbb",
+            message="Уже последняя версия.",
+        ),
+    )
+    calls: list[list[str]] = []
+
+    def fake_run_git(args, cwd, timeout=120.0, retries=1):
+        calls.append(list(args))
+        if args[:2] == ["fetch", "origin"]:
+            return 0, "ok"
+        if args[:2] == ["rev-parse", "--abbrev-ref"]:
+            return 0, "main"
+        if args[:3] == ["checkout", "-B"]:
+            return 0, "ok"
+        if args[:2] == ["reset", "--hard"]:
+            return 0, "HEAD is now at bbb"
+        if args[:2] == ["rev-parse", "HEAD"]:
+            return 0, "deadbeefcafe" * 2
+        return 0, "ok"
+
+    monkeypatch.setattr(updater, "_run_git", fake_run_git)
+    monkeypatch.setattr(updater, "current_commit", lambda repo=None: "deadbeefcafe")
+    monkeypatch.setattr(updater, "cleanup_obsolete", lambda root=None: [])
+    monkeypatch.setattr(updater, "_sha_mismatch_with_github", lambda branch: (False, "", ""))
+
+    result = updater.apply_git_update(tmp_path, hard_reset=True)
+    assert result.updated
+    assert any(a[:2] == ["reset", "--hard"] for a in calls)
+
+
+def test_check_for_update_git_sha_mismatch(tmp_path, monkeypatch):
+    from viu import updater
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "viu").mkdir()
+    (tmp_path / "viu" / "package_sha.txt").write_text("oldsha" * 5 + "\n", encoding="utf-8")
+    monkeypatch.setattr(updater, "usable_git_root", lambda start=None: tmp_path)
+    monkeypatch.setattr(updater, "find_git_root", lambda start=None: tmp_path)
+    monkeypatch.setattr(updater, "has_git_origin", lambda root: True)
+
+    def fake_run_git(args, cwd, timeout=120.0, retries=1):
+        if args[:2] == ["fetch", "origin"]:
+            return 0, "ok"
+        if args[:2] == ["rev-parse", "HEAD"]:
+            return 0, "samecommit" * 2
+        if args[:2] == ["rev-parse", "origin/"]:
+            return 0, "samecommit" * 2
+        if args[:3] == ["rev-list", "--count"]:
+            return 0, "0"
+        return 0, "ok"
+
+    monkeypatch.setattr(updater, "_run_git", fake_run_git)
+    monkeypatch.setattr(
+        updater,
+        "_sha_mismatch_with_github",
+        lambda branch: (True, "oldsha" * 5, "newsha" * 5),
+    )
+
+    result = updater.check_for_update(tmp_path)
+    assert result.has_updates
+    assert "Файлы на диске" in result.message
+
+
 def test_update_viu_full_forces_when_sha_mismatch(tmp_path, monkeypatch):
     from viu import updater
 
     monkeypatch.setattr(updater, "package_root", lambda: tmp_path)
-    monkeypatch.setattr(updater, "running_sha", lambda root=None: "oldsha")
-    monkeypatch.setattr(updater, "remote_sha_github", lambda branch=updater.DEFAULT_BRANCH: "newsha")
+    calls = {"n": 0}
+
+    def sha_twice(branch=updater.DEFAULT_BRANCH):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return True, "oldsha", "newsha"
+        return False, "newsha", "newsha"
+
+    monkeypatch.setattr(updater, "sha_needs_update", sha_twice)
     monkeypatch.setattr(
         updater,
         "check_for_update",
@@ -240,13 +327,57 @@ def test_update_viu_full_forces_when_sha_mismatch(tmp_path, monkeypatch):
         updated=True,
         message="zip ok",
     )
-    monkeypatch.setattr(updater, "apply_update_smart", lambda branch, hard_reset=False: applied)
+    monkeypatch.setattr(updater, "apply_update_smart", lambda branch, hard_reset=False, force=False: applied)
     monkeypatch.setattr(updater, "install_package", lambda root=None: (True, "pip ok"))
+    monkeypatch.setattr(updater, "running_sha", lambda root=None: "newsha")
 
     ok, text, restart = updater.update_viu_full()
     assert ok and restart
     assert "package_sha" in text or "SHA на диске" in text
     assert "zip ok" in text
+    assert "memory.json" in text
+
+
+def test_update_viu_full_sync_calls_bootstrap(tmp_path, monkeypatch):
+    from viu import updater
+
+    monkeypatch.setattr(updater, "package_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        updater,
+        "sha_needs_update",
+        lambda branch: (False, "abc", "abc"),
+    )
+    monkeypatch.setattr(
+        updater,
+        "check_for_update",
+        lambda branch: updater.UpdateResult(
+            ok=True,
+            checked=True,
+            has_updates=False,
+            message="Уже последняя версия.",
+        ),
+    )
+    monkeypatch.setattr(
+        updater,
+        "bootstrap_zip_force",
+        lambda branch: (True, "bootstrap ok"),
+    )
+    monkeypatch.setattr(
+        updater,
+        "apply_update_smart",
+        lambda branch, hard_reset=False, force=False: updater.UpdateResult(
+            ok=True,
+            updated=True,
+            message="smart ok",
+        ),
+    )
+    monkeypatch.setattr(updater, "install_package", lambda root=None: (True, "pip ok"))
+    monkeypatch.setattr(updater, "running_sha", lambda root=None: "abc")
+
+    ok, text, restart = updater.update_viu_full(full_sync=True)
+    assert ok and restart
+    assert "bootstrap ok" in text
+    assert "smart ok" in text
 
 
 @patch("urllib.request.urlopen")

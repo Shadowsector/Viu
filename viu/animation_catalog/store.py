@@ -269,7 +269,7 @@ class AnimationCatalogStore:
             f"Импортировано/связано: {imported}. Не хватает: {missing}.",
         ]
         if pending:
-            lines.append(f"Ожидают описания: {pending} — «Принять анимацию» или «Очередь анимаций».")
+            lines.append(f"Ожидают описания: {pending} — «Принять анимацию» или «Описать новые FBX».")
         lines.append("")
         lines.append(self.graph_brief(max_holes=6))
         return "\n".join(lines)

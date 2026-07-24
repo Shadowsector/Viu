@@ -107,7 +107,7 @@ def _inbox_animation_count(config: Config) -> int:
     from .drop_router import _find_inbox_animation_fbx
 
     try:
-        return len(_find_inbox_animation_fbx(inbox_dir(config)))
+        return len(_find_inbox_animation_fbx(inbox_dir(config), config))
     except OSError:
         return 0
 

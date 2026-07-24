@@ -232,7 +232,7 @@ def test_overlay_templates(tmp_path):
     assert "X Bot@Idle.fbx" in clips
     playtest = (Path(__file__).resolve().parents[1] / "viu/tools/overlay_playtest_tool.py").read_text(encoding="utf-8")
     assert "_playtest_human" in playtest
-    assert "Запустить оверлей" in playtest or "оверлей собран" in playtest.lower()
+    assert "Запустить тестовую сцену" in playtest or "оверлей собран" in playtest.lower()
 
     baseline = (Path(__file__).resolve().parents[1] / "docs/OVERLAY_BASELINE.md").read_text(encoding="utf-8")
     assert "UpdateLayeredWindow" in baseline

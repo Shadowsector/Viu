@@ -323,6 +323,28 @@ def load_index(config: Config, *, rescan_if_missing: bool = True) -> List[LoraIn
     return scan_loras(config) if rescan_if_missing else []
 
 
+def _lora_display_name(filename: str) -> str:
+    stem = Path(filename).stem
+    return stem or filename
+
+
+def _lora_folder_heading(subfolder: str) -> str:
+    if not subfolder:
+        return "Корень loras"
+    return subfolder.replace("\\", "/").replace("/", " / ")
+
+
+def _group_lora_entries(entries: List[LoraIndexEntry]) -> List[tuple[str, List[LoraIndexEntry]]]:
+    buckets: Dict[str, List[LoraIndexEntry]] = {}
+    for entry in entries:
+        key = (entry.subfolder or "").replace("\\", "/").strip("/")
+        buckets.setdefault(key, []).append(entry)
+    folder_keys = sorted((k for k in buckets if k), key=str.lower)
+    if "" in buckets:
+        folder_keys.append("")
+    return [(key, buckets[key]) for key in folder_keys]
+
+
 def format_lora_pick_message(entries: List[LoraIndexEntry]) -> str:
     if not entries:
         return (
@@ -331,24 +353,44 @@ def format_lora_pick_message(entries: List[LoraIndexEntry]) -> str:
             "Ответь: `lora: none` — генерировать без LoRA."
         )
     lines = [
-        "Выбери LoRA для этого пула (можно несколько):",
+        f"Выбери LoRA ({len(entries)} шт., короткие имена):",
         "",
     ]
-    for e in entries:
-        tag_hint = f" [{', '.join(e.tags[:4])}]" if e.tags else ""
-        sub = f" ({e.subfolder}/)" if e.subfolder else ""
-        trig = f' trigger="{e.trigger}"' if e.trigger else ""
-        lines.append(f"  {e.index}. {e.file}{sub} — {e.size_mb} MB{tag_hint}{trig}")
+    for folder, group in _group_lora_entries(entries):
+        lines.append(f"── {_lora_folder_heading(folder)} ──")
+        for entry in group:
+            lines.append(f"  {entry.index}. {_lora_display_name(entry.file)}")
+        lines.append("")
     lines.extend(
         [
-            "",
             "Ответь:",
             "• `lora: 1` или `lora: 1,3` — выбранные",
             "• `lora: all` — все из списка",
             "• `lora: none` — без LoRA (чистый Wan)",
         ]
     )
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def format_lora_pick_telegram(entries: List[LoraIndexEntry], *, chunk_size: int = 3500) -> List[str]:
+    """Разбить длинный список на несколько сообщений Telegram."""
+    full = format_lora_pick_message(entries)
+    if len(full) <= chunk_size:
+        return [full]
+    chunks: List[str] = []
+    buf: List[str] = []
+    size = 0
+    for line in full.splitlines():
+        add = len(line) + 1
+        if buf and size + add > chunk_size:
+            chunks.append("\n".join(buf))
+            buf = []
+            size = 0
+        buf.append(line)
+        size += add
+    if buf:
+        chunks.append("\n".join(buf))
+    return chunks
 
 
 def parse_lora_pick_reply(text: str, *, max_index: int = 99) -> Optional[List[int]]:
@@ -591,6 +633,37 @@ def bind_slug(
         lib[file] = lib_entry
     save_registry(config, data)
     return True, f"Привязано {file} (strength={strength}) → slug {slug}"
+
+
+def list_registry_status_brief(config: Config, *, catalog_slug: str = "") -> str:
+    """Кратко для comfy_status; полный список — comfy_lora_list."""
+    ensure_registry(config)
+    entries = load_index(config)
+    loras_root = comfy_loras_dir(config)
+    lines = [
+        f"LoRA: {len(entries)} в {loras_root.name}/",
+        "полный список → comfy_lora_list",
+    ]
+    slug = (catalog_slug or "").strip()
+    if slug:
+        specs = resolve_loras_for_slug(config, slug)
+        if specs:
+            lines.append(f"Привязаны к `{slug}`:")
+            for spec in specs:
+                lines.append(f"  • {_format_spec_line(config, spec)}")
+    data = load_registry(config)
+    lib = data.get("library") or {}
+    if lib and not slug:
+        lines.append("library (trigger):")
+        for name in sorted(lib.keys())[:8]:
+            entry = lib[name]
+            if not isinstance(entry, dict):
+                continue
+            trig = str(entry.get("trigger") or "")
+            lines.append(f"  • {name}" + (f' — "{trig}"' if trig else ""))
+        if len(lib) > 8:
+            lines.append(f"  … ещё {len(lib) - 8} в индексе")
+    return "\n".join(lines)
 
 
 def list_registry_status(config: Config) -> str:

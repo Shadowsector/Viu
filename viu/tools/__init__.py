@@ -79,7 +79,11 @@ from .export_asset_tool import ExportUnityAssetTool
 from .lab_tool import LabRateTool, LabRunAllTool, LabStartTool, LabStatusTool, LabStepTool
 from .comfy_tool import (
     ComfyClipPickTool,
+    ComfyVisionReviewTool,
     ComfyEnsureTool,
+    ComfyReactorFixTool,
+    ComfyFocusTool,
+    ComfyQueueClearTool,
     ComfyInstallTool,
     ComfyLoraBindTool,
     ComfyLoraFetchTool,
@@ -88,9 +92,11 @@ from .comfy_tool import (
     ComfyLoraPickTool,
     ComfyLoraScanTool,
     ComfyMocapTool,
+    ComfyPromptTool,
     ComfyRunTool,
     ComfyStatusTool,
     ComfyTripleTool,
+    ComfyVisionReviewTool,
 )
 from .animation_catalog_tool import (
     AcceptAnimationInboxTool,
@@ -114,7 +120,7 @@ from .presence_tool import (
     PresenceSetTool,
     PresenceStatusTool,
 )
-from .eyes_tool import ScreenCaptureTool, VisionObserveTool
+from .eyes_tool import ScreenCaptureTool, VisionObserveTool, VisionReferenceTool
 from .vision_tool import VisionAppendTool, VisionReadTool
 from .web import WebFetchTool, WebSearchTool
 
@@ -150,6 +156,7 @@ def build_default_registry() -> ToolRegistry:
         WebFetchTool(),
         ScreenCaptureTool(),
         VisionObserveTool(),
+        VisionReferenceTool(),
         MemoryWriteTool(),
         MemorySearchTool(),
         PlanCreateTool(),
@@ -193,9 +200,14 @@ def build_default_registry() -> ToolRegistry:
         ComfyStatusTool(),
         ComfyInstallTool(),
         ComfyEnsureTool(),
+        ComfyReactorFixTool(),
+        ComfyFocusTool(),
+        ComfyQueueClearTool(),
         ComfyRunTool(),
         ComfyMocapTool(),
+        ComfyPromptTool(),
         ComfyTripleTool(),
+        ComfyVisionReviewTool(),
         ComfyClipPickTool(),
         ComfyLoraListTool(),
         ComfyLoraScanTool(),

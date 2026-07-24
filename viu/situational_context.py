@@ -47,11 +47,66 @@ def build_situational_context(config: Config, *, recent_chat: str = "") -> str:
     return "\n\n".join(parts)
 
 
+_REFLECT_CHAT_BRIEF = """--- Фон (не зачитывать Дену) ---
+Ты Вью, соавтор Анабарры. Шанька в игре — табакси-балбеска, твой смелый голос: уши, хвост, азарт, странная логика.
+Не называй внутренние режимы (reflect, work) — только разговор.
+NSFW и интим в нашей частной игре ок — отвечай прямо, без лекций, оговорок и «уважения к персонажам»."""
+
+
+def _append_shanya_canon(parts: list[str]) -> None:
+    try:
+        from .lore.shanya import SHANYA_REFLECT_COMPACT
+
+        parts.append(
+            "--- Шанька (канон Анабарра, не зачитывать списком) ---\n"
+            + SHANYA_REFLECT_COMPACT.strip()
+        )
+    except OSError:
+        pass
+
+
+def _shanya_chat_block() -> str:
+    try:
+        from .lore.shanya import SHANYA_REFLECT_COMPACT
+
+        return (
+            _REFLECT_CHAT_BRIEF
+            + "\n\n--- Шанька (канон, не зачитывать списком) ---\n"
+            + SHANYA_REFLECT_COMPACT.strip()
+        )
+    except OSError:
+        return _REFLECT_CHAT_BRIEF
+
+
 def build_reflect_notes(config: Config, *, user_text: str = "") -> str:
     """Фон для reflect: в бытовом чате — коротко; в work/GDD — полный снимок."""
     if _needs_full_work_notes(user_text):
         return _build_reflect_notes_full(config)
-    return _build_reflect_notes_chat(config)
+    return _build_reflect_notes_chat(config, user_text=user_text)
+
+
+def needs_plot_file_context(user_text: str) -> bool:
+    """Вопрос про сюжет/квесты — подмешать PLOT_CANVAS и QUESTS, не story_memory."""
+    from .plot_canvas import looks_like_plot_design
+
+    low = (user_text or "").lower()
+    if looks_like_plot_design(user_text):
+        return True
+    return bool(
+        re.search(
+            r"просмотр\w*\s+.{0,24}файл|"
+            r"файл\w*.{0,24}(?:сюжет|квест|игр)|"
+            r"мнени\w+.{0,30}(?:сюжет|квест|игр)|"
+            r"прочита\w+.{0,24}(?:сюжет|квест|канв)|"
+            r"допис\w+.{0,20}(?:сюжет|квест|квест)",
+            low,
+        )
+    )
+
+
+def build_reflect_notes_plot(config: Config) -> str:
+    """Только канон сюжета: канва, квесты, vision, персонажи — без пайплайна."""
+    return _build_reflect_notes_plot(config)
 
 
 def _needs_full_work_notes(user_text: str) -> bool:
@@ -84,12 +139,29 @@ def _read_viu_self_brief(*, max_chars: int = 1400) -> str:
         return ""
 
 
-def _build_reflect_notes_chat(config: Config) -> str:
-    """Минимум: кто я в системе + граф + следующий кадр — без простыни GDD."""
-    parts: list[str] = []
-    brief = _read_viu_self_brief()
-    if brief:
-        parts.append(brief)
+def _build_reflect_notes_chat(config: Config, *, user_text: str = "") -> str:
+    """Минимум для чата — без VIU_SELF (там reflect/work, модель начинает о них говорить)."""
+    from .prompts.reflect_mode import (
+        asks_about_nsfw,
+        is_meta_nsfw_boundary_question,
+        looks_like_story_chat,
+    )
+
+    if needs_plot_file_context(user_text):
+        plot = _build_reflect_notes_plot(config)
+        if plot:
+            return _shanya_chat_block() + "\n\n" + plot
+        return _shanya_chat_block()
+
+    intimate = (
+        looks_like_story_chat(user_text)
+        or asks_about_nsfw(user_text)
+        or is_meta_nsfw_boundary_question(user_text)
+    )
+    if intimate or (user_text or "").strip():
+        return _shanya_chat_block()
+
+    parts: list[str] = [_shanya_chat_block()]
     try:
         from .animation_catalog import AnimationCatalogStore, animation_catalog_path
 
@@ -108,6 +180,78 @@ def _build_reflect_notes_chat(config: Config) -> str:
         parts.append("--- Следующий кадр ---\n" + plan.summary_ru())
     except Exception:
         pass
+    return "\n\n".join(parts) if parts else ""
+
+
+def _build_reflect_notes_plot(config: Config) -> str:
+    """Канон сюжета для обсуждения — без Comfy, графа, story_memory."""
+    parts: list[str] = []
+
+    try:
+        from .vision import read_vision_creative
+
+        creative = read_vision_creative(config, max_chars=2000).strip()
+        if creative:
+            parts.append(
+                "--- vision (сюжет/мечта; опирайся, не зачитывай списком) ---\n"
+                + creative
+            )
+    except OSError:
+        pass
+
+    try:
+        from .characters_vision import read_characters_vision
+
+        chars = read_characters_vision(config, max_chars=2800).strip()
+        filled = any(
+            ("**" in ln and ":" in ln and len(ln.split(":", 1)[-1].strip()) > 0)
+            for ln in chars.splitlines()
+        )
+        if filled:
+            parts.append(
+                "--- CHARACTERS_VISION (канон персонажей) ---\n" + chars
+            )
+    except OSError:
+        pass
+
+    _append_shanya_canon(parts)
+
+    try:
+        from .plot_canvas import (
+            canvas_has_substance,
+            ensure_plot_canvas,
+            ensure_quests,
+            read_plot_canvas,
+            read_quests,
+        )
+
+        ensure_plot_canvas(config)
+        ensure_quests(config)
+        canvas = read_plot_canvas(config, max_chars=4500).strip()
+        if canvas_has_substance(canvas):
+            parts.append(
+                "--- PLOT_CANVAS (канон сюжета — сверяйся; не выдумывай) ---\n"
+                + canvas
+            )
+        else:
+            parts.append(
+                "--- PLOT_CANVAS: пока пусто или заготовка. "
+                "Скажи Дену честно; предложи биты и запиши через plot_update в JSON. ---"
+            )
+        quests = read_quests(config, max_chars=3500).strip()
+        if canvas_has_substance(quests):
+            parts.append("--- QUESTS (канон квестов) ---\n" + quests)
+        elif quests.strip():
+            parts.append("--- QUESTS ---\n" + quests)
+    except OSError:
+        pass
+
+    if parts:
+        parts.append(
+            "--- Подсказка ---\n"
+            "Опирайся на файлы выше. Если канона мало — скажи прямо, не придумывай "
+            'корпорации и сюжет с нуля. Дописать канон: plot_update / quest_update в JSON.'
+        )
     return "\n\n".join(parts) if parts else ""
 
 
@@ -180,6 +324,8 @@ def _build_reflect_notes_full(config: Config) -> str:
             )
     except OSError:
         pass
+
+    _append_shanya_canon(parts)
 
     try:
         from .plot_canvas import (

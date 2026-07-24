@@ -34,7 +34,7 @@ def cascadeur_status(config: Config) -> tuple[bool, str]:
 
     lines.append(
         "\nWorkflow: Mixamo/Blender FBX → Library/Cascadeur/Inbox → "
-        "правка в Cascadeur → Export в Animations → «Обновить аниматор» в Unity."
+        "правка в Cascadeur → Export в Animations → «Загрузить в Animator Unity»."
     )
     if not ok:
         lines.append("\nЗадай VIU_CASCADEUR_EXE в .env — Вью пока только показывает пути.")

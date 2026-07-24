@@ -106,26 +106,6 @@ def frame_spec_for_action(action: str) -> MocapFrameSpec:
 
 
 def enrich_idle_action(action: str) -> str:
-    """Если действие — голый idle stand, добавить микродвижения в промпт."""
+    """MoCap: не раздувать промпт микродвижениями и эмоциями."""
     raw = (action or "").strip()
-    low = raw.lower()
-    if not raw:
-        return (
-            "idle stand, subtle breathing, soft weight shift side to side, "
-            "small natural head turn, slight finger and shoulder micro-movements, "
-            "relaxed athletic stance, loopable idle"
-        )
-    # уже подробно
-    if any(k in low for k in ("weight shift", "head turn", "micro", "breathing", "gesture")):
-        return raw
-    if _IDLE_RE.search(raw) and "sit" not in low and not _LIE_RE.search(raw):
-        return (
-            f"{raw}, subtle breathing, soft weight shift, "
-            "small head turn, slight arm and finger micro-movements, natural idle loop"
-        )
-    if _LIE_RE.search(raw) and _IDLE_RE.search(raw):
-        return (
-            f"{raw}, subtle breathing, small restless shifts, "
-            "gentle head movement, natural sleep-idle loop"
-        )
-    return raw
+    return raw or "idle stand"

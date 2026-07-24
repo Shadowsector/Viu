@@ -476,11 +476,94 @@ def wait_comfy_api(
     )
 
 
+def _finalize_comfy_start(
+    config: Config,
+    client: ComfyClient,
+    parts: List[str],
+    *,
+    port: int,
+    wait_seconds: float,
+    root: Path,
+) -> Tuple[bool, str]:
+    """После старта Comfy: дождаться ReActor, при FAIL — repair + второй рестарт."""
+    from .face_refs import face_swap_status_line, reactor_needs_reload
+    from .reactor_diag import (
+        probe_reactor_deps,
+        reactor_diagnose,
+        repair_reactor_dependencies,
+        wait_for_reactor_node,
+    )
+
+    if not reactor_needs_reload(config, client):
+        parts.append(face_swap_status_line(config, client=client))
+        return True, "\n".join(parts)
+
+    cls = wait_for_reactor_node(client, timeout=min(60.0, wait_seconds))
+    if cls:
+        parts.append(face_swap_status_line(config, client=client))
+        return True, "\n".join(parts)
+
+    ok_imp, _ = probe_reactor_deps(config, timeout=30.0)
+    if not ok_imp:
+        parts.append("ReActor deps MISSING — pip…")
+        ok_fix, fix_msg = repair_reactor_dependencies(config)
+        parts.append(fix_msg)
+        if ok_fix:
+            parts.append(stop_comfy_on_port(port))
+            py = _python_for_comfy(root)
+            _, _, has_cuda = _torch_info(py, root)
+            extra: List[str] = [] if has_cuda else ["--cpu"]
+            ok_w2, _, tail2 = _launch_and_wait_comfy(
+                config,
+                root,
+                client=client,
+                port=port,
+                wait_seconds=wait_seconds,
+                extra=extra,
+            )
+            parts.extend(tail2)
+            if ok_w2 and wait_for_reactor_node(client, timeout=min(90.0, wait_seconds)):
+                parts.append(face_swap_status_line(config, client=client))
+                return True, "\n".join(parts)
+
+    parts.append(face_swap_status_line(config, client=client))
+    parts.append(reactor_diagnose(config, client=client))
+    return True, "\n".join(parts)
+
+
+def _launch_and_wait_comfy(
+    config: Config,
+    root: Path,
+    *,
+    client: ComfyClient,
+    port: int,
+    wait_seconds: float,
+    extra: Optional[List[str]] = None,
+) -> Tuple[bool, str, List[str]]:
+    """Запуск процесса Comfy и ожидание API. Возвращает (ok, wait_msg, parts)."""
+    py = _python_for_comfy(root)
+    log_path = _launch_log_path(config, root)
+    parts: List[str] = []
+    ok_l, launch_msg, proc = launch_comfy_process(
+        config, root, py=py, extra_args=list(extra or [])
+    )
+    parts.append(launch_msg)
+    if not ok_l:
+        return False, "\n".join(parts), parts
+    ok_w, wait_msg = wait_comfy_api(
+        client, proc=proc, log_path=log_path, wait_seconds=wait_seconds
+    )
+    parts.append(wait_msg)
+    return ok_w, wait_msg, parts
+
+
 def ensure_comfy_running(
     config: Config,
     *,
     wait_seconds: float = 180.0,
     auto_install: bool = True,
+    force_restart: bool = False,
+    reload_if_reactor_missing: bool = True,
 ) -> Tuple[bool, str]:
     """Пинг API; если нет — установить при необходимости, CUDA torch, запуск, ждать."""
     url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
@@ -495,6 +578,40 @@ def ensure_comfy_running(
         except Exception:
             pass
         root = None
+
+    def _reactor_reload_needed() -> bool:
+        if not reload_if_reactor_missing or root is None or not ok:
+            return False
+        from .face_refs import reactor_needs_reload
+
+        return reactor_needs_reload(config, client)
+
+    if ok and (force_restart or _reactor_reload_needed()):
+        reason = (
+            "принудительный restart"
+            if force_restart
+            else "ReActor в папке, но нода не в API"
+        )
+        parts_reload: List[str] = [f"Comfy на :{port} — {reason}, перезапускаю…", stop_comfy_on_port(port)]
+        py_r = _python_for_comfy(root) if root else None
+        if root is None or py_r is None:
+            return False, "\n".join(parts_reload + ["ComfyUI root не найден"])
+        _, _, has_cuda_r = _torch_info(py_r, root)
+        extra_r: List[str] = [] if has_cuda_r else ["--cpu"]
+        ok_w, _, parts_reload_tail = _launch_and_wait_comfy(
+            config,
+            root,
+            client=client,
+            port=port,
+            wait_seconds=wait_seconds,
+            extra=extra_r,
+        )
+        parts_reload.extend(parts_reload_tail)
+        if ok_w:
+            return _finalize_comfy_start(
+                config, client, parts_reload, port=port, wait_seconds=wait_seconds, root=root
+            )
+        return False, "\n".join(parts_reload)
 
     # Уже запущен на CPU при наличии GPU → поднять CUDA torch и перезапустить.
     if ok and root is not None and nvidia_gpu_available():
@@ -532,7 +649,9 @@ def ensure_comfy_running(
             return False, "\n".join(parts_up)
         return True, f"{msg}\ntorch={ver0} CUDA=yes"
     if ok:
-        return True, msg
+        from .face_refs import face_swap_status_line
+
+        return True, f"{msg}\n{face_swap_status_line(config, client=client)}"
 
     install_note = ""
     if root is None and auto_install:
@@ -589,7 +708,9 @@ def ensure_comfy_running(
     )
     if ok_w:
         parts.append(f"ComfyUI OK из {root}. {wait_msg}")
-        return True, "\n".join(parts)
+        return _finalize_comfy_start(
+            config, client, parts, port=port, wait_seconds=wait_seconds, root=root
+        )
 
     parts.append(wait_msg)
 

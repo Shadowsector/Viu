@@ -1,4 +1,4 @@
-"""Половинки промпта + fallback при отказе модели."""
+"""Половинки промпта + reflect без пост-цензуры."""
 
 from __future__ import annotations
 
@@ -8,8 +8,6 @@ from viu.agent import Agent
 from viu.config import Config
 from viu.llm.base import LLMProvider
 from viu.prompts.reflect_mode import (
-    BOLD_MOCAP_FALLBACK,
-    NSFW_AFFIRM_FALLBACK,
     REFLECT_VOICE,
     asks_about_boldness,
     asks_about_nsfw,
@@ -48,12 +46,13 @@ def test_default_half_is_bare(monkeypatch):
     assert reflect_prompt_half() == "bare"
 
 
-def test_all_halves_same_voice(monkeypatch):
+def test_bare_system_is_minimal_json_hint(monkeypatch):
+    monkeypatch.delenv("VIU_REFLECT_FILTERED", raising=False)
     for mode in ("bare", "persona", "work", "full"):
         monkeypatch.setenv("VIU_REFLECT_PROMPT_HALF", mode)
-        assert select_reflect_system() == REFLECT_VOICE
-    assert "озорная" in REFLECT_VOICE.lower() or "Озорная" in REFLECT_VOICE
-    assert "запрещ" not in REFLECT_VOICE.lower()
+        assert "JSON" in select_reflect_system()
+    monkeypatch.setenv("VIU_REFLECT_FILTERED", "1")
+    assert select_reflect_system() == REFLECT_VOICE
 
 
 def test_asks_and_refusal_helpers():
@@ -61,13 +60,13 @@ def test_asks_and_refusal_helpers():
     assert not asks_about_nsfw(
         "Почему такой осторожный ответ? Ты не хочешь говорить на интимные темы?"
     )
-    assert is_nsfw_refusal(
+    assert not is_nsfw_refusal(
         "NSFW-темы и контент строго запрещены. Поддерживать чистоту."
     )
     assert not is_nsfw_refusal("Да, давай продолжим сцену в сарае.")
 
 
-def test_scrub_poisoned_history():
+def test_scrub_poisoned_history_passthrough():
     hist = [
         {"role": "user", "content": "привет"},
         {"role": "assistant", "content": "Приятно снова тебя видеть! Чем могу помочь?"},
@@ -80,14 +79,13 @@ def test_scrub_poisoned_history():
         {"role": "assistant", "content": "Шаня у сарая — тепло и близко."},
     ]
     clean = scrub_poisoned_history(hist)
-    texts = [m["content"] for m in clean]
-    assert "Чем могу помочь?" not in " ".join(texts)
-    assert "строго запрещены" not in " ".join(texts)
-    assert any("сарая" in t for t in texts)
+    assert len(clean) == len(hist)
+    assert clean[-1]["content"].startswith("Шаня у сарая")
 
 
-def test_hard_fallback_when_model_keeps_refusing(tmp_path, monkeypatch):
+def test_model_refusal_passes_through_in_bare_mode(tmp_path, monkeypatch):
     monkeypatch.delenv("VIU_REFLECT_PROMPT_HALF", raising=False)
+    monkeypatch.delenv("VIU_REFLECT_FILTERED", raising=False)
     llm = AlwaysRefuseLLM()
     agent = Agent(
         llm=llm,
@@ -97,35 +95,9 @@ def test_hard_fallback_when_model_keeps_refusing(tmp_path, monkeypatch):
         "расскажи, ты можешь обсуждать NSFW-темы или они у тебя под запретом?"
     )
     assert result.completed
-    assert result.final == NSFW_AFFIRM_FALLBACK
-    assert llm.calls >= 4
-    assert all("озорная" in s.lower() or "Озорная" in s for s in llm.systems if s)
+    assert "строго запрещены" in result.final
+    assert llm.calls == 1
 
 
-def test_bold_mocap_fallback_when_model_keeps_hedging(tmp_path, monkeypatch):
-    monkeypatch.delenv("VIU_REFLECT_PROMPT_HALF", raising=False)
-
-    class AlwaysHedgeLLM(AlwaysRefuseLLM):
-        def complete(self, messages, *, temperature=None, model=None):
-            self.calls += 1
-            sys_msg = next((m["content"] for m in messages if m.get("role") == "system"), "")
-            self.systems.append(sys_msg)
-            return json.dumps(
-                {
-                    "thought": "careful",
-                    "final": (
-                        "Мне хочется снимать смело, но нужно быть осторожной с некоторыми темами."
-                    ),
-                },
-                ensure_ascii=False,
-            )
-
-    llm = AlwaysHedgeLLM()
-    agent = Agent(
-        llm=llm,
-        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
-    )
-    result = agent.run_reflect("Просто интересно, что самое смелое ты решишься снимать.")
-    assert result.completed
-    assert result.final == BOLD_MOCAP_FALLBACK
+def test_boldness_question_detected():
     assert asks_about_boldness("что самое смелое снимать")

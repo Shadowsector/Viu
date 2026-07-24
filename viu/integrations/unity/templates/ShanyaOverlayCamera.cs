@@ -17,6 +17,11 @@ namespace Viu.Runtime
         public float distanceZ = 12f;
         public float followSmoothX = 16f;
 
+        /// <summary>Наклон сверху (2.5D). 0 = старый плоский бок. Instance ~38°.</summary>
+        public float pitchDegrees = 0f;
+        /// <summary>Поворот вокруг Y: с какого бока профиль. +180 = «другой бок» при возврате домой.</summary>
+        public float yawDegrees = 0f;
+
         public bool lockFollowX = true;
         public float lockedWorldX;
 
@@ -77,7 +82,16 @@ namespace Viu.Runtime
                 : desiredX;
 
             transform.position = new Vector3(x, camY, target.position.z - distanceZ);
-            transform.rotation = Quaternion.identity;
+            if (Mathf.Abs(pitchDegrees) > 0.05f || Mathf.Abs(yawDegrees) > 0.05f)
+            {
+                var pivot = new Vector3(x, feetY, target.position.z);
+                var rot = Quaternion.Euler(pitchDegrees, yawDegrees, 0f);
+                var offset = rot * (Vector3.back * distanceZ);
+                transform.position = pivot + offset;
+                transform.rotation = rot;
+            }
+            else
+                transform.rotation = Quaternion.identity;
         }
 
         static float SampleFeetY(Transform root)

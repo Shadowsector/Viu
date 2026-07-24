@@ -1,79 +1,78 @@
-"""Промпты под Cascadeur MoCap (фронтальный свет, белый фон, фигура на весь кадр)."""
+"""Промпты под Cascadeur MoCap: коротко, статичная камера, nude ref, белый фон."""
 
 from __future__ import annotations
 
-from .angles import CameraAngle
-from .framing import enrich_idle_action, frame_spec_for_action
+from .angles import CameraAngle, mocap_take_count
+from .face_refs import face_swap_enabled
+from .framing import frame_spec_for_action
+from ...lore.shanya import SHANYA_MOCAP_VISUAL
 
+# Короткий negative — Wan и так не любит длинные списки.
 _NEGATIVE = (
-    "crowd, multiple people, text, watermark, logo, blur, motion blur, "
-    "heavy pan, zoom, dutch angle, close-up face only, cropped limbs, "
-    "busy background, colored background, scenery, room interior, "
-    "UI, subtitles, low contrast, tiny figure, character too small in frame, "
-    "backlit silhouette, rim light only, dark face, underexposed subject, "
-    "harsh backlight, pure black silhouette"
+    "multiple people, text, watermark, blur, camera motion, zoom, "
+    "cropped limbs, busy background, clothed, tiny figure, "
+    "moaning, sweat, jiggle, facial expression, emotional face, "
+    "pleasure, erotic acting, cinematic drama"
 )
 
+# База MoCap: не лицо/эмоции, а поза и силуэт для трекинга.
 _BASE = (
-    "simple tanned young woman, sun-kissed skin, athletic, "
-    "full body head to toe filling the frame, feet visible, "
-    "pure white studio background, seamless white backdrop, "
-    "soft frontal key light, fill light from front, even face lighting, "
-    "subject clearly lit from camera side, no backlight silhouette, "
-    "locked static camera, no text, no blur, clear limbs and joints, "
-    "high contrast against white, loopable short motion"
-)
-
-# Вариации дублей — чтобы A/B/C не были копиями
-_TAKE_FLAVOR = (
-    "calm natural pacing, soft micro-movements",
-    "slightly snappier timing, clearer weight shifts, more decisive limb arcs",
-    "slower softer motion, gentler breath, smaller gestures, relaxed energy",
+    "full body head to toe, nude, white background, static locked camera, "
+    "even lighting, clear limbs, mocap reference"
 )
 
 
-def take_flavor(take_index: int) -> str:
-    return _TAKE_FLAVOR[take_index % len(_TAKE_FLAVOR)]
+def mocap_subject_line() -> str:
+    """С ReActor — человеческий силуэт (лицо из FaceRefs); иначе табакси из лора."""
+    if face_swap_enabled():
+        return "nude young woman"
+    return SHANYA_MOCAP_VISUAL
 
 
-def diversify_action(action: str, take_index: int) -> str:
-    """Базовое действие + вкус дубля (не копипаста трёх одинаковых клипов)."""
-    base = enrich_idle_action((action or "").strip())
-    flavor = take_flavor(take_index)
-    # не дублировать, если уже есть
-    if flavor.split(",")[0] in base:
-        return base
-    return f"{base}, {flavor}"
-
-
-def mocap_prompt(action: str, angle: CameraAngle | None = None) -> str:
-    action = enrich_idle_action(action)
-    parts = [_BASE, action]
-    spec = frame_spec_for_action(action)
-    if spec.orientation == "vertical":
-        parts.append("vertical portrait framing, figure fills the tall frame")
+def mocap_prompt(
+    action: str,
+    angle: CameraAngle | None = None,
+    *,
+    positive_override: str = "",
+) -> str:
+    if (positive_override or "").strip():
+        base = positive_override.strip()
     else:
-        parts.append("horizontal landscape framing, figure lying fills the wide frame")
+        action = (action or "").strip() or "idle stand"
+        parts = [mocap_subject_line(), _BASE, action]
+        spec = frame_spec_for_action(action)
+        if spec.orientation == "horizontal":
+            parts.append("horizontal framing, lying full body")
+        else:
+            parts.append("vertical framing, standing or seated full body")
+        base = ", ".join(parts)
     if angle is not None:
-        parts.append(angle.prompt_en)
-    return ", ".join(parts)
+        return f"{base}, {angle.prompt_en}"
+    return base
 
 
-def mocap_negative() -> str:
+def mocap_negative(*, negative_override: str = "") -> str:
+    if (negative_override or "").strip():
+        return negative_override.strip()
     return _NEGATIVE
 
 
+def diversify_action(action: str, take_index: int) -> str:
+    """Три дубля — разный seed; промпт не раздуваем."""
+    del take_index
+    return (action or "").strip() or "idle stand"
+
+
 def draft_bundle(action: str) -> str:
-    """Текст для Telegram: базовый промпт + объяснение длины/кадра."""
-    action_e = enrich_idle_action(action)
+    """Текст для Telegram: короткий промпт + кадр."""
+    action_e = (action or "").strip() or "idle stand"
     base = mocap_prompt(action_e, None)
     spec = frame_spec_for_action(action_e)
+    n = mocap_take_count()
     return (
         f"Действие: {action_e}\n\n"
-        f"Базовый промпт (Вью снимет 3 дубля в ракурсе ¾ с разным timing/seed):\n"
-        f"{base}\n\n"
-        f"Кадр: {spec.summary_ru()}. Ракурс: только три четверти.\n"
-        f"Длина: Wan = кадры 4n+1, FPS={spec.fps:.0f}; "
-        f"idle длиннее (~3.4 с), жест ~2 с; переход ~2.7 с. Выход — MP4 h264.\n\n"
+        f"Промпт (MoCap ref, {n} дублей ¾, разный seed):\n{base}\n\n"
+        f"Кадр: {spec.summary_ru()}. Камера статична — **только поза и переход**, без лица/эмоций/звука.\n"
+        f"Не добавляй: moaning, sweat, jiggle, pleasure — это не MoCap.\n"
         f"Negative:\n{mocap_negative()}"
     )
