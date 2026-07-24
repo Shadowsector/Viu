@@ -142,3 +142,44 @@ def get_window_geometry(config: Config) -> str:
 
 def set_window_geometry(config: Config, geometry: str) -> None:
     set_value(config, "window_geometry", geometry.strip())
+
+
+def sanitize_window_geometry(
+    geometry: str,
+    *,
+    default: str = "1200x840",
+    min_w: int = 920,
+    min_h: int = 640,
+) -> str:
+    """Сбросить геометрию, если окно уехало за экран (отрицательный X/Y или крошечное).
+
+    Пример бага: ``920x1053+-1029+667`` — окно на отключённом левом мониторе,
+    Вью «запущена», но пользователь её не видит.
+    """
+    import re
+
+    raw = (geometry or "").strip()
+    if not raw:
+        return default
+    m = re.match(
+        r"^(\d+)x(\d+)([+-]-?\d+)([+-]-?\d+)$",
+        raw,
+    )
+    if not m:
+        # «1200x840» без позиции — ок
+        if re.match(r"^\d+x\d+$", raw):
+            return raw
+        return default
+    w, h = int(m.group(1)), int(m.group(2))
+    # Tk: «+-1029» = X=-1029 (плюс-разделитель + отрицательное число)
+    x = int(m.group(3).replace("+-", "-"))
+    y = int(m.group(4).replace("+-", "-"))
+    if w < min_w // 2 or h < min_h // 2:
+        return default
+    # Сильно за левый/верхний край виртуального рабочего стола
+    if x < -100 or y < -50:
+        return f"{max(w, min_w)}x{max(h, min_h)}+80+60"
+    # Слишком далеко вправо/вниз (грубый порог без WinAPI)
+    if x > 6000 or y > 4000:
+        return f"{max(w, min_w)}x{max(h, min_h)}+80+60"
+    return raw

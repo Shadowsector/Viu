@@ -217,6 +217,8 @@ def _merge_ollama_fallback(src: Path, dest: Path) -> None:
         "Modelfile.viu-magnum",
         "Modelfile.viu-command-r",
         "Modelfile.viu-qwen32",
+        "Modelfile.viu-euryale",
+        "Modelfile.viu-nevoria",
         "_SYSTEM_SNIPPET.txt",
     }
     dest.mkdir(parents=True, exist_ok=True)

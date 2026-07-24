@@ -18,7 +18,15 @@ _SHOW_STRICT_RE = re.compile(
     re.IGNORECASE,
 )
 _SHOW_LOOSE_RE = re.compile(
-    r"^\s*(?:покажи|show|что\s+за|какой)\s+(?:wan\s+|comfy\s+|mocap\s+)?промпт",
+    r"^\s*(?:покажи|show|что\s+за|какой|накинь|сделай|дай|напиши|сгенерируй)\s+"
+    r"(?:wan\s+|comfy\s+|mocap\s+|для\s+comfy(?:ui)?\s+)?промпт",
+    re.IGNORECASE,
+)
+_COMFY_TASK_RE = re.compile(
+    r"(?:промпт|prompt).{0,40}(?:comfy|wan|mocap)|"
+    r"(?:comfy|wan|mocap).{0,40}(?:промпт|prompt)|"
+    r"для\s+comfyui|под\s+(?:comfy|wan)|"
+    r"positive\s*(?:prompt)?\s*для",
     re.IGNORECASE,
 )
 _APPLY_PREFIX_RE = re.compile(
@@ -270,10 +278,25 @@ def is_prompt_show_request(text: str) -> bool:
     if _SHOW_LOOSE_RE.match(raw):
         return True
     low = raw.lower()
-    if "промпт" in low and any(w in low for w in ("покажи", "show", "что за", "какой", "wan", "comfy")):
+    if "промпт" in low and any(
+        w in low for w in ("покажи", "show", "что за", "какой", "wan", "comfy", "накинь", "сделай", "дай")
+    ):
         if "сценари" not in low and "граф" not in low:
             return True
+    if _COMFY_TASK_RE.search(raw) and len(raw) < 280:
+        if "сценари" not in low and "сюжет" not in low:
+            return True
     return False
+
+
+def is_comfy_short_task(text: str) -> bool:
+    """Reflect: короткая просьба про Comfy/Wan — без режиссёрского сценария."""
+    raw = _normalize_user_text(text)
+    if not raw or len(raw) > 400:
+        return False
+    if is_prompt_show_request(raw):
+        return True
+    return bool(_COMFY_TASK_RE.search(raw))
 
 
 def try_handle_comfy_prompt_chat(

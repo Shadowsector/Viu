@@ -70,7 +70,8 @@ def open_comfy_studio(
         body,
         text=(
             "Здесь видно, идёт ли генерация в ComfyUI и что ждёт lab. "
-            "UI Comfy — только в браузере (:8188); после «Поднять» ещё консоль с прогрессом. "
+            "UI Comfy — только в браузере (:8188). Пустой Unsaved Workflow — норма "
+            "(MoCap через API). Прогресс: .viu/logs/comfy_launch.log. "
             "Промпт и LoRA — без команд в Telegram."
         ),
         wraplength=860,

@@ -642,12 +642,38 @@ class Agent:
             hint = list_delivery_hint(user_text)
             if hint:
                 system += hint
+            try:
+                from .integrations.comfy.prompt_edit import is_comfy_short_task
+
+                if is_comfy_short_task(user_text):
+                    system += (
+                        "\n\n--- Comfy/Wan ---\n"
+                        "Ден просит короткий EN-промпт / действие для ComfyUI, "
+                        "не сценарий игры. В final: 1–3 предложения, без эмодзи, "
+                        "без **markdown**, без «режиссёрского» описания сцены. "
+                        "Если нужен полный Wan-блок — скажи открыть «Промпт Wan → Comfy» "
+                        "или напиши «покажи промпт»."
+                    )
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                from .viu_memory import format_reflect_block
+
+                mem = format_reflect_block(self.config)
+                if mem:
+                    user_msg = (
+                        user_text
+                        + "\n\n--- Память Вью (учитывай, не зачитывай списком) ---\n"
+                        + mem
+                    )
+            except Exception:  # noqa: BLE001
+                pass
             if needs_plot_file_context(user_text):
                 plot_notes = build_reflect_notes_plot(self.config)
                 if plot_notes:
                     plot_ctx = True
                     user_msg = (
-                        user_text
+                        user_msg
                         + "\n\n--- Канон сюжета и квестов (читай, не выдумывай) ---\n"
                         + plot_notes
                     )
@@ -762,6 +788,14 @@ class Agent:
                         full,
                         source="chat",
                         tags=["dialog", "story"] if plot_ctx else ["dialog"],
+                    )
+                except OSError:
+                    pass
+                try:
+                    from .viu_memory import process_reflect_exchange
+
+                    process_reflect_exchange(
+                        self.config, user_text, full, source="chat"
                     )
                 except OSError:
                     pass

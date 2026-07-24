@@ -36,7 +36,12 @@ from .llm_roles import (
     set_reflect_model,
 )
 from .integrations.unity.watcher import AnimationFolderWatcher
-from .runtime_settings import get_update_interval_min, get_window_geometry, set_window_geometry
+from .runtime_settings import (
+    get_update_interval_min,
+    get_window_geometry,
+    sanitize_window_geometry,
+    set_window_geometry,
+)
 from .updater import (
     apply_update_smart,
     auto_update_on_start,
@@ -246,8 +251,35 @@ class ViuGUI:
             pass
         self.root.title("Вью — Анабарра")
         saved_geom = get_window_geometry(self.agent.config)
-        self.root.geometry(saved_geom if saved_geom else _GUI_DEFAULT_GEOMETRY)
+        geom = sanitize_window_geometry(
+            saved_geom,
+            default=_GUI_DEFAULT_GEOMETRY,
+            min_w=_GUI_MIN_WIDTH,
+            min_h=_GUI_MIN_HEIGHT,
+        )
+        if saved_geom and geom != saved_geom:
+            set_window_geometry(self.agent.config, geom)
+            try:
+                self.root.after(
+                    800,
+                    lambda: self._append(
+                        "система",
+                        f"Окно было за экраном ({saved_geom}) — вернула на основной монитор.",
+                        tag="sys",
+                    ),
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        self.root.geometry(geom)
         self.root.minsize(_GUI_MIN_WIDTH, _GUI_MIN_HEIGHT)
+        # На всякий: поверх и не iconic
+        try:
+            self.root.deiconify()
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self.root.after(600, lambda: self.root.attributes("-topmost", False))
+        except tk.TclError:
+            pass
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.bind("<Configure>", self._on_root_configure, add="+")
         try:
@@ -404,10 +436,13 @@ class ViuGUI:
             self._append(
                 "система",
                 "Автономный режим (нет дома): inbox, lab и Comfy сама; "
-                "вопросы копятся. Живой чат справа — когда дома.",
+                "вопросы копятся. Через ~2 мин напишу тебе сама (Telegram), "
+                "если Ollama жива.",
                 tag="sys",
             )
             self.root.after(2000, lambda: self._lab_tick(auto=True))
+            # Первый away-ping не через 8 часов — через 2 минуты.
+            self.root.after(120_000, self._run_away_ping)
 
     def _show_decision_queue(self) -> None:
         from .decision_queue import render_open
@@ -1497,11 +1532,25 @@ class ViuGUI:
         self._set_tool_busy(True)
 
         def work():
+            from .integrations.github.handoff import append_handoff, push_handoff
             from .support import collect_support_bundle, upload_bundle_to_gist
 
             bundle = collect_support_bundle(self.agent.config)
             ok, msg = upload_bundle_to_gist(bundle, description="Viu logs — Анабарра")
-            return bundle, ok, msg
+            handoff_note = ""
+            try:
+                body = (
+                    f"Ден нажал «Собрать логи».\n\n"
+                    f"Bundle: `{bundle}`\n"
+                    f"Gist: {msg}\n\n"
+                    "Проверь launch/relaunch, Comfy (:8188), reflect/дубли, память."
+                )
+                append_handoff("Viu support logs", body[:8000], author="Viu")
+                h_ok, h_msg = push_handoff(message="Viu: support logs for Cursor")
+                handoff_note = f"\nHandoff Cursor: {'OK — ' + h_msg if h_ok else 'FAIL — ' + h_msg}"
+            except Exception as exc:  # noqa: BLE001
+                handoff_note = f"\nHandoff: {exc}"
+            return bundle, ok, msg + handoff_note
 
         def done(result):
             self._set_tool_busy(False)
@@ -1509,7 +1558,12 @@ class ViuGUI:
                 self._append("ошибка", str(result), tag="err")
                 return
             bundle, ok, msg = result
-            self._append("Вью", f"Логи собраны: {bundle}\n{msg}", tag="tool")
+            self._append(
+                "Вью",
+                f"Логи собраны: {bundle}\n{msg}\n"
+                "Cursor читает handoff/gist — не ищи файлы вручную.",
+                tag="tool",
+            )
             try:
                 folder = str(Path(bundle).parent)
                 if os.name == "nt":
@@ -2080,12 +2134,11 @@ class ViuGUI:
         minutes = max(60, int(base_min * jitter))
 
         def tick() -> None:
-            from .gui_busy import can_run_background_tick
-
-            if can_run_background_tick(
-                tool_busy=self._tool_busy, llm_busy=self._llm_busy
-            ):
-                self._run_away_ping()
+            # Comfy/lab могут идти часами — не сжигать слот ping из‑за tool_busy.
+            if self._llm_busy:
+                self._away_ping_job = self.root.after(10 * 60_000, tick)
+                return
+            self._run_away_ping()
             self._schedule_away_ping()
 
         self._away_ping_job = self.root.after(minutes * 60_000, tick)
@@ -2457,10 +2510,19 @@ class ViuGUI:
 
         def work() -> tuple[bool, str]:
             from .integrations.comfy.client import ComfyClient
+            from .integrations.comfy.process import ensure_comfy_running
 
             try:
                 ok, msg = ComfyClient(base_url=url, timeout=3.0).ping()
-                return ok, msg
+                if ok:
+                    return True, msg
+                ok2, msg2 = ensure_comfy_running(
+                    self.agent.config,
+                    wait_seconds=180.0,
+                    auto_install=True,
+                    force_restart=False,
+                )
+                return ok2, msg2
             except Exception as exc:  # noqa: BLE001
                 return False, str(exc)
 
@@ -2476,39 +2538,28 @@ class ViuGUI:
             if not ok:
                 self._append(
                     "Вью",
-                    f"ComfyUI **не отвечает** на {url}\n{ping}\n\n"
-                    "Запускаю **comfy_ensure** (подожди до ~3 мин)…\n"
-                    "Пока окно браузера может быть пустым — обнови F5, когда ensure закончит.",
-                    tag="sys",
+                    f"ComfyUI **не поднялся** на {url}\n{ping}\n\n"
+                    "Студия Comfy → «Поднять ComfyUI». Лог: `.viu/logs/comfy_launch.log`.\n"
+                    "Браузер не открываю — страница была бы пустой.",
+                    tag="err",
                 )
-                self._run_tool(
-                    "comfy_ensure",
-                    {"wait": "180"},
-                    label="comfy_ensure (авто)",
-                    echo_user=False,
-                )
+                return
             try:
                 webbrowser.open(url)
             except Exception as exc:  # noqa: BLE001
-                self._append("ошибка", f"Не открыла браузер: {exc}\nОткрой сама: {url}", tag="err")
+                self._append(
+                    "ошибка",
+                    f"Не открыла браузер: {exc}\nОткрой сама: {url}",
+                    tag="err",
+                )
                 return
-            if ok:
-                self._append(
-                    "Вью",
-                    f"ComfyUI уже работает — открыла {url}\n"
-                    "Это и есть окно Comfy (отдельного приложения нет). "
-                    "Консоль с прогрессом Wan — чёрное окно python после «Поднять ComfyUI».\n"
-                    "Съёмка MoCap — «MoCap: снять клип» или Студия Comfy. Пустая страница — F5.",
-                    tag="tool",
-                )
-            else:
-                self._append(
-                    "система",
-                    f"Браузер открыт на {url}. Когда ensure закончит — F5.\n"
-                    "Жди чёрное окно консоли Comfy (прогресс). "
-                    "Если снова пусто: Студия Comfy → «Поднять ComfyUI».",
-                    tag="sys",
-                )
+            self._append(
+                "Вью",
+                f"ComfyUI отвечает — открыла {url}\n"
+                "Пустой «Unsaved Workflow» — норма: MoCap идёт через API, не через этот граф.\n"
+                "Съёмка — «MoCap: снять клип» / Студия. Прогресс — в `.viu/logs/comfy_launch.log`.",
+                tag="tool",
+            )
 
         self._run_bg(work, done)
 
@@ -2926,13 +2977,15 @@ class ViuGUI:
             if os.name == "nt":
                 relaunch = root / "relaunch.cmd"
                 if relaunch.is_file():
-                    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-                    detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+                    # start "" открывает новое окно/процесс; CREATE_NO_WINDOW + DETACHED
+                    # часто глотает relaunch.cmd — после «Обновить Вью» GUI не поднимается.
                     subprocess.Popen(  # noqa: S603
-                        ["cmd.exe", "/c", str(relaunch)],
+                        ["cmd.exe", "/c", "start", "", str(relaunch)],
                         cwd=str(root),
-                        creationflags=flags | detached,
+                        shell=False,
                     )
+                    # Дать start успеть породить дочерний процесс.
+                    time.sleep(0.4)
                     os._exit(0)
             relaunch_gui()
         except OSError as exc:
@@ -2975,8 +3028,8 @@ class ViuGUI:
         self.output.see("end")
         if who in ("ты", "Вью") and not text.startswith("["):
             self._chat_history.append(f"{who}: {text[:400]}")
-        if who == "Вью":
-            self._record_llm_turn("assistant", text)
+        # Не писать assistant в _llm_turns здесь — иначе final ещё раз дублирует
+        # историю и модель повторяет сама себя («два процесса»).
         if who == "ты":
             try:
                 from .reminders import on_user_message
@@ -3060,10 +3113,11 @@ def build_relaunch_command(cwd: Path | None = None) -> tuple[list[str], str]:
     root = cwd or usable_git_root() or package_root()
     workdir = str(root)
     exe = sys.executable
-    if os.name == "nt" and exe.lower().endswith("python.exe"):
-        pyw = Path(exe).with_name("pythonw.exe")
-        if pyw.is_file():
-            exe = str(pyw)
+    # На Windows предпочитаем python.exe (не pythonw) — иначе silent fail.
+    if os.name == "nt" and exe.lower().endswith("pythonw.exe"):
+        py = Path(exe).with_name("python.exe")
+        if py.is_file():
+            exe = str(py)
     run_gui = root / "run_gui.pyw"
     if run_gui.is_file():
         return [exe, str(run_gui)], workdir
@@ -3073,11 +3127,11 @@ def build_relaunch_command(cwd: Path | None = None) -> tuple[list[str], str]:
 def relaunch_gui() -> None:
     """Запустить новый процесс Viu (после release_single_instance)."""
     cmd, workdir = build_relaunch_command()
-    subprocess.Popen(  # noqa: S603
-        cmd,
-        cwd=workdir,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-    )
+    kwargs: dict = {"cwd": workdir}
+    if os.name == "nt":
+        # Не CREATE_NO_WINDOW — иначе pythonw/python без окна и без stderr.
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    subprocess.Popen(cmd, **kwargs)  # noqa: S603
 
 
 def acquire_single_instance(port: int = _INSTANCE_PORT):

@@ -70,7 +70,8 @@ def main() -> int:
         from viu.net_env import apply_proxy_scrub_to_process
 
         _set_status("loading")
-        _mark_started()
+        # Не ставить .viu_gui_started до lock+Tk — иначе Viu.cmd пишет OK,
+        # а окно так и не появилось (pythonw/порт).
         bootstrap_env(ROOT)
         apply_proxy_scrub_to_process()
         from viu.gui import main as gui_main
