@@ -504,6 +504,12 @@ def apply_git_update(
         if status.has_updates or force or hard_reset:
             return download_zip_update(branch=branch)
         return status
+    try:
+        from install_merge import preserve_reflect_mode
+
+        preserve_reflect_mode(root)
+    except Exception:
+        pass
     if not status.ok:
         return status
     must_sync = status.has_updates or hard_reset or force
@@ -610,6 +616,14 @@ def download_zip_update(
     target: Optional[Path] = None,
 ) -> UpdateResult:
     dest = target or package_root()
+    try:
+        from install_merge import preserve_reflect_mode
+
+        note = preserve_reflect_mode(dest)
+        if note:
+            pass  # Anabarra seed; сообщение добавит update_viu_full при необходимости
+    except Exception:
+        pass
     q = _quote_ref(branch)
     url = f"https://github.com/{repo}/archive/refs/heads/{q}.zip"
     try:
@@ -774,6 +788,7 @@ def bootstrap_zip_force(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str]:
 
 _UPDATE_DATA_NOTE = (
     "Готово. Референсы и файлы лежат в U:\\Anabarra\\Inbox — обновление их не трогает. "
+    "Личный reflect_mode — в U:\\Anabarra\\ViuPrompts\\ (не в U:\\Viu\\viu\\prompts\\). "
     "Память (.viu\\memory.json) — твоя, с GitHub не качается. "
     "Окно перезапустится само — новые кнопки появятся после перезапуска."
 )
@@ -788,6 +803,15 @@ def update_viu_full(branch: str = DEFAULT_BRANCH, *, full_sync: bool = False) ->
     lines: List[str] = []
     needs_restart = False
     before = running_sha(package_root())[:12] or "—"
+
+    try:
+        from install_merge import preserve_reflect_mode
+
+        seed_msg = preserve_reflect_mode(package_root())
+        if seed_msg:
+            lines.append(seed_msg)
+    except Exception:
+        pass
 
     sha_outdated, local_full, remote_full = sha_needs_update(branch=branch)
     if remote_full:

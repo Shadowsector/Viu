@@ -142,7 +142,7 @@ def _creature_catalog(config: Config) -> Path:
 
 def all_places() -> List[Place]:
     """Канонический список входов/выходов."""
-    from .anabarra_layout import inbox_dir, library_root, mascot_archive_dir
+    from .anabarra_layout import inbox_dir, library_root, mascot_archive_dir, user_prompts_dir
     from .creature_catalog.paths import (
         creatures_inbox_dir,
         creatures_lineup_dir,
@@ -393,6 +393,14 @@ def all_places() -> List[Place]:
             "Корни",
             "U:\\Anabarra\\Library — после разбора Inbox.",
             library_root,
+        ),
+        Place(
+            "viu_prompts",
+            "Промпты Вью (личные)",
+            "folder",
+            "Файлы",
+            "U:\\Anabarra\\ViuPrompts — reflect_mode.py; обновления Вью не затирают.",
+            user_prompts_dir,
         ),
         Place(
             "data_dir",

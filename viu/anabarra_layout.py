@@ -1,7 +1,7 @@
 """Каноническая структура папок на диске U: — три зоны для Вью.
 
 U:\\Viu\\              — программа Вью и данные (.viu). Zip-апдейт трогает только это.
-U:\\Anabarra\\         — игра + Inbox (Unity, Library, Animations, Inbox)
+U:\\Anabarra\\         — игра + Inbox (Unity, Library, Animations, Inbox, ViuPrompts)
 U:\\Desktop Mascot\\   — архив сотен файлов (Вью НЕ сканирует сама)
 """
 
@@ -98,6 +98,27 @@ def library_root(config: Config) -> Path:
     if raw:
         return Path(raw).expanduser().resolve()
     return anabarra_root(config) / "Library"
+
+
+def user_prompts_dir(config: Config) -> Path:
+    """Личные промпты вне zip: U:\\Anabarra\\ViuPrompts."""
+    from install_merge import USER_PROMPTS_DIRNAME
+
+    return anabarra_root(config) / USER_PROMPTS_DIRNAME
+
+
+def user_reflect_mode_path(config: Config) -> Path:
+    return user_prompts_dir(config) / "reflect_mode.py"
+
+
+def preserve_user_reflect_mode(config: Config | None = None) -> str:
+    """Сохранить текущий reflect_mode в Анабарру (если там ещё нет). До апдейта."""
+    from install_merge import preserve_reflect_mode
+
+    if config is not None:
+        return preserve_reflect_mode(viu_install_root(config))
+    # U:\\Viu — родитель пакета viu/
+    return preserve_reflect_mode(Path(__file__).resolve().parent.parent)
 
 
 def legacy_viu_inbox_dir(config: Config) -> Path:

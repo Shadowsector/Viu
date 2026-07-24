@@ -184,6 +184,13 @@ def _copy_install_tree_item_from_zip(src_root: Path):
 
 def _fallback_copy_install_tree_item(item: Path, dest_root: Path) -> None:
     """Без viu/install_merge — Inbox и ollama только merge, никогда rmtree."""
+    if item.is_dir() and item.name == "viu":
+        try:
+            from install_merge import preserve_reflect_mode
+
+            preserve_reflect_mode(dest_root)
+        except Exception:
+            pass
     target = dest_root / item.name
     if item.is_dir() and item.name == "Inbox":
         _merge_inbox_fallback(item, target)
@@ -236,6 +243,15 @@ def _merge_ollama_fallback(src: Path, dest: Path) -> None:
 
 def apply_zip(data: bytes) -> None:
     dest = root_dir()
+    try:
+        from install_merge import preserve_reflect_mode
+
+        msg = preserve_reflect_mode(dest)
+        if msg:
+            log(msg)
+    except Exception:
+        # Старый install_merge без preserve — не мешаем апдейту.
+        pass
     with tempfile.TemporaryDirectory() as tmp:
         zpath = Path(tmp) / "viu.zip"
         zpath.write_bytes(data)
