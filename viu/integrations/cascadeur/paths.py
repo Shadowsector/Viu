@@ -10,7 +10,7 @@ from ...config import Config
 
 
 def cascadeur_inbox(config: Config) -> Path:
-    """Входящие для Cascadeur — U:\\Viu\\Inbox\\cascadeur."""
+    """Входящие для Cascadeur — U:\\Anabarra\\Inbox\\cascadeur."""
     root = inbox_cascadeur_dir(config)
     ensure_inbox_readme(config)
     root.mkdir(parents=True, exist_ok=True)

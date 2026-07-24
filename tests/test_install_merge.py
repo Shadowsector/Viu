@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 """Тесты install_merge и bootstrap zip (Inbox не затирается)."""
 
 from __future__ import annotations
@@ -10,16 +9,6 @@ from install_merge import copy_install_tree_item, merge_inbox_dir
 
 
 def test_merge_inbox_keeps_user_references(tmp_path: Path) -> None:
-=======
-"""Zip-обновление не должно затирать Inbox/references."""
-
-from pathlib import Path
-
-from viu.ollama_layout import merge_inbox_dir
-
-
-def test_merge_inbox_keeps_user_references(tmp_path):
->>>>>>> origin/cursor/comfy-studio-launcher-65c2
     dest = tmp_path / "Inbox"
     refs = dest / "references"
     refs.mkdir(parents=True)
@@ -37,7 +26,6 @@ def test_merge_inbox_keeps_user_references(tmp_path):
     assert user_file.is_file()
     assert user_file.read_bytes() == b"user"
     assert (refs / "README.txt").read_text(encoding="utf-8") == "new readme\n"
-<<<<<<< HEAD
 
 
 def test_copy_install_tree_item_never_wipes_inbox(tmp_path: Path) -> None:
@@ -85,5 +73,3 @@ def test_bootstrap_loader_uses_install_merge_from_extracted_zip(tmp_path: Path, 
     mod.copy_install_tree_item(inbox_zip, repo)
 
     assert (user_inbox / "photo.png").read_bytes() == b"x"
-=======
->>>>>>> origin/cursor/comfy-studio-launcher-65c2

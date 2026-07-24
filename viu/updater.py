@@ -695,21 +695,36 @@ def auto_update_on_start(
     branch: str = DEFAULT_BRANCH,
     allow_zip: bool = True,
 ) -> UpdateResult:
+    """При старте: если на GitHub новее — полный sync (как кнопка «Обновить Вью»)."""
     cleanup_broken_git()
-    sha_outdated, _, _ = _sha_mismatch_with_github(branch)
-    root = usable_git_root()
-    if root is not None:
-        result = apply_git_update(root, branch=branch, hard_reset=sha_outdated)
-        if result.updated:
-            install_package(root)
-        return result
-    status = check_for_update(branch=branch)
-    if not allow_zip or not status.has_updates:
-        return status
-    result = download_zip_update(branch=branch)
-    if result.updated:
-        install_package()
-    return result
+    sha_outdated, local, remote = _sha_mismatch_with_github(branch)
+    if not allow_zip:
+        return check_for_update(branch=branch)
+    if not sha_outdated and not check_for_update(branch=branch).has_updates:
+        return UpdateResult(
+            ok=True,
+            checked=True,
+            has_updates=False,
+            local_ref=(local or "")[:12],
+            remote_ref=(remote or "")[:12],
+            message=_version_message(
+                branch=branch,
+                local=local,
+                remote=remote,
+                up_to_date=True,
+            ),
+        )
+    ok, text, _restart = update_viu_full(branch=branch, full_sync=True)
+    return UpdateResult(
+        ok=ok,
+        checked=True,
+        updated=ok,
+        has_updates=True,
+        local_ref=(local or "")[:12],
+        remote_ref=(remote or "")[:12],
+        message=text,
+        used_zip=True,
+    )
 
 
 def version_label() -> str:
@@ -758,8 +773,9 @@ def bootstrap_zip_force(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str]:
 
 
 _UPDATE_DATA_NOTE = (
-    "Данные в `.viu/` (memory.json, планы, lab) с GitHub **не затираются** — "
-    "обновляется код в `viu/` и скрипты. Новые кнопки видны только после перезапуска окна."
+    "Готово. Референсы и файлы лежат в U:\\Anabarra\\Inbox — обновление их не трогает. "
+    "Память (.viu\\memory.json) — твоя, с GitHub не качается. "
+    "Окно перезапустится само — новые кнопки появятся после перезапуска."
 )
 
 

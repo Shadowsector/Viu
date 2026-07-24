@@ -191,6 +191,14 @@ class ViuGUI:
         except Exception:  # noqa: BLE001
             pass
         try:
+            from .anabarra_layout import migrate_inbox_to_anabarra
+
+            moved, mig = migrate_inbox_to_anabarra(self.agent.config)
+            if moved and mig:
+                self._append("система", mig, tag="sys")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
             from .vision import ensure_vision
 
             ensure_vision(self.agent.config)

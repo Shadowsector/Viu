@@ -232,7 +232,7 @@ def plan_next_step(config: Config) -> StepPlan:
 
     return _with_ctx(
         StepPlan(
-            message="Положи .blend в U:\\Viu\\Inbox → «Что делать дальше».",
+            message="Положи .blend в U:\\Anabarra\\Inbox → «Что делать дальше».",
             idle=True,
         ),
         ctx,

@@ -1,4 +1,4 @@
-"""Единый Inbox U:\\Viu\\Inbox — подпапки рядом друг с другом."""
+"""Единый Inbox U:\\Anabarra\\Inbox — подпапки рядом друг с другом."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 from .anabarra_layout import inbox_dir
 from .config import Config
 
-# Подпапки в U:\Viu\Inbox (рядом, не разбросаны по Anabarra).
+# Подпапки в U:\Anabarra\Inbox (рядом, не разбросаны по Anabarra).
 INBOX_SUBDIRS: dict[str, str] = {
     "creatures": "Модели существ (.blend / .fbx / .glb)",
     "animations": "Анимации FBX — по одной, Mixamo/Cascadeur export",
@@ -44,7 +44,7 @@ def ensure_inbox_readme(config: Config) -> None:
     root.mkdir(parents=True, exist_ok=True)
     readme = root / "README.txt"
     lines = [
-        "Inbox Вью — все входы в одном месте (U:\\Viu\\Inbox).",
+        "Inbox Вью — все входы в одном месте (U:\\Anabarra\\Inbox).",
         "",
         "  (корень)     — паки домиков / blend для «Что делать дальше»",
     ]

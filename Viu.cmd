@@ -78,25 +78,24 @@ if /i "%VIU_QUICK_START%"=="1" goto :skip_update
 
 echo [1/3] GitHub update (может занять несколько минут)...
 echo [1/3] updates>> "%LAUNCH_LOG%"
-if exist "%~dp0bootstrap_update.py" (
-  python bootstrap_update.py --auto 2>&1
-  set "BERR=!errorlevel!"
-  echo bootstrap exit=!BERR!>> "%LAUNCH_LOG%"
-  if !BERR! GEQ 2 (
+rem Полный sync: как кнопка «Обновить Вью» — zip + pip, без выбора веток вручную.
+python -m viu update --full 2>&1
+set "BERR=!errorlevel!"
+echo update --full exit=!BERR!>> "%LAUNCH_LOG%"
+if !BERR! GEQ 1 (
+  if exist "%~dp0bootstrap_update.py" (
     echo [net] повтор: bootstrap --apply
     python bootstrap_update.py --apply 2>&1
     set "BERR=!errorlevel!"
   )
-  if !BERR! GEQ 1 (
-    echo [warn] Обновление не удалось — запускаю текущую версию
-  )
-) else (
-  echo [warn] нет bootstrap_update.py
+)
+if !BERR! GEQ 1 (
+  echo [warn] Обновление не удалось — запускаю текущую версию
 )
 goto :after_update
 
 :skip_update
-echo [1/3] Без GitHub (quick). Апдейт: force_update_viu.bat
+echo [1/3] Без GitHub (quick). Апдейт: кнопка «Обновить Вью» или force_update_viu.bat
 echo skip update>> "%LAUNCH_LOG%"
 
 :after_update

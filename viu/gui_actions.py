@@ -54,7 +54,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Обновить Вью",
         "Каждый день",
         tool="__update_viu__",
-        hint="Скачать новую версию с GitHub.",
+        hint="Скачает всю новую версию с GitHub и перезапустит окно. Ничего искать не нужно.",
     ),
     GuiAction(
         "decision_queue",

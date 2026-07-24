@@ -1,15 +1,16 @@
 """Каноническая структура папок на диске U: — три зоны для Вью.
 
-U:\\Viu\\              — программа Вью, данные (.viu), Inbox (по одному паку)
-U:\\Anabarra\\         — игра (Unity, Library, Animations)
+U:\\Viu\\              — программа Вью и данные (.viu). Zip-апдейт трогает только это.
+U:\\Anabarra\\         — игра + Inbox (Unity, Library, Animations, Inbox)
 U:\\Desktop Mascot\\   — архив сотен файлов (Вью НЕ сканирует сама)
 """
 
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 from .config import Config
 
@@ -99,8 +100,13 @@ def library_root(config: Config) -> Path:
     return anabarra_root(config) / "Library"
 
 
+def legacy_viu_inbox_dir(config: Config) -> Path:
+    """Старый путь U:\\Viu\\Inbox — больше не канон (zip апдейт мог его трогать)."""
+    return viu_install_root(config) / INBOX_FOLDER_NAME
+
+
 def inbox_dir(config: Config) -> Path:
-    """Вход: сюда кладёшь ОДИН пак для разбора. Не C:\\Downloads."""
+    """Вход: один пак / референсы / анимации. По умолчанию U:\\Anabarra\\Inbox (вне zip)."""
     for key in ("VIU_INBOX_DIR", "VIU_DOWNLOADS_DIR"):
         raw = _env(key)
         if raw:
@@ -108,12 +114,74 @@ def inbox_dir(config: Config) -> Path:
     cfg_raw = getattr(config, "inbox_dir", "") or getattr(config, "downloads_dir", "") or ""
     if cfg_raw:
         return Path(cfg_raw).expanduser().resolve()
-    return viu_install_root(config) / INBOX_FOLDER_NAME
+    return anabarra_root(config) / INBOX_FOLDER_NAME
 
 
 def downloads_dir(config: Config) -> Path:
     """Обратная совместимость — то же, что inbox_dir."""
     return inbox_dir(config)
+
+
+def _dir_has_user_files(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    for p in path.rglob("*"):
+        if not p.is_file():
+            continue
+        if p.name.lower() in ("readme.txt", "readme.md", ".gitkeep"):
+            continue
+        return True
+    return False
+
+
+def migrate_inbox_to_anabarra(config: Config) -> Tuple[bool, str]:
+    """Перенести содержимое U:\\Viu\\Inbox → U:\\Anabarra\\Inbox (один раз при старте)."""
+    old = legacy_viu_inbox_dir(config)
+    new = inbox_dir(config)
+    try:
+        if old.resolve() == new.resolve():
+            return False, ""
+    except OSError:
+        return False, ""
+    if not old.is_dir() or not _dir_has_user_files(old):
+        return False, ""
+    new.mkdir(parents=True, exist_ok=True)
+    moved = 0
+    skipped = 0
+    for src in old.rglob("*"):
+        if not src.is_file():
+            continue
+        rel = src.relative_to(old)
+        dest = new / rel
+        if dest.exists():
+            skipped += 1
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.move(str(src), str(dest))
+            moved += 1
+        except OSError:
+            try:
+                shutil.copy2(src, dest)
+                moved += 1
+            except OSError:
+                skipped += 1
+    # Убрать пустые каталоги в старом Inbox (README можно оставить-указатель)
+    try:
+        marker = old / "README.txt"
+        marker.write_text(
+            "Inbox переехал в U:\\Anabarra\\Inbox — клади файлы туда.\n"
+            "Папка U:\\Viu\\Inbox больше не используется (обновления Вью её не трогают).\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+    if moved == 0 and skipped == 0:
+        return False, ""
+    msg = f"Inbox перенесён в {new}: файлов {moved}"
+    if skipped:
+        msg += f", пропущено (уже есть) {skipped}"
+    return True, msg
 
 
 def mascot_archive_dir(config: Config) -> Path:
@@ -134,9 +202,10 @@ def project_data_dir(config: Config) -> Path:
 
 
 def ensure_layout(config: Config) -> List[Path]:
-    """Создаёт Inbox, .viu и Library."""
+    """Создаёт Inbox (Anabarra), .viu и Library; переносит старый U:\\Viu\\Inbox."""
     from .inbox_layout import ensure_inbox_readme
 
+    migrate_inbox_to_anabarra(config)
     roots: List[Path] = []
     for path in (config.data_dir.resolve(), inbox_dir(config), library_root(config)):
         path.mkdir(parents=True, exist_ok=True)
@@ -155,17 +224,18 @@ def describe_layout(config: Config) -> str:
         "Три папки на U: (Вью не лезет на C: без явной настройки):",
         "",
         f"  1. U:\\Viu\\          программа:     {viu}",
-        f"     Inbox (разбор):    {inbox_dir(config)}",
         f"     Данные (.viu):     {config.data_dir}",
+        "     (обновления с GitHub трогают только эту папку)",
         "",
         f"  2. U:\\Anabarra\\      игра:          {anabarra_root(config)}",
+        f"     Inbox (разбор):    {inbox_dir(config)}",
         f"     Unity:             {unity_project_path(config)}",
         f"     Library (склад):   {library_root(config)}",
         "",
         f"  3. Desktop Mascot   архив:         {mascot}",
         "     (сотни файлов — Вью НЕ сканирует сама; бери оттуда один пак → Inbox)",
         "",
-        "Workflow: подготовил пак → U:\\Viu\\Inbox → «Разобрать Inbox» → «Разметить предметы».",
+        "Workflow: пак → U:\\Anabarra\\Inbox → «Разобрать Inbox» → «Разметить предметы».",
         "Подробнее: docs/ANABARRA_FOLDERS.md",
     ]
     return "\n".join(lines)
