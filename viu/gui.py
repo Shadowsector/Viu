@@ -2307,26 +2307,67 @@ class ViuGUI:
         from .presence import is_away
 
         existing = load_session(self.agent.config, COMFY_TOPIC)
-        # Уже ждём промпт/LoRA по этому кадру — не reset (иначе сотрём правки).
+        # Уже ждём промпт/LoRA ИЛИ Ден правил Wan-промпт — не invent+reset
+        # (иначе sit-on-bed стирается и встаёт touch_self, а очередь пустая).
+        has_user_prompt = bool(
+            existing is not None
+            and existing.meta.get("prompt_user_edited")
+            and (
+                existing.meta.get("wan_positive")
+                or existing.meta.get("approved_action")
+                or existing.meta.get("action")
+            )
+        )
         if (
             not auto
             and existing is not None
-            and existing.status in ("awaiting_prompt", "awaiting_lora_pick")
+            and (
+                existing.status in ("awaiting_prompt", "awaiting_lora_pick")
+                or has_user_prompt
+            )
         ):
+            from .lab.session import save_session
+
             slug = str(existing.meta.get("catalog_slug") or "")
+            action = str(
+                existing.meta.get("approved_action")
+                or existing.meta.get("action")
+                or ""
+            )
+            # completed/idle + ручной промпт: иначе prepare сделает new_session и сотрёт Wan.
+            if existing.status in ("completed", "idle"):
+                existing.status = "running"
+                if existing.step >= 6 or existing.step < 0:
+                    existing.step = 0
+            existing.meta["shoot_intent"] = True
+            existing.meta["auto_approved_shoot"] = True
+            existing.meta["approved"] = True
+            if action:
+                existing.meta["approved_action"] = action
+            existing.meta.pop("lora_pick_done", None)
+            save_session(self.agent.config, existing)
             self._append(
                 "Вью",
-                f"Продолжаю кадр `{slug or '…'}` — одобряю и запускаю Comfy "
-                f"(без смены slug; промпт из редактора сохранится).",
+                f"Снимаю сохранённый кадр `{slug or '…'}`"
+                + (f" — {action[:80]}" if action else "")
+                + ".\n"
+                "Без смены slug (промпт из редактора). "
+                "В браузере Comfy граф может быть пустым — очередь идёт через API; "
+                "смотри Студию / `.viu/logs/comfy_launch.log`.",
                 tag="viu",
             )
+            start_args = {
+                "topic": COMFY_TOPIC,
+                "run_all": "1",
+                "shoot": "1",
+            }
+            if action:
+                start_args["action"] = action
+            if slug:
+                start_args["catalog_slug"] = slug
             self._run_tool(
                 "lab_start",
-                {
-                    "topic": COMFY_TOPIC,
-                    "run_all": "1",
-                    "shoot": "1",
-                },
+                start_args,
                 label="MoCap: продолжить съёмку",
                 echo_user=True,
             )
@@ -2343,9 +2384,9 @@ class ViuGUI:
         if not auto and not is_away(self.agent.config):
             self._append(
                 "Вью",
-                "Сначала подниму ComfyUI (если спит), затем сниму.\n"
-                "Промпт: «Промпт Wan → Comfy» или Студия Comfy.\n"
-                "Кнопка MoCap = одобрение + генерация.",
+                "Сначала подниму ComfyUI (если спит), затем ставлю jobs в очередь API.\n"
+                "Пустой «Unsaved Workflow» в браузере — норма. "
+                "Прогресс: Студия Comfy / лог comfy_launch.",
                 tag="viu",
             )
         args = {
@@ -2591,15 +2632,22 @@ class ViuGUI:
         from .lab.comfy_pipeline import COMFY_TOPIC
         from .lab.session import load_session
 
-        def done(ok: bool, msg: str) -> None:
-            self._append("Вью", msg, tag="tool" if ok else "sys")
+        def done(ok: bool, msg: str, start_shoot: bool = False) -> None:
+            hist = getattr(self, "_chat_history", None) or []
+            preview = f"Вью: {msg[:400]}"
+            if not (hist and hist[-1] == preview):
+                self._append("Вью", msg, tag="tool" if ok else "sys")
+            if not ok or self._tool_busy:
+                return
             session = load_session(self.agent.config, COMFY_TOPIC)
-            if (
-                ok
-                and session
-                and session.status == "running"
-                and not self._tool_busy
+            if start_shoot or (
+                session
+                and session.meta.get("shoot_intent")
+                and session.meta.get("prompt_user_edited")
             ):
+                self._lab_comfy_action()
+                return
+            if session and session.status == "running":
                 self._run_tool(
                     "lab_step",
                     {"topic": COMFY_TOPIC, "run_all": "1"},
@@ -3020,6 +3068,11 @@ class ViuGUI:
             pass
 
     def _append(self, who: str, text: str, tag: str | None = None) -> None:
+        # Не дублировать одинаковый текст подряд (два окна редактора / двойной клик).
+        if who == "Вью" and self._chat_history:
+            prev = self._chat_history[-1]
+            if prev == f"{who}: {text[:400]}":
+                return
         tag = tag or {"ты": "you", "Вью": "viu", "ошибка": "err", "система": "sys"}.get(
             who, "step"
         )
