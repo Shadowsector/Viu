@@ -141,12 +141,8 @@ class VisionReferenceTool(Tool):
     name = "vision_reference"
     description = (
         "Llava/qwen2-vl: описать референс из картинки или видео для Comfy/MoCap. "
-<<<<<<< HEAD
-        "path= PNG/JPG или mp4. frame=first|middle|last для видео."
-=======
         "path= PNG/JPG или mp4. frame=first|middle|last для видео. "
         "hint= контекст. save=1 — JSON в comfy_refs/vision_refs/."
->>>>>>> 4c0b969 (Add away proactive pings and LLaVA first/last frame review)
     )
     parameters = {
         "path": "файл PNG/JPG или mp4/webm",
@@ -156,14 +152,10 @@ class VisionReferenceTool(Tool):
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
-<<<<<<< HEAD
         from ..integrations.comfy.reference_vision import (
             describe_reference,
             format_reference_report,
         )
-=======
-        from ..integrations.comfy.reference_vision import describe_reference, format_reference_report
->>>>>>> 4c0b969 (Add away proactive pings and LLaVA first/last frame review)
 
         raw = str(args.get("path") or "").strip()
         if not raw:
