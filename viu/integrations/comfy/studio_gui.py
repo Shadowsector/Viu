@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from dataclasses import dataclass
+from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Callable, List, Optional
 
@@ -56,8 +57,8 @@ def open_comfy_studio(
 ) -> None:
     win = tk.Toplevel(master)
     win.title("Студия Comfy — MoCap")
-    win.geometry("920x720")
-    win.minsize(760, 560)
+    win.geometry("960x780")
+    win.minsize(780, 620)
 
     body = ttk.Frame(win, padding=10)
     body.pack(fill="both", expand=True)
@@ -70,25 +71,39 @@ def open_comfy_studio(
     ttk.Label(
         body,
         text=(
-            "Съёмка и оценка видео — здесь и в кнопках ниже. "
-            "«Оценить видео» = выбор лучшего mp4 (не Cascadeur lab). "
-            "«Очередь анимаций» = план кадров наперёд перед уходом на работу. "
-            "Браузер :8188 — только монитор сервера."
+            "Съёмка и оценка видео — здесь. "
+            "«Эталон → I2V» задаёт стартовый кадр позы (сильнее LoRA для MoCap). "
+            "«Оценить видео» = лучший mp4. Браузер :8188 — только монитор."
         ),
         wraplength=860,
     ).pack(anchor="w", pady=(0, 8))
 
-    status_txt = tk.Text(body, height=14, wrap="word", font=("Consolas", 9))
+    status_txt = tk.Text(body, height=11, wrap="word", font=("Consolas", 9))
     status_txt.pack(fill="both", expand=True)
     status_txt.configure(state="disabled")
 
     btn_row = ttk.Frame(body)
     btn_row.pack(fill="x", pady=(8, 4))
 
+    seed_frame = ttk.LabelFrame(body, text="Эталон позы → Wan I2V", padding=8)
+    seed_frame.pack(fill="x", pady=(4, 4))
+    seed_var = tk.StringVar(value="")
+    ttk.Label(seed_frame, textvariable=seed_var, wraplength=820).pack(anchor="w")
+    seed_btns = ttk.Frame(seed_frame)
+    seed_btns.pack(fill="x", pady=(6, 0))
+
     lora_frame = ttk.LabelFrame(body, text="LoRA для текущего / следующего пула", padding=8)
     lora_frame.pack(fill="both", expand=True, pady=(4, 0))
 
-    lora_list = tk.Listbox(lora_frame, selectmode=tk.EXTENDED, height=8, font=("Consolas", 9))
+    checklist = ttk.Label(
+        lora_frame,
+        text="",
+        wraplength=820,
+        font=("Segoe UI", 9),
+    )
+    checklist.pack(anchor="w", pady=(0, 6))
+
+    lora_list = tk.Listbox(lora_frame, selectmode=tk.EXTENDED, height=6, font=("Consolas", 9))
     lora_scroll = ttk.Scrollbar(lora_frame, orient="vertical", command=lora_list.yview)
     lora_list.configure(yscrollcommand=lora_scroll.set)
     lora_list.pack(side="left", fill="both", expand=True)
@@ -124,6 +139,12 @@ def open_comfy_studio(
                 out.append(index_by_row[i])
         return sorted(set(out))
 
+    def refresh_seed_line() -> None:
+        from .seed_pose import i2v_status_line, mocap_lora_checklist_text
+
+        seed_var.set(i2v_status_line(config))
+        checklist.configure(text=mocap_lora_checklist_text())
+
     def refresh_status() -> None:
         brief_var.set(comfy_pipeline_status_brief(config))
         text = _strip_md_bold(comfy_pipeline_status(config))
@@ -131,12 +152,46 @@ def open_comfy_studio(
         status_txt.delete("1.0", "end")
         status_txt.insert("1.0", text)
         status_txt.configure(state="disabled")
+        refresh_seed_line()
 
     def tick() -> None:
         if not win.winfo_exists():
             return
         refresh_status()
         win.after(2500, tick)
+
+    def on_pick_seed() -> None:
+        from tkinter import filedialog
+
+        from .seed_pose import set_pose_seed
+
+        path = filedialog.askopenfilename(
+            parent=win,
+            title="Эталон позы для I2V (full body, белый фон)",
+            filetypes=[
+                ("Images", "*.png *.jpg *.jpeg *.webp"),
+                ("All", "*.*"),
+            ],
+        )
+        if not path:
+            return
+        session = load_session(config, COMFY_TOPIC)
+        slug = ""
+        if session is not None:
+            slug = str(session.meta.get("catalog_slug") or "")
+        ok, msg = set_pose_seed(config, Path(path), slug=slug)
+        if ok:
+            messagebox.showinfo("Эталон I2V", msg, parent=win)
+        else:
+            messagebox.showerror("Эталон I2V", msg, parent=win)
+        refresh_status()
+
+    def on_clear_seed() -> None:
+        from .seed_pose import clear_pose_seed
+
+        msg = clear_pose_seed(config)
+        messagebox.showinfo("Эталон I2V", msg, parent=win)
+        refresh_status()
 
     def on_apply_lora() -> None:
         idx = selected_indices()
@@ -186,6 +241,11 @@ def open_comfy_studio(
         ).pack(side="left", padx=(8, 0))
     ttk.Button(btn_row, text="Comfy в браузере", command=callbacks.on_open_browser).pack(
         side="left", padx=(8, 0)
+    )
+
+    ttk.Button(seed_btns, text="Эталон → I2V…", command=on_pick_seed).pack(side="left")
+    ttk.Button(seed_btns, text="Сбросить эталон", command=on_clear_seed).pack(
+        side="left", padx=8
     )
 
     ttk.Button(lora_btns, text="Пересканировать loras/", command=on_rescan).pack(side="left")

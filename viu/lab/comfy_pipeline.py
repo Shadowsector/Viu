@@ -529,6 +529,19 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
             session.meta.pop("wan_negative", None)
             session.meta.pop("prompt_user_edited", None)
             save_session(config, session)
+
+    seed_image_name = ""
+    from ..integrations.comfy.seed_pose import resolve_active_seed, stage_seed_for_comfy
+
+    seed_path, seed_comfy, seed_on = resolve_active_seed(config)
+    if seed_on and seed_path is not None:
+        ok_s, _msg_s, staged = stage_seed_for_comfy(config, seed_path)
+        if ok_s:
+            seed_image_name = staged or seed_comfy
+            session.meta["i2v_seed_enabled"] = True
+            session.meta["i2v_seed_path"] = str(seed_path)
+            session.meta["i2v_seed_comfy"] = seed_image_name
+            save_session(config, session)
     ok, msg, results = run_triple_angles(
         config,
         action=action,
@@ -539,6 +552,7 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
         lora_specs=lora_specs,
         prompt_override=pos_ov,
         negative_override=neg_ov,
+        seed_image_name=seed_image_name,
     )
     from ..integrations.comfy.clip_review import harvest_comfy_native_output
 

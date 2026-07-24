@@ -51,6 +51,7 @@ def run_single_angle(
     lora_specs: list | None = None,
     prompt_override: str = "",
     negative_override: str = "",
+    seed_image_name: str = "",
 ) -> Tuple[bool, str, List[str]]:
     prompt = mocap_prompt(action, angle, positive_override=prompt_override)
     negative = mocap_negative(negative_override=negative_override)
@@ -85,7 +86,8 @@ def run_single_angle(
             )
         )
 
-    wf_name = workflow_name or choose_workflow_name(config, has_seed_image=False)
+    use_i2v = bool((seed_image_name or "").strip())
+    wf_name = workflow_name or choose_workflow_name(config, has_seed_image=use_i2v)
     try:
         wf = load_workflow(config, wf_name)
     except (FileNotFoundError, ValueError, OSError) as exc:
@@ -95,6 +97,10 @@ def run_single_angle(
     wf = inject_negative_prompt(wf, negative)
     wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
     wf = inject_loras(wf, loras)
+    if use_i2v and wf_name == "i2v":
+        from .workflows import inject_seed_image
+
+        wf = inject_seed_image(wf, seed_image_name.strip())
     wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
     from .workflows import inject_filename_prefix
 
@@ -107,6 +113,12 @@ def run_single_angle(
         return False, ping, []
 
     face_note = ""
+    i2v_note = ""
+    if use_i2v and wf_name == "i2v":
+        i2v_note = f"I2V seed={seed_image_name.strip()}"
+    elif use_i2v and wf_name != "i2v":
+        i2v_note = "эталон есть, но I2V не готов — T2V"
+
     from .face_refs import (
         face_swap_enabled,
         inswapper_model_path,
@@ -241,6 +253,8 @@ def run_single_angle(
         saved.append(str(dest_ref))
 
     note = f"{angle.id}: → Lab/Refs ({len(saved)} файл(ов))"
+    if i2v_note:
+        note += f" [{i2v_note}]"
     if face_note:
         note += f" [{face_note}]"
     if copy_notes:
@@ -260,10 +274,12 @@ def run_triple_angles(
     lora_specs: list | None = None,
     prompt_override: str = "",
     negative_override: str = "",
+    seed_image_name: str = "",
 ) -> Tuple[bool, str, Dict[str, Any]]:
     """Пять дублей ¾ подряд (разный seed + вариация действия)."""
     from .naming import next_kept_seq, normalize_slug_for_name
     from .queue_manage import prepare_queue_for_slug
+    from .seed_pose import resolve_active_seed, stage_seed_for_comfy
 
     angles = default_angles()
     base_slug = normalize_slug_for_name(catalog_slug or slug or "mocap")
@@ -272,6 +288,14 @@ def run_triple_angles(
     stamp = time.strftime("%Y%m%d_%H%M%S")
     slug_full = f"{base_slug}_{stamp}"
     seq = next_kept_seq(config, base_slug)
+
+    seed_name = (seed_image_name or "").strip()
+    seed_path, seed_comfy, seed_on = resolve_active_seed(config)
+    if not seed_name and seed_on and seed_path is not None:
+        ok_s, _msg_s, staged = stage_seed_for_comfy(config, seed_path)
+        if ok_s:
+            seed_name = staged or seed_comfy
+
     results: Dict[str, Any] = {
         "action": action,
         "slug": slug_full,
@@ -282,8 +306,11 @@ def run_triple_angles(
         "angles": {},
         "files": [],
         "mode": "three_quarter_takes",
+        "i2v_seed": seed_name,
     }
     lines: List[str] = [f"Comfy ×{len(angles)} дубля (¾) — «{action[:80]}»"]
+    if seed_name:
+        lines.append(f"Эталон I2V: {seed_name}")
     if queue_note:
         lines.insert(0, queue_note)
     any_ok = False
@@ -303,6 +330,7 @@ def run_triple_angles(
             lora_specs=lora_specs,
             prompt_override=prompt_override,
             negative_override=negative_override,
+            seed_image_name=seed_name,
         )
         results["angles"][angle.id] = {
             "ok": ok,
