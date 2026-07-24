@@ -182,8 +182,20 @@ def run_lab_prepared(
                     continue
                 session.meta[k] = v
         save_session(config, session)
-        if mode == "continue" and session.status == "awaiting_prompt":
-            return True, prefix + "Жду одобрение Comfy-промпта в Telegram.", session
+        # shoot_intent / away: не стопорить — run_until_done сам одобрит.
+        if (
+            mode == "continue"
+            and session.status == "awaiting_prompt"
+            and not session.meta.get("shoot_intent")
+        ):
+            try:
+                from ..presence import is_away
+
+                away_now = is_away(config)
+            except Exception:
+                away_now = False
+            if not away_now:
+                return True, prefix + "Жду одобрение Comfy-промпта в Telegram.", session
 
     if topic == "interaction":
         slug = ""

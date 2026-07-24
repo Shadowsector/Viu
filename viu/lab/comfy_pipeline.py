@@ -395,6 +395,18 @@ def step_request_lora_pick(config: Config, session: LabSession) -> StepResult:
         names = ", ".join(s.file for s in specs) if specs else "нет"
         return True, f"Нет дома — LoRA как в прошлый раз: {names}.", None
 
+    # Кнопка «снять» / auto_approved_shoot: не тормозить на LoRA — иначе
+    # «Снимаю…» в чате, а в Comfy «0 активно».
+    if session.meta.get("auto_approved_shoot") or session.meta.get("shoot_intent"):
+        last = [int(x) for x in (session.meta.get("lora_last_pick") or []) if str(x).isdigit()]
+        specs = specs_from_indices(config, last) if last else []
+        session.meta["selected_loras"] = [spec_to_dict(s) for s in specs]
+        session.meta["lora_pick_done"] = True
+        session.meta.pop("shoot_intent", None)
+        save_session(config, session)
+        names = ", ".join(s.file for s in specs) if specs else "нет (чистый Wan)"
+        return True, f"MoCap-съёмка — LoRA: {names}. Ставлю в очередь Comfy…", None
+
     session.status = "awaiting_lora_pick"
     save_session(config, session)
     msg = format_lora_pick_message(entries)
@@ -839,10 +851,14 @@ def run_until_done(
             lines.append("Одобрила промпт — продолжаю lab.")
             steps_run += 1
             continue
-        if session.status == "awaiting_lora_pick" and is_away(config):
+        if session.status == "awaiting_lora_pick" and (
+            is_away(config)
+            or session.meta.get("auto_approved_shoot")
+            or session.meta.get("shoot_intent")
+        ):
             ok, msg = run_one_step(config, session)
             steps_run += 1
-            lines.append(f"[away LoRA] {msg[:400]}")
+            lines.append(f"[shoot LoRA] {msg[:400]}")
             continue
         if session.status == "awaiting_clip_pick" and is_away(config):
             ok, msg = run_one_step(config, session)
