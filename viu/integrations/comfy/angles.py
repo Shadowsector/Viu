@@ -41,7 +41,9 @@ LEGACY_ANGLES: Tuple[CameraAngle, ...] = (
     ),
 )
 
-# Три дубля ¾ для MoCap (AFK и lab).
+# Пять дублей ¾ для MoCap (AFK и lab).
+MOCAP_TAKE_COUNT = 5
+
 MOCAP_TAKES: Tuple[CameraAngle, ...] = (
     CameraAngle(
         "take_a",
@@ -58,6 +60,16 @@ MOCAP_TAKES: Tuple[CameraAngle, ...] = (
         "дубль C (¾)",
         THREE_QUARTER.prompt_en,
     ),
+    CameraAngle(
+        "take_d",
+        "дубль D (¾)",
+        THREE_QUARTER.prompt_en,
+    ),
+    CameraAngle(
+        "take_e",
+        "дубль E (¾)",
+        THREE_QUARTER.prompt_en,
+    ),
 )
 
 # DEFAULT_ANGLES = дубли MoCap (не три камеры)
@@ -68,8 +80,12 @@ AWAY_AUTO_TAKE_ID = "take_b"
 
 
 def default_angles() -> List[CameraAngle]:
-    """Углы/дубли для тройной генерации MoCap."""
+    """Углы/дубли для генерации MoCap."""
     return list(MOCAP_TAKES)
+
+
+def mocap_take_count() -> int:
+    return len(MOCAP_TAKES)
 
 
 def legacy_angles() -> List[CameraAngle]:

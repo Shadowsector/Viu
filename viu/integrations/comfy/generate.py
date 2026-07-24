@@ -49,9 +49,11 @@ def run_single_angle(
     looped: bool = False,
     seq: int = 0,
     lora_specs: list | None = None,
+    prompt_override: str = "",
+    negative_override: str = "",
 ) -> Tuple[bool, str, List[str]]:
-    prompt = mocap_prompt(action, angle)
-    negative = mocap_negative()
+    prompt = mocap_prompt(action, angle, positive_override=prompt_override)
+    negative = mocap_negative(negative_override=negative_override)
     from .lora import append_trigger_words, ensure_lora_files
 
     loras = list(lora_specs or [])
@@ -241,8 +243,10 @@ def run_triple_angles(
     looped: bool = False,
     timeout_each: float = 900.0,
     lora_specs: list | None = None,
+    prompt_override: str = "",
+    negative_override: str = "",
 ) -> Tuple[bool, str, Dict[str, Any]]:
-    """Три дубля ¾ подряд (разный seed + вариация действия)."""
+    """Пять дублей ¾ подряд (разный seed + вариация действия)."""
     from .naming import next_kept_seq, normalize_slug_for_name
     from .queue_manage import prepare_queue_for_slug
 
@@ -282,6 +286,8 @@ def run_triple_angles(
             timeout=timeout_each,
             seed_salt=f"{stamp}|{i}|{angle.id}",
             lora_specs=lora_specs,
+            prompt_override=prompt_override,
+            negative_override=negative_override,
         )
         results["angles"][angle.id] = {
             "ok": ok,

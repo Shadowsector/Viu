@@ -8,6 +8,7 @@ from typing import Tuple
 from ...config import Config
 from ..telegram.client import TelegramClient, TelegramError
 from ..telegram import settings as tg_settings
+from .prompts import mocap_take_count
 
 _APPROVE_RE = re.compile(
     r"^\s*(?:ок|ok|да|yes|approve|👍|✅|принято|го)\s*[.!…]?\s*$",
@@ -75,7 +76,7 @@ def send_prompt_for_approval(config: Config, action: str, draft_text: str) -> Tu
         "🎬 Comfy → Cascadeur MoCap\n\n"
         f"{draft_text.strip()}\n\n"
         "Ответь:\n"
-        "• ок — генерирую 3 видео (сбоку / ¾ / анфас)\n"
+        f"• ок — генерирую {mocap_take_count()} дублей ¾\n"
         "• нет / другой кадр — предложу следующий по графу\n"
         "• правки: sit_down — только slug или короткий EN (без moaning/sweat/jiggle)\n"
         "• стоп — отменить этот промпт"
@@ -122,8 +123,16 @@ def parse_approval_reply(text: str, *, current_action: str) -> Tuple[str, str]:
 def try_handle_comfy_telegram(
     config: Config,
     text: str,
+    *,
+    for_telegram: bool = False,
 ) -> Tuple[bool, str]:
     """Если lab/comfy ждёт промпт, выбор клипа или сцены — обработать ответ."""
+    from .prompt_edit import try_handle_comfy_prompt_chat
+
+    handled, out = try_handle_comfy_prompt_chat(config, text, for_telegram=for_telegram)
+    if handled:
+        return True, out
+
     from ...lab.comfy_pipeline import (
         COMFY_TOPIC,
         apply_clip_pick_decision,

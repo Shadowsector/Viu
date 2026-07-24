@@ -632,7 +632,7 @@ def download_zip_update(
     except OSError as exc:
         return UpdateResult(ok=False, message=f"Не скачать zip: {exc}")
 
-    preserve = {".viu", ".env"}
+    preserve = {".viu", ".env", "Inbox"}
     with tempfile.TemporaryDirectory() as tmp:
         zpath = Path(tmp) / "viu.zip"
         zpath.write_bytes(data)

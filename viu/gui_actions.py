@@ -200,6 +200,13 @@ GUI_ACTIONS: List[GuiAction] = [
     ),
     # --- ComfyUI ---
     GuiAction(
+        "comfy_studio",
+        "Студия Comfy — статус и управление",
+        "ComfyUI — видео",
+        tool="__comfy_studio__",
+        hint="Генерация, очередь, промпт и LoRA — без команд в Telegram.",
+    ),
+    GuiAction(
         "reference_catalog",
         "0. Референсы — окно",
         "ComfyUI — видео",
@@ -207,11 +214,18 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Inbox/references/ — картинки и видео; LLaVA-описание для MoCap.",
     ),
     GuiAction(
+        "comfy_prompt",
+        "0b. Промпт Wan → Comfy",
+        "ComfyUI — видео",
+        tool="__comfy_prompt__",
+        hint="Текущие строки positive/negative для Wan — правка и «Отправить в Comfy».",
+    ),
+    GuiAction(
         "lab_comfy",
         "1. MoCap: снять клип",
         "ComfyUI — видео",
         tool="__lab_comfy__",
-        hint="Следующий кадр из каталога → 3 ракурса → выбор лучшего mp4.",
+        hint="Поднимает ComfyUI → Wan 5×¾ → выбор mp4. Промпт: «Промпт Wan → Comfy».",
     ),
     GuiAction(
         "interaction_master",
