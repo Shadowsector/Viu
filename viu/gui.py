@@ -2477,7 +2477,8 @@ class ViuGUI:
                 self._append(
                     "Вью",
                     f"ComfyUI **не отвечает** на {url}\n{ping}\n\n"
-                    "Запускаю **comfy_ensure**…",
+                    "Запускаю **comfy_ensure** (подожди до ~3 мин)…\n"
+                    "Пока окно браузера может быть пустым — обнови F5, когда ensure закончит.",
                     tag="sys",
                 )
                 self._run_tool(
@@ -2494,15 +2495,16 @@ class ViuGUI:
             if ok:
                 self._append(
                     "Вью",
-                    f"Открыла {url}\n"
-                    "Обычный MoCap — кнопкой lab; сюда — LoRA, v2v, очередь.\n"
-                    "LoRA → ComfyUI/models/loras/ → comfy_lora_list.",
+                    f"ComfyUI уже работает — открыла {url}\n"
+                    "Съёмка MoCap — кнопкой «MoCap: снять клип» или Студия Comfy.\n"
+                    "Если страница пустая — F5. Лог: `.viu/logs/comfy_launch.log`.",
                     tag="tool",
                 )
             else:
                 self._append(
                     "система",
-                    f"Браузер открыт на {url}. Когда ensure закончит — обнови страницу (F5).",
+                    f"Браузер открыт на {url}. Когда ensure закончит — F5.\n"
+                    "Если снова пусто: Студия Comfy → «Поднять ComfyUI».",
                     tag="sys",
                 )
 
