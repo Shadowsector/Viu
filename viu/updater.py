@@ -643,12 +643,14 @@ def download_zip_update(
         if not roots:
             return UpdateResult(ok=False, message="Пустой архив с GitHub.")
         src_root = roots[0]
-        from .ollama_layout import copy_install_tree_item
+        from install_merge import resolve_copy_install_tree_item
+
+        copy_item = resolve_copy_install_tree_item(src_root)
 
         for item in src_root.iterdir():
             if item.name in preserve and (dest / item.name).exists():
                 continue
-            copy_install_tree_item(item, dest)
+            copy_item(item, dest)
 
     try:
         sha = remote_sha_github(repo=repo, branch=branch)

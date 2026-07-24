@@ -156,6 +156,82 @@ def download_zip() -> bytes:
         return resp.read()
 
 
+def _copy_install_tree_item_from_zip(src_root: Path):
+    """Взять merge-логику из zip (новее кода на диске), иначе с диска."""
+    import importlib.util
+
+    candidate = src_root / "install_merge.py"
+    if candidate.is_file():
+        spec = importlib.util.spec_from_file_location("_viu_install_merge", candidate)
+        if spec and spec.loader:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.copy_install_tree_item
+    try:
+        from install_merge import copy_install_tree_item
+
+        return copy_install_tree_item
+    except ImportError:
+        pass
+    try:
+        from viu.ollama_layout import copy_install_tree_item
+
+        return copy_install_tree_item
+    except ImportError:
+        pass
+    return _fallback_copy_install_tree_item
+
+
+def _fallback_copy_install_tree_item(item: Path, dest_root: Path) -> None:
+    """Без viu/install_merge — Inbox и ollama только merge, никогда rmtree."""
+    target = dest_root / item.name
+    if item.is_dir() and item.name == "Inbox":
+        _merge_inbox_fallback(item, target)
+        return
+    if item.is_dir() and item.name == "ollama":
+        _merge_ollama_fallback(item, target)
+        return
+    if item.is_dir():
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.copytree(item, target)
+    else:
+        shutil.copy2(item, target)
+
+
+def _merge_inbox_fallback(src: Path, dest: Path) -> None:
+    dest.mkdir(parents=True, exist_ok=True)
+    for child in src.iterdir():
+        t = dest / child.name
+        if child.is_dir():
+            _merge_inbox_fallback(child, t)
+        elif child.is_file():
+            if t.exists() and child.name.lower() != "readme.txt":
+                continue
+            shutil.copy2(child, t)
+
+
+def _merge_ollama_fallback(src: Path, dest: Path) -> None:
+    local = {
+        "Modelfile.viu-cydonia",
+        "Modelfile.viu-magnum",
+        "Modelfile.viu-command-r",
+        "Modelfile.viu-qwen32",
+        "_SYSTEM_SNIPPET.txt",
+    }
+    dest.mkdir(parents=True, exist_ok=True)
+    for child in src.iterdir():
+        t = dest / child.name
+        if child.is_file():
+            if child.name in local and t.is_file():
+                continue
+            shutil.copy2(child, t)
+        elif child.is_dir():
+            if t.exists():
+                shutil.rmtree(t)
+            shutil.copytree(child, t)
+
+
 def apply_zip(data: bytes) -> None:
     dest = root_dir()
     with tempfile.TemporaryDirectory() as tmp:
@@ -169,28 +245,13 @@ def apply_zip(data: bytes) -> None:
             raise RuntimeError("Пустой zip-архив")
         src_root = roots[0]
         log(f"Распаковка в {dest} …")
-        try:
-            from viu.ollama_layout import copy_install_tree_item as _copy_item
-
-            for item in src_root.iterdir():
-                if item.name in PRESERVE_DIRS and (dest / item.name).exists():
-                    continue
-                if item.name in PRESERVE_FILES and (dest / item.name).exists():
-                    continue
-                _copy_item(item, dest)
-        except ImportError:
-            for item in src_root.iterdir():
-                if item.name in PRESERVE_DIRS and (dest / item.name).exists():
-                    continue
-                if item.name in PRESERVE_FILES and (dest / item.name).exists():
-                    continue
-                target = dest / item.name
-                if item.is_dir():
-                    if target.exists():
-                        shutil.rmtree(target)
-                    shutil.copytree(item, target)
-                else:
-                    shutil.copy2(item, target)
+        copy_item = _copy_install_tree_item_from_zip(src_root)
+        for item in src_root.iterdir():
+            if item.name in PRESERVE_DIRS and (dest / item.name).exists():
+                continue
+            if item.name in PRESERVE_FILES and (dest / item.name).exists():
+                continue
+            copy_item(item, dest)
 
 
 OBSOLETE_FILES = (
