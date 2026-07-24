@@ -100,21 +100,51 @@ def _prepare_lab_session_inner(
     if session.status == "awaiting_rating":
         from ..presence import is_away
 
-        if topic == "comfy" and is_away(config):
+        shoot_now = bool((session.meta or {}).get("shoot_intent")) or bool(
+            (session.meta or {}).get("auto_approved_shoot")
+        )
+        if topic == "comfy" and (is_away(config) or shoot_now):
             from .session import append_journal
 
+            who = "away" if is_away(config) else "shoot"
             append_journal(
                 config,
                 topic,
-                "### Оценка (away auto)\n\nПропущена — Вью снимает следующий кадр без блокировки GPU.",
+                f"### Оценка ({who} auto)\n\n"
+                "Пропущена — Вью снимает следующий кадр без блокировки GPU.",
             )
-            session.rating_notes = "away: auto-пропуск оценки"
+            # Сохранить ручной Wan / slug между итерациями.
+            preserved: dict = {}
+            for key in (
+                "wan_positive",
+                "wan_negative",
+                "prompt_user_edited",
+                "prompt_edit_slug",
+                "action",
+                "approved_action",
+                "catalog_slug",
+                "enters_from",
+                "exits_to",
+                "looped",
+                "draft",
+                "lora_last_pick",
+                "selected_loras",
+                "shoot_intent",
+                "auto_approved_shoot",
+            ):
+                val = (session.meta or {}).get(key)
+                if val is None or val == "" or val == []:
+                    continue
+                preserved[key] = val
+            session.rating_notes = f"{who}: auto-пропуск оценки"
             session.status = "completed"
             save_session(config, session)
-            notes.append("away: оценка lab пропущена — новая итерация.")
+            notes.append(f"{who}: оценка lab пропущена — новая итерация.")
             session = new_session(topic)
             session.viu_build_stamp = current_stamp
             session.steps_total = 6
+            if preserved:
+                session.meta.update(preserved)
             save_session(config, session)
             return session, "fresh", "\n".join(notes)
         return session, "continue", "Жду оценку — «Оценить лабораторию»."

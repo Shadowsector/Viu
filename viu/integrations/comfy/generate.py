@@ -73,6 +73,17 @@ def run_single_angle(
         seq=seq,
     )
     file_prefix = comfy_filename_prefix(display_stem)
+    # Не отдавать в Comfy дефолтный viu_mocap_* — только Girl_<анимация>_take_*.
+    if file_prefix == "viu_mocap" or not file_prefix.lower().startswith("girl"):
+        file_prefix = comfy_filename_prefix(
+            display_video_stem(
+                catalog_slug=base_slug or "mocap",
+                enters_from=enters_from,
+                looped=looped,
+                take_id=angle.id,
+                seq=seq,
+            )
+        )
 
     wf_name = workflow_name or choose_workflow_name(config, has_seed_image=False)
     try:
@@ -85,6 +96,10 @@ def run_single_angle(
     wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
     wf = inject_loras(wf, loras)
     wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
+    from .workflows import inject_filename_prefix
+
+    # Повторно вшить префикс: импортированные графы иногда оставляют viu_mocap.
+    wf = inject_filename_prefix(wf, file_prefix)
 
     client = _client(config)
     ok, ping = client.ping()
