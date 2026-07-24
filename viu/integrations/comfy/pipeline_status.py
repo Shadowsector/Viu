@@ -10,6 +10,7 @@ from ...integrations.comfy.focus import (
     resolve_focus_slugs,
 )
 from ...lab.comfy_pipeline import COMFY_TOPIC, STEP_LABELS
+from ...lab.paths import journal_path
 from ...lab.session import load_session, save_session
 from ...presence import is_away
 from .client import ComfyClient
@@ -86,11 +87,20 @@ def comfy_pipeline_status(config: Config) -> str:
                     lines.append(f"  catalog_slug: {slug}")
                 action = str(session.meta.get("approved_action") or session.meta.get("action") or "")[:80]
                 if action:
-                    lines.append(f"  промпт: {action}")
+                    lines.append(f"  действие: {action}")
         else:
             action = str(session.meta.get("approved_action") or session.meta.get("action") or "")[:80]
             if action:
-                lines.append(f"  промпт: {action}")
+                lines.append(f"  действие: {action}")
+        draft = str(session.meta.get("draft") or "").strip()
+        if draft:
+            one_line = draft.replace("\n", " ")[:200]
+            lines.append(f"  Wan-промпт (кратко): {one_line}…")
+            lines.append(f"  полный черновик: {journal_path(config, COMFY_TOPIC)}")
+        elif session.status in ("awaiting_prompt", "running", "awaiting_clip_pick", "awaiting_rating"):
+            lines.append(
+                f"  черновик промпта: после шага «Черновик» — {journal_path(config, COMFY_TOPIC)}"
+            )
         if slug:
             picked = session.meta.get("selected_loras") or []
             if picked:

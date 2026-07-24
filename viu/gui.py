@@ -2039,16 +2039,14 @@ class ViuGUI:
                 )
                 return
             if comfy.status == "awaiting_clip_pick" and auto:
-                # away: авто-выбор дубля B (¾)
                 from .integrations.comfy.angles import AWAY_AUTO_TAKE_ID
                 from .lab.session import load_session as _ls
-                from .lab.session import save_session as _ss
 
                 sess = _ls(self.agent.config, COMFY_TOPIC)
                 pick_args = {
                     "angle": AWAY_AUTO_TAKE_ID,
                     "score": "3",
-                    "notes": "auto away take_b",
+                    "notes": "auto away (fallback a/c если нет b)",
                 }
                 # не затирать catalog_slug / граф
                 if sess is not None:

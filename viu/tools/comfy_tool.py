@@ -711,7 +711,7 @@ class ComfyClipPickTool(Tool):
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
-        from ..integrations.comfy.clip_review import keep_best_by_angle, reject_batch
+        from ..integrations.comfy.clip_review import keep_best_take, reject_batch
         from ..lab.comfy_pipeline import COMFY_TOPIC, apply_clip_pick_decision
         from ..lab.session import load_session
 
@@ -765,7 +765,7 @@ class ComfyClipPickTool(Tool):
             )
             return ToolResult(True, msg)
 
-        ok, msg, _ = keep_best_by_angle(
+        ok, msg, _ = keep_best_take(
             ctx.config,
             batch,
             angle,

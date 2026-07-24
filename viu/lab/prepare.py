@@ -84,6 +84,25 @@ def _prepare_lab_session_inner(
         return session, "fresh", "\n".join(notes)
 
     if session.status == "awaiting_rating":
+        from ..presence import is_away
+
+        if topic == "comfy" and is_away(config):
+            from .session import append_journal
+
+            append_journal(
+                config,
+                topic,
+                "### Оценка (away auto)\n\nПропущена — Вью снимает следующий кадр без блокировки GPU.",
+            )
+            session.rating_notes = "away: auto-пропуск оценки"
+            session.status = "completed"
+            save_session(config, session)
+            notes.append("away: оценка lab пропущена — новая итерация.")
+            session = new_session(topic)
+            session.viu_build_stamp = current_stamp
+            session.steps_total = 6
+            save_session(config, session)
+            return session, "fresh", "\n".join(notes)
         return session, "continue", "Жду оценку — «Оценить лабораторию»."
 
     if session.status == "awaiting_prompt":

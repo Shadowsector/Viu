@@ -9,6 +9,7 @@ from viu.integrations.comfy.clip_review import (
     ComfyClipStore,
     clip_review_path,
     format_candidates_message,
+    keep_best_preferred_take,
     keep_clip,
     parse_clip_pick_reply,
     register_triple_batch,
@@ -36,6 +37,32 @@ def test_parse_clip_pick():
     assert p["angle"] == "side"
     assert p["score"] == 5
     assert parse_clip_pick_reply("отклонить все")[0] == "reject_all"
+    d2, p2 = parse_clip_pick_reply("лучший: front | лучший: take_a 4")
+    assert d2 == "keep" and p2["angle"] == "front"
+
+
+def test_keep_best_preferred_take_fallback(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, monkeypatch)
+    refs = tmp_path / "Library" / "Lab" / "Refs"
+    fa = refs / "take_a.mp4"
+    fc = refs / "take_c.mp4"
+    fa.write_bytes(b"a")
+    fc.write_bytes(b"c")
+    register_triple_batch(
+        cfg,
+        action="touch self",
+        results={
+            "slug": "touch_batch",
+            "angles": {
+                "take_a": {"ok": True, "files": [str(fa)], "label": "дубль A"},
+                "take_c": {"ok": True, "files": [str(fc)], "label": "дубль C"},
+            },
+        },
+    )
+    ok, msg, clip = keep_best_preferred_take(cfg, "touch_batch", prefer=("take_b", "take_a", "take_c"))
+    assert ok and clip is not None
+    assert clip.angle == "take_a"
+    assert "fallback" in msg or "take_a" in msg
 
 
 def test_register_and_keep(tmp_path, monkeypatch):

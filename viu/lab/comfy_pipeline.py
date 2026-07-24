@@ -582,23 +582,24 @@ def apply_clip_pick_decision(
     payload: Dict[str, Any],
 ) -> str:
     """После выбора клипа: keep/reject_all → продолжить lab."""
-    from ..integrations.comfy.clip_review import keep_best_by_angle, reject_batch
+    from ..integrations.comfy.clip_review import keep_best_take, reject_batch
 
     batch = str(session.meta.get("clip_batch_id") or "")
     if decision == "reject_all":
         ok, msg = reject_batch(config, batch)
         session.meta["clip_rejected_all"] = True
+        for key in ("clip_kept_id", "clip_kept_path", "clip_seed_frame", "clip_batch_id"):
+            session.meta.pop(key, None)
         session.status = "running"
-        if session.step < 6:
-            session.step = 6
+        session.step = min(session.step, 5)
         save_session(config, session)
         append_journal(config, COMFY_TOPIC, f"### Клипы отклонены\n\n{msg}")
-        return msg + "\nМожно снова comfy_mocap с другим промптом."
+        return msg + "\nМожно снова comfy_mocap с другим промптом (lab reset или шаг генерации)."
 
     angle = str(payload.get("angle") or "take_b")
     score = int(payload.get("score") or 4)
     notes = str(payload.get("notes") or "")
-    ok, msg, clip = keep_best_by_angle(
+    ok, msg, clip = keep_best_take(
         config,
         batch,
         angle,
@@ -630,6 +631,13 @@ def step_report(config: Config, session: LabSession) -> StepResult:
     seed = session.meta.get("clip_seed_frame")
     files = session.artifacts[-12:]
     from ..integrations.comfy.focus import focus_cycle_status
+    from .paths import journal_path
+
+    draft = str(session.meta.get("draft") or "").strip()
+    draft_block = ""
+    if draft:
+        draft_block = f"\n\nПромпт (Wan MoCap, как ушло в Comfy):\n{draft[:2200]}"
+    jpath = journal_path(config, COMFY_TOPIC)
 
     report = (
         f"Comfy MoCap итерация id={session.id}\n"
@@ -640,9 +648,13 @@ def step_report(config: Config, session: LabSession) -> StepResult:
         f"seed last-frame: {seed or '—'}\n"
         f"файлы ({len(files)}):\n"
         + "\n".join(f"  • {f}" for f in files)
+        + draft_block
+        + f"\n\nJournal (промпт / шаги): {jpath}"
         + "\n\n"
         + focus_cycle_status(config)
         + "\n\nДальше: Cascadeur MoCap по kept mp4; next clip — I2V с seed PNG."
+        + "\nПравки промпта до съёмки: Telegram/чат «правки: …» на шаге одобрения; "
+        "comfy_status — кратко, journal — полный черновик."
     )
     session.last_report = report
     session.status = "awaiting_rating"
@@ -673,7 +685,8 @@ def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
         )
     if session.status == "awaiting_clip_pick":
         return True, (
-            "Жду выбор клипа: `лучший: front` / `лучший: side 5` / `отклонить все` "
+            "Жду выбор клипа: `лучший: take_b` / `лучший: a` / `лучший: c 5` / `отклонить все` "
+            "(несколько вариантов через | — беру первый) "
             "или кнопка «Оценить клипы Comfy»."
         )
     if session.status == "awaiting_rating":

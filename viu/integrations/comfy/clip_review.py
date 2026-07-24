@@ -12,7 +12,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ...config import Config
 from .framing import detect_orientation, frame_spec_for_action
@@ -476,6 +476,33 @@ def reject_batch(config: Config, batch_id: str) -> Tuple[bool, str]:
     return True, f"Отклонила {n} кандидат(ов) batch={batch_id}"
 
 
+PICK_ANGLE_ALIASES: Dict[str, str] = {
+    "сбоку": "side",
+    "side": "side",
+    "три": "three_quarter",
+    "3/4": "three_quarter",
+    "¾": "three_quarter",
+    "three_quarter": "three_quarter",
+    "quarter": "three_quarter",
+    "анфас": "front",
+    "front": "front",
+    "фронт": "front",
+    "a": "take_a",
+    "b": "take_b",
+    "c": "take_c",
+    "take_a": "take_a",
+    "take_b": "take_b",
+    "take_c": "take_c",
+    "дубль_a": "take_a",
+    "дубль_b": "take_b",
+    "дубль_c": "take_c",
+}
+
+
+def normalize_pick_angle(angle: str) -> str:
+    return PICK_ANGLE_ALIASES.get((angle or "").strip().lower(), (angle or "").strip().lower())
+
+
 def keep_best_by_angle(
     config: Config,
     batch_id: str,
@@ -488,30 +515,7 @@ def keep_best_by_angle(
     exits_to: Optional[List[str]] = None,
 ) -> Tuple[bool, str, Optional[ComfyClip]]:
     store = ComfyClipStore(clip_review_path(config)).load()
-    angle_l = angle.strip().lower()
-    # алиасы
-    aliases = {
-        "сбоку": "side",
-        "side": "side",
-        "три": "three_quarter",
-        "3/4": "three_quarter",
-        "¾": "three_quarter",
-        "three_quarter": "three_quarter",
-        "quarter": "three_quarter",
-        "анфас": "front",
-        "front": "front",
-        "фронт": "front",
-        "a": "take_a",
-        "b": "take_b",
-        "c": "take_c",
-        "take_a": "take_a",
-        "take_b": "take_b",
-        "take_c": "take_c",
-        "дубль_a": "take_a",
-        "дубль_b": "take_b",
-        "дубль_c": "take_c",
-    }
-    angle_id = aliases.get(angle_l, angle_l)
+    angle_id = normalize_pick_angle(angle)
     for clip in store.by_batch(batch_id):
         if clip.angle == angle_id and clip.status == STATUS_CANDIDATE:
             return keep_clip(
@@ -527,11 +531,78 @@ def keep_best_by_angle(
     return False, f"в batch {batch_id} нет кандидата angle={angle_id}", None
 
 
-def parse_clip_pick_reply(text: str) -> Optional[Tuple[str, Dict[str, Any]]]:
-    """Telegram/чат: 'лучший: front', 'лучший: side 4', 'отклонить все'."""
-    raw = (text or "").strip()
-    if not raw:
-        return None
+# Порядок для away / авто-выбора: take_b часто срезает vision — тогда a или c.
+MOCAP_TAKE_PICK_ORDER: tuple[str, ...] = ("take_b", "take_a", "take_c")
+
+
+def keep_best_preferred_take(
+    config: Config,
+    batch_id: str,
+    *,
+    score: int = 4,
+    notes: str = "",
+    catalog_slug: str = "",
+    enters_from: Optional[List[str]] = None,
+    exits_to: Optional[List[str]] = None,
+    prefer: Optional[Sequence[str]] = None,
+) -> Tuple[bool, str, Optional[ComfyClip]]:
+    """Выбрать лучший доступный дубль (не только take_b)."""
+    order = tuple(prefer or MOCAP_TAKE_PICK_ORDER)
+    tried: list[str] = []
+    for angle_id in order:
+        ok, msg, clip = keep_best_by_angle(
+            config,
+            batch_id,
+            angle_id,
+            score=score,
+            notes=notes,
+            catalog_slug=catalog_slug,
+            enters_from=enters_from,
+            exits_to=exits_to,
+        )
+        if ok and clip is not None:
+            if angle_id != order[0]:
+                msg = f"{msg} (fallback: {angle_id}, нет {order[0]})"
+            return True, msg, clip
+        tried.append(angle_id)
+    store = ComfyClipStore(clip_review_path(config)).load()
+    have = [c.angle for c in store.by_batch(batch_id) if c.status == STATUS_CANDIDATE]
+    return (
+        False,
+        f"в batch {batch_id} нет кандидатов для {tried}; есть: {have or '—'}",
+        None,
+    )
+
+
+def keep_best_take(
+    config: Config,
+    batch_id: str,
+    angle: str,
+    *,
+    score: int = 4,
+    notes: str = "",
+    catalog_slug: str = "",
+    enters_from: Optional[List[str]] = None,
+    exits_to: Optional[List[str]] = None,
+) -> Tuple[bool, str, Optional[ComfyClip]]:
+    """Выбор дубля: сначала запрошенный take, иначе fallback по MOCAP_TAKE_PICK_ORDER."""
+    angle_id = normalize_pick_angle(angle)
+    prefer: tuple[str, ...] = (angle_id,) + tuple(
+        x for x in MOCAP_TAKE_PICK_ORDER if x != angle_id
+    )
+    return keep_best_preferred_take(
+        config,
+        batch_id,
+        score=score,
+        notes=notes,
+        catalog_slug=catalog_slug,
+        enters_from=enters_from,
+        exits_to=exits_to,
+        prefer=prefer,
+    )
+
+
+def _parse_clip_pick_line(raw: str) -> Optional[Tuple[str, Dict[str, Any]]]:
     low = raw.lower()
     if low in ("отклонить все", "reject all", "все плохо", "заново"):
         return "reject_all", {}
@@ -546,6 +617,19 @@ def parse_clip_pick_reply(text: str) -> Optional[Tuple[str, Dict[str, Any]]]:
     score = int(m.group(2) or 4)
     notes = (m.group(3) or "").strip()
     return "keep", {"angle": angle, "score": score, "notes": notes}
+
+
+def parse_clip_pick_reply(text: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+    """Telegram/чат: 'лучший: take_b', 'лучший: a 5', 'отклонить все', несколько через |."""
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    parts = [p.strip() for p in raw.split("|") if p.strip()]
+    for part in parts:
+        parsed = _parse_clip_pick_line(part)
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def _sync_catalog_wish(config: Config, clip: ComfyClip) -> None:
@@ -588,15 +672,20 @@ def format_candidates_message(clips: List[ComfyClip]) -> str:
     if not clips:
         return "Нет кандидатов на оценку."
     batch = clips[0].batch_id
-    from .paths import comfy_refs_dir
+    angles = sorted({c.angle for c in clips})
 
     lines = [
         f"Выбери лучший дубль ¾ (batch `{batch}`):",
-        f"Файлы: Lab/ComfyOut + Lab/Refs (не только ComfyUI/output).",
+        f"В batch сейчас: {', '.join(angles)} ({len(clips)}/3 дублей).",
+        "Файлы: Lab/ComfyOut + Lab/Refs (не только ComfyUI/output).",
         "Дома: окно «Выбрать лучший клип» (ComfyUI) или чат/Telegram:",
         "`лучший: take_b` / `лучший: a` / `лучший: c 5` / `отклонить все`",
-        "",
     ]
+    if len(clips) < 3:
+        lines.append(
+            "⚠ Не все дубли дошли (vision/FAIL) — away возьмёт лучший из тех, что есть."
+        )
+    lines.append("")
     for c in clips:
         extra = f" [{c.notes}]" if c.notes else ""
         lines.append(f"  • {c.angle} ({c.angle_label}): {Path(c.path).name}{extra}")
