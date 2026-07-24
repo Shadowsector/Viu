@@ -10,11 +10,12 @@ echo [relaunch] Только GUI — GitHub не трогаю.
 for /f "delims=" %%V in ('python -c "from viu.updater import version_label,running_sha; s=running_sha() or ''; print('  Версия:', version_label(), s[:7] if s else '?')" 2^>nul') do echo %%V
 echo.
 rem Ждём, пока старый процесс освободит порт (single-instance).
-ping -n 3 127.0.0.1 >nul
-where pythonw >nul 2>&1
+ping -n 4 127.0.0.1 >nul
+rem python, не pythonw — иначе после «Обновить Вью» GUI молча не поднимается.
+where python >nul 2>&1
 if errorlevel 1 (
-  start "" python "%~dp0run_gui.pyw"
-) else (
-  start "" pythonw "%~dp0run_gui.pyw"
+  echo [ОШИБКА] Python не найден в PATH.
+  exit /b 1
 )
+start "" python "%~dp0run_gui.pyw"
 exit /b 0

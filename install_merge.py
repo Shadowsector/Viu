@@ -11,6 +11,8 @@ OLLAMA_LOCAL_FILES = frozenset(
         "Modelfile.viu-magnum",
         "Modelfile.viu-command-r",
         "Modelfile.viu-qwen32",
+        "Modelfile.viu-euryale",
+        "Modelfile.viu-nevoria",
         "_SYSTEM_SNIPPET.txt",
     }
 )

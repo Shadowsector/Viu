@@ -140,14 +140,29 @@ def _iter_log_files(config: Config, max_chats: int = 5) -> List[Path]:
             reverse=True,
         )
         files.extend(chats[:max_chats])
-    for extra in ("memory.json", "plan.json", "runtime.json"):
+        for name in (
+            "comfy_launch.log",
+            "agent.log",
+            "reflect_last_request.json",
+        ):
+            p = logs_dir / name
+            if p.is_file():
+                files.append(p)
+    for extra in ("memory.json", "plan.json", "runtime.json", "viu_memory_meta.json"):
         p = config.data_dir / extra
         if p.is_file():
             files.append(p)
     root = Path(__file__).resolve().parent.parent
-    startup = root / "viu_startup.log"
-    if startup.is_file():
-        files.append(startup)
+    for name in (
+        "viu_startup.log",
+        ".viu_launch.log",
+        ".viu_launch_status",
+        ".viu_pip.log",
+        "VIU_MEMORY.md",
+    ):
+        p = root / name
+        if p.is_file():
+            files.append(p)
 
     # Unity project diagnostics
     try:

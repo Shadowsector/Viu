@@ -29,11 +29,11 @@ def test_comfy_yield_interrupt_off_by_default(monkeypatch):
     assert comfy_yield_interrupt_running() is True
 
 
-def test_comfy_show_console_on_by_default(monkeypatch):
+def test_comfy_show_console_off_by_default(monkeypatch):
     monkeypatch.delenv("VIU_COMFY_SHOW_CONSOLE", raising=False)
-    assert comfy_show_console() is True
-    monkeypatch.setenv("VIU_COMFY_SHOW_CONSOLE", "0")
     assert comfy_show_console() is False
+    monkeypatch.setenv("VIU_COMFY_SHOW_CONSOLE", "1")
+    assert comfy_show_console() is True
     monkeypatch.delenv("VIU_COMFY_OPEN_BROWSER", raising=False)
     assert comfy_open_browser_on_launch() is True
 

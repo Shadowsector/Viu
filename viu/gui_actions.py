@@ -286,7 +286,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Собрать логи",
         "Сервис",
         tool="__collect_logs__",
-        hint="Упаковать логи для отладки / отправки разработчику.",
+        hint="Zip + Gist + handoff в Cursor (launch/Comfy/чат/память).",
     ),
     GuiAction(
         "clear_chat",

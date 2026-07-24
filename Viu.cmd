@@ -119,12 +119,13 @@ if exist "%STATUS%" del "%STATUS%" >nul 2>&1
 if exist "%STARTUP_ERR%" del "%STARTUP_ERR%" >nul 2>&1
 
 echo Запускаю GUI (run_gui.pyw)...
-where pythonw >nul 2>&1
+rem python, не pythonw: pythonw часто молча падает после апдейта / без консоли.
+where python >nul 2>&1
 if errorlevel 1 (
-  start "" python "%~dp0run_gui.pyw"
-) else (
-  start "" pythonw "%~dp0run_gui.pyw"
+  echo [ОШИБКА] Python не найден в PATH.
+  goto :fail
 )
+start "" python "%~dp0run_gui.pyw"
 
 set /a _n=0
 :waitgui
@@ -162,6 +163,12 @@ goto :end
 :fail
 echo.
 echo ---- см. %LAUNCH_LOG% ----
+echo FAIL> "%STATUS%"
+rem Скрытый запуск (Viu.vbs): покажем ошибку в отдельном окне.
+if defined VIU_LAUNCH_HIDDEN (
+  start "Viu launch FAIL" cmd /d /k "type \"%LAUNCH_LOG%\" & echo. & echo diag_viu_launch.bat & pause"
+)
+goto :end
 
 :end
 if defined VIU_LAUNCH_HIDDEN exit /b 0

@@ -46,6 +46,12 @@ def test_should_fetch_more_parts_on_truncated():
     assert should_fetch_more_parts("коротко", truncated=True)
 
 
+def test_should_fetch_more_parts_not_on_length_alone():
+    # Длинный, но законченный ответ — не тянуть вторую часть (дубли).
+    long_ok = "А. " * 100 + "Всё."
+    assert not should_fetch_more_parts(long_ok, truncated=False)
+
+
 class MultiPartLLM(LLMProvider):
     name = "multi"
 

@@ -38,11 +38,17 @@ def test_mocap_take_count():
 
 
 def test_is_prompt_show_request():
-    from viu.integrations.comfy.prompt_edit import is_prompt_show_request
+    from viu.integrations.comfy.prompt_edit import (
+        is_comfy_short_task,
+        is_prompt_show_request,
+    )
 
     assert is_prompt_show_request("Покажи промпт")
     assert is_prompt_show_request("[Telegram] покажи wan промпт")
     assert is_prompt_show_request("что за промпт comfy")
+    assert is_prompt_show_request("сделай промпт для ComfyUI под touch_self")
+    assert is_comfy_short_task("накинь wan промпт для душа")
+    assert not is_prompt_show_request("напиши сценарий игры на 10 страниц")
 
 
 def test_parse_wan_editor():

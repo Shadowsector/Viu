@@ -19,11 +19,16 @@ _CREATE_NEW_CONSOLE = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
 
 
 def comfy_show_console() -> bool:
-    """Показывать окно консоли ComfyUI (прогресс Wan). По умолчанию вкл. на Windows."""
-    raw = os.environ.get("VIU_COMFY_SHOW_CONSOLE", "1").strip().lower()
-    if raw in ("0", "false", "no", "off"):
+    """Показывать окно консоли ComfyUI.
+
+    По умолчанию ВЫКЛ: CREATE_NEW_CONSOLE из pythonw давал чёрное пустое окно
+    без прогресса. Лог всегда в .viu/logs/comfy_launch.log.
+    Вкл.: VIU_COMFY_SHOW_CONSOLE=1 (и тогда тоже пишем в лог).
+    """
+    raw = os.environ.get("VIU_COMFY_SHOW_CONSOLE", "0").strip().lower()
+    if raw in ("0", "false", "no", "off", ""):
         return False
-    return raw in ("1", "true", "yes", "on", "")
+    return raw in ("1", "true", "yes", "on")
 
 
 def comfy_open_browser_on_launch() -> bool:
@@ -46,6 +51,16 @@ def open_comfy_browser(config: Config) -> str:
         return f"Браузер: {url} (это и есть окно ComfyUI)"
     except Exception as exc:  # noqa: BLE001
         return f"Не открыла браузер ({exc}). Открой сама: {url}"
+
+
+def _console_python(py: Path) -> Path:
+    """pythonw → sibling python.exe (для видимой консоли)."""
+    name = py.name.lower()
+    if name == "pythonw.exe":
+        sibling = py.with_name("python.exe")
+        if sibling.is_file():
+            return sibling
+    return py
 
 # Не ставить «просто torch» с PyPI — +cpu новее многих cu-сборок и pip не даунгрейдит.
 # cu124/cu121 — только до cp313. На Python 3.14 (у Дена) колёс нет → cu126/cu130.
@@ -427,19 +442,20 @@ def launch_comfy_process(
     py: Optional[Path] = None,
     extra_args: Optional[List[str]] = None,
 ) -> Tuple[bool, str, Optional[subprocess.Popen]]:
-    """Старт main.py.
+    """Старт main.py с логом в .viu/logs/comfy_launch.log.
 
-    На Windows по умолчанию — отдельная консоль (прогресс генерации виден).
-    VIU_COMFY_SHOW_CONSOLE=0 — скрытый процесс + лог .viu/logs/comfy_launch.log.
-    UI Comfy — только браузер :8188, отдельного desktop-окна нет.
+    По умолчанию — скрытый процесс (без пустого чёрного окна).
+    VIU_COMFY_SHOW_CONSOLE=1 — отдельная консоль + тот же лог (python -u).
+    UI Comfy — только браузер :8188.
     """
-    py = py or _python_for_comfy(root)
+    py = _console_python(py or _python_for_comfy(root))
     url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
     port = _parse_port(str(url))
     log_path = _launch_log_path(config, root)
     main_py = root / "main.py"
     cmd = [
         str(py),
+        "-u",
         str(main_py),
         "--listen",
         "127.0.0.1",
@@ -458,45 +474,38 @@ def launch_comfy_process(
     except OSError as exc:
         return False, f"Не открыла лог {log_path}: {exc}", None
 
-    mode = "console" if show_console else "hidden+logfile"
+    # Всегда пишем в лог. CREATE_NEW_CONSOLE из pythonw = пустое чёрное окно —
+    # не используем. Прогресс: .viu/logs/comfy_launch.log + Студия Comfy.
+    mode = "logfile" + ("(show_console ignored→log)" if show_console else "")
     log_f.write(f"cmd: {' '.join(cmd)}\ncwd: {root}\nmode: {mode}\n\n")
     log_f.flush()
     try:
         kwargs: dict = {
             "cwd": str(root),
+            "stdout": log_f,
+            "stderr": subprocess.STDOUT,
             "stdin": subprocess.DEVNULL,
         }
-        if show_console:
-            # Прогресс в окне консоли; в лог только шапка запуска.
-            kwargs["creationflags"] = _CREATE_NEW_CONSOLE
-            try:
-                log_f.close()
-            except OSError:
-                pass
-            log_f = None  # type: ignore[assignment]
+        if sys.platform == "win32":
+            kwargs["creationflags"] = _CREATE_NO_WINDOW
         else:
-            kwargs["stdout"] = log_f
-            kwargs["stderr"] = subprocess.STDOUT
-            if sys.platform == "win32":
-                kwargs["creationflags"] = _CREATE_NO_WINDOW
-            else:
-                kwargs["start_new_session"] = True
+            kwargs["start_new_session"] = True
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        kwargs["env"] = env
         proc = subprocess.Popen(cmd, **kwargs)  # noqa: S603
     except OSError as exc:
-        if log_f is not None:
-            try:
-                log_f.close()
-            except OSError:
-                pass
-        return False, f"Не смогла запустить ComfyUI: {exc}", None
-
-    if log_f is not None:
         try:
             log_f.close()
         except OSError:
             pass
-    hint = "консоль+браузер" if show_console else f"лог={log_path}"
-    return True, f"pid={proc.pid} {hint}", proc
+        return False, f"Не смогла запустить ComfyUI: {exc}", None
+
+    try:
+        log_f.close()
+    except OSError:
+        pass
+    return True, f"pid={proc.pid} log={log_path}", proc
 
 
 def wait_comfy_api(

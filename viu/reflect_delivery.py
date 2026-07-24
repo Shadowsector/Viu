@@ -128,7 +128,9 @@ def should_fetch_more_parts(
         return True
     limit = reflect_max_words_per_part(config)
     wc = word_count(text)
-    if wc >= int(limit * 0.9):
+    # Не дёргать продолжение только из‑за длины — иначе второй пузырь
+    # перефразирует то же самое («два процесса»).
+    if wc >= int(limit * 0.9) and looks_incomplete_ending(text):
         return True
     if wc >= limit - 15 and looks_incomplete_ending(text):
         return True
