@@ -74,6 +74,13 @@ def comfy_pipeline_status(config: Config) -> str:
     except Exception:
         pass
 
+    try:
+        from .seed_pose import i2v_status_line
+
+        lines.append(i2v_status_line(config))
+    except Exception:
+        pass
+
     session = load_session(config, COMFY_TOPIC)
     if session is None:
         lines.append("Lab Comfy: **нет активной сессии** — сейчас не генерирует.")

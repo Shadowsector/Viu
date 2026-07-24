@@ -159,6 +159,37 @@ def inject_seed(workflow: Dict[str, Any], seed: int) -> Dict[str, Any]:
     return wf
 
 
+def inject_seed_image(workflow: Dict[str, Any], image_name: str) -> Dict[str, Any]:
+    """Подставить эталон позы в LoadImage I2V (не трогать Viu FaceRef)."""
+    name = (image_name or "").strip()
+    if not name:
+        return workflow
+    wf = json.loads(json.dumps(workflow))
+    for _nid, node in wf.items():
+        if not isinstance(node, dict):
+            continue
+        if node.get("class_type") != "LoadImage":
+            continue
+        title = str((node.get("_meta") or {}).get("title") or "")
+        low = title.lower()
+        if "faceref" in low or title.strip() == "Viu FaceRef":
+            continue
+        node.setdefault("inputs", {})["image"] = name
+        return wf
+    # fallback: первый LoadImage без FaceRef в title
+    for _nid, node in wf.items():
+        if not isinstance(node, dict):
+            continue
+        if node.get("class_type") != "LoadImage":
+            continue
+        title = str((node.get("_meta") or {}).get("title") or "")
+        if title.strip() == "Viu FaceRef":
+            continue
+        node.setdefault("inputs", {})["image"] = name
+        break
+    return wf
+
+
 def inject_vertical_frame(
     workflow: Dict[str, Any],
     *,

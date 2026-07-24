@@ -57,11 +57,28 @@ def _prepare_lab_session_inner(
             if old is not None:
                 # Только LoRA-пресет между кадрами. Промпт/slug/action — НЕ тащить:
                 # иначе «sit on a bed» залипает на новый touch_self и Wan снимает не то.
-                for key in ("lora_last_pick", "selected_loras"):
+                for key in (
+                    "lora_last_pick",
+                    "selected_loras",
+                    "i2v_seed_enabled",
+                    "i2v_seed_path",
+                    "i2v_seed_comfy",
+                ):
                     val = (old.meta or {}).get(key)
                     if val is None or val == "" or val == []:
                         continue
                     preserved[key] = val
+                # Также из постоянного state эталона
+                try:
+                    from ..integrations.comfy.seed_pose import load_seed_state
+
+                    st = load_seed_state(config)
+                    if st.get("enabled") and st.get("path"):
+                        preserved["i2v_seed_enabled"] = True
+                        preserved["i2v_seed_path"] = st["path"]
+                        preserved["i2v_seed_comfy"] = st.get("comfy_name") or "viu_pose_seed.png"
+                except Exception:
+                    pass
         session = new_session(topic)
         if preserved:
             session.meta.update(preserved)

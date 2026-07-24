@@ -204,7 +204,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Студия Comfy — статус и управление",
         "ComfyUI — видео",
         tool="__comfy_studio__",
-        hint="Генерация, статус, промпт, LoRA, очередь кадров, оценка видео.",
+        hint="Генерация, эталон→I2V, LoRA-чеклист, очередь, оценка видео.",
     ),
     GuiAction(
         "comfy_shot_queue",
