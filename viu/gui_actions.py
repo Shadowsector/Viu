@@ -200,6 +200,13 @@ GUI_ACTIONS: List[GuiAction] = [
     ),
     # --- ComfyUI ---
     GuiAction(
+        "comfy_studio",
+        "Студия Comfy — статус и управление",
+        "ComfyUI — видео",
+        tool="__comfy_studio__",
+        hint="Генерация, очередь, промпт и LoRA — без команд в Telegram.",
+    ),
+    GuiAction(
         "reference_catalog",
         "0. Референсы — окно",
         "ComfyUI — видео",
