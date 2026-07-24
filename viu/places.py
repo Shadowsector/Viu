@@ -164,7 +164,7 @@ def all_places() -> List[Place]:
             "Inbox — паки домиков",
             "folder",
             "Входы",
-            "Корень U:\\Viu\\Inbox — blend/паки для «Что делать дальше».",
+            "Корень U:\\Anabarra\\Inbox — blend/паки для «Что делать дальше».",
             inbox_dir,
         ),
         Place(
@@ -196,7 +196,7 @@ def all_places() -> List[Place]:
             "Inbox — существа",
             "folder",
             "Входы",
-            "U:\\Viu\\Inbox\\creatures — волки, гоблины, humanoid.",
+            "U:\\Anabarra\\Inbox\\creatures — волки, гоблины, humanoid.",
             creatures_inbox_dir,
         ),
         Place(

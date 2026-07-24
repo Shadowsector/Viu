@@ -139,7 +139,7 @@ def building_status_text(config: Config, *, name_hint: str = "") -> str:
             )
     else:
         lines.append(
-            "• Prepared ещё нет — положи blend+Textures в U:\\Viu\\Inbox, "
+            "• Prepared ещё нет — положи blend+Textures в U:\\Anabarra\\Inbox, "
             "«Принять asset» / «Следующий шаг»."
         )
         lines.append("• Сырой .blend из Desktop Mascot не размечен — сначала prepare.")

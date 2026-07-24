@@ -112,7 +112,7 @@ class Config:
 
     # Библиотека ассетов и каталог предметов.
     library_root: str = field(default_factory=lambda: _env("VIU_LIBRARY_ROOT", ""))
-    # Inbox — один пак за раз (U:\Viu\Inbox). Не Windows Downloads на C:.
+    # Inbox — один пак за раз (U:\Anabarra\Inbox). Не Windows Downloads на C:.
     inbox_dir: str = field(
         default_factory=lambda: _env("VIU_INBOX_DIR", "") or _env("VIU_DOWNLOADS_DIR", "")
     )

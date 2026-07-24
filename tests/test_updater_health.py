@@ -335,6 +335,49 @@ def test_update_viu_full_forces_when_sha_mismatch(tmp_path, monkeypatch):
     assert ok and restart
     assert "package_sha" in text or "SHA на диске" in text
     assert "zip ok" in text
+    assert "memory.json" in text
+
+
+def test_update_viu_full_sync_calls_bootstrap(tmp_path, monkeypatch):
+    from viu import updater
+
+    monkeypatch.setattr(updater, "package_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        updater,
+        "sha_needs_update",
+        lambda branch: (False, "abc", "abc"),
+    )
+    monkeypatch.setattr(
+        updater,
+        "check_for_update",
+        lambda branch: updater.UpdateResult(
+            ok=True,
+            checked=True,
+            has_updates=False,
+            message="Уже последняя версия.",
+        ),
+    )
+    monkeypatch.setattr(
+        updater,
+        "bootstrap_zip_force",
+        lambda branch: (True, "bootstrap ok"),
+    )
+    monkeypatch.setattr(
+        updater,
+        "apply_update_smart",
+        lambda branch, hard_reset=False, force=False: updater.UpdateResult(
+            ok=True,
+            updated=True,
+            message="smart ok",
+        ),
+    )
+    monkeypatch.setattr(updater, "install_package", lambda root=None: (True, "pip ok"))
+    monkeypatch.setattr(updater, "running_sha", lambda root=None: "abc")
+
+    ok, text, restart = updater.update_viu_full(full_sync=True)
+    assert ok and restart
+    assert "bootstrap ok" in text
+    assert "smart ok" in text
 
 
 @patch("urllib.request.urlopen")

@@ -191,6 +191,14 @@ class ViuGUI:
         except Exception:  # noqa: BLE001
             pass
         try:
+            from .anabarra_layout import migrate_inbox_to_anabarra
+
+            moved, mig = migrate_inbox_to_anabarra(self.agent.config)
+            if moved and mig:
+                self._append("система", mig, tag="sys")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
             from .vision import ensure_vision
 
             ensure_vision(self.agent.config)
@@ -872,6 +880,7 @@ class ViuGUI:
             "__lab_comfy__",
             "__interaction_lab__",
             "__comfy_clips__",
+            "__comfy_studio__",
         } or (
             action.tool and action.tool.startswith("lab_")
         ):
@@ -929,6 +938,9 @@ class ViuGUI:
             return
         if action.tool == "__comfy_clips__":
             self._open_comfy_clip_review()
+            return
+        if action.tool == "__comfy_studio__":
+            self._open_comfy_studio()
             return
         if action.tool == "__comfy_prompt__":
             self._open_comfy_prompt_editor()
@@ -1497,7 +1509,10 @@ class ViuGUI:
         self._set_busy(True)
 
         def work():
-            return update_viu_full(branch=self.agent.config.update_branch)
+            return update_viu_full(
+                branch=self.agent.config.update_branch,
+                full_sync=True,
+            )
 
         def done(result):
             self._set_busy(False)
@@ -2428,6 +2443,23 @@ class ViuGUI:
                 )
 
         open_comfy_prompt_editor(self.root, self.agent.config, on_finished=done)
+
+    def _open_comfy_studio(self) -> None:
+        from .integrations.comfy.studio_gui import ComfyStudioCallbacks, open_comfy_studio
+
+        cb = ComfyStudioCallbacks(
+            on_ensure_comfy=lambda: self._run_tool(
+                "comfy_ensure",
+                {},
+                label="ComfyUI",
+                echo_user=True,
+            ),
+            on_mocap_shoot=lambda: self._lab_comfy_action(),
+            on_edit_prompt=lambda: self._open_comfy_prompt_editor(),
+            on_pick_clips=lambda: self._open_comfy_clip_review(),
+            on_open_browser=lambda: self._open_comfy_ui(),
+        )
+        open_comfy_studio(self.root, self.agent.config, cb)
 
     def _schedule_cursor_inbox(self) -> None:
         """Раз в несколько минут — забрать задачи Cursor с GitHub и выполнить без Дена."""

@@ -643,12 +643,14 @@ def download_zip_update(
         if not roots:
             return UpdateResult(ok=False, message="Пустой архив с GitHub.")
         src_root = roots[0]
-        from .ollama_layout import copy_install_tree_item
+        from install_merge import resolve_copy_install_tree_item
+
+        copy_item = resolve_copy_install_tree_item(src_root)
 
         for item in src_root.iterdir():
             if item.name in preserve and (dest / item.name).exists():
                 continue
-            copy_install_tree_item(item, dest)
+            copy_item(item, dest)
 
     try:
         sha = remote_sha_github(repo=repo, branch=branch)
@@ -693,21 +695,36 @@ def auto_update_on_start(
     branch: str = DEFAULT_BRANCH,
     allow_zip: bool = True,
 ) -> UpdateResult:
+    """При старте: если на GitHub новее — полный sync (как кнопка «Обновить Вью»)."""
     cleanup_broken_git()
-    sha_outdated, _, _ = _sha_mismatch_with_github(branch)
-    root = usable_git_root()
-    if root is not None:
-        result = apply_git_update(root, branch=branch, hard_reset=sha_outdated)
-        if result.updated:
-            install_package(root)
-        return result
-    status = check_for_update(branch=branch)
-    if not allow_zip or not status.has_updates:
-        return status
-    result = download_zip_update(branch=branch)
-    if result.updated:
-        install_package()
-    return result
+    sha_outdated, local, remote = _sha_mismatch_with_github(branch)
+    if not allow_zip:
+        return check_for_update(branch=branch)
+    if not sha_outdated and not check_for_update(branch=branch).has_updates:
+        return UpdateResult(
+            ok=True,
+            checked=True,
+            has_updates=False,
+            local_ref=(local or "")[:12],
+            remote_ref=(remote or "")[:12],
+            message=_version_message(
+                branch=branch,
+                local=local,
+                remote=remote,
+                up_to_date=True,
+            ),
+        )
+    ok, text, _restart = update_viu_full(branch=branch, full_sync=True)
+    return UpdateResult(
+        ok=ok,
+        checked=True,
+        updated=ok,
+        has_updates=True,
+        local_ref=(local or "")[:12],
+        remote_ref=(remote or "")[:12],
+        message=text,
+        used_zip=True,
+    )
 
 
 def version_label() -> str:
@@ -721,8 +738,53 @@ def sha_needs_update(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, str]:
     return outdated, local, remote
 
 
-def update_viu_full(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, bool]:
-    """Проверка → скачивание (если есть) → pip install. Возвращает (ok, текст, нужен_рестарт)."""
+def bootstrap_zip_force(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str]:
+    """Как force_update_viu.bat: bootstrap_update.py --apply (zip + merge)."""
+    root = package_root()
+    script = root / "bootstrap_update.py"
+    if not script.is_file():
+        return False, "bootstrap_update.py не найден — только git/zip через updater."
+    import os
+    import sys
+
+    prev_branch = os.environ.get("VIU_UPDATE_BRANCH")
+    os.environ["VIU_UPDATE_BRANCH"] = branch
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    try:
+        import bootstrap_update
+
+        try:
+            if bootstrap_update.refresh_bootstrap_script():
+                pass  # свежий bootstrap с GitHub
+        except Exception:
+            pass
+        updated = bootstrap_update.run_update(force=True)
+        if updated:
+            return True, f"Bootstrap: скачан zip [{branch}] и распакован (merge Inbox/.viu)."
+        return True, f"Bootstrap: zip [{branch}] применён (force)."
+    except Exception as exc:
+        return False, f"Bootstrap: ошибка — {exc}"
+    finally:
+        if prev_branch is None:
+            os.environ.pop("VIU_UPDATE_BRANCH", None)
+        else:
+            os.environ["VIU_UPDATE_BRANCH"] = prev_branch
+
+
+_UPDATE_DATA_NOTE = (
+    "Готово. Референсы и файлы лежат в U:\\Anabarra\\Inbox — обновление их не трогает. "
+    "Память (.viu\\memory.json) — твоя, с GitHub не качается. "
+    "Окно перезапустится само — новые кнопки появятся после перезапуска."
+)
+
+
+def update_viu_full(branch: str = DEFAULT_BRANCH, *, full_sync: bool = False) -> Tuple[bool, str, bool]:
+    """Проверка → скачивание (если есть) → pip install. Возвращает (ok, текст, нужен_рестарт).
+
+    full_sync=True — как force_update: всегда zip (bootstrap) + git/zip + pip + сверка SHA.
+    Кнопка «Обновить Вью» в GUI должна вызывать с full_sync=True.
+    """
     lines: List[str] = []
     needs_restart = False
     before = running_sha(package_root())[:12] or "—"
@@ -736,10 +798,17 @@ def update_viu_full(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, bool]:
     status = check_for_update(branch=branch)
     lines.append(status.message)
 
-    must_apply = status.has_updates or sha_outdated
+    must_apply = full_sync or status.has_updates or sha_outdated
+    force = full_sync or sha_outdated
+
+    if full_sync:
+        b_ok, b_msg = bootstrap_zip_force(branch=branch)
+        lines.append(b_msg)
+        if not b_ok:
+            lines.append("Пробую обновление через viu.updater…")
+
     if must_apply:
-        force = sha_outdated
-        applied = apply_update_smart(branch=branch, hard_reset=sha_outdated, force=force)
+        applied = apply_update_smart(branch=branch, hard_reset=force, force=force)
         lines.append(applied.message)
         if applied.updated:
             needs_restart = True
@@ -752,25 +821,38 @@ def update_viu_full(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str, bool]:
         if not applied.ok:
             ok, pip_msg = install_package()
             lines.append(pip_msg)
+            lines.append(_UPDATE_DATA_NOTE)
             return ok and applied.ok, "\n\n".join(lines), needs_restart
 
     after = running_sha(package_root())[:12] or "—"
     if before != after:
-        lines.append(f"Версия: {before} → {after}")
+        lines.append(f"Версия на диске: {before} → {after}")
         needs_restart = True
 
     still_outdated, _, remote_after = sha_needs_update(branch=branch)
     if still_outdated and remote_after:
-        lines.append(
-            f"После обновления SHA всё ещё ≠ GitHub ({after} vs {remote_after[:12]}). "
-            "Проверь сеть / VIU_GITHUB_TOKEN."
-        )
-        ok, pip_msg = install_package()
-        lines.append(pip_msg)
-        return False, "\n\n".join(lines), needs_restart
+        if full_sync:
+            zip_result = download_zip_update(branch=branch)
+            lines.append(zip_result.message)
+            if zip_result.ok:
+                write_package_sha(package_root(), remote_after)
+                after = running_sha(package_root())[:12] or "—"
+                still_outdated, _, _ = sha_needs_update(branch=branch)
+        if still_outdated and remote_after:
+            lines.append(
+                f"После обновления SHA всё ещё ≠ GitHub ({after} vs {remote_after[:12]}). "
+                "Проверь сеть, ветку VIU_UPDATE_BRANCH, private repo → VIU_GITHUB_TOKEN."
+            )
+            ok, pip_msg = install_package()
+            lines.append(pip_msg)
+            lines.append(_UPDATE_DATA_NOTE)
+            return False, "\n\n".join(lines), needs_restart
 
     ok, pip_msg = install_package()
     lines.append(pip_msg)
-    if must_apply and ok and not needs_restart and sha_outdated:
+    if full_sync and ok:
         needs_restart = True
+    elif must_apply and ok and not needs_restart and (sha_outdated or force):
+        needs_restart = True
+    lines.append(_UPDATE_DATA_NOTE)
     return ok, "\n\n".join(lines), needs_restart

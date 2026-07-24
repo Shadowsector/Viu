@@ -1,13 +1,22 @@
 @echo off
-rem Тонкая оболочка: всегда открывает видимую консоль (cmd /k).
+rem По умолчанию — без консоли (Viu.vbs). Отладка: set VIU_SHOW_CONSOLE=1
 cd /d "%~dp0"
 if /i "%~1"=="_run" goto :main
-start "Viu" cmd /d /k call "%~f0" _run %*
+if /i "%~1"=="_hidden" goto :main
+if /i "%VIU_SHOW_CONSOLE%"=="1" (
+  start "Viu" cmd /d /k call "%~f0" _run %*
+  exit /b 0
+)
+start "" wscript.exe //nologo "%~dp0Viu.vbs" %*
 exit /b 0
 
 :main
 setlocal EnableExtensions EnableDelayedExpansion
-shift
+if /i "%~1"=="_hidden" (
+  set "VIU_LAUNCH_HIDDEN=1"
+  shift
+)
+if /i "%~1"=="_run" shift
 chcp 65001 >nul 2>&1
 title Viu — Anabarra
 set PYTHONUTF8=1
@@ -69,25 +78,24 @@ if /i "%VIU_QUICK_START%"=="1" goto :skip_update
 
 echo [1/3] GitHub update (может занять несколько минут)...
 echo [1/3] updates>> "%LAUNCH_LOG%"
-if exist "%~dp0bootstrap_update.py" (
-  python bootstrap_update.py --auto 2>&1
-  set "BERR=!errorlevel!"
-  echo bootstrap exit=!BERR!>> "%LAUNCH_LOG%"
-  if !BERR! GEQ 2 (
+rem Полный sync: как кнопка «Обновить Вью» — zip + pip, без выбора веток вручную.
+python -m viu update --full 2>&1
+set "BERR=!errorlevel!"
+echo update --full exit=!BERR!>> "%LAUNCH_LOG%"
+if !BERR! GEQ 1 (
+  if exist "%~dp0bootstrap_update.py" (
     echo [net] повтор: bootstrap --apply
     python bootstrap_update.py --apply 2>&1
     set "BERR=!errorlevel!"
   )
-  if !BERR! GEQ 1 (
-    echo [warn] Обновление не удалось — запускаю текущую версию
-  )
-) else (
-  echo [warn] нет bootstrap_update.py
+)
+if !BERR! GEQ 1 (
+  echo [warn] Обновление не удалось — запускаю текущую версию
 )
 goto :after_update
 
 :skip_update
-echo [1/3] Без GitHub (quick). Апдейт: force_update_viu.bat
+echo [1/3] Без GitHub (quick). Апдейт: кнопка «Обновить Вью» или force_update_viu.bat
 echo skip update>> "%LAUNCH_LOG%"
 
 :after_update
@@ -111,8 +119,12 @@ if exist "%STATUS%" del "%STATUS%" >nul 2>&1
 if exist "%STARTUP_ERR%" del "%STARTUP_ERR%" >nul 2>&1
 
 echo Запускаю GUI (run_gui.pyw)...
-rem pythonw иногда молча падает — python надёжнее (как в cmd: python run_gui.pyw).
-start "ViuGUI" python "%~dp0run_gui.pyw"
+where pythonw >nul 2>&1
+if errorlevel 1 (
+  start "" python "%~dp0run_gui.pyw"
+) else (
+  start "" pythonw "%~dp0run_gui.pyw"
+)
 
 set /a _n=0
 :waitgui
@@ -152,6 +164,7 @@ echo.
 echo ---- см. %LAUNCH_LOG% ----
 
 :end
+if defined VIU_LAUNCH_HIDDEN exit /b 0
 echo.
 echo Консоль можно закрыть. Диагностика: diag_viu_launch.bat
 pause

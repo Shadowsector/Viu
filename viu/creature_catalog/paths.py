@@ -15,7 +15,7 @@ def creature_catalog_path(config: Config) -> Path:
 
 
 def creatures_inbox_dir(config: Config) -> Path:
-    """Входящие модели монстров / существ — U:\\Viu\\Inbox\\creatures."""
+    """Входящие модели монстров / существ — U:\\Anabarra\\Inbox\\creatures."""
     env = os.environ.get("VIU_CREATURES_INBOX", "").strip()
     if env:
         p = Path(env).expanduser()

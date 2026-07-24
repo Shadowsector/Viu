@@ -146,7 +146,7 @@ def cmd_update(args: argparse.Namespace) -> int:
     config = Config()
     branch = config.update_branch
     if getattr(args, "full", False):
-        ok, text, _restart = update_viu_full(branch=branch)
+        ok, text, _restart = update_viu_full(branch=branch, full_sync=True)
         print(text)
         return 0 if ok else 1
     if getattr(args, "apply", False):
@@ -196,7 +196,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_up = sub.add_parser("update", help="проверить/скачать обновление Viu")
     p_up.add_argument("--apply", action="store_true", help="скачать и применить (git или zip)")
     p_up.add_argument("--force", action="store_true", help="игнорировать «уже актуально», hard reset / zip")
-    p_up.add_argument("--full", action="store_true", help="как кнопка «Обновить Вью» в GUI")
+    p_up.add_argument(
+        "--full",
+        action="store_true",
+        help="как кнопка «Обновить Вью»: bootstrap zip + git/zip + pip + сверка SHA",
+    )
     p_up.set_defaults(func=cmd_update)
     sub.add_parser("config", help="показать конфигурацию").set_defaults(func=cmd_config)
     return parser

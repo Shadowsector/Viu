@@ -73,12 +73,12 @@ class PropCatalogListTool(Tool):
 class PropOrganizeDownloadsTool(Tool):
     name = "prop_organize_downloads"
     description = (
-        "Разобрать Inbox (U:\\Viu\\Inbox): blend/fbx/папки → U:\\Anabarra\\Library. "
+        "Разобрать Inbox (U:\\Anabarra\\Inbox): blend/fbx/папки → U:\\Anabarra\\Library. "
         "Не лезет на C:\\Downloads и не сканирует Desktop Mascot. dry_run=1 — только план."
     )
     parameters = {
         "dry_run": "1 = не перемещать, только показать план",
-        "inbox": "путь к Inbox (опционально, по умолчанию U:\\Viu\\Inbox)",
+        "inbox": "путь к Inbox (опционально, по умолчанию U:\\Anabarra\\Inbox)",
         "downloads": "устаревший алиас для inbox",
     }
 

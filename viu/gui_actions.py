@@ -54,7 +54,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Обновить Вью",
         "Каждый день",
         tool="__update_viu__",
-        hint="Скачать новую версию с GitHub.",
+        hint="Скачает всю новую версию с GitHub и перезапустит окно. Ничего искать не нужно.",
     ),
     GuiAction(
         "decision_queue",
@@ -199,6 +199,13 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="После Cascadeur: скопировать FBX в проект и пересобрать контроллер.",
     ),
     # --- ComfyUI ---
+    GuiAction(
+        "comfy_studio",
+        "Студия Comfy — статус и управление",
+        "ComfyUI — видео",
+        tool="__comfy_studio__",
+        hint="Генерация, очередь, промпт и LoRA — без команд в Telegram.",
+    ),
     GuiAction(
         "reference_catalog",
         "0. Референсы — окно",
