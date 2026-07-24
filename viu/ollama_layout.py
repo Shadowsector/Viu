@@ -32,11 +32,34 @@ def merge_ollama_dir(src: Path, dest: Path) -> None:
             shutil.copytree(child, target)
 
 
+def merge_preserving_user_dir(src: Path, dest: Path) -> None:
+    """Слить дерево из zip: добавить новое, не удалять файлы пользователя."""
+    dest.mkdir(parents=True, exist_ok=True)
+    for child in src.iterdir():
+        target = dest / child.name
+        if child.is_dir():
+            merge_preserving_user_dir(child, target)
+        elif child.is_file():
+            if target.exists():
+                # README из репо можно обновить; пользовательские файлы — не трогать.
+                if child.name.lower() != "readme.txt":
+                    continue
+            shutil.copy2(child, target)
+
+
+def merge_inbox_dir(src: Path, dest: Path) -> None:
+    """Inbox: не rmtree — сохранить references/, creatures/, паки в корне."""
+    merge_preserving_user_dir(src, dest)
+
+
 def copy_install_tree_item(item: Path, dest_root: Path) -> None:
-    """Один элемент из zip (файл или папка) → dest_root, с merge для ollama/."""
+    """Один элемент из zip (файл или папка) → dest_root, с merge для ollama/ и Inbox/."""
     target = dest_root / item.name
     if item.is_dir() and item.name == "ollama":
         merge_ollama_dir(item, target)
+        return
+    if item.is_dir() and item.name == "Inbox":
+        merge_inbox_dir(item, target)
         return
     if item.is_dir():
         if target.exists():

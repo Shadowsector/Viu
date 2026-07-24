@@ -23,3 +23,8 @@ venv/
 viu/tools/custom/*.py
 !viu/tools/custom/__init__.py
 U:/
+
+# Inbox — пользовательские файлы (в git только README-скелет)
+Inbox/**/*
+!Inbox/README.txt
+!Inbox/*/README.txt

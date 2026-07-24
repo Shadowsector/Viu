@@ -51,7 +51,32 @@ def _prepare_lab_session_inner(
 ) -> Tuple[LabSession, PrepareMode, str]:
     if force_reset:
         notes.append("reset=1 — новая итерация.")
+        preserved: dict = {}
+        if topic == "comfy":
+            old = load_session(config, topic)
+            if old is not None:
+                for key in (
+                    "wan_positive",
+                    "wan_negative",
+                    "draft",
+                    "action",
+                    "approved_action",
+                    "catalog_slug",
+                    "enters_from",
+                    "exits_to",
+                    "shot_reason",
+                    "prompt_user_edited",
+                    "selected_loras",
+                    "lora_last_pick",
+                ):
+                    val = (old.meta or {}).get(key)
+                    if val is None or val == "" or val == []:
+                        continue
+                    preserved[key] = val
         session = new_session(topic)
+        if preserved:
+            session.meta.update(preserved)
+            notes.append("Промпт/кадр с прошлой сессии сохранён.")
         session.viu_build_stamp = current_stamp
         if topic == "comfy":
             session.steps_total = 6
@@ -84,6 +109,25 @@ def _prepare_lab_session_inner(
         return session, "fresh", "\n".join(notes)
 
     if session.status == "awaiting_rating":
+        from ..presence import is_away
+
+        if topic == "comfy" and is_away(config):
+            from .session import append_journal
+
+            append_journal(
+                config,
+                topic,
+                "### Оценка (away auto)\n\nПропущена — Вью снимает следующий кадр без блокировки GPU.",
+            )
+            session.rating_notes = "away: auto-пропуск оценки"
+            session.status = "completed"
+            save_session(config, session)
+            notes.append("away: оценка lab пропущена — новая итерация.")
+            session = new_session(topic)
+            session.viu_build_stamp = current_stamp
+            session.steps_total = 6
+            save_session(config, session)
+            return session, "fresh", "\n".join(notes)
         return session, "continue", "Жду оценку — «Оценить лабораторию»."
 
     if session.status == "awaiting_prompt":
