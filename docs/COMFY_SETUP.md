@@ -8,20 +8,12 @@
 
 ## Окно Comfy
 
-<<<<<<< HEAD
 У ComfyUI **нет** отдельного desktop-приложения.
 
 1. **Браузер** `http://127.0.0.1:8188` — UI (пустой Unsaved Workflow — норма: MoCap через API).
 2. **Лог** `.viu/logs/comfy_launch.log` — прогресс Wan / ошибки старта (не чёрное пустое окно).
 3. Браузер после ensure: `VIU_COMFY_OPEN_BROWSER=1` (выкл = `0`).
-
-Чёрное пустое окно было багом (`CREATE_NEW_CONSOLE` из pythonw) — больше не открываем по умолчанию.
-=======
-У ComfyUI **нет** отдельного desktop-приложения. После «Поднять ComfyUI» / `comfy_ensure`:
-
-1. **Чёрная консоль** — прогресс Wan (шаги %, ReActor). Скрыть: `VIU_COMFY_SHOW_CONSOLE=0`.
-2. **Браузер** `http://127.0.0.1:8188` — граф и очередь. Отключить авто-открытие: `VIU_COMFY_OPEN_BROWSER=0`.
->>>>>>> origin/main
+4. Отдельная консоль (опционально): `VIU_COMFY_SHOW_CONSOLE=1` — иначе по умолчанию выкл: `CREATE_NEW_CONSOLE` из pythonw давал пустое чёрное окно.
 
 В диспетчере задач процесс есть, а «не вкалывает» — часто очередь пустая или чат раньше рвал job (`Global interrupt`). Сейчас чат по умолчанию **не** убивает генерацию; жёсткий yield: `VIU_COMFY_YIELD_INTERRUPT=1`.
 
