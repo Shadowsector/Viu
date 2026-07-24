@@ -178,7 +178,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "4. Оценить результат lab",
         "Cascadeur — анимации",
         tool="__lab_rate__",
-        hint="Оценки 1–5 после отчёта lab.",
+        hint="Оценки FBX/viewport Cascadeur после отчёта lab — не видео Comfy.",
     ),
     # --- Unity: анимации ---
     GuiAction(
@@ -204,11 +204,18 @@ GUI_ACTIONS: List[GuiAction] = [
         "Студия Comfy — статус и управление",
         "ComfyUI — видео",
         tool="__comfy_studio__",
-        hint="Генерация, очередь, промпт и LoRA — без команд в Telegram.",
+        hint="Генерация, статус, промпт, LoRA, очередь кадров, оценка видео.",
+    ),
+    GuiAction(
+        "comfy_shot_queue",
+        "0. Очередь анимаций MoCap",
+        "ComfyUI — видео",
+        tool="__comfy_shot_queue__",
+        hint="План съёмки наперёд: правь промпты, пропускай, уходи на работу.",
     ),
     GuiAction(
         "reference_catalog",
-        "0. Референсы — окно",
+        "0a. Референсы — окно",
         "ComfyUI — видео",
         tool="__reference_catalog__",
         hint="Inbox/references/ — картинки и видео; LLaVA-описание для MoCap.",
@@ -225,7 +232,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "1. MoCap: снять клип",
         "ComfyUI — видео",
         tool="__lab_comfy__",
-        hint="Поднимает ComfyUI → Wan 5×¾ → выбор mp4. Промпт: «Промпт Wan → Comfy».",
+        hint="Поднимает ComfyUI → Wan 5×¾ → оценка видео. Промпт / очередь — рядом.",
     ),
     GuiAction(
         "interaction_master",
@@ -239,17 +246,17 @@ GUI_ACTIONS: List[GuiAction] = [
     ),
     GuiAction(
         "comfy_clips",
-        "3. Выбрать лучший клип — окно",
+        "3. Оценить видео (лучший клип)",
         "ComfyUI — видео",
         tool="__comfy_clips__",
-        hint="Сравнить и отметить удачные mp4 после съёмки.",
+        hint="Оценка самого mp4 после съёмки — не Cascadeur lab.",
     ),
     GuiAction(
         "comfy_open",
         "4. Открыть Comfy в браузере",
         "ComfyUI — видео",
         tool="__comfy_open__",
-        hint="Ручная отладка на http://127.0.0.1:8188.",
+        hint="Монитор :8188 (для съёмки не обязателен).",
     ),
     GuiAction(
         "lab_interaction",

@@ -67,6 +67,13 @@ def comfy_pipeline_status(config: Config) -> str:
     if st.awaiting_choice:
         lines.append(scene_choice_status_line(config))
 
+    try:
+        from .shot_queue import format_queue_brief
+
+        lines.append(format_queue_brief(config))
+    except Exception:
+        pass
+
     session = load_session(config, COMFY_TOPIC)
     if session is None:
         lines.append("Lab Comfy: **нет активной сессии** — сейчас не генерирует.")
@@ -118,7 +125,10 @@ def comfy_pipeline_status(config: Config) -> str:
         elif session.status == "awaiting_lora_pick":
             lines.append("  → ждёт выбор LoRA (lora: 1,2 / none)")
         elif session.status == "awaiting_clip_pick":
-            lines.append("  → ждёт выбор лучшего дубля (дома: «Оценить клипы Comfy»)")
+            lines.append(
+                "  → ждёт оценку видео: «Оценить видео» / Студия "
+                "(не Cascadeur lab)"
+            )
         elif session.status == "paused":
             lines.append(f"  → пауза: {session.pause_reason or session.last_fail_msg[:120]}")
         elif session.status in ("completed", "idle", "awaiting_rating"):

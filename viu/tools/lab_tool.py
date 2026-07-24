@@ -74,15 +74,20 @@ class LabStartTool(Tool):
             from ..lab.comfy_director import infer_slug_from_action, invent_next_shot
 
             # Без явного slug — invent полный план, чтобы граф не терялся
+            shoot_flag = str(args.get("shoot") or "").lower() in ("1", "true", "yes")
             if not str(args.get("catalog_slug") or "").strip():
                 if not action or action.lower() in ("auto", "сам", "сама", "invent"):
-                    plan = invent_next_shot(ctx.config)
+                    plan = invent_next_shot(ctx.config, consume_queue=shoot_flag)
                     action = plan.action
                     args = dict(args)
                     args["catalog_slug"] = plan.catalog_slug
                     args["enters_from"] = ",".join(plan.enters_from)
                     args["exits_to"] = ",".join(plan.exits_to)
                     args["shot_reason"] = plan.reason
+                    if plan.wan_positive:
+                        args["_wan_positive"] = plan.wan_positive
+                    if plan.wan_negative:
+                        args["_wan_negative"] = plan.wan_negative
                 else:
                     inferred = infer_slug_from_action(action)
                     if inferred:
@@ -198,6 +203,16 @@ class LabStartTool(Tool):
                 meta_extra["looped"] = False
             if str(args.get("shoot") or "").lower() in ("1", "true", "yes"):
                 meta_extra["shoot_intent"] = True
+            wan_pos = str(args.get("_wan_positive") or "").strip()
+            wan_neg = str(args.get("_wan_negative") or "").strip()
+            if wan_pos:
+                meta_extra["wan_positive"] = wan_pos
+                meta_extra["prompt_user_edited"] = True
+                meta_extra["prompt_edit_slug"] = str(
+                    args.get("catalog_slug") or ""
+                ).strip()
+            if wan_neg:
+                meta_extra["wan_negative"] = wan_neg
         elif topic == "interaction":
             meta_extra = {
                 "catalog_slug": str(args.get("catalog_slug") or "").strip(),

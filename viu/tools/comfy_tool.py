@@ -447,7 +447,7 @@ class ComfyMocapTool(Tool):
             from ..lab.comfy_director import invent_next_shot
             from ..lab.comfy_pipeline import ensure_task_file
 
-            plan = invent_next_shot(ctx.config)
+            plan = invent_next_shot(ctx.config, consume_queue=True)
             action = plan.action
             ensure_task_file(ctx.config, action=action)
             plan_meta = {

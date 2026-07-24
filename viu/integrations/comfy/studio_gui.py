@@ -21,6 +21,7 @@ class ComfyStudioCallbacks:
     on_edit_prompt: Callable[[], None]
     on_pick_clips: Callable[[], None]
     on_open_browser: Callable[[], None]
+    on_shot_queue: Optional[Callable[[], None]] = None
 
 
 def _strip_md_bold(text: str) -> str:
@@ -69,10 +70,10 @@ def open_comfy_studio(
     ttk.Label(
         body,
         text=(
-            "Здесь видно, идёт ли генерация в ComfyUI и что ждёт lab. "
-            "UI Comfy — только в браузере (:8188). Пустой Unsaved Workflow — норма "
-            "(MoCap через API). Прогресс: .viu/logs/comfy_launch.log. "
-            "Промпт и LoRA — без команд в Telegram."
+            "Съёмка и оценка видео — здесь и в кнопках ниже. "
+            "«Оценить видео» = выбор лучшего mp4 (не Cascadeur lab). "
+            "«Очередь анимаций» = план кадров наперёд перед уходом на работу. "
+            "Браузер :8188 — только монитор сервера."
         ),
         wraplength=860,
     ).pack(anchor="w", pady=(0, 8))
@@ -176,9 +177,13 @@ def open_comfy_studio(
     ttk.Button(btn_row, text="Промпт Wan", command=callbacks.on_edit_prompt).pack(
         side="left", padx=(8, 0)
     )
-    ttk.Button(btn_row, text="Выбрать клип", command=callbacks.on_pick_clips).pack(
+    ttk.Button(btn_row, text="Оценить видео", command=callbacks.on_pick_clips).pack(
         side="left", padx=(8, 0)
     )
+    if callbacks.on_shot_queue is not None:
+        ttk.Button(
+            btn_row, text="Очередь анимаций", command=callbacks.on_shot_queue
+        ).pack(side="left", padx=(8, 0))
     ttk.Button(btn_row, text="Comfy в браузере", command=callbacks.on_open_browser).pack(
         side="left", padx=(8, 0)
     )
