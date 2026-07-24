@@ -207,11 +207,8 @@ def step_request_approval(config: Config, session: LabSession) -> StepResult:
     if shoot_intent or away:
         session.meta.pop("shoot_intent", None)
         session.meta["approved"] = True
-        session.meta["approved_action"] = str(
-            session.meta.get("approved_action")
-            or session.meta.get("action")
-            or action
-        )
+        # Всегда текущий action кадра — не stale approved_action с прошлого slug.
+        session.meta["approved_action"] = str(session.meta.get("action") or action)
         session.meta["auto_approved_away"] = away
         if shoot_intent and not away:
             session.meta["auto_approved_shoot"] = True
@@ -510,6 +507,16 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
     lora_specs = specs_from_session_meta(session.meta)
     pos_ov = str(session.meta.get("wan_positive") or "").strip()
     neg_ov = str(session.meta.get("wan_negative") or "").strip()
+    # Защита: ручной Wan-промпт от другого кадра не подмешивать.
+    if pos_ov and session.meta.get("prompt_user_edited"):
+        edited_for = str(session.meta.get("prompt_edit_slug") or "").strip()
+        if edited_for and edited_for != slug:
+            pos_ov = ""
+            neg_ov = ""
+            session.meta.pop("wan_positive", None)
+            session.meta.pop("wan_negative", None)
+            session.meta.pop("prompt_user_edited", None)
+            save_session(config, session)
     ok, msg, results = run_triple_angles(
         config,
         action=action,
