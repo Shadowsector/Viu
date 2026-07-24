@@ -994,6 +994,9 @@ class ViuGUI:
         if action.tool == "__comfy_clips__":
             self._open_comfy_clip_review()
             return
+        if action.tool == "__comfy_shot_queue__":
+            self._open_comfy_shot_queue()
+            return
         if action.tool == "__comfy_studio__":
             self._open_comfy_studio()
             return
@@ -2396,14 +2399,30 @@ class ViuGUI:
             )
             return
 
-        plan = invent_next_shot(self.agent.config)
+        plan = invent_next_shot(self.agent.config, consume_queue=True)
         if plan.stop_cycle:
             self._append("Вью", plan.summary_ru(), tag="viu")
             return
         self._append("Вью", plan.summary_ru(), tag="viu")
         from ..integrations.comfy.focus import focus_cycle_status
+        from .lab.session import save_session
 
         self._append("Вью", focus_cycle_status(self.agent.config), tag="viu")
+        if plan.from_queue or plan.wan_positive:
+            sess = load_session(self.agent.config, COMFY_TOPIC)
+            if sess is None:
+                from .lab.session import new_session
+
+                sess = new_session(COMFY_TOPIC)
+            if plan.wan_positive:
+                sess.meta["wan_positive"] = plan.wan_positive
+                sess.meta["prompt_user_edited"] = True
+                sess.meta["prompt_edit_slug"] = plan.catalog_slug
+            if plan.wan_negative:
+                sess.meta["wan_negative"] = plan.wan_negative
+            if plan.queue_notes:
+                sess.meta["queue_notes"] = plan.queue_notes
+            save_session(self.agent.config, sess)
         if not auto and not is_away(self.agent.config):
             self._append(
                 "Вью",
@@ -2526,8 +2545,9 @@ class ViuGUI:
         self._comfy_clip_prompt_open = True
         self._append(
             "Вью",
-            "Клипы готовы — открою окно выбора лучшего дубля.\n"
-            "Или в чате: «лучший: take_b» / «отклонить все».",
+            "Клипы готовы — открою «Оценить видео» (выбор лучшего mp4).\n"
+            "Или в чате: «лучший: take_b» / «отклонить все».\n"
+            "Это оценка видео, не Cascadeur lab.",
             tag="viu",
         )
         try:
@@ -2538,14 +2558,25 @@ class ViuGUI:
 
     def _maybe_prompt_lab_rating(self) -> None:
         from .lab.cascadeur_pipeline import CASCADEUR_TOPIC
+        from .lab.comfy_pipeline import COMFY_TOPIC
         from .lab.session import load_session
 
+        comfy = load_session(self.agent.config, COMFY_TOPIC)
+        if comfy is not None and comfy.status == "awaiting_clip_pick":
+            self._append(
+                "система",
+                "Видео готово к оценке — «3. Оценить видео (лучший клип)» "
+                "в ComfyUI или Студия → Оценить видео.",
+                tag="sys",
+            )
+            return
         session = load_session(self.agent.config, CASCADEUR_TOPIC)
         if session is None or session.status != "awaiting_rating":
             return
         self._append(
             "система",
-            "Lab готова к оценке — «Оценить результат lab» в Cascadeur.",
+            "Cascadeur lab готова к оценке FBX — «Оценить результат lab» "
+            "(это не видео Comfy).",
             tag="sys",
         )
 
@@ -2696,8 +2727,23 @@ class ViuGUI:
             on_edit_prompt=lambda: self._open_comfy_prompt_editor(),
             on_pick_clips=lambda: self._open_comfy_clip_review(),
             on_open_browser=lambda: self._open_comfy_ui(),
+            on_shot_queue=lambda: self._open_comfy_shot_queue(),
         )
         open_comfy_studio(self.root, self.agent.config, cb)
+
+    def _open_comfy_shot_queue(self) -> None:
+        from .integrations.comfy.shot_queue_gui import open_shot_queue_editor
+
+        def done(ok: bool, msg: str) -> None:
+            if ok and msg:
+                self._append("Вью", msg, tag="tool")
+
+        open_shot_queue_editor(
+            self.root,
+            self.agent.config,
+            on_finished=done,
+            on_edit_prompt=lambda: self._open_comfy_prompt_editor(),
+        )
 
     def _schedule_cursor_inbox(self) -> None:
         """Раз в несколько минут — забрать задачи Cursor с GitHub и выполнить без Дена."""

@@ -81,6 +81,10 @@ class MocapShotPlan:
     alternatives: List[str] = field(default_factory=list)
     looped: bool = False
     stop_cycle: bool = False
+    wan_positive: str = ""
+    wan_negative: str = ""
+    from_queue: bool = False
+    queue_notes: str = ""
 
     def summary_ru(self) -> str:
         if self.stop_cycle:
@@ -91,10 +95,18 @@ class MocapShotPlan:
         kind = "цикл (looped)" if self.looped else "переход / one-shot"
         lines = [
             f"Снимаю «{self.title_ru or self.catalog_slug}»: {self.action}",
-            f"Тип: {kind}. Почему: {self.reason}",
-            f"Ракурс: только ¾ · {n} разных дублей (seed + timing).",
-            f"Граф: {self.enters_from or '—'} → `{self.catalog_slug}` → {self.exits_to or '—'}",
         ]
+        if self.from_queue:
+            lines.append("Из очереди MoCap (согласовано дома).")
+        if self.queue_notes:
+            lines.append(f"Заметка Дена: {self.queue_notes[:200]}")
+        lines.extend(
+            [
+                f"Тип: {kind}. Почему: {self.reason}",
+                f"Ракурс: только ¾ · {n} разных дублей (seed + timing).",
+                f"Граф: {self.enters_from or '—'} → `{self.catalog_slug}` → {self.exits_to or '—'}",
+            ]
+        )
         if self.alternatives:
             lines.append("Ещё можно: " + ", ".join(self.alternatives[:4]))
         return "\n".join(lines)
@@ -306,14 +318,40 @@ def sync_session_shot_from_slug(config: Config, session) -> str:
     return action
 
 
-def invent_next_shot(config: Config, *, barn_cycle: Optional[bool] = None) -> MocapShotPlan:
-    """Следующий клип по каталогу и графу. Без LLM."""
+def invent_next_shot(
+    config: Config,
+    *,
+    barn_cycle: Optional[bool] = None,
+    consume_queue: bool = False,
+) -> MocapShotPlan:
+    """Следующий клип по каталогу и графу. Без LLM.
+
+    Очередь MoCap имеет приоритет. consume_queue=True — снять кадр из очереди
+    (только при реальной съёмке; probe/ensure не должны опустошать список).
+    """
     from ..integrations.comfy.scene_choice import (
         format_scene_choice_message,
         is_paused_for_scene_choice,
         load_scene_state,
         get_focus_slugs,
     )
+    from ..integrations.comfy.shot_queue import peek_next_pending, take_next_pending
+
+    queued = take_next_pending(config) if consume_queue else peek_next_pending(config)
+    if queued is not None and (queued.catalog_slug or queued.action):
+        return MocapShotPlan(
+            action=queued.action,
+            catalog_slug=queued.catalog_slug,
+            reason=queued.reason or f"очередь MoCap `{queued.catalog_slug}`",
+            enters_from=list(queued.enters_from),
+            exits_to=list(queued.exits_to),
+            title_ru=queued.title_ru,
+            looped=queued.looped,
+            wan_positive=queued.wan_positive,
+            wan_negative=queued.wan_negative,
+            from_queue=True,
+            queue_notes=queued.notes,
+        )
 
     if is_paused_for_scene_choice(config):
         st = load_scene_state(config)
