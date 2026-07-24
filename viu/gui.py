@@ -36,7 +36,12 @@ from .llm_roles import (
     set_reflect_model,
 )
 from .integrations.unity.watcher import AnimationFolderWatcher
-from .runtime_settings import get_update_interval_min, get_window_geometry, set_window_geometry
+from .runtime_settings import (
+    get_update_interval_min,
+    get_window_geometry,
+    sanitize_window_geometry,
+    set_window_geometry,
+)
 from .updater import (
     apply_update_smart,
     auto_update_on_start,
@@ -246,8 +251,35 @@ class ViuGUI:
             pass
         self.root.title("Вью — Анабарра")
         saved_geom = get_window_geometry(self.agent.config)
-        self.root.geometry(saved_geom if saved_geom else _GUI_DEFAULT_GEOMETRY)
+        geom = sanitize_window_geometry(
+            saved_geom,
+            default=_GUI_DEFAULT_GEOMETRY,
+            min_w=_GUI_MIN_WIDTH,
+            min_h=_GUI_MIN_HEIGHT,
+        )
+        if saved_geom and geom != saved_geom:
+            set_window_geometry(self.agent.config, geom)
+            try:
+                self.root.after(
+                    800,
+                    lambda: self._append(
+                        "система",
+                        f"Окно было за экраном ({saved_geom}) — вернула на основной монитор.",
+                        tag="sys",
+                    ),
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        self.root.geometry(geom)
         self.root.minsize(_GUI_MIN_WIDTH, _GUI_MIN_HEIGHT)
+        # На всякий: поверх и не iconic
+        try:
+            self.root.deiconify()
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self.root.after(600, lambda: self.root.attributes("-topmost", False))
+        except tk.TclError:
+            pass
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.bind("<Configure>", self._on_root_configure, add="+")
         try:
