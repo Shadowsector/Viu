@@ -71,7 +71,7 @@ class LabStartTool(Tool):
             ensure_task_file(ctx.config)
         if topic == "comfy":
             from ..lab.comfy_pipeline import ensure_task_file as ensure_comfy_task
-            from ..lab.comfy_director import invent_next_shot
+            from ..lab.comfy_director import infer_slug_from_action, invent_next_shot
 
             # Без явного slug — invent полный план, чтобы граф не терялся
             if not str(args.get("catalog_slug") or "").strip():
@@ -83,6 +83,11 @@ class LabStartTool(Tool):
                     args["enters_from"] = ",".join(plan.enters_from)
                     args["exits_to"] = ",".join(plan.exits_to)
                     args["shot_reason"] = plan.reason
+                else:
+                    inferred = infer_slug_from_action(action)
+                    if inferred:
+                        args = dict(args)
+                        args["catalog_slug"] = inferred
             ensure_comfy_task(ctx.config, action=action)
         if topic == "interaction":
             from ..lab.interaction_pipeline import ensure_task_file as ensure_interaction_task
@@ -114,11 +119,37 @@ class LabStartTool(Tool):
             return ToolResult(ok, body)
 
         if not reset and session and session.status == "awaiting_rating":
-            return ToolResult(
-                True,
-                "Жду оценку — «Оценить лабораторию».\n"
-                "Или «Лаборатория» / lab_start verify=1 — проверить ручной import без reset.",
-            )
+            shoot = str(args.get("shoot") or "").lower() in ("1", "true", "yes")
+            # Comfy MoCap: оценка не должна блокировать новую съёмку / shoot.
+            if topic == "comfy" and (shoot or run_all):
+                from ..lab.session import append_journal
+
+                session.rating_notes = (
+                    session.rating_notes or "auto-skip: новая MoCap-съёмка"
+                )
+                session.status = "running"
+                session.step = 0
+                session.meta["shoot_intent"] = True
+                if shoot:
+                    session.meta["auto_approved_shoot"] = True
+                session.meta.pop("lora_pick_done", None)
+                session.meta.pop("clip_batch_id", None)
+                session.meta.pop("clip_candidate_ids", None)
+                save_session(ctx.config, session)
+                append_journal(
+                    ctx.config,
+                    topic,
+                    "### Оценка (auto-skip)\n\n"
+                    "Пропущена — Ден нажал съёмку / lab run_all.",
+                )
+                # fall through → run_lab_prepared
+            else:
+                return ToolResult(
+                    True,
+                    "Жду оценку — «Оценить лабораторию».\n"
+                    "Или «Лаборатория» / lab_start verify=1 — проверить ручной import без reset.\n"
+                    "Для Comfy: «MoCap: снять клип» закроет оценку и поставит новую очередь.",
+                )
 
         if not reset and session and session.status == "awaiting_prompt":
             if str(args.get("shoot") or "").lower() in ("1", "true", "yes"):

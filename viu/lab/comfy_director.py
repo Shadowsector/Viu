@@ -237,6 +237,31 @@ def pending_review_count(config: Config) -> int:
     return sum(1 for c in store.clips if c.status == "candidate")
 
 
+def infer_slug_from_action(action: str) -> str:
+    """Угадать catalog_slug по тексту действия (sit on bed ≠ touch_self)."""
+    a = (action or "").strip().lower()
+    if not a:
+        return ""
+    rules: list[tuple[str, tuple[str, ...]]] = [
+        ("touch_self", ("touch self", "touch_self", "ласкает", "мастурб")),
+        ("lie_down", ("lie down", "lie on", "ложится", "лечь")),
+        ("sleep_idle", ("sleep", "sleep idle")),
+        ("get_up", ("get up", "встать с", "from lying")),
+        ("stand_up", ("stand up", "rise from sit", "встать")),
+        ("sit_down", ("sit down", "sit up", "to sit", "from standing to sit", "сесть")),
+        ("sit_idle", ("sit idle", "seated idle", "sitting idle")),
+        ("walk", ("walk forward", "walk cycle", "идти")),
+        ("wave", ("wave", "машет")),
+        ("look_around", ("look around", "осматривает")),
+        ("look_window", ("look out window", "окно")),
+        ("idle", ("idle stand", "standing still", "стоит")),
+    ]
+    for slug, keys in rules:
+        if any(k in a for k in keys):
+            return slug
+    return ""
+
+
 def action_for_slug(
     config: Config,
     slug: str,
