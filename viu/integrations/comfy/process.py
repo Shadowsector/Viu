@@ -17,6 +17,10 @@ from .paths import looks_like_comfy_root, resolve_comfy_root
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _CREATE_NEW_CONSOLE = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
 
+# Не закрывать file handle лога, пока жив Comfy — иначе на Windows
+# stdout ребёнка обрывается и в логе остаётся только шапка.
+_OPEN_LAUNCH_LOGS: List[object] = []
+
 
 def comfy_show_console() -> bool:
     """Показывать окно консоли ComfyUI.
@@ -444,15 +448,29 @@ def launch_comfy_process(
 ) -> Tuple[bool, str, Optional[subprocess.Popen]]:
     """Старт main.py с логом в .viu/logs/comfy_launch.log.
 
-    По умолчанию — скрытый процесс (без пустого чёрного окна).
-    VIU_COMFY_SHOW_CONSOLE=1 — отдельная консоль + тот же лог (python -u).
-    UI Comfy — только браузер :8188.
+    По умолчанию — скрытый процесс, весь stdout/stderr в лог (handle не закрываем).
+    VIU_COMFY_SHOW_CONSOLE=1 — отдельная консоль (python.exe, не pythonw).
     """
     py = _console_python(py or _python_for_comfy(root))
     url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
     port = _parse_port(str(url))
     log_path = _launch_log_path(config, root)
     main_py = root / "main.py"
+    if not main_py.is_file():
+        return False, f"Нет {main_py} — ComfyUI сломан/не установлен.", None
+    if not py.is_file():
+        return False, f"Нет python: {py}", None
+
+    # Быстрый smoke: тот же python вообще живой?
+    ok_smoke, smoke_out = _run_py(py, "print('viu-comfy-ok')", cwd=root, timeout=30)
+    if not ok_smoke or "viu-comfy-ok" not in smoke_out:
+        return (
+            False,
+            f"venv python не стартует ({py}):\n{smoke_out[-800:]}\n"
+            "Почини venv или comfy_install.",
+            None,
+        )
+
     cmd = [
         str(py),
         "-u",
@@ -468,31 +486,51 @@ def launch_comfy_process(
     if extra_args:
         cmd.extend(extra_args)
     show_console = comfy_show_console() and sys.platform == "win32"
+
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_f = log_path.open("w", encoding="utf-8", errors="replace")
+        # line-buffered text; handle держим в _OPEN_LAUNCH_LOGS
+        log_f = log_path.open("w", encoding="utf-8", errors="replace", buffering=1)
     except OSError as exc:
         return False, f"Не открыла лог {log_path}: {exc}", None
 
-    # Всегда пишем в лог. CREATE_NEW_CONSOLE из pythonw = пустое чёрное окно —
-    # не используем. Прогресс: .viu/logs/comfy_launch.log + Студия Comfy.
-    mode = "logfile" + ("(show_console ignored→log)" if show_console else "")
-    log_f.write(f"cmd: {' '.join(cmd)}\ncwd: {root}\nmode: {mode}\n\n")
-    log_f.flush()
+    mode = "console" if show_console else "logfile"
+    try:
+        log_f.write(f"cmd: {' '.join(cmd)}\ncwd: {root}\nmode: {mode}\n\n")
+        log_f.flush()
+    except OSError as exc:
+        try:
+            log_f.close()
+        except OSError:
+            pass
+        return False, f"Не писать лог {log_path}: {exc}", None
+
     try:
         kwargs: dict = {
             "cwd": str(root),
-            "stdout": log_f,
-            "stderr": subprocess.STDOUT,
             "stdin": subprocess.DEVNULL,
+            "close_fds": False,
         }
-        if sys.platform == "win32":
-            kwargs["creationflags"] = _CREATE_NO_WINDOW
-        else:
-            kwargs["start_new_session"] = True
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         kwargs["env"] = env
+
+        if show_console:
+            # Видимая консоль: вывод на экран (лог только шапка + подсказка).
+            log_f.write(
+                "VIU_COMFY_SHOW_CONSOLE=1 — прогресс смотри в окне консоли Comfy.\n\n"
+            )
+            log_f.flush()
+            kwargs["creationflags"] = _CREATE_NEW_CONSOLE
+        else:
+            # Скрытый: stdout/stderr → лог. НЕ закрывать log_f.
+            kwargs["stdout"] = log_f
+            kwargs["stderr"] = subprocess.STDOUT
+            if sys.platform == "win32":
+                kwargs["creationflags"] = _CREATE_NO_WINDOW
+            else:
+                kwargs["start_new_session"] = True
+
         proc = subprocess.Popen(cmd, **kwargs)  # noqa: S603
     except OSError as exc:
         try:
@@ -501,11 +539,32 @@ def launch_comfy_process(
             pass
         return False, f"Не смогла запустить ComfyUI: {exc}", None
 
-    try:
-        log_f.close()
-    except OSError:
-        pass
-    return True, f"pid={proc.pid} log={log_path}", proc
+    # Держим handle живым, пока жив процесс (иначе лог = только шапка).
+    if not show_console:
+        _OPEN_LAUNCH_LOGS.append(log_f)
+    else:
+        try:
+            log_f.close()
+        except OSError:
+            pass
+
+    # Ранняя смерть (битый torch / import) — не ждать 180s молча.
+    time.sleep(1.2)
+    if proc.poll() is not None:
+        code = proc.returncode
+        summary = extract_crash_summary(log_path)
+        return (
+            False,
+            f"ComfyUI сразу вышел (код {code}).\n"
+            f"Лог: {log_path}\n"
+            f"Суть:\n{summary}\n\n"
+            "Если лог пуст — поставь VIU_COMFY_SHOW_CONSOLE=1 в .env и снова "
+            "«Поднять ComfyUI», либо из cmd:\n"
+            f'  "{py}" -u "{main_py}" --listen 127.0.0.1 --port {port}',
+            proc,
+        )
+
+    return True, f"pid={proc.pid} log={log_path} mode={mode}", proc
 
 
 def wait_comfy_api(
@@ -820,8 +879,13 @@ def ensure_comfy_running(
                 parts.append(wait_msg2)
 
     parts.append(
-        "Не делай comfy_install заново. Лог: "
-        f"{log_path}. После правки torch — снова comfy_ensure."
+        "Не поднялся. Не делай comfy_install заново без нужды.\n"
+        f"1) Открой лог: {log_path}\n"
+        "2) Студия → «Поднять ComfyUI» ещё раз (restart).\n"
+        "3) Если лог пустой — в .env: VIU_COMFY_SHOW_CONSOLE=1, "
+        "перезапусти Вью, снова Поднять.\n"
+        f'4) Вручную из cmd:\n   "{py}" -u "{root / "main.py"}" '
+        f"--listen 127.0.0.1 --port {port}"
     )
     return False, "\n".join(parts)
 
