@@ -70,6 +70,7 @@ def open_comfy_studio(
         body,
         text=(
             "Здесь видно, идёт ли генерация в ComfyUI и что ждёт lab. "
+            "UI Comfy — только в браузере (:8188); после «Поднять» ещё консоль с прогрессом. "
             "Промпт и LoRA — без команд в Telegram."
         ),
         wraplength=860,

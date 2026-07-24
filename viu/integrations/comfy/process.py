@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -14,6 +15,37 @@ from .client import ComfyClient
 from .paths import looks_like_comfy_root, resolve_comfy_root
 
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+_CREATE_NEW_CONSOLE = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+
+
+def comfy_show_console() -> bool:
+    """Показывать окно консоли ComfyUI (прогресс Wan). По умолчанию вкл. на Windows."""
+    raw = os.environ.get("VIU_COMFY_SHOW_CONSOLE", "1").strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return raw in ("1", "true", "yes", "on", "")
+
+
+def comfy_open_browser_on_launch() -> bool:
+    """Открыть http://127.0.0.1:8188 после успешного старта. По умолчанию вкл."""
+    raw = os.environ.get("VIU_COMFY_OPEN_BROWSER", "1").strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return raw in ("1", "true", "yes", "on", "")
+
+
+def open_comfy_browser(config: Config) -> str:
+    """Открыть UI Comfy в браузере (у Comfy нет отдельного desktop-окна)."""
+    if not comfy_open_browser_on_launch():
+        return ""
+    import webbrowser
+
+    url = str(getattr(config, "comfy_url", None) or "http://127.0.0.1:8188")
+    try:
+        webbrowser.open(url)
+        return f"Браузер: {url} (это и есть окно ComfyUI)"
+    except Exception as exc:  # noqa: BLE001
+        return f"Не открыла браузер ({exc}). Открой сама: {url}"
 
 # Не ставить «просто torch» с PyPI — +cpu новее многих cu-сборок и pip не даунгрейдит.
 # cu124/cu121 — только до cp313. На Python 3.14 (у Дена) колёс нет → cu126/cu130.
@@ -395,7 +427,12 @@ def launch_comfy_process(
     py: Optional[Path] = None,
     extra_args: Optional[List[str]] = None,
 ) -> Tuple[bool, str, Optional[subprocess.Popen]]:
-    """Старт main.py с логом (не глотаем stderr)."""
+    """Старт main.py.
+
+    На Windows по умолчанию — отдельная консоль (прогресс генерации виден).
+    VIU_COMFY_SHOW_CONSOLE=0 — скрытый процесс + лог .viu/logs/comfy_launch.log.
+    UI Comfy — только браузер :8188, отдельного desktop-окна нет.
+    """
     py = py or _python_for_comfy(root)
     url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
     port = _parse_port(str(url))
@@ -414,38 +451,52 @@ def launch_comfy_process(
     ]
     if extra_args:
         cmd.extend(extra_args)
+    show_console = comfy_show_console() and sys.platform == "win32"
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_f = log_path.open("w", encoding="utf-8", errors="replace")
     except OSError as exc:
         return False, f"Не открыла лог {log_path}: {exc}", None
 
-    log_f.write(f"cmd: {' '.join(cmd)}\ncwd: {root}\n\n")
+    mode = "console" if show_console else "hidden+logfile"
+    log_f.write(f"cmd: {' '.join(cmd)}\ncwd: {root}\nmode: {mode}\n\n")
     log_f.flush()
     try:
         kwargs: dict = {
             "cwd": str(root),
-            "stdout": log_f,
-            "stderr": subprocess.STDOUT,
             "stdin": subprocess.DEVNULL,
         }
-        if sys.platform == "win32":
-            kwargs["creationflags"] = _CREATE_NO_WINDOW
+        if show_console:
+            # Прогресс в окне консоли; в лог только шапка запуска.
+            kwargs["creationflags"] = _CREATE_NEW_CONSOLE
+            try:
+                log_f.close()
+            except OSError:
+                pass
+            log_f = None  # type: ignore[assignment]
         else:
-            kwargs["start_new_session"] = True
+            kwargs["stdout"] = log_f
+            kwargs["stderr"] = subprocess.STDOUT
+            if sys.platform == "win32":
+                kwargs["creationflags"] = _CREATE_NO_WINDOW
+            else:
+                kwargs["start_new_session"] = True
         proc = subprocess.Popen(cmd, **kwargs)  # noqa: S603
     except OSError as exc:
+        if log_f is not None:
+            try:
+                log_f.close()
+            except OSError:
+                pass
+        return False, f"Не смогла запустить ComfyUI: {exc}", None
+
+    if log_f is not None:
         try:
             log_f.close()
         except OSError:
             pass
-        return False, f"Не смогла запустить ComfyUI: {exc}", None
-
-    try:
-        log_f.close()
-    except OSError:
-        pass
-    return True, f"pid={proc.pid} log={log_path}", proc
+    hint = "консоль+браузер" if show_console else f"лог={log_path}"
+    return True, f"pid={proc.pid} {hint}", proc
 
 
 def wait_comfy_api(
@@ -493,6 +544,10 @@ def _finalize_comfy_start(
         repair_reactor_dependencies,
         wait_for_reactor_node,
     )
+
+    browser_note = open_comfy_browser(config)
+    if browser_note:
+        parts.append(browser_note)
 
     if not reactor_needs_reload(config, client):
         parts.append(face_swap_status_line(config, client=client))
@@ -645,6 +700,9 @@ def ensure_comfy_running(
                 parts_up.append(
                     f"ComfyUI OK ({'CUDA' if has_cuda1 else 'CPU'}) из {root}."
                 )
+                browser_note = open_comfy_browser(config)
+                if browser_note:
+                    parts_up.append(browser_note)
                 return True, "\n".join(parts_up)
             return False, "\n".join(parts_up)
         return True, f"{msg}\ntorch={ver0} CUDA=yes"
@@ -746,6 +804,9 @@ def ensure_comfy_running(
                 )
                 if ok_w2:
                     parts.append(f"ComfyUI OK после ремонта torch. {wait_msg2}")
+                    browser_note = open_comfy_browser(config)
+                    if browser_note:
+                        parts.append(browser_note)
                     return True, "\n".join(parts)
                 parts.append(wait_msg2)
 
