@@ -12,6 +12,7 @@ from ...integrations.comfy.focus import (
 from ...lab.comfy_pipeline import COMFY_TOPIC, STEP_LABELS
 from ...lab.paths import journal_path
 from ...lab.session import load_session, save_session
+from ...integrations.comfy.angles import mocap_take_count
 from ...presence import is_away
 from .client import ComfyClient
 from .clip_review import ComfyClipStore, clip_review_path
@@ -111,7 +112,7 @@ def comfy_pipeline_status(config: Config) -> str:
             elif session.status == "awaiting_lora_pick":
                 lines.append("  LoRA: жду выбор (comfy_lora_list)")
         if session.status == "running" and session.step == 5:
-            lines.append("  → **сейчас генерирует** 3 дубля (¾) в ComfyUI")
+            lines.append(f"  → **сейчас генерирует** {mocap_take_count()} дублей (¾) в ComfyUI")
         elif session.status == "awaiting_prompt":
             lines.append("  → ждёт одобрение промпта (Telegram / чат: ок)")
         elif session.status == "awaiting_lora_pick":
@@ -121,7 +122,9 @@ def comfy_pipeline_status(config: Config) -> str:
         elif session.status == "paused":
             lines.append(f"  → пауза: {session.pause_reason or session.last_fail_msg[:120]}")
         elif session.status in ("completed", "idle", "awaiting_rating"):
-            lines.append("  → итерация завершена; away запустит следующую, если нет паузы")
+            lines.append(
+                "  → итерация завершена; away — следующий кадр без оценки (авто)"
+            )
 
     url = getattr(config, "comfy_url", None) or "http://127.0.0.1:8188"
     client = ComfyClient(base_url=str(url), timeout=3.0)

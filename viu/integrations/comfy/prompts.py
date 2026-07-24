@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .angles import CameraAngle
+from .angles import CameraAngle, mocap_take_count
 from .face_refs import face_swap_enabled
 from .framing import frame_spec_for_action
 from ...lore.shanya import SHANYA_MOCAP_VISUAL
@@ -29,20 +29,31 @@ def mocap_subject_line() -> str:
     return SHANYA_MOCAP_VISUAL
 
 
-def mocap_prompt(action: str, angle: CameraAngle | None = None) -> str:
-    action = (action or "").strip() or "idle stand"
-    parts = [mocap_subject_line(), _BASE, action]
-    spec = frame_spec_for_action(action)
-    if spec.orientation == "horizontal":
-        parts.append("horizontal framing, lying full body")
+def mocap_prompt(
+    action: str,
+    angle: CameraAngle | None = None,
+    *,
+    positive_override: str = "",
+) -> str:
+    if (positive_override or "").strip():
+        base = positive_override.strip()
     else:
-        parts.append("vertical framing, standing or seated full body")
+        action = (action or "").strip() or "idle stand"
+        parts = [mocap_subject_line(), _BASE, action]
+        spec = frame_spec_for_action(action)
+        if spec.orientation == "horizontal":
+            parts.append("horizontal framing, lying full body")
+        else:
+            parts.append("vertical framing, standing or seated full body")
+        base = ", ".join(parts)
     if angle is not None:
-        parts.append("three-quarter view")
-    return ", ".join(parts)
+        return f"{base}, {angle.prompt_en}"
+    return base
 
 
-def mocap_negative() -> str:
+def mocap_negative(*, negative_override: str = "") -> str:
+    if (negative_override or "").strip():
+        return negative_override.strip()
     return _NEGATIVE
 
 
@@ -57,9 +68,10 @@ def draft_bundle(action: str) -> str:
     action_e = (action or "").strip() or "idle stand"
     base = mocap_prompt(action_e, None)
     spec = frame_spec_for_action(action_e)
+    n = mocap_take_count()
     return (
         f"Действие: {action_e}\n\n"
-        f"Промпт (MoCap ref, 3 дубля ¾, разный seed):\n{base}\n\n"
+        f"Промпт (MoCap ref, {n} дублей ¾, разный seed):\n{base}\n\n"
         f"Кадр: {spec.summary_ru()}. Камера статична — **только поза и переход**, без лица/эмоций/звука.\n"
         f"Не добавляй: moaning, sweat, jiggle, pleasure — это не MoCap.\n"
         f"Negative:\n{mocap_negative()}"

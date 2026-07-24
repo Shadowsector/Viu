@@ -493,6 +493,10 @@ PICK_ANGLE_ALIASES: Dict[str, str] = {
     "take_a": "take_a",
     "take_b": "take_b",
     "take_c": "take_c",
+    "take_d": "take_d",
+    "take_e": "take_e",
+    "d": "take_d",
+    "e": "take_e",
     "дубль_a": "take_a",
     "дубль_b": "take_b",
     "дубль_c": "take_c",
@@ -532,7 +536,7 @@ def keep_best_by_angle(
 
 
 # Порядок для away / авто-выбора: take_b часто срезает vision — тогда a или c.
-MOCAP_TAKE_PICK_ORDER: tuple[str, ...] = ("take_b", "take_a", "take_c")
+MOCAP_TAKE_PICK_ORDER: tuple[str, ...] = ("take_b", "take_a", "take_c", "take_d", "take_e")
 
 
 def keep_best_preferred_take(
@@ -674,14 +678,17 @@ def format_candidates_message(clips: List[ComfyClip]) -> str:
     batch = clips[0].batch_id
     angles = sorted({c.angle for c in clips})
 
+    from .angles import mocap_take_count
+
+    expected = mocap_take_count()
     lines = [
         f"Выбери лучший дубль ¾ (batch `{batch}`):",
-        f"В batch сейчас: {', '.join(angles)} ({len(clips)}/3 дублей).",
+        f"В batch сейчас: {', '.join(angles)} ({len(clips)}/{expected} дублей).",
         "Файлы: Lab/ComfyOut + Lab/Refs (не только ComfyUI/output).",
         "Дома: окно «Выбрать лучший клип» (ComfyUI) или чат/Telegram:",
         "`лучший: take_b` / `лучший: a` / `лучший: c 5` / `отклонить все`",
     ]
-    if len(clips) < 3:
+    if len(clips) < expected:
         lines.append(
             "⚠ Не все дубли дошли (vision/FAIL) — away возьмёт лучший из тех, что есть."
         )

@@ -11,7 +11,7 @@ from ..integrations.comfy.approval import send_prompt_for_approval
 from ..integrations.comfy.generate import run_triple_angles
 from ..integrations.comfy.model_pref import PREFERRED_FAMILY, probe_models
 from ..integrations.comfy.process import ensure_comfy_running
-from ..integrations.comfy.prompts import draft_bundle
+from ..integrations.comfy.prompts import draft_bundle, mocap_take_count
 from ..integrations.comfy.workflows import (
     ensure_workflow_templates,
     list_workflows,
@@ -33,7 +33,7 @@ STEP_LABELS = [
     "Черновик промпта",
     "Одобрение Telegram",
     "Выбор LoRA",
-    "3 дубля (¾)",
+    "5 дублей (¾)",
     "Выбор лучшего дубля",
     "Отчёт",
 ]
@@ -214,7 +214,7 @@ def step_request_approval(config: Config, session: LabSession) -> StepResult:
         save_session(config, session)
         msg = (
             f"Нет дома — сама одобрила съёмку «{action[:80]}».\n"
-            "Дальше 3 дубля в ракурсе ¾ (разный seed/timing) без ожидания Telegram."
+            f"Дальше {mocap_take_count()} дублей в ракурсе ¾ (разный seed/timing) без ожидания Telegram."
         )
         append_journal(config, COMFY_TOPIC, f"### Авто-одобрение (away)\n\n{msg}\n\n{draft}")
         return True, msg, None
@@ -238,6 +238,10 @@ def step_request_approval(config: Config, session: LabSession) -> StepResult:
     session.status = "awaiting_prompt"
     session.meta["approval_sent"] = sent
     save_session(config, session)
+    msg = (
+        msg
+        + "\n\nЧерновик: «промпт comfy» / comfy_prompt · GUI «Промпт MoCap»."
+    )
     append_journal(config, COMFY_TOPIC, f"### Одобрение\n\n{msg}\n\n{draft}")
     return True, msg, None
 
@@ -285,6 +289,8 @@ def apply_prompt_decision(
             canonical = action_for_slug(config, slug) if slug else action
             action, note_extra = sanitize_mocap_action(raw_edit, canonical=canonical)
         session.meta["action"] = action
+        session.meta.pop("wan_positive", None)
+        session.meta.pop("wan_negative", None)
         session.meta["draft"] = draft_bundle(action)
         ensure_task_file(config, action=action)
 
@@ -304,7 +310,7 @@ def apply_prompt_decision(
     return (
         (note_extra + "\n" if note_extra else "")
         + f"Промпт принят («{action[:80]}»).\n"
-        "Дальше выберем LoRA (или без) → 3 дубля ¾."
+        + f"Дальше выберем LoRA (или без) → {mocap_take_count()} дублей ¾."
     )
 
 
@@ -434,7 +440,7 @@ def apply_lora_pick_decision(
         names = ", ".join(f"{s.file}@{s.strength}" for s in specs)
         msg = f"LoRA: {names}."
     append_journal(config, COMFY_TOPIC, f"### LoRA выбраны\n\n{msg}")
-    return msg + "\nЗапускаю 3 дубля ¾."
+    return msg + f"\nЗапускаю {mocap_take_count()} дублей ¾."
 
 
 def step_generate_triple(config: Config, session: LabSession) -> StepResult:
@@ -462,7 +468,8 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
                 f"ComfyUI недоступен ({url}): {ping_msg}\n{run_msg}\n\n"
                 "⏸ Lab на паузе. Запусти Comfy (или comfy_ensure), потом снова Lab."
             )
-            append_journal(config, COMFY_TOPIC, f"### 3 дубля ¾\n\n{msg}")
+            tag = f"### {mocap_take_count()} дублей ¾\n\n"
+            append_journal(config, COMFY_TOPIC, tag + msg)
             return False, msg, None
 
     action = str(session.meta.get("approved_action") or session.meta.get("action") or "")
@@ -493,6 +500,8 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
     from ..integrations.comfy.lora import specs_from_session_meta
 
     lora_specs = specs_from_session_meta(session.meta)
+    pos_ov = str(session.meta.get("wan_positive") or "").strip()
+    neg_ov = str(session.meta.get("wan_negative") or "").strip()
     ok, msg, results = run_triple_angles(
         config,
         action=action,
@@ -501,6 +510,8 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
         enters_from=list(session.meta.get("enters_from") or []),
         looped=looped,
         lora_specs=lora_specs,
+        prompt_override=pos_ov,
+        negative_override=neg_ov,
     )
     from ..integrations.comfy.clip_review import harvest_comfy_native_output
 
@@ -510,7 +521,8 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
     session.meta["triple"] = results
     for path in results.get("files") or []:
         session.append_artifact(path)
-    append_journal(config, COMFY_TOPIC, f"### 3 дубля ¾\n\n{msg}")
+    tag = f"### {mocap_take_count()} дублей ¾\n\n"
+    append_journal(config, COMFY_TOPIC, tag + msg)
     if not ok:
         # Connection refused / все дубли FAIL — не маскировать под успех
         if "10061" in msg or "недоступен" in msg.lower() or "refused" in msg.lower():
@@ -544,7 +556,7 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
 
 
 def step_await_clip_pick(config: Config, session: LabSession) -> StepResult:
-    """Пауза: Ден выбирает лучший из 3 дублей."""
+    """Пауза: Ден выбирает лучший из дублей (дома); away — авто."""
     if session.meta.get("clip_kept_id"):
         return True, f"Клип уже выбран: {session.meta.get('clip_kept_id')}.", None
     from ..integrations.comfy.clip_review import ComfyClipStore, clip_review_path, format_candidates_message
@@ -554,8 +566,29 @@ def step_await_clip_pick(config: Config, session: LabSession) -> StepResult:
     cands = store.by_batch(batch) if batch else store.pending_candidates()
     cands = [c for c in cands if c.status == "candidate"]
     if not cands:
-        # нечего выбирать — пропускаем
         return True, "Нет кандидатов — пропускаю выбор.", None
+
+    try:
+        from ..presence import is_away
+
+        away = is_away(config)
+    except Exception:
+        away = False
+    if away:
+        from ..integrations.comfy.angles import AWAY_AUTO_TAKE_ID
+
+        msg = apply_clip_pick_decision(
+            config,
+            session,
+            "keep",
+            {
+                "angle": AWAY_AUTO_TAKE_ID,
+                "score": 3,
+                "notes": "auto away clip pick",
+            },
+        )
+        return True, f"Нет дома — сама выбрала лучший из {len(cands)} дублей.\n{msg}", None
+
     session.status = "awaiting_clip_pick"
     save_session(config, session)
     msg = format_candidates_message(cands)
@@ -653,8 +686,7 @@ def step_report(config: Config, session: LabSession) -> StepResult:
         + "\n\n"
         + focus_cycle_status(config)
         + "\n\nДальше: Cascadeur MoCap по kept mp4; next clip — I2V с seed PNG."
-        + "\nПравки промпта до съёмки: Telegram/чат «правки: …» на шаге одобрения; "
-        "comfy_status — кратко, journal — полный черновик."
+        + "\nПравки: `comfy_prompt` / «Промпт MoCap» в GUI · `правки: …` на одобрении · journal."
     )
     session.last_report = report
     session.status = "awaiting_rating"
@@ -677,7 +709,10 @@ STEPS: list[Callable[[Config, LabSession], StepResult]] = [
 
 def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
     if session.status == "awaiting_prompt":
-        return True, "Жду одобрение промпта в Telegram (ок / правки: … / стоп)."
+        return True, (
+            "Жду одобрение промпта (ок / правки: … / стоп). "
+            "Показать черновик: comfy_prompt или «промпт comfy»."
+        )
     if session.status == "awaiting_lora_pick":
         return True, (
             "Жду выбор LoRA: `lora: 1` / `lora: 1,3` / `lora: all` / `lora: none` "
@@ -768,12 +803,46 @@ def run_until_done(
     config: Config,
     session: LabSession,
     *,
-    max_steps: int = 16,
+    max_steps: int = 40,
 ) -> Tuple[bool, str]:
     lines: list[str] = []
     steps_run = 0
+    try:
+        from ..presence import is_away
+    except Exception:
+
+        def is_away(_cfg: Config) -> bool:
+            return False
+
     while steps_run < max_steps:
         session = load_session(config, COMFY_TOPIC) or session
+        if session.status == "awaiting_prompt" and is_away(config):
+            action = str(session.meta.get("action") or "")
+            apply_prompt_decision(config, session, "approve", action)
+            lines.append("Нет дома — авто-одобрила промпт.")
+            steps_run += 1
+            continue
+        if session.status == "awaiting_lora_pick" and is_away(config):
+            ok, msg = run_one_step(config, session)
+            steps_run += 1
+            lines.append(f"[away LoRA] {msg[:400]}")
+            continue
+        if session.status == "awaiting_clip_pick" and is_away(config):
+            ok, msg = run_one_step(config, session)
+            steps_run += 1
+            lines.append(f"[away клип] {msg[:400]}")
+            continue
+        if session.status == "awaiting_rating" and is_away(config):
+            session.rating_notes = "away: auto-пропуск оценки"
+            session.status = "completed"
+            save_session(config, session)
+            append_journal(
+                config,
+                COMFY_TOPIC,
+                "### Оценка (away auto)\n\nПропущена в run_until_done — следующий кадр.",
+            )
+            lines.append("Нет дома — оценку пропустила, итерация закрыта.")
+            break
         if session.status in (
             "awaiting_prompt",
             "awaiting_lora_pick",

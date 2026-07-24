@@ -776,3 +776,45 @@ class ComfyClipPickTool(Tool):
             exits_to=_csv("exits_to"),
         )
         return ToolResult(ok, msg)
+
+
+class ComfyPromptTool(Tool):
+    name = "comfy_prompt"
+    description = (
+        "Показать или применить черновик Wan MoCap. "
+        "show=1 — текст; apply=1 + text= — сохранить; approve=1 — одобрить съёмку."
+    )
+    parameters = {
+        "show": "1 — показать (по умолчанию)",
+        "apply": "1 — записать text в lab/comfy",
+        "approve": "1 — после apply одобрить (если ждёт промпт)",
+        "text": "черновик или строка действия",
+        "action": "короткая правка только EN-действия",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.prompt_edit import (
+            apply_draft_text,
+            prompt_draft_text,
+            prompt_help_footer,
+        )
+        from ..integrations.comfy.prompts import draft_bundle
+
+        apply_f = str(args.get("apply") or "").lower() in ("1", "true", "yes")
+        approve_f = str(args.get("approve") or "").lower() in ("1", "true", "yes")
+        text = str(args.get("text") or "").strip()
+        action_only = str(args.get("action") or "").strip()
+
+        if action_only and not text:
+            text = draft_bundle(action_only)
+
+        if apply_f or approve_f:
+            if not text:
+                return ToolResult(False, "Нужен text= или action=.")
+            ok, msg = apply_draft_text(ctx.config, text, approve=approve_f)
+            return ToolResult(ok, msg)
+
+        body = prompt_draft_text(ctx.config)
+        if action_only:
+            body = draft_bundle(action_only)
+        return ToolResult(True, body + prompt_help_footer())

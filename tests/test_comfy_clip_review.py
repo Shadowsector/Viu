@@ -30,7 +30,28 @@ def _cfg(tmp_path: Path, monkeypatch) -> Config:
     )
 
 
-def test_parse_clip_pick():
+def test_mocap_take_count():
+    from viu.integrations.comfy.angles import default_angles, mocap_take_count
+
+    assert mocap_take_count() == 5
+    assert len(default_angles()) == 5
+
+
+def test_parse_edited_draft():
+    from viu.integrations.comfy.prompt_edit import parse_edited_draft
+
+    raw = (
+        "Действие: touch self on bed\n\n"
+        "Промпт (MoCap ref, 5 дублей ¾, разный seed):\n"
+        "nude young woman, idle, white background\n\n"
+        "Кадр: вертикально.\n"
+        "Negative:\nblur, text"
+    )
+    p = parse_edited_draft(raw)
+    assert "touch self" in p["action"]
+    assert "nude young woman" in p["positive"]
+    assert "blur" in p["negative"]
+
     assert parse_clip_pick_reply("лучший: front")[0] == "keep"
     d, p = parse_clip_pick_reply("лучший: side 5 отлично")
     assert d == "keep"

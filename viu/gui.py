@@ -918,6 +918,9 @@ class ViuGUI:
         if action.tool == "__comfy_clips__":
             self._open_comfy_clip_review()
             return
+        if action.tool == "__comfy_prompt__":
+            self._open_comfy_prompt_editor()
+            return
         if action.tool == "__reference_catalog__":
             self._open_reference_catalog()
             return
@@ -2351,6 +2354,29 @@ class ViuGUI:
                 )
 
         open_comfy_clip_review(self.root, self.agent.config, on_finished=done)
+
+    def _open_comfy_prompt_editor(self) -> None:
+        from .integrations.comfy.prompt_gui import open_comfy_prompt_editor
+        from .lab.comfy_pipeline import COMFY_TOPIC
+        from .lab.session import load_session
+
+        def done(ok: bool, msg: str) -> None:
+            self._append("Вью", msg, tag="tool" if ok else "sys")
+            session = load_session(self.agent.config, COMFY_TOPIC)
+            if (
+                ok
+                and session
+                and session.status == "running"
+                and not self._tool_busy
+            ):
+                self._run_tool(
+                    "lab_step",
+                    {"topic": COMFY_TOPIC, "run_all": "1"},
+                    label="Comfy: продолжаю после промпта",
+                    echo_user=False,
+                )
+
+        open_comfy_prompt_editor(self.root, self.agent.config, on_finished=done)
 
     def _schedule_cursor_inbox(self) -> None:
         """Раз в несколько минут — забрать задачи Cursor с GitHub и выполнить без Дена."""
