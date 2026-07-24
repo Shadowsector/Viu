@@ -663,7 +663,7 @@ class ComfyLoraFetchTool(Tool):
 class ComfyVisionReviewTool(Tool):
     name = "comfy_vision_review"
     description = (
-        "Llava/qwen2-vl: оценить MoCap mp4 (кадр из видео → вердикт). "
+        "Llava/qwen2-vl: оценить MoCap mp4 (первый и последний кадр → вердикт). "
         "path= один файл или paths= через запятую. auto=1 — после triple в lab."
     )
     parameters = {

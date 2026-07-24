@@ -54,3 +54,14 @@ def migrate_legacy_reference_files(config: Config) -> tuple[int, str]:
     if n:
         return n, f"Перенесла {n} файл(ов) из Library/References → Inbox/references/."
     return 0, ""
+
+
+def migrate_legacy_references(
+    config: Config,
+    *,
+    copy: bool = True,
+) -> tuple[int, list[str]]:
+    """Совместимость со старым API (scanner / тесты)."""
+    del copy  # stamp-миграция всегда копирует
+    n, msg = migrate_legacy_reference_files(config)
+    return n, ([msg] if msg else [])

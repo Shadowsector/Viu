@@ -75,6 +75,7 @@ class ViuGUI:
         self._telegram_waiting_reply = False
         self._last_via_telegram = False
         self._heartbeat_job: str | None = None
+        self._away_ping_job: str | None = None
         self._heartbeat_notify = False
         self._lab_job: str | None = None
         self._chat_history: deque[str] = deque(maxlen=16)
@@ -91,6 +92,13 @@ class ViuGUI:
         except OSError:
             self._story_ingest_msg = ""
 
+        try:
+            from .viu_memory import ensure_viu_memory
+
+            ensure_viu_memory(self.agent.config)
+        except OSError:
+            pass
+
         stamp = time.strftime("%Y%m%d_%H%M%S")
         self.log_path = self.agent.config.data_dir / "logs" / f"chat_{stamp}.txt"
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,6 +113,15 @@ class ViuGUI:
         from .llm_roles import needs_viu_wrap_hint
 
         self._append("система", f"{version_label()}.")
+        if os.environ.get("VIU_AUTO_UPDATE", "1") == "1":
+            iv = get_update_interval_min(self.agent.config)
+            if iv > 0:
+                self._append(
+                    "система",
+                    f"Авто-проверка GitHub: каждые {iv} мин "
+                    "(viu/package_sha.txt → скачает и перезапустит при новой версии).",
+                    tag="sys",
+                )
         self._append(
             "система",
             "Модель чата: вторая строка сверху (выпадающий список) или меню «Чат».",
@@ -173,6 +190,7 @@ class ViuGUI:
         self._schedule_auto_update()
         self._start_telegram()
         self._schedule_heartbeat()
+        self._schedule_away_ping()
         self._schedule_cursor_inbox()
         self._schedule_lab()
         self._schedule_comfy_home_watch()
@@ -375,6 +393,8 @@ class ViuGUI:
         self._append("Вью", label, tag="sys")
         self._refresh_presence_button()
         self._refresh_status()
+        self._schedule_heartbeat()
+        self._schedule_away_ping()
         if mode == "home":
             flush = flush_prompt_for_home(self.agent.config)
             if flush:
@@ -1820,23 +1840,30 @@ class ViuGUI:
         role = "user" if who in ("ты", "user") else "assistant"
         self._llm_turns.append({"role": role, "content": clean[:4000]})
 
-    def _run_agent_reflect(self, task: str, *, via_telegram: bool = False, heartbeat: bool = False) -> None:
+    def _run_agent_reflect(
+        self,
+        task: str,
+        *,
+        via_telegram: bool = False,
+        heartbeat: bool = False,
+        away_ping: bool = False,
+    ) -> None:
         from .prompts.reflect_mode import reflect_no_history
 
-        if not via_telegram and not heartbeat:
+        if not via_telegram and not heartbeat and not away_ping:
             self._append("ты", task)
             self._record_llm_turn("user", task)
         self._set_llm_busy(True)
-        self._last_via_telegram = via_telegram or heartbeat
+        self._last_via_telegram = via_telegram or heartbeat or away_ping
         echo_tg = via_telegram
-        if heartbeat or reflect_no_history():
+        if heartbeat or away_ping or reflect_no_history():
             history: list[dict[str, str]] = []
         else:
             hist = self._llm_history()
             history = hist[:-1] if hist and hist[-1].get("role") == "user" else hist
         threading.Thread(
             target=self._agent_worker,
-            args=(task, "reflect", history, heartbeat, echo_tg),
+            args=(task, "reflect", history, heartbeat, echo_tg, away_ping),
             daemon=True,
         ).start()
 
@@ -1847,6 +1874,7 @@ class ViuGUI:
         history: list | None = None,
         heartbeat: bool = False,
         echo_telegram: bool = False,
+        away_ping: bool = False,
     ) -> None:
         def on_step(step):
             if step.kind == "think":
@@ -1868,6 +1896,7 @@ class ViuGUI:
                     on_step=on_step,
                     history=history or [],
                     heartbeat=heartbeat,
+                    away_ping=away_ping,
                     echo_telegram=echo_telegram,
                 )
             else:
@@ -2015,10 +2044,12 @@ class ViuGUI:
         self._heartbeat_job = self.root.after(minutes * 60_000, tick)
 
     def _run_heartbeat(self) -> None:
-        from .prompts.reflect_mode import HEARTBEAT_TASK
+        from .presence import is_away
         from .quiet_hours import in_quiet_hours
         from .vision import ensure_vision
 
+        if is_away(self.agent.config):
+            return
         if in_quiet_hours(self.agent.config):
             return
 
@@ -2027,6 +2058,57 @@ class ViuGUI:
         self._last_via_telegram = True
         self._heartbeat_notify = True
         self._run_agent_reflect("", heartbeat=True)
+
+    def _schedule_away_ping(self) -> None:
+        import random
+
+        from .presence import is_away
+        from .runtime_settings import away_ping_interval_min, get_away_ping_per_day
+
+        if self._away_ping_job is not None:
+            try:
+                self.root.after_cancel(self._away_ping_job)
+            except tk.TclError:
+                pass
+            self._away_ping_job = None
+
+        if not is_away(self.agent.config) or get_away_ping_per_day(self.agent.config) <= 0:
+            return
+
+        base_min = away_ping_interval_min(self.agent.config)
+        jitter = random.uniform(0.85, 1.15)
+        minutes = max(60, int(base_min * jitter))
+
+        def tick() -> None:
+            from .gui_busy import can_run_background_tick
+
+            if can_run_background_tick(
+                tool_busy=self._tool_busy, llm_busy=self._llm_busy
+            ):
+                self._run_away_ping()
+            self._schedule_away_ping()
+
+        self._away_ping_job = self.root.after(minutes * 60_000, tick)
+
+    def _run_away_ping(self) -> None:
+        from .presence import is_away
+        from .quiet_hours import in_quiet_hours
+        from .vision import ensure_vision
+
+        if not is_away(self.agent.config):
+            return
+        if in_quiet_hours(self.agent.config):
+            return
+
+        ensure_vision(self.agent.config)
+        self._append(
+            "система",
+            "💌 Вью сама пишет Дену (режим «меня нет»).",
+            tag="sys",
+        )
+        self._last_via_telegram = True
+        self._heartbeat_notify = False
+        self._run_agent_reflect("", heartbeat=True, away_ping=True)
 
     def _schedule_lab(self) -> None:
         from .lab.paths import lab_interval_min
@@ -2761,7 +2843,7 @@ class ViuGUI:
         self._run_bg(work, done)
 
     def _check_updates_on_start(self) -> None:
-        """Тихая проверка при старте (только git, без zip)."""
+        """Тихая проверка при старте: SHA на GitHub vs package_sha → zip/git + рестарт."""
         if os.environ.get("VIU_AUTO_UPDATE", "1") != "1":
             return
         self._append("система", "Проверка обновлений…", tag="sys")

@@ -141,7 +141,8 @@ class VisionReferenceTool(Tool):
     name = "vision_reference"
     description = (
         "Llava/qwen2-vl: описать референс из картинки или видео для Comfy/MoCap. "
-        "path= PNG/JPG или mp4. frame=first|middle|last для видео."
+        "path= PNG/JPG или mp4. frame=first|middle|last для видео. "
+        "hint= контекст. save=1 — JSON в comfy_refs/vision_refs/."
     )
     parameters = {
         "path": "файл PNG/JPG или mp4/webm",

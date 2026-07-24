@@ -99,6 +99,32 @@ def set_heartbeat_interval_min(config: Config, minutes: int) -> None:
     set_value(config, "heartbeat_interval_min", max(0, int(minutes)))
 
 
+def get_away_ping_per_day(config: Config) -> int:
+    """Сколько раз в сутки Вью пишет сама, когда Дена нет (away). 0 = выкл."""
+    raw = get(config, "away_ping_per_day", None)
+    if raw is None:
+        try:
+            return max(0, min(6, int(float(__import__("os").environ.get("VIU_AWAY_PING_PER_DAY", "3") or 3))))
+        except (TypeError, ValueError):
+            return 3
+    try:
+        return max(0, min(6, int(raw)))
+    except (TypeError, ValueError):
+        return 3
+
+
+def set_away_ping_per_day(config: Config, count: int) -> None:
+    set_value(config, "away_ping_per_day", max(0, min(6, int(count))))
+
+
+def away_ping_interval_min(config: Config) -> int:
+    """Интервал между away-пингами (мин), из away_ping_per_day."""
+    per_day = get_away_ping_per_day(config)
+    if per_day <= 0:
+        return 0
+    return max(90, int(24 * 60 / per_day))
+
+
 def get_quiet_hours(config: Config) -> str:
     raw = get(config, "quiet_hours", None)
     if raw is None:

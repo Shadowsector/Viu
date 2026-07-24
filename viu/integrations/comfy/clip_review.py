@@ -222,6 +222,49 @@ def register_triple_batch(
     return created
 
 
+def extract_first_frame(video: Path, dest: Path) -> Tuple[bool, str]:
+    """Первый кадр mp4 → PNG (ffmpeg / cv2)."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if not video.is_file():
+        return False, f"нет файла: {video}"
+
+    try:
+        import cv2  # type: ignore
+
+        cap = cv2.VideoCapture(str(video))
+        if cap.isOpened():
+            ok, frame = cap.read()
+            cap.release()
+            if ok and frame is not None and cv2.imwrite(str(dest), frame) and dest.is_file():
+                return True, str(dest)
+    except Exception:
+        pass
+
+    for bin_name in ("ffmpeg", "ffmpeg.exe"):
+        try:
+            proc = subprocess.run(  # noqa: S603
+                [
+                    bin_name,
+                    "-y",
+                    "-i",
+                    str(video),
+                    "-frames:v",
+                    "1",
+                    str(dest),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                creationflags=_CREATE_NO_WINDOW,
+            )
+            if proc.returncode == 0 and dest.is_file() and dest.stat().st_size > 0:
+                return True, str(dest)
+        except (OSError, subprocess.TimeoutExpired, FileNotFoundError):
+            continue
+
+    return False, "нужен ffmpeg в PATH (или cv2) для first-frame"
+
+
 def extract_last_frame(video: Path, dest: Path) -> Tuple[bool, str]:
     """Последний кадр mp4 → PNG (ffmpeg / imageio / cv2)."""
     dest.parent.mkdir(parents=True, exist_ok=True)

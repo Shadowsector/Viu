@@ -26,6 +26,8 @@ ollama pull llava
 |------|--------|
 | `screen_capture` | PNG в `.viu/shots/` |
 | `vision_observe` | скрин + VL + handoff |
+| `vision_reference` | картинка или mp4 → EN/RU описание для Comfy/MoCap |
+| `comfy_vision_review` | первый+последний кадр mp4 → вердикт качества |
 | `overlay_playtest` | сборка → запуск → boot-лог → **eyes** → gist |
 
 ## Почему «оверлея не было»
