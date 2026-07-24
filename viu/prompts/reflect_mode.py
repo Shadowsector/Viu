@@ -439,3 +439,16 @@ def format_reflect_fail_message(
             lines.append("")
             lines.append("[debug] " + "; ".join(issues[:5]))
     return "\n".join(lines)
+
+
+def _apply_anabarra_override() -> None:
+    """Личная редакция: U:\\Anabarra\\ViuPrompts\\reflect_mode.py перекрывает шаблон из пакета."""
+    try:
+        from install_merge import load_reflect_mode_override
+    except ImportError:
+        return
+    root = Path(__file__).resolve().parents[2]
+    load_reflect_mode_override(globals(), root)
+
+
+_apply_anabarra_override()
