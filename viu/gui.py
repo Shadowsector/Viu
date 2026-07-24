@@ -2615,7 +2615,7 @@ class ViuGUI:
                     self.agent.config,
                     wait_seconds=180.0,
                     auto_install=True,
-                    force_restart=False,
+                    force_restart=True,
                 )
                 return ok2, msg2
             except Exception as exc:  # noqa: BLE001
@@ -2717,12 +2717,7 @@ class ViuGUI:
         from .integrations.comfy.studio_gui import ComfyStudioCallbacks, open_comfy_studio
 
         cb = ComfyStudioCallbacks(
-            on_ensure_comfy=lambda: self._run_tool(
-                "comfy_ensure",
-                {},
-                label="ComfyUI",
-                echo_user=True,
-            ),
+            on_ensure_comfy=lambda: self._ensure_comfy_from_studio(),
             on_mocap_shoot=lambda: self._lab_comfy_action(),
             on_edit_prompt=lambda: self._open_comfy_prompt_editor(),
             on_pick_clips=lambda: self._open_comfy_clip_review(),
@@ -2730,6 +2725,21 @@ class ViuGUI:
             on_shot_queue=lambda: self._open_comfy_shot_queue(),
         )
         open_comfy_studio(self.root, self.agent.config, cb)
+
+    def _ensure_comfy_from_studio(self) -> None:
+        """Студия «Поднять» — всегда restart, чтобы не залипать на зомби :8188."""
+        self._append(
+            "Вью",
+            "Поднимаю ComfyUI (restart)… Смотри `.viu/logs/comfy_launch.log`. "
+            "Если снова пусто — VIU_COMFY_SHOW_CONSOLE=1 в .env.",
+            tag="viu",
+        )
+        self._run_tool(
+            "comfy_ensure",
+            {"restart": "1", "wait": "180"},
+            label="Поднять ComfyUI",
+            echo_user=True,
+        )
 
     def _open_comfy_shot_queue(self) -> None:
         from .integrations.comfy.shot_queue_gui import open_shot_queue_editor

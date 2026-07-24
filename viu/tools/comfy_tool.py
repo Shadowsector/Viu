@@ -155,12 +155,13 @@ class ComfyEnsureTool(Tool):
     name = "comfy_ensure"
     description = (
         "Если Comfy нет — установить в U:\\Viu\\ComfyUI; затем запустить API :8188. "
-        "На Windows откроется консоль с прогрессом и браузер (отдельного окна Comfy нет). "
-        "Лог шапки: .viu/logs/comfy_launch.log."
+        "Лог: .viu/logs/comfy_launch.log. UI — браузер. "
+        "restart=1 — убить :8188 и поднять заново. "
+        "Пустой лог → VIU_COMFY_SHOW_CONSOLE=1."
     )
     parameters = {
         "wait": "секунд ожидания API (по умолчанию 180)",
-        "restart": "1 — перезапустить Comfy (подхватить ReActor после install)",
+        "restart": "1 — перезапустить Comfy (убить порт и поднять снова)",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
