@@ -1000,6 +1000,9 @@ class ViuGUI:
         if action.tool == "__comfy_shot_queue__":
             self._open_comfy_shot_queue()
             return
+        if action.tool == "__comfy_seed_library__":
+            self._open_comfy_seed_library()
+            return
         if action.tool == "__comfy_studio__":
             self._open_comfy_studio()
             return
@@ -2426,24 +2429,29 @@ class ViuGUI:
             if plan.queue_notes:
                 sess.meta["queue_notes"] = plan.queue_notes
             save_session(self.agent.config, sess)
-        if plan.from_queue and (plan.lora_mode or "inherit") != "inherit":
+        if plan.from_queue:
             from .integrations.comfy.shot_queue import (
                 ShotQueueItem,
                 apply_item_lora_to_session,
+                apply_item_seeds_to_session,
             )
 
-            lora_msg = apply_item_lora_to_session(
-                self.agent.config,
-                ShotQueueItem(
-                    id="from-plan",
-                    catalog_slug=plan.catalog_slug,
-                    action=plan.action,
-                    lora_mode=plan.lora_mode or "inherit",
-                    lora_indices=list(plan.lora_indices or []),
-                ),
+            q_item = ShotQueueItem(
+                id="from-plan",
+                catalog_slug=plan.catalog_slug,
+                action=plan.action,
+                lora_mode=plan.lora_mode or "inherit",
+                lora_indices=list(plan.lora_indices or []),
+                start_seed_id=str(getattr(plan, "start_seed_id", "") or ""),
+                end_seed_id=str(getattr(plan, "end_seed_id", "") or ""),
             )
-            if lora_msg:
-                self._append("Вью", lora_msg, tag="viu")
+            seed_msg = apply_item_seeds_to_session(self.agent.config, q_item)
+            if seed_msg:
+                self._append("Вью", seed_msg, tag="viu")
+            if (plan.lora_mode or "inherit") != "inherit":
+                lora_msg = apply_item_lora_to_session(self.agent.config, q_item)
+                if lora_msg:
+                    self._append("Вью", lora_msg, tag="viu")
         if not auto and not is_away(self.agent.config):
             self._append(
                 "Вью",
@@ -2750,6 +2758,15 @@ class ViuGUI:
             on_shoot=lambda: self._lab_comfy_action(),
             focus_lab=focus_lab,
         )
+
+    def _open_comfy_seed_library(self) -> None:
+        from .integrations.comfy.seed_library_gui import open_seed_library
+
+        def done(ok: bool, msg: str) -> None:
+            if ok and msg:
+                self._append("Вью", msg, tag="tool")
+
+        open_seed_library(self.root, self.agent.config, on_finished=done)
 
     def _schedule_cursor_inbox(self) -> None:
         """Раз в несколько минут — забрать задачи Cursor с GitHub и выполнить без Дена."""

@@ -87,6 +87,8 @@ class MocapShotPlan:
     queue_notes: str = ""
     lora_mode: str = "inherit"
     lora_indices: List[int] = field(default_factory=list)
+    start_seed_id: str = ""
+    end_seed_id: str = ""
 
     def summary_ru(self) -> str:
         if self.stop_cycle:
@@ -355,6 +357,8 @@ def invent_next_shot(
             queue_notes=queued.notes,
             lora_mode=str(getattr(queued, "lora_mode", None) or "inherit"),
             lora_indices=[int(x) for x in (getattr(queued, "lora_indices", None) or [])],
+            start_seed_id=str(getattr(queued, "start_seed_id", None) or ""),
+            end_seed_id=str(getattr(queued, "end_seed_id", None) or ""),
         )
 
     if is_paused_for_scene_choice(config):

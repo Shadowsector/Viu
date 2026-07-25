@@ -190,6 +190,46 @@ def inject_seed_image(workflow: Dict[str, Any], image_name: str) -> Dict[str, An
     return wf
 
 
+def inject_end_seed_image(workflow: Dict[str, Any], image_name: str) -> Dict[str, Any]:
+    """Если у WanImageToVideo есть end_image — подставить конечный эталон.
+
+    Стоковый шаблон Viu пока только start_image; end сохраняем в библиотеке
+    и инжектим, когда нода/шаблон это умеет.
+    """
+    name = (image_name or "").strip()
+    if not name:
+        return workflow
+    wf = json.loads(json.dumps(workflow))
+    # Уже есть LoadImage с title End / end seed?
+    end_load_id = None
+    for nid, node in wf.items():
+        if not isinstance(node, dict) or node.get("class_type") != "LoadImage":
+            continue
+        title = str((node.get("_meta") or {}).get("title") or "").lower()
+        if "end" in title and "faceref" not in title:
+            node.setdefault("inputs", {})["image"] = name
+            end_load_id = nid
+            break
+    for _nid, node in wf.items():
+        if not isinstance(node, dict):
+            continue
+        if node.get("class_type") != "WanImageToVideo":
+            continue
+        inputs = node.setdefault("inputs", {})
+        if "end_image" not in inputs and end_load_id is None:
+            # Нода без end_image — ничего не ломаем.
+            return wf
+        if end_load_id is not None:
+            inputs["end_image"] = [end_load_id, 0]
+        elif isinstance(inputs.get("end_image"), list) and inputs["end_image"]:
+            ref = inputs["end_image"][0]
+            load = wf.get(str(ref))
+            if isinstance(load, dict) and load.get("class_type") == "LoadImage":
+                load.setdefault("inputs", {})["image"] = name
+        return wf
+    return wf
+
+
 def inject_vertical_frame(
     workflow: Dict[str, Any],
     *,
