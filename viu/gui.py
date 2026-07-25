@@ -471,7 +471,7 @@ class ViuGUI:
         header.pack(anchor="w", padx=10, pady=(10, 2))
         ttk.Label(
             frame,
-            text="Секции по программам: Unity, Blender, Cascadeur, ComfyUI.",
+            text="Сейчас главное — «Тело Шани». Comfy/Cascadeur на паузе (docs/NOW.md).",
             wraplength=240,
             justify="left",
             font=("Segoe UI", 8),

@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from .feature_focus import is_action_paused
+
 ToolStep = Tuple[str, Dict[str, Any]]
 
 
@@ -18,6 +20,9 @@ class GuiAction:
     tool_chain: Tuple[ToolStep, ...] = ()
     prompt: Optional[str] = None
     hint: str = ""
+    # True = на паузе (кнопка скрыта). Код инструмента остаётся.
+    paused: bool = False
+    pause_reason: str = ""
 
     @property
     def uses_agent(self) -> bool:
@@ -27,10 +32,15 @@ class GuiAction:
     def is_chain(self) -> bool:
         return len(self.tool_chain) > 0
 
+    @property
+    def is_paused(self) -> bool:
+        return is_action_paused(self.action_id, self.group, paused_flag=self.paused)
 
-# Порядок секций: сверху — каждый день, ниже — по программам (Blender, ComfyUI, Unity…).
+
+# Порядок секций: сверху — каждый день и тело, ниже — по программам.
 ACTION_GROUPS: List[str] = [
     "Каждый день",
+    "Тело Шани",
     "Unity — тест на столе",
     "Blender — существа",
     "Blender — сцены и домик",
@@ -40,6 +50,11 @@ ACTION_GROUPS: List[str] = [
     "Сервис",
 ]
 
+_PAUSE_COMFY = "Пауза: съёмка анимаций из видео сейчас не нужна."
+_PAUSE_CASCADEUR = "Пауза: Cascadeur/lab вернём, когда займёмся Idle."
+_PAUSE_INTERACT = "Пауза: совместные видео-сцены не в фокусе."
+
+
 GUI_ACTIONS: List[GuiAction] = [
     # --- Каждый день ---
     GuiAction(
@@ -47,14 +62,14 @@ GUI_ACTIONS: List[GuiAction] = [
         "▶ Что делать дальше",
         "Каждый день",
         tool="__next_step__",
-        hint="Вью сама выберет шаг: Inbox, разметка, экспорт, анимации…",
+        hint="Вью сама выберет шаг: Inbox, разметка, экспорт…",
     ),
     GuiAction(
         "update_viu",
         "Обновить Вью",
         "Каждый день",
         tool="__update_viu__",
-        hint="Скачает всю новую версию с GitHub и перезапустит окно. Ничего искать не нужно.",
+        hint="Скачает новую версию с GitHub и перезапустит окно.",
     ),
     GuiAction(
         "decision_queue",
@@ -63,22 +78,47 @@ GUI_ACTIONS: List[GuiAction] = [
         tool="__decision_queue__",
         hint="На что Вью ждёт твоего ответа.",
     ),
+    # --- Тело Шани (фокус сейчас) ---
+    GuiAction(
+        "body_pipeline",
+        "Тело Шани — что делать",
+        "Тело Шани",
+        tool="body_pipeline",
+        tool_args={"action": "status"},
+        hint="Простой чеклист: Inbox → Blender → Rigify → Unity. Без Comfy.",
+    ),
+    GuiAction(
+        "body_pipeline_done",
+        "Шаг тела — готово",
+        "Тело Шани",
+        tool="body_pipeline",
+        tool_args={"action": "done"},
+        hint="Отметить текущий шаг чеклиста и показать следующий.",
+    ),
+    GuiAction(
+        "machine_bind_status",
+        "Привязка к моему компу",
+        "Тело Шани",
+        tool="machine_bind",
+        tool_args={"action": "status"},
+        hint="Личная установка. После смены материнки: viu machine rebind.",
+    ),
     # --- Unity: тестовая сцена (оверлей) ---
     GuiAction(
         "unity_overlay",
         "▶ Запустить тестовую сцену",
         "Unity — тест на столе",
         tool="unity_overlay",
-        hint="Шаня на рабочем столе поверх игр. Unity закроется на время сборки.",
+        hint="Шаня на рабочем столе. Unity закроется на время сборки.",
     ),
     GuiAction(
         "unity_overlay_rebind",
         "Починить текстуры сцены",
         "Unity — тест на столе",
         tool="unity_overlay_rebind",
-        hint="Если после переэкспорта домика картинки на Шане «поплыли».",
+        hint="Если после переэкспорта домика картинки «поплыли».",
     ),
-    # --- Blender: существа (нумерованный конвейер) ---
+    # --- Blender: существа ---
     GuiAction(
         "creature_prep",
         "1. Очистить модель",
@@ -91,7 +131,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "2. Собрать комплекты одежды",
         "Blender — существа",
         tool="creature_wardrobe_open",
-        hint="Blender Wardrobe: Casual/…, кожа, волосы, гениталии.",
+        hint="Blender Wardrobe: Casual/…, кожа, волосы.",
     ),
     GuiAction(
         "creature_studio",
@@ -110,7 +150,7 @@ GUI_ACTIONS: List[GuiAction] = [
             ("creature_wardrobe_sync", {}),
             ("creature_studio_sync", {}),
         ),
-        hint="После Ctrl+S в Blender — подтянуть prep/одежду/студию во Вью.",
+        hint="После Ctrl+S в Blender — подтянуть правки во Вью.",
     ),
     GuiAction(
         "creature_catalog",
@@ -125,7 +165,9 @@ GUI_ACTIONS: List[GuiAction] = [
         "Blender — существа",
         tool="creature_lineup",
         tool_args={"need_photos": "1", "open": "0"},
-        hint="Массово: фронт/профиль для всех. Обычно хватает шага 3 по одному.",
+        hint="Массово для всех существ. Сейчас не нужно — только Шаня.",
+        paused=True,
+        pause_reason="Пилот — одно тело Шани, не линейка всех.",
     ),
     # --- Blender: сцены и домик ---
     GuiAction(
@@ -133,7 +175,9 @@ GUI_ACTIONS: List[GuiAction] = [
         "1. Расставить героев в сцене",
         "Blender — сцены и домик",
         tool="interaction_blocking",
-        hint="Blender: Шаня + зверь, маркеры касания, камера студии.",
+        hint="Под совместные видео-сцены.",
+        paused=True,
+        pause_reason=_PAUSE_INTERACT,
     ),
     GuiAction(
         "export_unity_asset",
@@ -141,7 +185,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Blender — сцены и домик",
         tool="export_unity_asset",
         tool_args={"force": "1"},
-        hint="После правок сарая в Blender (Ctrl+S) → FBX в Unity Assets.",
+        hint="После правок сарая в Blender (Ctrl+S) → FBX в Unity.",
     ),
     GuiAction(
         "prop_catalog",
@@ -150,35 +194,43 @@ GUI_ACTIONS: List[GuiAction] = [
         tool="__prop_catalog__",
         hint="Мебель домика: вес, можно ли взять, куда ставить.",
     ),
-    # --- Cascadeur ---
+    # --- Cascadeur (пауза всей группы) ---
     GuiAction(
         "cascadeur_batch_export",
         "1. Выгрузить FBX пачкой",
         "Cascadeur — анимации",
         tool="blender_export_cascadeur_batch",
         tool_args={"force": "1"},
-        hint="Все .blend из Inbox → папка CascadeurReady для Cascadeur.",
+        hint=_PAUSE_CASCADEUR,
+        paused=True,
+        pause_reason=_PAUSE_CASCADEUR,
     ),
     GuiAction(
         "lab_cascadeur",
         "2. Lab: один тестовый шаг",
         "Cascadeur — анимации",
         tool="__lab_start__",
-        hint="Автотест одного шага пайплайна Cascadeur.",
+        hint=_PAUSE_CASCADEUR,
+        paused=True,
+        pause_reason=_PAUSE_CASCADEUR,
     ),
     GuiAction(
         "lab_cascadeur_all",
         "3. Lab: все 9 шагов",
         "Cascadeur — анимации",
         tool="__lab_run_all__",
-        hint="Прогнать весь тестовый цикл до отчёта.",
+        hint=_PAUSE_CASCADEUR,
+        paused=True,
+        pause_reason=_PAUSE_CASCADEUR,
     ),
     GuiAction(
         "lab_rate",
         "4. Оценить результат lab",
         "Cascadeur — анимации",
         tool="__lab_rate__",
-        hint="Оценки 1–5 после отчёта lab.",
+        hint=_PAUSE_CASCADEUR,
+        paused=True,
+        pause_reason=_PAUSE_CASCADEUR,
     ),
     # --- Unity: анимации ---
     GuiAction(
@@ -186,7 +238,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "1. Описать новые FBX — окно",
         "Unity — анимации",
         tool="__animation_review__",
-        hint="Список анимаций из Inbox: что это за движение, куда в каталоге.",
+        hint="Список анимаций из Inbox (когда появятся готовые FBX).",
     ),
     GuiAction(
         "unity_apply",
@@ -196,36 +248,46 @@ GUI_ACTIONS: List[GuiAction] = [
             ("unity_deploy_setup", {}),
             ("unity_sync_animations", {}),
         ),
-        hint="После Cascadeur: скопировать FBX в проект и пересобрать контроллер.",
+        hint="После Cascadeur — сейчас на паузе. Вернём для Idle.",
+        paused=True,
+        pause_reason=_PAUSE_CASCADEUR,
     ),
-    # --- ComfyUI ---
+    # --- ComfyUI (пауза всей группы) ---
     GuiAction(
         "comfy_studio",
         "Студия Comfy — статус и управление",
         "ComfyUI — видео",
         tool="__comfy_studio__",
-        hint="Генерация, очередь, промпт и LoRA — без команд в Telegram.",
+        hint=_PAUSE_COMFY,
+        paused=True,
+        pause_reason=_PAUSE_COMFY,
     ),
     GuiAction(
         "reference_catalog",
         "0. Референсы — окно",
         "ComfyUI — видео",
         tool="__reference_catalog__",
-        hint="Inbox/references/ — картинки и видео; LLaVA-описание для MoCap.",
+        hint=_PAUSE_COMFY,
+        paused=True,
+        pause_reason=_PAUSE_COMFY,
     ),
     GuiAction(
         "comfy_prompt",
         "0b. Промпт Wan → Comfy",
         "ComfyUI — видео",
         tool="__comfy_prompt__",
-        hint="Текущие строки positive/negative для Wan — правка и «Отправить в Comfy».",
+        hint=_PAUSE_COMFY,
+        paused=True,
+        pause_reason=_PAUSE_COMFY,
     ),
     GuiAction(
         "lab_comfy",
         "1. MoCap: снять клип",
         "ComfyUI — видео",
         tool="__lab_comfy__",
-        hint="Поднимает ComfyUI → Wan 5×¾ → выбор mp4. Промпт: «Промпт Wan → Comfy».",
+        hint=_PAUSE_COMFY,
+        paused=True,
+        pause_reason=_PAUSE_COMFY,
     ),
     GuiAction(
         "interaction_master",
@@ -235,28 +297,36 @@ GUI_ACTIONS: List[GuiAction] = [
             ("comfy_ensure", {}),
             ("interaction_master_draft", {}),
         ),
-        hint="Comfy: master_draft.mp4. Сначала «Расставить героев в сцене».",
+        hint=_PAUSE_INTERACT,
+        paused=True,
+        pause_reason=_PAUSE_INTERACT,
     ),
     GuiAction(
         "comfy_clips",
         "3. Выбрать лучший клип — окно",
         "ComfyUI — видео",
         tool="__comfy_clips__",
-        hint="Сравнить и отметить удачные mp4 после съёмки.",
+        hint=_PAUSE_COMFY,
+        paused=True,
+        pause_reason=_PAUSE_COMFY,
     ),
     GuiAction(
         "comfy_open",
         "4. Открыть Comfy в браузере",
         "ComfyUI — видео",
         tool="__comfy_open__",
-        hint="Ручная отладка на http://127.0.0.1:8188.",
+        hint=_PAUSE_COMFY,
+        paused=True,
+        pause_reason=_PAUSE_COMFY,
     ),
     GuiAction(
         "lab_interaction",
         "5. Lab: вся сцена (пилот)",
         "ComfyUI — видео",
         tool="__interaction_lab__",
-        hint="Полный автотест совместной сцены shanya_wolf_approach.",
+        hint=_PAUSE_INTERACT,
+        paused=True,
+        pause_reason=_PAUSE_INTERACT,
     ),
     # --- Сервис ---
     GuiAction(
@@ -272,21 +342,21 @@ GUI_ACTIONS: List[GuiAction] = [
         "Сервис",
         tool="apps_close",
         tool_args={"app": "unity"},
-        hint="Перед сборкой тестовой сцены или batch-импортом.",
+        hint="Перед сборкой тестовой сцены.",
     ),
     GuiAction(
         "characters_vision",
         "Файл персонажей",
         "Сервис",
         tool="__characters_vision__",
-        hint="Характеры, отношения — локальный markdown.",
+        hint="Характеры — локальный файл.",
     ),
     GuiAction(
         "send_logs",
         "Собрать логи",
         "Сервис",
         tool="__collect_logs__",
-        hint="Упаковать логи для отладки / отправки разработчику.",
+        hint="Упаковать логи для отладки.",
     ),
     GuiAction(
         "clear_chat",
@@ -299,15 +369,15 @@ GUI_ACTIONS: List[GuiAction] = [
         "План разработки",
         "Сервис",
         tool="roadmap_show",
-        hint="Текущий фокус и дорожная карта в окне инструментов.",
+        hint="Дорожная карта в окне инструментов.",
     ),
-    # Места — меню «Места» сверху.
-    # accept_animation, prepare, export — через «Что делать дальше».
 ]
 
 
-def actions_by_group() -> Dict[str, List[GuiAction]]:
+def actions_by_group(*, include_paused: bool = False) -> Dict[str, List[GuiAction]]:
     out: Dict[str, List[GuiAction]] = {g: [] for g in ACTION_GROUPS}
     for action in GUI_ACTIONS:
+        if not include_paused and action.is_paused:
+            continue
         out.setdefault(action.group, []).append(action)
     return out

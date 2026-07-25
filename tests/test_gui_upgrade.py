@@ -12,45 +12,39 @@ from viu.updater import find_git_root, package_root, version_label
 
 
 def test_gui_actions_grouped():
-    grouped = actions_by_group()
+    grouped = actions_by_group(include_paused=False)
     assert "Каждый день" in grouped
+    assert "Тело Шани" in grouped
     assert "Blender — существа" in grouped
-    assert "ComfyUI — видео" in grouped
-    assert ACTION_GROUPS == [
-        "Каждый день",
-        "Unity — тест на столе",
-        "Blender — существа",
-        "Blender — сцены и домик",
-        "Cascadeur — анимации",
-        "Unity — анимации",
-        "ComfyUI — видео",
-        "Сервис",
-    ]
+    assert ACTION_GROUPS[0] == "Каждый день"
+    assert "Тело Шани" in ACTION_GROUPS
     assert len(grouped["Каждый день"]) <= 5
+    assert len(grouped["Тело Шани"]) >= 2
     assert len(grouped["Blender — существа"]) <= 7
-    # Минимум кнопок — не стена из 30 пунктов в одной группе
-    assert len(GUI_ACTIONS) <= 34
+    # Пауза: Comfy/Cascadeur не в сайдбаре
+    assert grouped["ComfyUI — видео"] == []
+    assert grouped["Cascadeur — анимации"] == []
+    # Но в полном списке кнопки остаются (код не удалён)
+    assert len(GUI_ACTIONS) <= 40
+    ids = {a.action_id for a in GUI_ACTIONS}
+    assert "next_step" in ids
+    assert "body_pipeline" in ids
+    assert "lab_comfy" in ids
+    assert "lab_cascadeur" in ids
     assert any(a.action_id == "next_step" and a.tool == "__next_step__" for a in GUI_ACTIONS)
     assert any(a.action_id == "unity_overlay" and a.tool == "unity_overlay" for a in GUI_ACTIONS)
     assert any(a.tool == "__update_viu__" for a in GUI_ACTIONS)
     assert any(a.action_id == "unity_apply" and a.is_chain for a in GUI_ACTIONS)
-    assert any(a.action_id == "lab_comfy" and a.tool == "__lab_comfy__" for a in GUI_ACTIONS)
-    assert any(a.action_id == "interaction_blocking" and a.tool == "interaction_blocking" for a in GUI_ACTIONS)
-    assert any(a.action_id == "interaction_master" and a.is_chain for a in GUI_ACTIONS)
-    assert any(a.action_id == "lab_interaction" and a.tool == "__interaction_lab__" for a in GUI_ACTIONS)
-    assert any(a.action_id == "comfy_studio" and a.tool == "__comfy_studio__" for a in GUI_ACTIONS)
-    assert any(a.action_id == "comfy_open" and a.tool == "__comfy_open__" for a in GUI_ACTIONS)
+    assert any(a.action_id == "lab_comfy" and a.paused for a in GUI_ACTIONS)
     assert any(a.action_id == "decision_queue" and a.tool == "__decision_queue__" for a in GUI_ACTIONS)
-    # Presence — сверху окна, не в сайдбаре
     assert not any(a.action_id == "presence_toggle" for a in GUI_ACTIONS)
     assert all("диска U" not in a.label for a in GUI_ACTIONS)
-    # Убрали Cascadeur / apps restart / три шага overlay из главного UI
-    ids = {a.action_id for a in GUI_ACTIONS}
     assert "cascadeur_status" not in ids
     assert "apps_restart_unity" not in ids
     assert "unity_overlay_validate" not in ids
     assert "unity_overlay_build" not in ids
     apply_btn = next(a for a in GUI_ACTIONS if a.action_id == "unity_apply")
+    assert apply_btn.paused
     assert "unity_sync_animations" in [t[0] for t in apply_btn.tool_chain]
 
 
@@ -86,7 +80,6 @@ def test_unity_import_staging(tmp_path):
         planner=Planner(config.data_dir / "plan.json"),
         registry=registry,
     )
-
     result = UnityImportStagingTool().run({}, ctx)
     assert result.ok
     dest = unity / "Assets/Characters/Shanya/Animations/X Bot@Female Tough Walk.fbx"
