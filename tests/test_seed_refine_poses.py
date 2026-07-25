@@ -78,20 +78,41 @@ def test_coverage_marks_ready_seed(tmp_path, monkeypatch):
     assert "✓" in text
 
 
-def test_pick_checkpoint_prefers_realistic(tmp_path, monkeypatch):
+def test_pick_checkpoint_prefers_juggernaut_xl(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     comfy = tmp_path / "ComfyUI"
     ckpt_dir = comfy / "models" / "checkpoints"
     ckpt_dir.mkdir(parents=True)
     (ckpt_dir / "animeThing.safetensors").write_bytes(b"x")
     (ckpt_dir / "epicrealism_natural.safetensors").write_bytes(b"x")
+    (ckpt_dir / "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors").write_bytes(b"x")
     monkeypatch.setattr(
         "viu.integrations.comfy.seed_refine.resolve_comfy_root",
         lambda _c: comfy,
     )
-    assert pick_checkpoint(cfg) == "epicrealism_natural.safetensors"
+    assert pick_checkpoint(cfg) == "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
     ok, name = refine_ready(cfg)
-    assert ok and name == "epicrealism_natural.safetensors"
+    assert ok and "Juggernaut" in name
+
+
+def test_ensure_juggernaut_copies_external(tmp_path, monkeypatch):
+    from viu.integrations.comfy.seed_refine import ensure_juggernaut_xl
+
+    cfg = _cfg(tmp_path, monkeypatch)
+    comfy = tmp_path / "ComfyUI"
+    (comfy / "models" / "checkpoints").mkdir(parents=True)
+    monkeypatch.setattr(
+        "viu.integrations.comfy.seed_refine.resolve_comfy_root",
+        lambda _c: comfy,
+    )
+    external = tmp_path / "webui" / "models" / "Stable-diffusion"
+    external.mkdir(parents=True)
+    src = external / "juggernautXL_v9.safetensors"
+    src.write_bytes(b"fake-weights" * 100)
+    monkeypatch.setenv("VIU_SDXL_CKPT_DIR", str(external))
+    ok, msg = ensure_juggernaut_xl(cfg, download=False)
+    assert ok, msg
+    assert (comfy / "models" / "checkpoints" / src.name).is_file()
 
 
 def test_build_refine_workflow_injects_ckpt_and_denoise():

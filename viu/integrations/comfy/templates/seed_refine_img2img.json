@@ -2,7 +2,7 @@
   "4": {
     "class_type": "CheckpointLoaderSimple",
     "inputs": {
-      "ckpt_name": "v1-5-pruned-emaonly.safetensors"
+      "ckpt_name": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
     },
     "_meta": { "title": "Load Checkpoint" }
   },
@@ -41,17 +41,17 @@
     "class_type": "KSampler",
     "inputs": {
       "seed": 42,
-      "steps": 28,
-      "cfg": 5.5,
-      "sampler_name": "euler",
-      "scheduler": "normal",
-      "denoise": 0.48,
+      "steps": 32,
+      "cfg": 5.0,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 0.45,
       "model": ["4", 0],
       "positive": ["6", 0],
       "negative": ["7", 0],
       "latent_image": ["11", 0]
     },
-    "_meta": { "title": "KSampler img2img" }
+    "_meta": { "title": "KSampler img2img SDXL" }
   },
   "8": {
     "class_type": "VAEDecode",

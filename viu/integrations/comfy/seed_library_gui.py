@@ -21,7 +21,7 @@ from .seed_library import (
     seeds_for_slug,
 )
 from .seed_poses import format_pose_checklist_text
-from .seed_refine import auto_refine_seed, refine_ready
+from .seed_refine import auto_refine_seed, ensure_juggernaut_xl, refine_ready
 
 
 def open_seed_library(
@@ -43,8 +43,8 @@ def open_seed_library(
         body,
         text=(
             "Скрин из HS2 → Inbox → «Из Inbox (HS2)» → «Авто-доработать» "
-            "(Comfy img2img, нужен SD-чекпоинт в models/checkpoints). "
-            "Список нужных поз — ниже слева. Idle лучше ×3 (фронт / ¾ / профиль)."
+            "(Comfy img2img на Juggernaut XL). "
+            "Нет модели — «Поставить Juggernaut XL». Idle лучше ×3 (фронт / ¾ / профиль)."
         ),
         wraplength=940,
     ).pack(anchor="w", pady=(0, 6))
@@ -184,17 +184,52 @@ def open_seed_library(
         else:
             messagebox.showerror("Доработать", msg, parent=win)
 
+    def on_install_juggernaut() -> None:
+        if not messagebox.askokcancel(
+            "Juggernaut XL",
+            "Поставлю Juggernaut XL в ComfyUI\\models\\checkpoints\\.\n"
+            "Сначала поищу у тебя локально (webui/Forge); если нет — скачаю v9 с HuggingFace (~7 GB).\n"
+            "Продолжить?",
+            parent=win,
+        ):
+            return
+        notes: list[str] = []
+
+        def progress(msg: str) -> None:
+            notes.append(msg)
+
+        win.config(cursor="watch")
+        win.update_idletasks()
+        try:
+            ok, msg = ensure_juggernaut_xl(config, download=True, progress=progress)
+        finally:
+            win.config(cursor="")
+        body = msg
+        if notes:
+            body = "\n".join(notes[-8:]) + "\n\n" + msg
+        if ok:
+            messagebox.showinfo("Juggernaut XL", body, parent=win)
+        else:
+            messagebox.showerror("Juggernaut XL", body, parent=win)
+
     def on_auto_refine() -> None:
         e = current()
         if e is None:
             return
         ok_r, info = refine_ready(config)
         if not ok_r:
-            messagebox.showerror("Авто-доработать", info, parent=win)
-            return
+            if messagebox.askyesno(
+                "Авто-доработать",
+                info + "\n\nПоставить Juggernaut XL сейчас?",
+                parent=win,
+            ):
+                on_install_juggernaut()
+                ok_r, info = refine_ready(config)
+            if not ok_r:
+                return
         if not messagebox.askokcancel(
             "Авто-доработать",
-            f"Прогоню img2img на Comfy (ckpt={info}, denoise≈0.48).\n"
+            f"Прогоню img2img на Comfy (ckpt={info}, denoise≈0.45, SDXL).\n"
             "Поза сохранится, пластика уйдёт от аниме. Минута-две.\nПродолжить?",
             parent=win,
         ):
@@ -202,7 +237,7 @@ def open_seed_library(
         win.config(cursor="watch")
         win.update_idletasks()
         try:
-            ok, msg = auto_refine_seed(config, e.id, denoise=0.48, activate=False)
+            ok, msg = auto_refine_seed(config, e.id, denoise=0.45, activate=False)
         finally:
             win.config(cursor="")
         refresh(select_id=e.id)
@@ -289,6 +324,9 @@ def open_seed_library(
     ).pack(side="left")
     ttk.Button(
         left_btns, text="Файл…", command=lambda: do_import(from_hs2=False, from_inbox=False)
+    ).pack(side="left", padx=4)
+    ttk.Button(
+        left_btns, text="Поставить Juggernaut XL", command=on_install_juggernaut
     ).pack(side="left", padx=4)
 
     ttk.Button(bind_row, text="→ start этой анимации", command=lambda: on_bind("start")).pack(

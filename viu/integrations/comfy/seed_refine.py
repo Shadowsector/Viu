@@ -1,12 +1,16 @@
-"""Авто-перерисовка эталона HS2 → натуральное тело через Comfy img2img (SD checkpoint)."""
+"""Авто-перерисовка эталона HS2 → натуральное тело через Comfy img2img (SDXL).
+
+Канон: Juggernaut XL (RunDiffusion) в ComfyUI/models/checkpoints/.
+"""
 
 from __future__ import annotations
 
 import json
+import os
 import random
 import shutil
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from ...config import Config
 from .client import ComfyClient, ComfyError
@@ -15,8 +19,18 @@ from .paths import comfy_input_dir, resolve_comfy_root
 _IN_NAME = "viu_seed_refine_in.png"
 _TEMPLATE = "seed_refine_img2img.json"
 
-# Предпочитаем реалистичные чекпоинты, если лежат в models/checkpoints.
+# Канонический файл + зеркало с HuggingFace (single-file для Comfy).
+JUGGERNAUT_XL_FILENAME = "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
+JUGGERNAUT_XL_URL = (
+    "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/"
+    "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
+)
+
+# Предпочитаем Juggernaut XL, потом прочий realistic SDXL.
 _CKPT_PREFER = (
+    "juggernaut-xl",
+    "juggernaut_xl",
+    "juggernautxl",
     "juggernaut",
     "epicrealism",
     "realistic",
@@ -28,6 +42,8 @@ _CKPT_PREFER = (
     "v1-5",
     "sd15",
 )
+
+ProgressCb = Optional[Callable[[str], None]]
 
 REFINE_POSITIVE = (
     "natural realistic body proportions, soft skin, photorealistic young woman figure, "
@@ -42,12 +58,18 @@ REFINE_NEGATIVE = (
 )
 
 
-def list_checkpoints(config: Config) -> List[str]:
+def checkpoints_dir(config: Config) -> Optional[Path]:
     root = resolve_comfy_root(config)
     if root is None:
-        return []
+        return None
     folder = root / "models" / "checkpoints"
-    if not folder.is_dir():
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def list_checkpoints(config: Config) -> List[str]:
+    folder = checkpoints_dir(config)
+    if folder is None or not folder.is_dir():
         return []
     names = [
         p.name
@@ -57,18 +79,143 @@ def list_checkpoints(config: Config) -> List[str]:
     return sorted(names, key=str.lower)
 
 
+def _score_ckpt(name: str) -> int:
+    low = name.lower()
+    score = 0
+    if "juggernaut" in low and ("xl" in low or "xi" in low):
+        score += 100
+    elif "juggernaut" in low:
+        score += 80
+    for i, needle in enumerate(_CKPT_PREFER):
+        if needle in low:
+            score += 50 - i
+            break
+    if "xl" in low or "sdxl" in low:
+        score += 10
+    return score
+
+
 def pick_checkpoint(config: Config, *, preferred: str = "") -> str:
     names = list_checkpoints(config)
     if not names:
         return ""
+    env = (os.environ.get("VIU_SEED_REFINE_CKPT") or "").strip()
     if preferred and preferred in names:
         return preferred
-    low_map = {n.lower(): n for n in names}
-    for needle in _CKPT_PREFER:
-        for low, orig in low_map.items():
-            if needle in low:
-                return orig
-    return names[0]
+    if env and env in names:
+        return env
+    # Точное каноническое имя, если уже скачали.
+    if JUGGERNAUT_XL_FILENAME in names:
+        return JUGGERNAUT_XL_FILENAME
+    ranked = sorted(names, key=lambda n: (-_score_ckpt(n), n.lower()))
+    return ranked[0] if ranked else ""
+
+
+def find_external_juggernaut(config: Config) -> Optional[Path]:
+    """Ищем уже скачанный Juggernaut XL вне Comfy (A1111 / Forge / ручная папка)."""
+    candidates: List[Path] = []
+    env_dir = (os.environ.get("VIU_SDXL_CKPT_DIR") or "").strip()
+    if env_dir:
+        candidates.append(Path(env_dir))
+    viu = resolve_comfy_root(config)
+    parents: List[Path] = []
+    if viu is not None:
+        parents.extend([viu.parent, viu.parent.parent])
+    for base in parents:
+        candidates.extend(
+            [
+                base / "stable-diffusion-webui" / "models" / "Stable-diffusion",
+                base / "webui" / "models" / "Stable-diffusion",
+                base / "forge" / "models" / "Stable-diffusion",
+                base / "SDXL" / "models" / "Stable-diffusion",
+                base / "Models" / "Stable-diffusion",
+                base / "Models" / "checkpoints",
+            ]
+        )
+    # Типичные диски Windows
+    for drive in ("U:/", "D:/", "C:/"):
+        candidates.extend(
+            [
+                Path(drive) / "stable-diffusion-webui" / "models" / "Stable-diffusion",
+                Path(drive) / "sd" / "models" / "Stable-diffusion",
+                Path(drive) / "AI" / "models" / "Stable-diffusion",
+            ]
+        )
+    seen: set[Path] = set()
+    hits: List[Path] = []
+    for folder in candidates:
+        try:
+            folder = folder.expanduser()
+        except OSError:
+            continue
+        if folder in seen or not folder.is_dir():
+            continue
+        seen.add(folder)
+        for p in folder.iterdir():
+            if not p.is_file():
+                continue
+            if p.suffix.lower() != ".safetensors":
+                continue
+            low = p.name.lower()
+            if "juggernaut" in low and ("xl" in low or "xi" in low):
+                hits.append(p)
+    if not hits:
+        return None
+    hits.sort(key=lambda p: (-_score_ckpt(p.name), -p.stat().st_size))
+    return hits[0]
+
+
+def ensure_juggernaut_xl(
+    config: Config,
+    *,
+    download: bool = True,
+    progress: ProgressCb = None,
+) -> Tuple[bool, str]:
+    """Гарантировать Juggernaut XL в Comfy checkpoints (локальная копия или HF)."""
+    folder = checkpoints_dir(config)
+    if folder is None:
+        return False, "ComfyUI не найден — некуда класть Juggernaut XL."
+
+    existing = pick_checkpoint(config)
+    if existing and "juggernaut" in existing.lower():
+        return True, f"Juggernaut уже в Comfy: {existing}"
+
+    dest = folder / JUGGERNAUT_XL_FILENAME
+    if dest.is_file() and dest.stat().st_size > 1_000_000_000:
+        return True, f"уже есть: {dest.name}"
+
+    ext = find_external_juggernaut(config)
+    if ext is not None and ext.is_file():
+        if progress:
+            progress(f"Копирую локальный {ext.name} → Comfy checkpoints…")
+        try:
+            # Если имя уже каноническое — копируем как есть; иначе сохраняем имя файла.
+            target = folder / ext.name
+            if not target.is_file():
+                shutil.copy2(ext, target)
+            return True, f"взяла локальный Juggernaut: {target.name}"
+        except OSError as exc:
+            if progress:
+                progress(f"копия не вышла ({exc}), пробую скачать…")
+
+    if not download:
+        return False, (
+            f"Нет Juggernaut XL в {folder}.\n"
+            "Положи .safetensors туда или задай VIU_SDXL_CKPT_DIR=папка_с_моделью."
+        )
+
+    if progress:
+        progress(f"Качаю Juggernaut XL v9 (~7 GB) → {dest}…")
+    from .install import _download
+
+    ok, msg = _download(JUGGERNAUT_XL_URL, dest, progress=progress)
+    if not ok:
+        return False, (
+            f"Не скачать Juggernaut XL: {msg}\n"
+            "Скачай вручную с HuggingFace RunDiffusion/Juggernaut-XL-v9 "
+            f"и положи в {folder}"
+        )
+    return True, msg
 
 
 def refine_ready(config: Config) -> Tuple[bool, str]:
@@ -77,14 +224,14 @@ def refine_ready(config: Config) -> Tuple[bool, str]:
     if root is None:
         return False, "ComfyUI не найден (U:\\Viu\\ComfyUI)."
     ckpt = pick_checkpoint(config)
-    if not ckpt:
-        return False, (
-            "Нет SD-чекпоинта в ComfyUI\\models\\checkpoints\\.\n"
-            "Положи туда realistic / Juggernaut / EpicRealism (.safetensors) — "
-            "Wan video для перерисовки кадра не подходит.\n"
-            "Потом «Поднять ComfyUI» и снова «Авто-доработать»."
-        )
-    return True, ckpt
+    if ckpt:
+        return True, ckpt
+    return False, (
+        "Нет SDXL-чекпоинта в ComfyUI\\models\\checkpoints\\.\n"
+        "Жми «Поставить Juggernaut XL» (или comfy_install juggernaut=1) — "
+        "возьму локальный или скачаю v9 с HuggingFace (~7 GB).\n"
+        "Wan video для перерисовки кадра не подходит."
+    )
 
 
 def _comfy_url(config: Config) -> str:
@@ -109,7 +256,7 @@ def build_refine_workflow(
     image_name: str,
     positive: str,
     negative: str,
-    denoise: float = 0.48,
+    denoise: float = 0.45,
     seed: int = 0,
 ) -> dict:
     wf = _load_refine_template()
@@ -119,6 +266,13 @@ def build_refine_workflow(
     wf["7"]["inputs"]["text"] = negative
     wf["3"]["inputs"]["denoise"] = float(denoise)
     wf["3"]["inputs"]["seed"] = int(seed) if seed else random.randint(1, 2**31 - 1)
+    # SDXL-friendly defaults (Juggernaut XL)
+    low = ckpt_name.lower()
+    if "xl" in low or "sdxl" in low or "juggernaut" in low:
+        wf["3"]["inputs"]["steps"] = 32
+        wf["3"]["inputs"]["cfg"] = 5.0
+        wf["3"]["inputs"]["sampler_name"] = "dpmpp_2m"
+        wf["3"]["inputs"]["scheduler"] = "karras"
     return wf
 
 
@@ -141,11 +295,18 @@ def run_seed_refine(
     source: Path,
     *,
     en_pose: str = "",
-    denoise: float = 0.48,
-    timeout: float = 300.0,
+    denoise: float = 0.45,
+    timeout: float = 420.0,
     ckpt_name: str = "",
+    ensure_ckpt: bool = True,
 ) -> Tuple[bool, str, Optional[Path]]:
     """Прогнать img2img → PNG во временный файл рядом с seeds."""
+    ensure_note = ""
+    if ensure_ckpt and not pick_checkpoint(config):
+        ok_e, msg_e = ensure_juggernaut_xl(config, download=True)
+        ensure_note = msg_e
+        if not ok_e:
+            return False, msg_e, None
     ok_r, ready_msg = refine_ready(config)
     if not ok_r:
         return False, ready_msg, None
@@ -202,16 +363,19 @@ def run_seed_refine(
     except ComfyError as exc:
         return False, str(exc), None
 
-    return True, f"img2img OK (ckpt={ckpt}, denoise={denoise})", dest
+    note = f"img2img OK (ckpt={ckpt}, denoise={denoise})"
+    if ensure_note:
+        note = ensure_note + "\n" + note
+    return True, note, dest
 
 
 def auto_refine_seed(
     config: Config,
     seed_id: str,
     *,
-    denoise: float = 0.48,
+    denoise: float = 0.45,
     activate: bool = False,
-    timeout: float = 300.0,
+    timeout: float = 420.0,
 ) -> Tuple[bool, str]:
     """Vision-бриф + Comfy img2img + принять доработанный эталон."""
     from .seed_library import (

@@ -110,6 +110,7 @@ class ComfyInstallTool(Tool):
         "i2v": "1 = ещё I2V+clip_vision (очень много места)",
         "pip": "1 = pip install requirements (по умолчанию 1)",
         "reactor": "1 = ComfyUI-ReActor + inswapper (подмена лица MoCap)",
+        "juggernaut": "1 = Juggernaut XL в checkpoints (для авто-доработки эталонов I2V)",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
@@ -119,6 +120,7 @@ class ComfyInstallTool(Tool):
         include_i2v = str(args.get("i2v", "0")).lower() in ("1", "true", "yes")
         with_pip = str(args.get("pip", "1")).lower() in ("1", "true", "yes", "")
         with_reactor = str(args.get("reactor", "0")).lower() in ("1", "true", "yes")
+        with_juggernaut = str(args.get("juggernaut", "0")).lower() in ("1", "true", "yes")
         notes: list[str] = []
 
         def progress(msg: str) -> None:
@@ -137,6 +139,14 @@ class ComfyInstallTool(Tool):
         body = msg
         if notes:
             body = "Прогресс:\n" + "\n".join(f"  • {n}" for n in notes[-20:]) + "\n\n" + msg
+        if with_juggernaut:
+            from ..integrations.comfy.seed_refine import ensure_juggernaut_xl
+
+            ok_j, j_msg = ensure_juggernaut_xl(
+                ctx.config, download=True, progress=progress
+            )
+            body += f"\n\nJuggernaut XL: {j_msg}"
+            ok = ok and ok_j
         if with_reactor and ok:
             from ..integrations.comfy.process import ensure_comfy_running
 
