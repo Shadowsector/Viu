@@ -50,11 +50,15 @@ def test_body_pipeline_checklist(tmp_path):
     cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
     text = render_checklist(cfg)
     assert "Тело Шани" in text
+    assert "ДВА" in text or "два" in text.lower() or "Рабочее" in text
     assert "Shrinkwrap" in text or "подогнать" in text.lower()
+    assert "Desktop Mascot" in text or "хламник" in text.lower()
     _, msg = mark_step_done(cfg)
     assert "отмечен" in msg or "Дальше" in msg
     text2 = render_checklist(cfg)
     assert "[x]" in text2
+    # После шага 1 в тексте шага 2 — как положить второе тело в Blender
+    assert "Append" in text2 or "Import" in text2
 
 
 def test_body_steps_count():
