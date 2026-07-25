@@ -36,7 +36,8 @@ BODY_STEPS: Tuple[Dict[str, str], ...] = (
             "Не путать: не «Smutbase вокруг Smutbase». "
             "А «Smutbase обтягиваем по форме твоей HS2-карты».\n"
             "\n"
-            "Клади оба в U:\\Anabarra\\Inbox\\creatures\\"
+            "Клади оба в U:\\Anabarra\\Inbox\\creatures\\ "
+            "(или asset_archive_stage … category=Women)."
         ),
     },
     {
@@ -44,12 +45,15 @@ BODY_STEPS: Tuple[Dict[str, str], ...] = (
         "title": "2. Открыть оба в Blender",
         "how": (
             "1) Открой или импортируй ОБРАЗЕЦ (экспорт HS2-карты).\n"
-            "2) Import / Append РАБОЧЕЕ тело со Smutbase.\n"
+            "2) Положи рядом РАБОЧЕЕ тело со Smutbase:\n"
+            "   • если это .blend — File → Append → Object → mesh тела;\n"
+            "   • если .fbx / .obj — File → Import.\n"
             "3) В сцене видны оба меша.\n"
             "\n"
-            "Можно без Shrinkwrap: просто смотри на HS2-образец и правишь "
-            "Smutbase руками (скульпт/пропорции). Тогда образец — как референс "
-            "на втором мониторе или в той же сцене."
+            "Можно без Shrinkwrap: смотри на HS2-образец и правишь "
+            "Smutbase руками. Образец — референс в сцене или на втором мониторе.\n"
+            "\n"
+            "Blender сам ничего не скачает — только откроет файлы с диска."
         ),
     },
     {
