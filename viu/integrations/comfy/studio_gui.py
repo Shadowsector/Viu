@@ -229,16 +229,13 @@ def open_comfy_studio(
     ttk.Button(btn_row, text="MoCap: снять клип", command=callbacks.on_mocap_shoot).pack(
         side="left", padx=(8, 0)
     )
-    ttk.Button(btn_row, text="Промпт Wan", command=callbacks.on_edit_prompt).pack(
+    plan_cb = callbacks.on_shot_queue or callbacks.on_edit_prompt
+    ttk.Button(btn_row, text="План / промпт Wan", command=plan_cb).pack(
         side="left", padx=(8, 0)
     )
     ttk.Button(btn_row, text="Оценить видео", command=callbacks.on_pick_clips).pack(
         side="left", padx=(8, 0)
     )
-    if callbacks.on_shot_queue is not None:
-        ttk.Button(
-            btn_row, text="Очередь анимаций", command=callbacks.on_shot_queue
-        ).pack(side="left", padx=(8, 0))
     ttk.Button(btn_row, text="Comfy в браузере", command=callbacks.on_open_browser).pack(
         side="left", padx=(8, 0)
     )

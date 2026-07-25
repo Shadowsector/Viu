@@ -30,12 +30,26 @@ class ShotQueueItem:
     notes: str = ""
     status: str = "pending"  # pending | done | skipped
     created_at: str = ""
+    # LoRA на этот кадр: inherit = пресет сессии; none = без LoRA; pick = lora_indices.
+    lora_mode: str = "inherit"
+    lora_indices: List[int] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "ShotQueueItem":
+        mode = str(d.get("lora_mode") or "inherit").strip().lower()
+        if mode not in ("inherit", "none", "pick"):
+            mode = "inherit"
+        raw_idx = d.get("lora_indices") or []
+        indices: List[int] = []
+        if isinstance(raw_idx, list):
+            for x in raw_idx:
+                try:
+                    indices.append(int(x))
+                except (TypeError, ValueError):
+                    continue
         return cls(
             id=str(d.get("id") or uuid.uuid4().hex[:8]),
             catalog_slug=str(d.get("catalog_slug") or "").strip(),
@@ -50,6 +64,8 @@ class ShotQueueItem:
             notes=str(d.get("notes") or ""),
             status=str(d.get("status") or "pending"),
             created_at=str(d.get("created_at") or ""),
+            lora_mode=mode,
+            lora_indices=indices,
         )
 
 
@@ -224,13 +240,45 @@ def peek_next_pending(config: Config) -> Optional[ShotQueueItem]:
 
 
 def format_queue_brief(config: Config) -> str:
+    from .shot_graphs import group_items_by_graph
+
     pending = pending_items(config)
     if not pending:
-        return "Очередь анимаций пуста — «Очередь MoCap» → Собрать."
+        return "Очередь анимаций пуста — «План MoCap» → Собрать."
     lines = [f"Очередь MoCap: {len(pending)} кадров впереди"]
-    for i, it in enumerate(pending[:8], 1):
-        title = it.title_ru or it.catalog_slug
-        lines.append(f"  {i}. `{it.catalog_slug}` — {title}: {(it.action or '')[:70]}")
-    if len(pending) > 8:
-        lines.append(f"  … ещё {len(pending) - 8}")
+    for graph, chunk in group_items_by_graph(pending):
+        lines.append(f"  ▸ {graph.title_ru}")
+        for it in chunk[:6]:
+            title = it.title_ru or it.catalog_slug
+            lines.append(f"    · `{it.catalog_slug}` — {title}: {(it.action or '')[:60]}")
+        if len(chunk) > 6:
+            lines.append(f"    … ещё {len(chunk) - 6} в этом графе")
     return "\n".join(lines)
+
+
+def apply_item_lora_to_session(config: Config, item: ShotQueueItem) -> str:
+    """Перенести LoRA с кадра очереди в lab-сессию (перед съёмкой)."""
+    from ...lab.comfy_pipeline import COMFY_TOPIC
+    from ...lab.session import load_session, new_session, save_session
+    from .lora import scan_loras, spec_to_dict, specs_from_indices
+
+    mode = (item.lora_mode or "inherit").strip().lower()
+    if mode == "inherit":
+        return ""
+    session = load_session(config, COMFY_TOPIC)
+    if session is None:
+        session = new_session(COMFY_TOPIC)
+    scan_loras(config)
+    if mode == "none":
+        session.meta["lora_last_pick"] = []
+        session.meta["selected_loras"] = []
+        save_session(config, session)
+        return "LoRA с кадра: без LoRA"
+    indices = [int(x) for x in (item.lora_indices or [])]
+    specs = specs_from_indices(config, indices)
+    session.meta["lora_last_pick"] = list(indices)
+    session.meta["selected_loras"] = [spec_to_dict(s) for s in specs]
+    save_session(config, session)
+    if not specs:
+        return "LoRA с кадра: без LoRA"
+    return "LoRA с кадра: " + ", ".join(s.file for s in specs)
