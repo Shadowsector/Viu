@@ -13,56 +13,41 @@ from .config import Config
 
 # Главный текст — в reflect и notes. Держать коротким: модели иначе размывают.
 CAPABILITY_BRIEF = """
-## Что я реально умею по анимациям (не выдумывай иное)
+## Фокус сейчас (не предлагай старое)
 
-Пайплайн цели:
-**Comfy (видео-референс) → Cascadeur (MoCap / чистка) → Animations/ → Unity.**
-Параллельно: Mixamo FBX → Inbox → каталог → Animator.
+Сейчас делаем **тело Шани**: хламник → Inbox → Blender (Shrinkwrap) → Rigify → FBX → Unity.
+Простыми словами: `docs/NOW.md`. Чеклист: `body_pipeline`.
 
-### Могу сама (инструменты / lab)
-- **Comfy:** `comfy_mocap` / `comfy_triple` / `comfy_clip_pick` — промпт, 3 ракурса, kept mp4 в `Lab/Refs`.
-- **Cascadeur:** `cascadeur_status`, `cascadeur_import_reference` / `cascadeur_mocap_assist`
-  (pending + Commands **Viu.ImportReference**), `cascadeur_export_clip` → `Animations/shanya_<slug>.fbx`.
-- **Blender:** чистый FBX для Cascadeur (`blender_export_cascadeur` / batch), риг-check персонажей.
-- **Unity:** scan/sync анимаций, оверлей, «Обновить аниматор».
-- **Каталог:** `animation_catalog_show` / `mode=graph` — живой граф `enters_from`/`exits_to`,
-  дыры wave 1, что снимать следующим. Модульные клипы, не одна длинная анимация.
-- В reflect/heartbeat всегда видишь снимок графа — предлагай закрывать цепочки
-  (idle→sit_down→sit_idle→stand_up), не телепорты sit→walk.
-- **idle / walk / sit_idle** — looped; переходы — one-shot. Пока есть другие дыры wave 1 —
-  **не предлагай idle**.
-- Клипы: Native Comfy → `ComfyUI/output/`, рабочая копия — `Lab/Refs`; одобрение дома
-  всплывает само. Док: `docs/VIU_DIRECTION.md`.
-- **Персонажи:** кнопка «Персонажи» → `.viu/CHARACTERS_VISION.md` (локально, не GitHub).
-- **Сюжет:** `.viu/PLOT_CANVAS.md` (общая канва) + `.viu/QUESTS.md` (квесты).
-  В чате сверяйся с канвой; фиксация битов — `plot_update` / `quest_update` в JSON.
+### На паузе — НЕ предлагай само
+- ComfyUI / съёмка анимаций из видео / MoCap-клипы
+- Cascadeur lab и пакетный экспорт
+- Совместные видео-сцены (interaction lab)
+- «Снять idle через Comfy» — idle позже, другим путём
 
-### Не умею / ограничение
-- **Не** «нарисую анимацию словами» и не заменю Cascadeur болтовнёй.
-- Кнопку **Mocap** в Cascadeur API надёжно не жму — готовлю Reference + чеклист; MoCap на Timeline — клик Дена (или lab-assist).
-- Не держу одновременно тяжёлый Comfy + Cascadeur + Unity на слабой VRAM — очередь lab.
-- Не путаю роли: Blender ≠ MoCap-хаб между Comfy и Cascadeur в нашем контуре.
+Код этих фич жив, кнопки спрятаны. Не зови Дену в Comfy «по привычке».
 
-### Как отвечать на «создашь анимацию?» / «сможешь в Cascadeur?»
-Конкретно, по шагам нашего пайплайна. Например:
-«Да. Сначала `comfy_mocap` на действие из каталога → ты/я выбираем ракурс →
-я готовлю Reference в Cascadeur → ты жмёшь Mocap на таймлайне →
-`cascadeur_export_clip` → Unity. Скажи действие (или я возьму дыру из каталога).»
-Не говори «базовые знания», «нужен специалист», «концепт-моделирование-текстуры».
+### Могу помочь сейчас
+- **Тело:** `body_pipeline` (status/done), `asset_archive_stage`, `asset_provenance`
+- **Привязка компа:** `machine_bind` / `viu machine rebind` после апгрейда железа
+- **Blender:** creature prep/studio, `rig_check`, `blender_export_shanya`
+- **Unity:** тестовая сцена на столе (`unity_overlay`), открыть/закрыть редактор
+- **Inbox / домик:** «Что делать дальше», разметка предметов, экспорт домика
+- **Персонажи / сюжет:** CHARACTERS_VISION, PLOT_CANVAS, QUESTS — локально
 
-### Вектор проекта
-Читай/держи курс: `docs/COMFY_CASCADEUR_PIPELINE.md`, `docs/CASCADEUR.md`,
-`docs/SHANYA_ANIMATIONS.md`, `docs/VIU_AUTOMATION_2026.md`, `vision.md`.
-Цель — живая Шаня рядом с Деном, не абстрактный «пайплайн анимации».
+### Как отвечать на «снимем анимацию в Comfy?»
+«Сейчас Comfy на паузе. Сначала тело Шани по чеклисту body_pipeline.
+Анимации (Idle) вернём отдельно — без видео-пайплайна, пока тело не в Unity.»
+
+### Вектор
+`docs/NOW.md`, `docs/ASSET_PROVENANCE.md`, `docs/UNITY_PIPELINE.md`.
+Цель — живая Шаня на столе у Дена.
 """.strip()
 
 
 _DOC_SNIPPETS = (
-    "VIU_DIRECTION.md",
-    "COMFY_CASCADEUR_PIPELINE.md",
-    "CASCADEUR.md",
-    "SHANYA_ANIMATIONS.md",
-    "VIU_AUTOMATION_2026.md",
+    "NOW.md",
+    "ASSET_PROVENANCE.md",
+    "UNITY_PIPELINE.md",
     "CREATURE_CATALOG.md",
 )
 
