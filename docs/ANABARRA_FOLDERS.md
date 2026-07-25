@@ -57,11 +57,14 @@ U:\Anabarra\
 
 Сотни мешей, текстур, анимаций — **склад-архив**. Вью **не сканирует** эту папку сама (избыточно и медленно).
 
+Категории top-level: `Women`, `Clothes`, `Animations`, `NS Animations`, `Props`, `Monsters`, `Toys`, `Cocks`.  
+Provenance и инструменты: [`ASSET_PROVENANCE.md`](./ASSET_PROVENANCE.md).
+
 **Workflow:**
 
 1. В Total Commander / проводнике нашёл нужное в Desktop Mascot.
-2. Подготовил: вырезал лишнее, положил Textures, написал `notes.txt`.
-3. Скопировал **одну папку** → `U:\Viu\Inbox\`.
+2. Подготовил: вырезал лишнее, положил textures, написал `notes.txt`.
+3. Скопировал **одну папку** → `U:\Anabarra\Inbox\` (или `asset_archive_stage`).
 4. В GUI: **«Разобрать Inbox»** → **«Разметить предметы»**.
 
 ---
