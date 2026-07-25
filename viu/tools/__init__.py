@@ -104,6 +104,13 @@ from .animation_catalog_tool import (
     AnimationCatalogShowTool,
     RouteInboxTool,
 )
+from .hs2_anim_tool import (
+    Hs2AnimExportJsonTool,
+    Hs2AnimImportFbxTool,
+    Hs2AnimRetargetTool,
+    Hs2AnimScanTool,
+    Hs2AnimStatusTool,
+)
 from .interaction_catalog_tool import (
     InteractionBlockingTool,
     InteractionCatalogShowTool,
@@ -217,6 +224,11 @@ def build_default_registry() -> ToolRegistry:
         ComfyLoraFetchTool(),
         ExportUnityAssetTool(),
         AcceptAnimationInboxTool(),
+        Hs2AnimStatusTool(),
+        Hs2AnimScanTool(),
+        Hs2AnimExportJsonTool(),
+        Hs2AnimImportFbxTool(),
+        Hs2AnimRetargetTool(),
         AnimationCatalogShowTool(),
         AnimationCatalogMatchTool(),
         InteractionCatalogShowTool(),

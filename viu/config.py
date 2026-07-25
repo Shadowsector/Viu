@@ -116,6 +116,7 @@ class Config:
     inbox_dir: str = field(
         default_factory=lambda: _env("VIU_INBOX_DIR", "") or _env("VIU_DOWNLOADS_DIR", "")
     )
+    hs2_root: str = field(default_factory=lambda: _env("VIU_HS2_ROOT", ""))
     downloads_dir: str = field(
         default_factory=lambda: _env("VIU_DOWNLOADS_DIR", "") or _env("VIU_INBOX_DIR", "")
     )
