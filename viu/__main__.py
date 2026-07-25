@@ -173,6 +173,39 @@ def cmd_config(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_machine(args: argparse.Namespace) -> int:
+    """Личная привязка к машине (не материнка/GPU)."""
+    from .machine_bind import ensure_bind, rebind, status_text, verify_bind
+
+    config = Config()
+    action = (args.action or "status").strip().lower()
+    if action in ("status", "show"):
+        print(status_text(config))
+        ok, _, bind = verify_bind(config)
+        if bind is None:
+            return 0
+        return 0 if ok else 2
+    if action == "ensure":
+        bind, created = ensure_bind(config)
+        print(("создана" if created else "уже есть") + f": {bind.install_id}")
+        print(status_text(config))
+        return 0
+    if action == "rebind":
+        bind, msg = rebind(config, reason=args.reason or "cli_rebind")
+        print(msg)
+        print(f"install_id={bind.install_id}")
+        print(status_text(config))
+        return 0
+    print("usage: viu machine status|ensure|rebind [--reason …]")
+    return 1
+
+
+def bind_path_exists(config: Config) -> bool:
+    from .machine_bind import bind_path
+
+    return bind_path(config).is_file()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="viu", description="Вью — автономный агент-соавтор")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -203,6 +236,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_up.set_defaults(func=cmd_update)
     sub.add_parser("config", help="показать конфигурацию").set_defaults(func=cmd_config)
+    p_mach = sub.add_parser(
+        "machine",
+        help="личная привязка к компу (user+host+U:, не материнка/GPU)",
+    )
+    p_mach.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        help="status | ensure | rebind",
+    )
+    p_mach.add_argument("--reason", default="", help="для rebind — комментарий")
+    p_mach.set_defaults(func=cmd_machine)
     return parser
 
 

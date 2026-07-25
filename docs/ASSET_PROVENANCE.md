@@ -38,6 +38,22 @@ Workflow: нашёл в хламнике → скопировал **один** �
 
 **CC BY-ND** (пилот Erisa): для личной Анабарры — ок; публично выкладывать модификацию нельзя.
 
+## Личная привязка машины
+
+Файл: `.viu/machine_bind.json` — `personal_use_only`, `install_id`, soft-отпечаток.
+
+**Не** привязано к материнке / GPU / MAC (их можно менять).  
+Опора: пользователь Windows + hostname + пути `U:\Viu` / `Anabarra` / `Desktop Mascot`.
+
+```text
+python -m viu machine ensure    # первый раз
+python -m viu machine status
+python -m viu machine rebind --reason "новая материнка"   # после апгрейда / переезда папок
+```
+
+Инструмент: `machine_bind action=status|ensure|rebind|check`.  
+Операции `asset_archive_*` / запись provenance без совпадения отпечатка — блок (обход: `force=1` только для отладки).
+
 ## Пилот: Shanya / Erisa (RedEyes)
 
 - URL: `https://smutba.se/project/f66e34d7-fcbb-4a26-861c-7cd4fd0ab2cc/`

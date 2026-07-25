@@ -14,7 +14,25 @@ from ..asset_archive.inventory import (
 )
 from ..asset_archive.provenance import ProvenanceEntry, license_ok_for_anabarra_build
 from ..asset_archive.store import ProvenanceStore, provenance_path
+from ..machine_bind import require_personal_machine
 from .base import AgentContext, Tool, ToolResult
+
+
+def _gate_personal(ctx: AgentContext, args: Dict[str, Any]) -> ToolResult | None:
+    """Личный гейт. force=1 — только осознанный обход (тесты/отладка)."""
+    if str(args.get("force") or "").strip() in ("1", "true", "yes"):
+        return None
+    ok, msg = require_personal_machine(ctx.config, auto_ensure=True)
+    if ok:
+        return None
+    return ToolResult(
+        ok=False,
+        content=(
+            f"Личная привязка машины не совпала: {msg}\n"
+            "После смены железа/путей: python -m viu machine rebind\n"
+            "или tool machine_bind action=rebind"
+        ),
+    )
 
 
 class AssetArchiveInventoryTool(Tool):
@@ -28,6 +46,9 @@ class AssetArchiveInventoryTool(Tool):
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        blocked = _gate_personal(ctx, args)
+        if blocked:
+            return blocked
         pack = str(args.get("pack_dir") or "").strip()
         if pack:
             inv = inventory_pack(Path(pack))
@@ -55,6 +76,9 @@ class AssetArchiveStageTool(Tool):
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        blocked = _gate_personal(ctx, args)
+        if blocked:
+            return blocked
         source = str(args.get("source") or args.get("path") or "").strip()
         if not source:
             return ToolResult(ok=False, content="нужен source= путь к паку")
@@ -85,6 +109,10 @@ class AssetProvenanceTool(Tool):
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         action = str(args.get("action") or "show").strip().lower()
+        if action in ("ensure_pilots", "seed", "init", "add"):
+            blocked = _gate_personal(ctx, args)
+            if blocked:
+                return blocked
         store = ProvenanceStore(provenance_path(ctx.config))
         if action in ("ensure_pilots", "seed", "init"):
             n = store.ensure_pilots()

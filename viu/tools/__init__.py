@@ -128,6 +128,7 @@ from .asset_archive_tool import (
     AssetArchiveStageTool,
     AssetProvenanceTool,
 )
+from .machine_bind_tool import MachineBindTool
 
 __all__ = [
     "AgentContext",
@@ -173,6 +174,7 @@ def build_default_registry() -> ToolRegistry:
         AssetArchiveInventoryTool(),
         AssetArchiveStageTool(),
         AssetProvenanceTool(),
+        MachineBindTool(),
         PrepareUnityAssetTool(),
         RunNextStepTool(),
         VisionReadTool(),
