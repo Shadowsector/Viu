@@ -20,6 +20,8 @@ from .seed_library import (
     prepare_refine,
     seeds_for_slug,
 )
+from .seed_poses import format_pose_checklist_text
+from .seed_refine import auto_refine_seed, refine_ready
 
 
 def open_seed_library(
@@ -40,13 +42,12 @@ def open_seed_library(
     ttk.Label(
         body,
         text=(
-            "Скрин из HS2 → Inbox/references → «Из Inbox (HS2)». "
-            "«Доработать» снимет описание позы и пометит под натуральное тело; "
-            "потом «Принять доработанный». "
-            "Привяжи start/end к slug анимации — съёмка подхватит сама."
+            "Скрин из HS2 → Inbox → «Из Inbox (HS2)» → «Авто-доработать» "
+            "(Comfy img2img, нужен SD-чекпоинт в models/checkpoints). "
+            "Список нужных поз — ниже слева. Idle лучше ×3 (фронт / ¾ / профиль)."
         ),
         wraplength=940,
-    ).pack(anchor="w", pady=(0, 8))
+    ).pack(anchor="w", pady=(0, 6))
 
     paned = ttk.Panedwindow(body, orient="horizontal")
     paned.pack(fill="both", expand=True)
@@ -54,6 +55,15 @@ def open_seed_library(
     right = ttk.Frame(paned, padding=(8, 0, 0, 0))
     paned.add(left, weight=1)
     paned.add(right, weight=2)
+
+    checklist_frame = ttk.LabelFrame(left, text="Нужные позы (чеклист)", padding=4)
+    checklist_frame.pack(fill="both", expand=False, pady=(0, 6))
+    checklist_txt = tk.Text(
+        checklist_frame, height=10, wrap="word", font=("Consolas", 8)
+    )
+    checklist_txt.pack(fill="both", expand=True)
+    checklist_txt.insert("1.0", format_pose_checklist_text(config, priority_max=1))
+    checklist_txt.configure(state="disabled")
 
     listbox = tk.Listbox(left, font=("Consolas", 10), height=24)
     listbox.pack(fill="both", expand=True)
@@ -174,6 +184,50 @@ def open_seed_library(
         else:
             messagebox.showerror("Доработать", msg, parent=win)
 
+    def on_auto_refine() -> None:
+        e = current()
+        if e is None:
+            return
+        ok_r, info = refine_ready(config)
+        if not ok_r:
+            messagebox.showerror("Авто-доработать", info, parent=win)
+            return
+        if not messagebox.askokcancel(
+            "Авто-доработать",
+            f"Прогоню img2img на Comfy (ckpt={info}, denoise≈0.48).\n"
+            "Поза сохранится, пластика уйдёт от аниме. Минута-две.\nПродолжить?",
+            parent=win,
+        ):
+            return
+        win.config(cursor="watch")
+        win.update_idletasks()
+        try:
+            ok, msg = auto_refine_seed(config, e.id, denoise=0.48, activate=False)
+        finally:
+            win.config(cursor="")
+        refresh(select_id=e.id)
+        _reload_checklist()
+        if ok:
+            messagebox.showinfo("Авто-доработать", msg, parent=win)
+        else:
+            messagebox.showerror("Авто-доработать", msg, parent=win)
+
+    def _reload_checklist() -> None:
+        checklist_txt.configure(state="normal")
+        checklist_txt.delete("1.0", "end")
+        checklist_txt.insert("1.0", format_pose_checklist_text(config, priority_max=1))
+        checklist_txt.configure(state="disabled")
+
+    def on_show_full_checklist() -> None:
+        text = format_pose_checklist_text(config, priority_max=2)
+        top = tk.Toplevel(win)
+        top.title("Все эталонные позы")
+        top.geometry("640x720")
+        t = tk.Text(top, wrap="word", font=("Consolas", 9))
+        t.pack(fill="both", expand=True, padx=8, pady=8)
+        t.insert("1.0", text)
+        t.configure(state="disabled")
+
     def on_accept_refined() -> None:
         e = current()
         if e is None:
@@ -244,19 +298,25 @@ def open_seed_library(
         side="left", padx=6
     )
 
-    ttk.Button(act_row, text="Доработать", command=on_refine).pack(side="left")
-    ttk.Button(act_row, text="Принять доработанный…", command=on_accept_refined).pack(
-        side="left", padx=6
-    )
-    ttk.Button(act_row, text="Сделать start сейчас", command=lambda: on_activate("start")).pack(
-        side="left", padx=6
-    )
-    ttk.Button(act_row, text="Сделать end сейчас", command=lambda: on_activate("end")).pack(
+    ttk.Button(act_row, text="Авто-доработать", command=on_auto_refine).pack(side="left")
+    ttk.Button(act_row, text="Только бриф", command=on_refine).pack(side="left", padx=6)
+    ttk.Button(act_row, text="Принять вручную…", command=on_accept_refined).pack(
         side="left"
     )
+
+    act_row2 = ttk.Frame(right)
+    act_row2.pack(fill="x", pady=(6, 0))
+    ttk.Button(act_row2, text="Сделать start сейчас", command=lambda: on_activate("start")).pack(
+        side="left"
+    )
+    ttk.Button(act_row2, text="Сделать end сейчас", command=lambda: on_activate("end")).pack(
+        side="left", padx=6
+    )
+    ttk.Button(act_row2, text="Все позы…", command=on_show_full_checklist).pack(side="left")
 
     bottom = ttk.Frame(body)
     bottom.pack(fill="x", pady=(8, 0))
     ttk.Button(bottom, text="Закрыть", command=on_close).pack(side="right")
 
     refresh()
+    _reload_checklist()
