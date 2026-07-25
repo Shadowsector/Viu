@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from viu.capabilities import CAPABILITY_BRIEF, docs_vector_brief, reflect_capability_notes
 from viu.config import Config
 from viu.llm_roles import guess_work_role, resolve_model
@@ -12,16 +10,17 @@ from viu.situational_context import build_reflect_notes
 
 
 def test_capability_brief_mentions_pipeline():
-    assert "Comfy" in CAPABILITY_BRIEF
+    assert "тело Шани" in CAPABILITY_BRIEF or "body_pipeline" in CAPABILITY_BRIEF
+    assert "паузе" in CAPABILITY_BRIEF.lower() or "Паузе" in CAPABILITY_BRIEF
+    assert "Comfy" in CAPABILITY_BRIEF  # упомянут как на паузе
     assert "Cascadeur" in CAPABILITY_BRIEF
-    assert "специалист" in CAPABILITY_BRIEF or "базовые знания" in CAPABILITY_BRIEF
-    assert "cascadeur_import_reference" in CAPABILITY_BRIEF
+    assert "NOW.md" in CAPABILITY_BRIEF
 
 
 def test_docs_vector_brief_nonempty():
     text = docs_vector_brief(max_chars=1200)
     assert "docs/" in text
-    assert "COMFY" in text or "Cascadeur" in text or "CASCADEUR" in text
+    assert "NOW" in text or "тело" in text.lower() or "Unity" in text
 
 
 def test_reflect_voice_minimal():
@@ -43,7 +42,7 @@ def test_reflect_notes_include_capability(tmp_path, monkeypatch):
     monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
     cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
     notes = build_reflect_notes(cfg, user_text="чем занимаешься сейчас")
-    assert "Comfy" in notes or "VIU_SELF" in notes
+    assert "тело" in notes.lower() or "body_pipeline" in notes or "NOW" in notes or "Comfy" in notes
 
 
 def test_resolve_model_roles(tmp_path):
