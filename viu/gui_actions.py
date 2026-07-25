@@ -182,6 +182,13 @@ GUI_ACTIONS: List[GuiAction] = [
     ),
     # --- Unity: анимации ---
     GuiAction(
+        "hs2_anim",
+        "0b. HS2 — выдернуть анимации",
+        "Unity — анимации",
+        tool="__hs2_anim__",
+        hint="MeshExporter FBX → Inbox; скан abdata; Blender-ретаргет на Mixamo.",
+    ),
+    GuiAction(
         "animation_catalog",
         "1. Описать новые FBX — окно",
         "Unity — анимации",

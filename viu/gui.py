@@ -1003,6 +1003,9 @@ class ViuGUI:
         if action.tool == "__comfy_seed_library__":
             self._open_comfy_seed_library()
             return
+        if action.tool == "__hs2_anim__":
+            self._open_hs2_anim()
+            return
         if action.tool == "__comfy_studio__":
             self._open_comfy_studio()
             return
@@ -2767,6 +2770,15 @@ class ViuGUI:
                 self._append("Вью", msg, tag="tool")
 
         open_seed_library(self.root, self.agent.config, on_finished=done)
+
+    def _open_hs2_anim(self) -> None:
+        from .integrations.hs2.hs2_anim_gui import open_hs2_anim_window
+
+        def done(ok: bool, msg: str) -> None:
+            if msg:
+                self._append("Вью", msg, tag="tool")
+
+        open_hs2_anim_window(self.root, self.agent.config, on_finished=done)
 
     def _schedule_cursor_inbox(self) -> None:
         """Раз в несколько минут — забрать задачи Cursor с GitHub и выполнить без Дена."""
