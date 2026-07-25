@@ -531,7 +531,15 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
             save_session(config, session)
 
     seed_image_name = ""
+    from ..integrations.comfy.seed_library import activate_for_slug
     from ..integrations.comfy.seed_pose import resolve_active_seed, stage_seed_for_comfy
+
+    # Привязка библиотеки эталонов к slug (если глобальный seed ещё не выбран вручную).
+    _path0, _n0, seed_already = resolve_active_seed(config)
+    if not seed_already and slug:
+        bind_msg = activate_for_slug(config, slug)
+        if bind_msg:
+            append_journal(config, COMFY_TOPIC, "### Эталон I2V\n\n" + bind_msg)
 
     seed_path, seed_comfy, seed_on = resolve_active_seed(config)
     if seed_on and seed_path is not None:
@@ -541,6 +549,12 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
             session.meta["i2v_seed_enabled"] = True
             session.meta["i2v_seed_path"] = str(seed_path)
             session.meta["i2v_seed_comfy"] = seed_image_name
+            # Подмешать «натуральное тело» в positive, если эталон ещё HS2.
+            hint = str(session.meta.get("i2v_seed_natural_hint") or "").strip()
+            if hint and pos_ov and hint.lower() not in pos_ov.lower():
+                pos_ov = f"{pos_ov}, {hint}"
+            elif hint and not pos_ov:
+                session.meta["i2v_seed_natural_hint"] = hint
             save_session(config, session)
     ok, msg, results = run_triple_angles(
         config,

@@ -265,10 +265,10 @@ def all_places() -> List[Place]:
         ),
         Place(
             "comfy_seeds",
-            "Seed-кадры (last frame)",
+            "Эталоны I2V (библиотека)",
             "folder",
             "Выходы",
-            "PNG для следующей i2v-генерации.",
+            "U:\\Anabarra\\Library\\Lab\\Refs\\seeds — HS2/скрипты, start/end на анимации.",
             comfy_seed_frames_dir,
         ),
         Place(

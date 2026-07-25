@@ -33,6 +33,9 @@ class ShotQueueItem:
     # LoRA на этот кадр: inherit = пресет сессии; none = без LoRA; pick = lora_indices.
     lora_mode: str = "inherit"
     lora_indices: List[int] = field(default_factory=list)
+    # Эталоны I2V из библиотеки (id из Lab/Refs/seeds/index.json).
+    start_seed_id: str = ""
+    end_seed_id: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -66,6 +69,8 @@ class ShotQueueItem:
             created_at=str(d.get("created_at") or ""),
             lora_mode=mode,
             lora_indices=indices,
+            start_seed_id=str(d.get("start_seed_id") or "").strip(),
+            end_seed_id=str(d.get("end_seed_id") or "").strip(),
         )
 
 
@@ -282,3 +287,21 @@ def apply_item_lora_to_session(config: Config, item: ShotQueueItem) -> str:
     if not specs:
         return "LoRA с кадра: без LoRA"
     return "LoRA с кадра: " + ", ".join(s.file for s in specs)
+
+
+def apply_item_seeds_to_session(config: Config, item: ShotQueueItem) -> str:
+    """Активировать start/end эталоны с кадра очереди или привязку slug."""
+    from .seed_library import activate_for_slug, activate_seed
+
+    lines: List[str] = []
+    if (item.start_seed_id or "").strip():
+        ok, msg = activate_seed(config, item.start_seed_id, role="start")
+        lines.append(msg if ok else f"start seed: {msg}")
+    if (item.end_seed_id or "").strip():
+        ok, msg = activate_seed(config, item.end_seed_id, role="end")
+        lines.append(msg if ok else f"end seed: {msg}")
+    if not lines and (item.catalog_slug or "").strip():
+        msg = activate_for_slug(config, item.catalog_slug)
+        if msg:
+            lines.append(msg)
+    return "\n".join(lines)

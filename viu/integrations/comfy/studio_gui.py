@@ -72,7 +72,7 @@ def open_comfy_studio(
         body,
         text=(
             "Съёмка и оценка видео — здесь. "
-            "«Эталон → I2V» задаёт стартовый кадр позы (сильнее LoRA для MoCap). "
+            "«План / промпт Wan» — очередь по графам, Wan и LoRA на кадр. "
             "«Оценить видео» = лучший mp4. Браузер :8188 — только монитор."
         ),
         wraplength=860,
@@ -89,6 +89,8 @@ def open_comfy_studio(
     seed_frame.pack(fill="x", pady=(4, 4))
     seed_var = tk.StringVar(value="")
     ttk.Label(seed_frame, textvariable=seed_var, wraplength=820).pack(anchor="w")
+    seed_list = tk.Listbox(seed_frame, height=4, font=("Consolas", 9))
+    seed_list.pack(fill="x", pady=(4, 0))
     seed_btns = ttk.Frame(seed_frame)
     seed_btns.pack(fill="x", pady=(6, 0))
 
@@ -140,10 +142,39 @@ def open_comfy_studio(
         return sorted(set(out))
 
     def refresh_seed_line() -> None:
+        from .seed_library import load_library
         from .seed_pose import i2v_status_line, mocap_lora_checklist_text
 
         seed_var.set(i2v_status_line(config))
         checklist.configure(text=mocap_lora_checklist_text())
+        seed_list.delete(0, "end")
+        for e in load_library(config)[:8]:
+            seed_list.insert("end", e.label())
+
+    def on_open_seed_library() -> None:
+        from .seed_library_gui import open_seed_library
+
+        session = load_session(config, COMFY_TOPIC)
+        slug = ""
+        if session is not None:
+            slug = str(session.meta.get("catalog_slug") or "")
+        open_seed_library(win, config, default_slug=slug)
+        refresh_status()
+
+    def on_activate_listed_seed() -> None:
+        from .seed_library import activate_seed, load_library
+
+        sel = seed_list.curselection()
+        lib = load_library(config)
+        if not sel or int(sel[0]) >= len(lib):
+            messagebox.showinfo("Эталон", "Выбери строку в списке или открой библиотеку.", parent=win)
+            return
+        ok, msg = activate_seed(config, lib[int(sel[0])].id, role="start")
+        if ok:
+            messagebox.showinfo("Эталон I2V", msg, parent=win)
+        else:
+            messagebox.showerror("Эталон I2V", msg, parent=win)
+        refresh_status()
 
     def refresh_status() -> None:
         brief_var.set(comfy_pipeline_status_brief(config))
@@ -240,8 +271,14 @@ def open_comfy_studio(
         side="left", padx=(8, 0)
     )
 
-    ttk.Button(seed_btns, text="Эталон → I2V…", command=on_pick_seed).pack(side="left")
-    ttk.Button(seed_btns, text="Сбросить эталон", command=on_clear_seed).pack(
+    ttk.Button(seed_btns, text="Библиотека эталонов…", command=on_open_seed_library).pack(
+        side="left"
+    )
+    ttk.Button(seed_btns, text="Выбрать из списка", command=on_activate_listed_seed).pack(
+        side="left", padx=6
+    )
+    ttk.Button(seed_btns, text="Файл → I2V…", command=on_pick_seed).pack(side="left")
+    ttk.Button(seed_btns, text="Сбросить", command=on_clear_seed).pack(
         side="left", padx=8
     )
 

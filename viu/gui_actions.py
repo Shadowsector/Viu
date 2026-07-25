@@ -204,7 +204,7 @@ GUI_ACTIONS: List[GuiAction] = [
         "Студия Comfy — статус и управление",
         "ComfyUI — видео",
         tool="__comfy_studio__",
-        hint="Генерация, эталон→I2V, LoRA-чеклист, очередь, оценка видео.",
+        hint="Генерация, эталон→I2V, LoRA, план/промпт Wan, оценка видео.",
     ),
     GuiAction(
         "comfy_shot_queue",
@@ -212,6 +212,13 @@ GUI_ACTIONS: List[GuiAction] = [
         "ComfyUI — видео",
         tool="__comfy_shot_queue__",
         hint="Каталог по графам (спать / залезть…), Wan-промпт и LoRA на кадр; away снимет по списку.",
+    ),
+    GuiAction(
+        "comfy_seed_library",
+        "0s. Эталоны I2V (HS2 → натуральное)",
+        "ComfyUI — видео",
+        tool="__comfy_seed_library__",
+        hint="Скрины из HS2 → библиотека → доработать → start/end на анимацию.",
     ),
     GuiAction(
         "reference_catalog",

@@ -13,6 +13,7 @@ from .shot_graphs import graph_for_slug, graph_path_label, group_items_by_graph
 from .shot_queue import (
     ShotQueueItem,
     apply_item_lora_to_session,
+    apply_item_seeds_to_session,
     format_queue_brief,
     load_items,
     move_item,
@@ -96,6 +97,8 @@ def open_shot_queue_editor(
     notes_var = tk.StringVar()
     status_var = tk.StringVar()
     lora_mode_var = tk.StringVar(value="inherit")
+    start_seed_var = tk.StringVar()
+    end_seed_var = tk.StringVar()
 
     ttk.Label(right, textvariable=graph_var, wraplength=620).pack(anchor="w", pady=(0, 4))
     ttk.Label(right, text="Slug").pack(anchor="w")
@@ -108,8 +111,17 @@ def open_shot_queue_editor(
     ttk.Entry(right, textvariable=notes_var).pack(fill="x", pady=(0, 4))
     ttk.Label(right, textvariable=status_var).pack(anchor="w", pady=(0, 6))
 
+    seed_row = ttk.LabelFrame(right, text="Эталоны I2V (start → end)", padding=4)
+    seed_row.pack(fill="x", pady=(0, 6))
+    ttk.Label(seed_row, text="start id").pack(anchor="w")
+    ttk.Entry(seed_row, textvariable=start_seed_var).pack(fill="x")
+    ttk.Label(seed_row, text="end id").pack(anchor="w")
+    ttk.Entry(seed_row, textvariable=end_seed_var).pack(fill="x")
+    seed_btns = ttk.Frame(seed_row)
+    seed_btns.pack(fill="x", pady=(4, 0))
+
     ttk.Label(right, text="Positive (Wan)").pack(anchor="w")
-    pos_txt = tk.Text(right, height=7, wrap="word", font=("Consolas", 9))
+    pos_txt = tk.Text(right, height=6, wrap="word", font=("Consolas", 9))
     pos_txt.pack(fill="both", expand=True, pady=(0, 4))
     ttk.Label(right, text="Negative").pack(anchor="w")
     neg_txt = tk.Text(right, height=3, wrap="word", font=("Consolas", 9))
@@ -193,6 +205,8 @@ def open_shot_queue_editor(
         if it.lora_mode not in ("inherit", "none", "pick"):
             it.lora_mode = "inherit"
         it.lora_indices = selected_lora_indices() if it.lora_mode == "pick" else []
+        it.start_seed_id = start_seed_var.get().strip()
+        it.end_seed_id = end_seed_var.get().strip()
 
     def save_by_id(item_id: str) -> bool:
         """Сохранить форму в item_id (даже если список уже переключился)."""
@@ -213,6 +227,8 @@ def open_shot_queue_editor(
                 wan_negative=it.wan_negative,
                 lora_mode=it.lora_mode,
                 lora_indices=list(it.lora_indices),
+                start_seed_id=it.start_seed_id,
+                end_seed_id=it.end_seed_id,
             )
             return True
         return False
@@ -238,6 +254,8 @@ def open_shot_queue_editor(
                 notes_var.set("")
                 status_var.set("")
                 lora_mode_var.set("inherit")
+                start_seed_var.set("")
+                end_seed_var.set("")
                 pos_txt.delete("1.0", "end")
                 neg_txt.delete("1.0", "end")
                 reload_lora_list([])
@@ -257,6 +275,8 @@ def open_shot_queue_editor(
             notes_var.set(it.notes)
             status_var.set(f"Статус: {it.status}")
             lora_mode_var.set(it.lora_mode or "inherit")
+            start_seed_var.set(it.start_seed_id or "")
+            end_seed_var.set(it.end_seed_id or "")
             pos_txt.delete("1.0", "end")
             pos_txt.insert("1.0", it.wan_positive)
             neg_txt.delete("1.0", "end")
@@ -525,8 +545,11 @@ def open_shot_queue_editor(
         if it.exits_to:
             session.meta["exits_to"] = list(it.exits_to)
         save_session(config, session)
+        seed_msg = apply_item_seeds_to_session(config, it)
         lora_msg = apply_item_lora_to_session(config, it)
         msg = f"Кадр `{it.catalog_slug}` → lab."
+        if seed_msg:
+            msg += "\n" + seed_msg
         if lora_msg:
             msg += "\n" + lora_msg
         if shoot:
@@ -606,6 +629,23 @@ def open_shot_queue_editor(
     ).pack(side="left")
     ttk.Button(edit_btns, text="Пропустить", command=on_skip).pack(side="left", padx=6)
     ttk.Button(edit_btns, text="Вернуть в очередь", command=on_pending).pack(side="left")
+
+    def on_open_seeds() -> None:
+        from .seed_library_gui import open_seed_library
+
+        slug = slug_var.get().strip()
+        open_seed_library(win, config, default_slug=slug)
+
+    def on_clear_seeds() -> None:
+        start_seed_var.set("")
+        end_seed_var.set("")
+
+    ttk.Button(seed_btns, text="Библиотека эталонов…", command=on_open_seeds).pack(
+        side="left"
+    )
+    ttk.Button(seed_btns, text="Очистить start/end", command=on_clear_seeds).pack(
+        side="left", padx=6
+    )
 
     ttk.Button(lora_btns, text="Пересканировать", command=on_rescan_lora).pack(
         side="left"

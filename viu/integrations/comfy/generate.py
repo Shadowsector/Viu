@@ -98,9 +98,19 @@ def run_single_angle(
     wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
     wf = inject_loras(wf, loras)
     if use_i2v and wf_name == "i2v":
-        from .workflows import inject_seed_image
+        from .workflows import inject_end_seed_image, inject_seed_image
 
         wf = inject_seed_image(wf, seed_image_name.strip())
+        # Конечный эталон — если нода/шаблон умеет end_image.
+        from ...lab.comfy_pipeline import COMFY_TOPIC
+        from ...lab.session import load_session
+
+        sess = load_session(config, COMFY_TOPIC)
+        end_name = ""
+        if sess is not None:
+            end_name = str(sess.meta.get("i2v_end_seed_comfy") or "").strip()
+        if end_name:
+            wf = inject_end_seed_image(wf, end_name)
     wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
     from .workflows import inject_filename_prefix
 
