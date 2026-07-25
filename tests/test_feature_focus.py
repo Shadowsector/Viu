@@ -50,11 +50,14 @@ def test_body_pipeline_checklist(tmp_path):
     cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
     text = render_checklist(cfg)
     assert "Тело Шани" in text
-    assert "Shrinkwrap" in text or "подогнать" in text.lower()
+    assert "HS2" in text and "Smutbase" in text
+    assert "НЕ поедет" in text or "не поедет" in text.lower() or "лекало" in text.lower()
+    assert "Shrinkwrap" in text or "Форма" in text
     _, msg = mark_step_done(cfg)
     assert "отмечен" in msg or "Дальше" in msg
     text2 = render_checklist(cfg)
     assert "[x]" in text2
+    assert "Import" in text2 or "Append" in text2 or "образец" in text2.lower()
 
 
 def test_body_steps_count():
