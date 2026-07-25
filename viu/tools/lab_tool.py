@@ -88,6 +88,22 @@ class LabStartTool(Tool):
                         args["_wan_positive"] = plan.wan_positive
                     if plan.wan_negative:
                         args["_wan_negative"] = plan.wan_negative
+                    if (plan.lora_mode or "inherit") != "inherit":
+                        from ..integrations.comfy.shot_queue import (
+                            ShotQueueItem,
+                            apply_item_lora_to_session,
+                        )
+
+                        apply_item_lora_to_session(
+                            ctx.config,
+                            ShotQueueItem(
+                                id="from-plan",
+                                catalog_slug=plan.catalog_slug,
+                                action=plan.action,
+                                lora_mode=plan.lora_mode or "inherit",
+                                lora_indices=list(plan.lora_indices or []),
+                            ),
+                        )
                 else:
                     inferred = infer_slug_from_action(action)
                     if inferred:

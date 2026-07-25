@@ -1004,7 +1004,7 @@ class ViuGUI:
             self._open_comfy_studio()
             return
         if action.tool == "__comfy_prompt__":
-            self._open_comfy_prompt_editor()
+            self._open_comfy_shot_queue(focus_lab=True)
             return
         if action.tool == "__reference_catalog__":
             self._open_reference_catalog()
@@ -2426,6 +2426,24 @@ class ViuGUI:
             if plan.queue_notes:
                 sess.meta["queue_notes"] = plan.queue_notes
             save_session(self.agent.config, sess)
+        if plan.from_queue and (plan.lora_mode or "inherit") != "inherit":
+            from .integrations.comfy.shot_queue import (
+                ShotQueueItem,
+                apply_item_lora_to_session,
+            )
+
+            lora_msg = apply_item_lora_to_session(
+                self.agent.config,
+                ShotQueueItem(
+                    id="from-plan",
+                    catalog_slug=plan.catalog_slug,
+                    action=plan.action,
+                    lora_mode=plan.lora_mode or "inherit",
+                    lora_indices=list(plan.lora_indices or []),
+                ),
+            )
+            if lora_msg:
+                self._append("Вью", lora_msg, tag="viu")
         if not auto and not is_away(self.agent.config):
             self._append(
                 "Вью",
@@ -2687,34 +2705,8 @@ class ViuGUI:
         open_comfy_clip_review(self.root, self.agent.config, on_finished=done)
 
     def _open_comfy_prompt_editor(self) -> None:
-        from .integrations.comfy.prompt_gui import open_comfy_prompt_editor
-        from .lab.comfy_pipeline import COMFY_TOPIC
-        from .lab.session import load_session
-
-        def done(ok: bool, msg: str, start_shoot: bool = False) -> None:
-            hist = getattr(self, "_chat_history", None) or []
-            preview = f"Вью: {msg[:400]}"
-            if not (hist and hist[-1] == preview):
-                self._append("Вью", msg, tag="tool" if ok else "sys")
-            if not ok or self._tool_busy:
-                return
-            session = load_session(self.agent.config, COMFY_TOPIC)
-            if start_shoot or (
-                session
-                and session.meta.get("shoot_intent")
-                and session.meta.get("prompt_user_edited")
-            ):
-                self._lab_comfy_action()
-                return
-            if session and session.status == "running":
-                self._run_tool(
-                    "lab_step",
-                    {"topic": COMFY_TOPIC, "run_all": "1"},
-                    label="Comfy: продолжаю после промпта",
-                    echo_user=False,
-                )
-
-        open_comfy_prompt_editor(self.root, self.agent.config, on_finished=done)
+        """Совместимость: открывает объединённый «План MoCap» в режиме lab."""
+        self._open_comfy_shot_queue(focus_lab=True)
 
     def _open_comfy_studio(self) -> None:
         from .integrations.comfy.studio_gui import ComfyStudioCallbacks, open_comfy_studio
@@ -2722,7 +2714,7 @@ class ViuGUI:
         cb = ComfyStudioCallbacks(
             on_ensure_comfy=lambda: self._ensure_comfy_from_studio(),
             on_mocap_shoot=lambda: self._lab_comfy_action(),
-            on_edit_prompt=lambda: self._open_comfy_prompt_editor(),
+            on_edit_prompt=lambda: self._open_comfy_shot_queue(focus_lab=True),
             on_pick_clips=lambda: self._open_comfy_clip_review(),
             on_open_browser=lambda: self._open_comfy_ui(),
             on_shot_queue=lambda: self._open_comfy_shot_queue(),
@@ -2744,7 +2736,7 @@ class ViuGUI:
             echo_user=True,
         )
 
-    def _open_comfy_shot_queue(self) -> None:
+    def _open_comfy_shot_queue(self, *, focus_lab: bool = False) -> None:
         from .integrations.comfy.shot_queue_gui import open_shot_queue_editor
 
         def done(ok: bool, msg: str) -> None:
@@ -2755,7 +2747,8 @@ class ViuGUI:
             self.root,
             self.agent.config,
             on_finished=done,
-            on_edit_prompt=lambda: self._open_comfy_prompt_editor(),
+            on_shoot=lambda: self._lab_comfy_action(),
+            focus_lab=focus_lab,
         )
 
     def _schedule_cursor_inbox(self) -> None:

@@ -208,10 +208,10 @@ GUI_ACTIONS: List[GuiAction] = [
     ),
     GuiAction(
         "comfy_shot_queue",
-        "0. Очередь анимаций MoCap",
+        "0. План MoCap — очередь, промпт Wan, LoRA",
         "ComfyUI — видео",
         tool="__comfy_shot_queue__",
-        hint="План съёмки наперёд: правь промпты, пропускай, уходи на работу.",
+        hint="Каталог по графам (спать / залезть…), Wan-промпт и LoRA на кадр; away снимет по списку.",
     ),
     GuiAction(
         "reference_catalog",
@@ -221,18 +221,11 @@ GUI_ACTIONS: List[GuiAction] = [
         hint="Inbox/references/ — картинки и видео; LLaVA-описание для MoCap.",
     ),
     GuiAction(
-        "comfy_prompt",
-        "0b. Промпт Wan → Comfy",
-        "ComfyUI — видео",
-        tool="__comfy_prompt__",
-        hint="Текущие строки positive/negative для Wan — правка и «Отправить в Comfy».",
-    ),
-    GuiAction(
         "lab_comfy",
         "1. MoCap: снять клип",
         "ComfyUI — видео",
         tool="__lab_comfy__",
-        hint="Поднимает ComfyUI → Wan 5×¾ → оценка видео. Промпт / очередь — рядом.",
+        hint="Поднимает ComfyUI → Wan 5×¾ → оценка видео. План/промпт — кнопка «0» рядом.",
     ),
     GuiAction(
         "interaction_master",
