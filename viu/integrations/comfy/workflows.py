@@ -535,7 +535,7 @@ def ensure_workflow_templates(config, *, overwrite_stubs: bool = False) -> list[
     """Скопировать шаблоны t2v/i2v/default; обновить если rev шаблона новее."""
     dest = comfy_workflows_dir(config)
     written: list[Path] = []
-    for name in ("t2v.json", "i2v.json", "default.json"):
+    for name in ("t2v.json", "i2v.json", "default.json", "seed_refine_img2img.json"):
         target = dest / name
         src = _TEMPLATES / name
         if not src.is_file():
