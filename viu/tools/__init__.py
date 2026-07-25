@@ -123,6 +123,11 @@ from .presence_tool import (
 from .eyes_tool import ScreenCaptureTool, VisionObserveTool, VisionReferenceTool
 from .vision_tool import VisionAppendTool, VisionReadTool
 from .web import WebFetchTool, WebSearchTool
+from .asset_archive_tool import (
+    AssetArchiveInventoryTool,
+    AssetArchiveStageTool,
+    AssetProvenanceTool,
+)
 
 __all__ = [
     "AgentContext",
@@ -165,6 +170,9 @@ def build_default_registry() -> ToolRegistry:
         PropCatalogScanTool(),
         PropCatalogListTool(),
         PropOrganizeDownloadsTool(),
+        AssetArchiveInventoryTool(),
+        AssetArchiveStageTool(),
+        AssetProvenanceTool(),
         PrepareUnityAssetTool(),
         RunNextStepTool(),
         VisionReadTool(),
