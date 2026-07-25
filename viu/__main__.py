@@ -200,12 +200,6 @@ def cmd_machine(args: argparse.Namespace) -> int:
     return 1
 
 
-def bind_path_exists(config: Config) -> bool:
-    from .machine_bind import bind_path
-
-    return bind_path(config).is_file()
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="viu", description="Вью — автономный агент-соавтор")
     sub = parser.add_subparsers(dest="command", required=True)
