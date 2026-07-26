@@ -927,6 +927,7 @@ class VIU_OT_StudioPhotoOk(bpy.types.Operator):
             entry,
             photo_ok=True,
             photo_notes="",
+            studio_problem=bool(props.studio_problem),
             **_markup_fields(props, entry),
         )
         self.report({"INFO"}, f"OK: {entry.get('name')}")
@@ -941,8 +942,15 @@ class VIU_OT_StudioPhotoBad(bpy.types.Operator):
         entry = _current_entry()
         if not entry:
             return {"CANCELLED"}
-        note = context.scene.viu_creature_studio.photo_notes or "нужна правка"
-        S.write_feedback_file(_feedback_path(), entry, photo_ok=False, photo_notes=note)
+        props = context.scene.viu_creature_studio
+        note = props.photo_notes or "нужна правка"
+        S.write_feedback_file(
+            _feedback_path(),
+            entry,
+            photo_ok=False,
+            photo_notes=note,
+            studio_problem=bool(props.studio_problem),
+        )
         return {"FINISHED"}
 
 
