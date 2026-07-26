@@ -91,7 +91,12 @@ Lab\Creatures\Prepared\<slug>\<slug>_prepared.blend
 ```
 Lab\Creatures\Processed\<slug>\front.png, side.png
 Lab\Creatures\Processed\<slug>\<slug>_ready.fbx
+Lab\Creatures\Processed\<slug>\textures\          ← рядом с FBX
+Lab\Creatures\Processed\<slug>\texture_manifest.json
 ```
+
+Эталон FBX — **только существо** (Шаня в сцене не экспортируется).  
+Если модель «пустая» в сравнении — кнопка **Показать меши тела**, потом снова рост.
 
 Разметка из Blender попадает в `creature_catalog.json` (size_class, locomotion, рост, photo_ok).
 

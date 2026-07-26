@@ -11,9 +11,12 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import bpy
 from mathutils import Vector
 
-_RIG_HIDE = (
+# Токены (целиком между разделителями), не сырой substring:
+# иначе «Spike»/«Like»/«retarget» ловились по «ik»/«target».
+_RIG_HIDE_TOKENS = (
     "ik", "pole", "ctrl", "control", "target", "widget", "wgt", "handle",
     "gizmo", "helper", "empties", "guide", "wire",
+    "collision", "weapon", "sword", "shadow", "lod3", "lod4",
 )
 
 _FACE_BONE_KEYS = (
@@ -73,11 +76,15 @@ def is_gzm_name(name: str) -> bool:
     return low.startswith("gzm_") or low.startswith("gzm.")
 
 
+def _name_tokens(name: str) -> List[str]:
+    return [p for p in re.split(r"[^a-z0-9]+", (name or "").lower()) if p]
+
+
 def is_rig_helper_mesh_name(name: str) -> bool:
     if is_wgt_name(name) or is_control_shape_name(name) or is_gzm_name(name):
         return True
-    low = (name or "").lower()
-    return any(k in low for k in _RIG_HIDE + ("collision", "weapon", "sword", "shadow", "lod3", "lod4"))
+    tokens = set(_name_tokens(name))
+    return any(tok in tokens for tok in _RIG_HIDE_TOKENS)
 
 
 def skip_mesh(name: str) -> bool:
@@ -97,11 +104,33 @@ def link_objects_to_collection(objects, coll):
             coll.objects.link(obj)
 
 
+def _collection_in_scene_tree(root_coll, target) -> bool:
+    if root_coll is None or target is None:
+        return False
+    if root_coll == target:
+        return True
+    for child in getattr(root_coll, "children", []) or []:
+        if _collection_in_scene_tree(child, target):
+            return True
+    return False
+
+
 def ensure_collection(name: str):
+    """Get-or-create collection and keep it linked into the active scene tree."""
+    scene_coll = bpy.context.scene.collection
     coll = bpy.data.collections.get(name)
     if coll is None:
         coll = bpy.data.collections.new(name)
-        bpy.context.scene.collection.children.link(coll)
+        scene_coll.children.link(coll)
+    elif not _collection_in_scene_tree(scene_coll, coll):
+        try:
+            scene_coll.children.link(coll)
+        except RuntimeError:
+            pass
+    try:
+        reveal_collection(name)
+    except Exception:
+        pass
     return coll
 
 
@@ -237,56 +266,42 @@ def clear_collection_slot(
 def post_import_visibility(objects):
     body = []
     for obj in objects:
-        if is_wgt_name(obj.name) or is_control_shape_name(obj.name):
-            obj.hide_set(True)
-            try:
-                obj.hide_viewport = True
-            except AttributeError:
-                pass
-            obj.hide_render = True
+        if is_wgt_name(obj.name) or is_control_shape_name(obj.name) or is_gzm_name(obj.name):
+            safe_hide_object_for_render(obj)
             continue
         if obj.type == "MESH" and skip_mesh(obj.name):
-            obj.hide_set(True)
-            obj.hide_render = True
+            safe_hide_object_for_render(obj)
             continue
         if obj.type == "MESH":
-            obj.hide_set(False)
-            try:
-                obj.hide_viewport = False
-            except AttributeError:
-                pass
-            obj.hide_render = False
+            safe_unhide_object(obj)
             vc = len(obj.data.vertices) if obj.data else 0
             if vc > 32:
                 body.append(obj)
         elif obj.type == "ARMATURE":
-            obj.hide_set(False)
-            obj.data.display_type = "STICK"
+            safe_unhide_object(obj)
+            try:
+                obj.data.display_type = "STICK"
+            except (AttributeError, ReferenceError):
+                pass
         elif obj.type == "EMPTY":
-            obj.hide_set(True)
-            obj.hide_render = True
+            safe_hide_object_for_render(obj)
     return body
 
 
 def hide_helpers(objects):
     for obj in objects:
-        if is_wgt_name(obj.name) or is_control_shape_name(obj.name):
-            obj.hide_set(True)
-            obj.hide_render = True
-            continue
-        low = (obj.name or "").lower()
         try:
+            if is_wgt_name(obj.name) or is_control_shape_name(obj.name) or is_gzm_name(obj.name):
+                safe_hide_object_for_render(obj)
+                continue
             if obj.type == "EMPTY":
-                obj.hide_set(True)
-                obj.hide_render = True
+                safe_hide_object_for_render(obj)
             elif obj.type == "ARMATURE":
                 obj.data.display_type = "STICK"
-            elif obj.type == "MESH" and any(k in low for k in _RIG_HIDE):
-                obj.hide_set(True)
-                obj.hide_render = True
+            elif obj.type == "MESH" and is_rig_helper_mesh_name(obj.name):
+                safe_hide_object_for_render(obj)
             elif obj.type == "CURVE":
-                obj.hide_set(True)
-                obj.hide_render = True
+                safe_hide_object_for_render(obj)
         except (AttributeError, ReferenceError):
             pass
 
@@ -341,6 +356,9 @@ def import_asset(path: Path, *, for_shanya: bool = False, target_coll=None):
     bpy.context.view_layer.update()
     imported = [o for o in bpy.data.objects if o not in before]
     new_colls = [c for c in bpy.data.collections if c not in before_colls]
+    # Сначала в целевую коллекцию (View Layer), потом visibility — иначе hide_set падает.
+    if target_coll is not None:
+        link_objects_to_collection(imported, target_coll)
     if for_shanya:
         wgt = [o for o in imported if is_wgt_name(o.name) or is_control_shape_name(o.name)]
         for obj in wgt:
@@ -351,15 +369,15 @@ def import_asset(path: Path, *, for_shanya: bool = False, target_coll=None):
         imported = [o for o in imported if o not in wgt]
         for obj in imported:
             if obj.type == "MESH":
-                obj.hide_set(False)
-                obj.hide_render = False
+                safe_unhide_object(obj)
             elif obj.type == "ARMATURE":
-                obj.hide_set(False)
-                obj.data.display_type = "STICK"
+                safe_unhide_object(obj)
+                try:
+                    obj.data.display_type = "STICK"
+                except (AttributeError, ReferenceError):
+                    pass
     else:
         post_import_visibility(imported)
-    if target_coll is not None:
-        link_objects_to_collection(imported, target_coll)
     return imported, new_colls
 
 
@@ -1269,75 +1287,119 @@ def _is_widget_mesh(obj, arm_obj) -> bool:
     return False
 
 
-def _mesh_for_character(obj, arm_obj) -> bool:
+def _mesh_for_character(obj, arm_obj, *, allowed: Optional[set] = None) -> bool:
+    if obj is None or arm_obj is None:
+        return False
+    if allowed is not None and obj not in allowed:
+        return False
     if obj.type != "MESH" or _is_widget_mesh(obj, arm_obj):
         return False
     for mod in obj.modifiers:
         if mod.type == "ARMATURE" and mod.object == arm_obj:
             return True
-    if obj.vertex_groups:
-        bones = {b.name for b in arm_obj.data.bones}
-        for vg in obj.vertex_groups:
-            if vg.name in bones:
-                return True
     par = obj.parent
     while par is not None:
         if par == arm_obj:
             return True
         par = par.parent
+    # Не матчим только по именам vertex groups — у Шани/существа общие кости Humanoid.
     return False
 
 
 def _pick_armature(objects: Sequence):
-    arms = [o for o in objects if o.type == "ARMATURE"]
-    if not arms:
-        arms = [o for o in bpy.data.objects if o.type == "ARMATURE"]
+    """Armature только из переданного набора (без fallback на всю сцену / Шаню)."""
+    arms = [o for o in objects if o is not None and getattr(o, "type", "") == "ARMATURE"]
     if not arms:
         return None
     if len(arms) == 1:
         return arms[0]
 
+    allowed = {o for o in objects if o is not None}
+
     def score(arm_obj):
         deform = sum(1 for b in arm_obj.data.bones if b.use_deform)
-        meshes = sum(1 for o in bpy.data.objects if _mesh_for_character(o, arm_obj))
+        meshes = sum(1 for o in allowed if _mesh_for_character(o, arm_obj, allowed=allowed))
         return deform * 10 + meshes
 
     return max(arms, key=score)
 
 
+def materialize_textures_beside_fbx(out_dir: Path) -> int:
+    """Unpack/copy textures into Processed/<slug>/textures/ and rebind image paths."""
+    out_dir = Path(out_dir)
+    tex_dir = out_dir / "textures"
+    tex_dir.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for img in list(bpy.data.images):
+        try:
+            if not img or getattr(img, "type", "") == "RENDER_RESULT":
+                continue
+            packed = getattr(img, "packed_file", None)
+            if packed is None:
+                continue
+            raw_name = Path(img.name or "tex").name
+            if not re.search(r"\.(png|jpe?g|tga|tif{1,2}|exr|bmp|webp)$", raw_name, re.I):
+                raw_name = f"{raw_name}.png"
+            dest = tex_dir / raw_name
+            img.filepath_raw = str(dest)
+            try:
+                img.save()
+                n += 1
+            except RuntimeError:
+                try:
+                    img.unpack(method="WRITE_LOCAL")
+                    n += 1
+                except RuntimeError:
+                    pass
+        except (ReferenceError, AttributeError):
+            continue
+    n += relocate_external_textures(tex_dir, out_dir)
+    return n
+
+
 def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str]:
     filepath = Path(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
-    arm = _pick_armature(objects)
+    allowed = {o for o in objects if o is not None}
+    # Пустышка-root и всё под ним — без объектов Шани из сцены.
+    arm = _pick_armature(list(allowed))
     if arm is None:
-        return False, "Нет armature"
+        return False, "Нет armature у существа (не у Шани)"
     scene = bpy.context.scene
     view_layer = bpy.context.view_layer
     for obj in bpy.data.objects:
         try:
-            obj.select_set(False)
+            if _object_in_view_layer(obj, view_layer):
+                obj.select_set(False)
         except RuntimeError:
             pass
     selected = []
     try:
-        if arm.hide_get():
-            arm.hide_set(False)
-        arm.select_set(True)
-        selected.append(arm.name)
+        safe_unhide_object(arm)
+        if _object_in_view_layer(arm, view_layer):
+            arm.select_set(True)
+            selected.append(arm.name)
+        else:
+            return False, "armature не в View Layer"
     except RuntimeError as exc:
         return False, f"armature: {exc}"
-    for obj in list(bpy.data.objects):
-        if obj.type != "MESH" or not _mesh_for_character(obj, arm):
+    for obj in list(allowed):
+        if obj.type != "MESH" or not _mesh_for_character(obj, arm, allowed=allowed):
             continue
         try:
-            if obj.hide_get():
-                obj.hide_set(False)
+            safe_unhide_object(obj)
+            if not _object_in_view_layer(obj, view_layer):
+                continue
             obj.select_set(True)
             selected.append(obj.name)
         except RuntimeError:
             pass
     if len(selected) < 2:
-        return False, "Нет skinned mesh для FBX"
+        return False, "Нет skinned mesh у существа для FBX"
+    try:
+        materialize_textures_beside_fbx(filepath.parent)
+    except Exception:
+        pass
     view_layer.objects.active = arm
     try:
         if bpy.context.mode != "OBJECT":
@@ -1345,7 +1407,7 @@ def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str]:
     except RuntimeError:
         pass
     with bpy.context.temp_override(scene=scene, view_layer=view_layer, active_object=arm):
-        bpy.ops.export_scene.fbx(
+        kwargs = dict(
             filepath=str(filepath),
             use_selection=True,
             object_types={"ARMATURE", "MESH"},
@@ -1356,9 +1418,14 @@ def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str]:
             mesh_smooth_type="FACE",
             apply_scale_options="FBX_SCALE_ALL",
         )
+        # COPY кладёт текстуры рядом с FBX (Blender 3/4).
+        try:
+            bpy.ops.export_scene.fbx(**kwargs, path_mode="COPY")
+        except TypeError:
+            bpy.ops.export_scene.fbx(**kwargs)
     if not filepath.is_file():
         return False, "FBX не записан"
-    return True, f"FBX: {filepath.name} ({len(selected)} obj)"
+    return True, f"FBX: {filepath.name} ({len(selected)} obj, без Шани)"
 
 
 def legs_hint(locomotion: str) -> str:

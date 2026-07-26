@@ -144,6 +144,27 @@ def set_window_geometry(config: Config, geometry: str) -> None:
     set_value(config, "window_geometry", geometry.strip())
 
 
+def _window_intersects_monitors(
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    monitors: list[tuple[int, int, int, int]],
+    *,
+    min_overlap_w: int = 80,
+    min_overlap_h: int = 40,
+) -> bool:
+    """True if enough of the window overlaps any current monitor rect."""
+    right = x + max(w, 1)
+    bottom = y + max(h, 1)
+    for left, top, right_m, bottom_m in monitors:
+        ow = min(right, right_m) - max(x, left)
+        oh = min(bottom, bottom_m) - max(y, top)
+        if ow >= min_overlap_w and oh >= min_overlap_h:
+            return True
+    return False
+
+
 def sanitize_window_geometry(
     geometry: str,
     *,
@@ -151,10 +172,11 @@ def sanitize_window_geometry(
     min_w: int = 920,
     min_h: int = 640,
 ) -> str:
-    """Сбросить геометрию, если окно уехало за экран (отрицательный X/Y или крошечное).
+    """Сбросить геометрию только если окно не пересекается ни с одним монитором.
 
-    Пример бага: ``920x1053+-1029+667`` — окно на отключённом левом мониторе,
-    Вью «запущена», но пользователь её не видит.
+    Левый монитор даёт отрицательный X (``+-1029``) — это нормально, пока
+    монитор в EnumDisplayMonitors. Старый порог ``x < -100`` каждый апдейт
+    тащил окно на основной дисплей.
     """
     import re
 
@@ -176,10 +198,19 @@ def sanitize_window_geometry(
     y = int(m.group(4).replace("+-", "-"))
     if w < min_w // 2 or h < min_h // 2:
         return default
-    # Сильно за левый/верхний край виртуального рабочего стола
-    if x < -100 or y < -50:
-        return f"{max(w, min_w)}x{max(h, min_h)}+80+60"
-    # Слишком далеко вправо/вниз (грубый порог без WinAPI)
-    if x > 6000 or y > 4000:
-        return f"{max(w, min_w)}x{max(h, min_h)}+80+60"
-    return raw
+
+    try:
+        from viu.integrations.screen.monitor import list_monitor_rects
+
+        monitors = list(list_monitor_rects() or [])
+    except Exception:  # noqa: BLE001
+        monitors = []
+    if not monitors:
+        monitors = [(0, 0, 1920, 1080)]
+
+    if _window_intersects_monitors(x, y, w, h, monitors):
+        return raw
+
+    # Нет пересечения ни с одним монитором (отключённый дисплей) — на первый.
+    left, top, _right, _bottom = monitors[0]
+    return f"{max(w, min_w)}x{max(h, min_h)}+{left + 80}+{top + 60}"

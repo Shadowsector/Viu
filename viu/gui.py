@@ -3116,19 +3116,7 @@ class ViuGUI:
         except OSError:
             pass
         try:
-            if os.name == "nt":
-                relaunch = root / "relaunch.cmd"
-                if relaunch.is_file():
-                    # start "" открывает новое окно/процесс; CREATE_NO_WINDOW + DETACHED
-                    # часто глотает relaunch.cmd — после «Обновить Вью» GUI не поднимается.
-                    subprocess.Popen(  # noqa: S603
-                        ["cmd.exe", "/c", "start", "", str(relaunch)],
-                        cwd=str(root),
-                        shell=False,
-                    )
-                    # Дать start успеть породить дочерний процесс.
-                    time.sleep(0.4)
-                    os._exit(0)
+            # Тихий pythonw + лог — без чёрных окон relaunch.cmd / python.exe.
             relaunch_gui()
         except OSError as exc:
             messagebox.showerror("Вью", f"Не удалось перезапустить: {exc}")
@@ -3260,11 +3248,13 @@ def build_relaunch_command(cwd: Path | None = None) -> tuple[list[str], str]:
     root = cwd or usable_git_root() or package_root()
     workdir = str(root)
     exe = sys.executable
-    # На Windows предпочитаем python.exe (не pythonw) — иначе silent fail.
-    if os.name == "nt" and exe.lower().endswith("pythonw.exe"):
-        py = Path(exe).with_name("python.exe")
-        if py.is_file():
-            exe = str(py)
+    # Windows: pythonw без консоли; ошибки — в viu_startup.log / MessageBox.
+    # VIU_SHOW_CONSOLE=1 оставляет python.exe для отладки.
+    if os.name == "nt" and not os.environ.get("VIU_SHOW_CONSOLE"):
+        if exe.lower().endswith("python.exe"):
+            pyw = Path(exe).with_name("pythonw.exe")
+            if pyw.is_file():
+                exe = str(pyw)
     run_gui = root / "run_gui.pyw"
     if run_gui.is_file():
         return [exe, str(run_gui)], workdir
@@ -3273,11 +3263,21 @@ def build_relaunch_command(cwd: Path | None = None) -> tuple[list[str], str]:
 
 def relaunch_gui() -> None:
     """Запустить новый процесс Viu (после release_single_instance)."""
+    # Дать старому процессу отпустить single-instance порт.
+    time.sleep(1.2)
     cmd, workdir = build_relaunch_command()
     kwargs: dict = {"cwd": workdir}
     if os.name == "nt":
-        # Не CREATE_NO_WINDOW — иначе pythonw/python без окна и без stderr.
-        kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        create_no_window = 0x08000000
+        new_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        kwargs["creationflags"] = create_no_window | new_group
+        log_path = Path(workdir) / "viu_startup.log"
+        try:
+            log_f = open(log_path, "a", encoding="utf-8")  # noqa: SIM115
+            kwargs["stdout"] = log_f
+            kwargs["stderr"] = subprocess.STDOUT
+        except OSError:
+            pass
     subprocess.Popen(cmd, **kwargs)  # noqa: S603
 
 
