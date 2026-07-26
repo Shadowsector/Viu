@@ -90,14 +90,16 @@ Lab\Creatures\Prepared\<slug>\<slug>_prepared.blend
 
 ```
 Lab\Creatures\Processed\<slug>\front.png, side.png   ← 1536², весь рост в кадре
-Lab\Creatures\Processed\<slug>\<slug>_ready.fbx      ← scale baked; текстуры embed
+Lab\Creatures\Processed\<slug>\<slug>_ready.fbx      ← экспорт с TEMP-дубликатов (сцена не ломается)
+Lab\Creatures\Processed\<slug>\<slug>_ready.blend    ← эталон для Blender (без FBX-скейла)
 Lab\Creatures\Processed\<slug>\textures\             ← только текстуры существа
+Lab\Creatures\Processed\<slug>\transform_log.json    ← scale/высоты для Вью
 Lab\Creatures\Processed\<slug>\texture_manifest.json
 ```
 
-Эталон FBX — **только существо** (Шаня и её текстуры не попадают в экспорт).  
-Перед записью bake scale с `VIU_CREATURE_ROOT` → риг и меш одного размера.  
-В статусе Blender: `текстур N` или `⚠ в материалах 0 текстур`.  
+**Как устроен scale:** после «Применить рост» scale с пустышки уходит на детей (root=1).  
+FBX пишется с **копий** armature+mesh (apply scale только на копиях) — окно студии не сжимается.  
+Для проверки в Blender удобнее открывать `_ready.blend`. FBX — для Unity.  
 Если модель «пустая» в сравнении — **Показать меши тела** / перезагрузка.
 
 Разметка из Blender попадает в `creature_catalog.json` (size_class, locomotion, рост, photo_ok).

@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 3, 3),
+    "version": (0, 3, 4),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -131,6 +131,9 @@ def _place_creature(root, objects, x_offset: float, target_h: float, body_mesh: 
     if pts:
         mins, _ = S.aabb_pts(pts)
         root.location.z -= mins.z
+    bpy.context.view_layer.update()
+    # Root scale → children (arm/mesh). Root stays 1 so FBX/dup export match viewport.
+    S.fold_root_scale_into_children(root)
     bpy.context.view_layer.update()
 
 
@@ -741,11 +744,23 @@ class VIU_OT_StudioSaveFbx(bpy.types.Operator):
         out_dir = Path(str(_SESSION.get("processed_root") or "")) / slug
         fbx = out_dir / f"{slug}_ready.fbx"
         try:
-            ok, msg = S.export_creature_fbx(fbx, export_objs)
+            # На всякий случай ещё раз сложить scale root→дети перед экспортом.
+            S.fold_root_scale_into_children(root)
+            target = float(entry.get("target_height_m") or props.target_height_m or 0)
+            ok, msg, tlog = S.export_creature_fbx(fbx, export_objs)
             if not ok:
                 self.report({"ERROR"}, msg)
                 return {"CANCELLED"}
             measured = S.height_of_objects(objs, _STATE.get("body_mesh") or "")
+            tlog = tlog or S.collect_transform_log(root, export_objs, target_height_m=target)
+            tlog["measured_height_m"] = measured
+            try:
+                (out_dir / "transform_log.json").write_text(
+                    json.dumps(tlog, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
             rows = S.audit_textures(export_objs)
             manifest = S.write_texture_manifest(
                 out_dir,
@@ -754,17 +769,31 @@ class VIU_OT_StudioSaveFbx(bpy.types.Operator):
                 packed_in_blend=False,
                 source_inbox=str(entry.get("prepared_path") or entry.get("path") or ""),
             )
+            # Эталон для Blender-roundtrip (без сюрпризов FBX) + FBX для Unity.
+            ready_blend = out_dir / f"{slug}_ready.blend"
+            try:
+                S.save_objects_blend(ready_blend, export_objs)
+            except Exception:
+                ready_blend = Path("")
             S.write_feedback_file(
                 _feedback_path(),
                 entry,
                 ready_fbx_path=str(fbx),
+                ready_blend_path=str(ready_blend) if ready_blend else "",
                 texture_manifest_path=str(manifest),
                 measured_height_m=measured,
-                target_height_m=float(entry.get("target_height_m") or props.target_height_m or 0),
+                target_height_m=target,
+                transform_log=tlog,
                 **_markup_fields(props, entry),
             )
-            # msg уже содержит scale baked + счётчик текстур (0 = в материалах пусто).
-            self.report({"INFO"}, f"{msg}; manifest OK")
+            arm_d = (tlog.get("armature") or {}).get("dimensions") or [0, 0, 0]
+            mesh_d = (tlog.get("body_mesh") or {}).get("dimensions") or [0, 0, 0]
+            self.report(
+                {"INFO"},
+                f"{msg}; h≈{measured:.2f}m (цель {target:.2f}); "
+                f"armZ≈{float(arm_d[2] if len(arm_d) > 2 else 0):.2f} "
+                f"meshZ≈{float(mesh_d[2] if len(mesh_d) > 2 else 0):.2f}",
+            )
         except Exception as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
