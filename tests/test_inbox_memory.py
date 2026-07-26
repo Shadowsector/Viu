@@ -10,10 +10,14 @@ from viu.viu_memory import (
     append_memory_line,
     ensure_viu_memory,
     extract_remember_payload,
+    format_reflect_block,
+    looks_like_memory_echo,
     process_reflect_exchange,
     read_viu_memory,
+    sanitize_poisoned_summaries,
     viu_memory_path,
     _SECTION_EXPLICIT,
+    _SECTION_SUMMARIES,
 )
 
 
@@ -80,3 +84,47 @@ def test_viu_memory_explicit_and_summary(tmp_path: Path, monkeypatch) -> None:
     append_memory_line(cfg, _SECTION_EXPLICIT, "- (test) duplicate")
     again = read_viu_memory(cfg)
     assert again.count("(test) duplicate") == 1
+
+
+def test_memory_echo_detection_and_sanitize(tmp_path: Path, monkeypatch) -> None:
+    from viu.config import Config
+
+    monkeypatch.setenv("VIU_ROOT", str(tmp_path / "Viu"))
+    root = tmp_path / "Viu"
+    root.mkdir()
+    cfg = Config(root=root, data_dir=root / ".viu")
+
+    dump = (
+        "# Память Вью\n\n## Явные записи\n\n"
+        "<!-- сюда попадает «запомни» -->\n\n"
+        "## Привычки и предпочтения\n\n- мяу\n"
+    )
+    assert looks_like_memory_echo(dump)
+    assert not looks_like_memory_echo("Конечно, Ден — продолжаю по студии.")
+
+    ensure_viu_memory(cfg)
+    path = viu_memory_path(cfg)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace(
+        _SECTION_SUMMARIES,
+        _SECTION_SUMMARIES
+        + "\n\n- (2026-07-25) Ден: как там? → Вью: # Память Вью ## Явные записи\n"
+        + "- (ok) Ден: привет → Вью: мяу, гладьки\n",
+    )
+    path.write_text(text, encoding="utf-8")
+    removed = sanitize_poisoned_summaries(cfg)
+    assert removed >= 1
+    cleaned = path.read_text(encoding="utf-8")
+    assert "# Память Вью ## Явные" not in cleaned
+    assert "мяу, гладьки" in cleaned
+
+    append_memory_line(cfg, _SECTION_EXPLICIT, "- (2026-07-26) не трогай Inbox")
+    block = format_reflect_block(cfg)
+    assert "не трогай Inbox" in block
+    assert "Итоги чатов" not in block
+    assert "Явные:" in block
+
+    # Эхо-ответ не пишется в итоги
+    before = path.read_text(encoding="utf-8")
+    process_reflect_exchange(cfg, "Вью, как там?", dump, source="chat")
+    assert path.read_text(encoding="utf-8") == before

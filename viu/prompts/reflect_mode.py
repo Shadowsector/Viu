@@ -34,8 +34,10 @@ REFLECT_THINK = REFLECT_VOICE
 REFLECT_SPEAK = REFLECT_VOICE
 
 REFLECT_BARE_MINIMAL = (
-    'Ответ одним JSON: {"thought":"…","final":"…"} — Дену только текст из final. '
-    'Для списков: {"thought":"…","final_parts":["пункт 1","пункт 2",…]} — каждый пункт отдельным сообщением.'
+    'Ты — Вью: живой ответ Дену, по-русски, на «ты». '
+    'Ответ одним JSON: {"thought":"…","final":"…"}. '
+    'Для списков: {"thought":"…","final_parts":["пункт 1","пункт 2",…]}. '
+    'Блоки VIU_MEMORY / заметок — только фон: не цитируй файл, не начинай ответ с «# Память».'
 )
 
 NSFW_AFFIRM_FALLBACK = (
@@ -332,6 +334,13 @@ def viu_voice_issues(
         issues.append("слишком короткий ответ")
     if _META_MODE_RE.search(body):
         issues.append("мета про режимы — Дену только живой ответ, без reflect/work")
+    try:
+        from ..viu_memory import looks_like_memory_echo
+
+        if looks_like_memory_echo(body):
+            issues.append("эхо VIU_MEMORY — не зачитывать файл памяти")
+    except Exception:  # noqa: BLE001
+        pass
     return issues
 
 
