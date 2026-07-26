@@ -1,4 +1,8 @@
-"""Маршрутизация: reflect (думать) vs work (делать)."""
+"""Маршрутизация: reflect (простой разговор) vs work (работа инструментами).
+
+По умолчанию — reflect. Work только при явной команде действовать.
+Голое «Попробуешь?» больше не уводит чат в tools — нужен глагол/цель рядом.
+"""
 
 from __future__ import annotations
 
@@ -23,11 +27,20 @@ _DO_WORK_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# «Попробуй/ешь …» только с действием — иначе это обычный чат.
+_TRY_WITH_ACTION_RE = re.compile(
+    r"попробу(?:й|ешь|йте)\b.{0,60}(?:"
+    r"сдела|выполн|запуст|собер|встрой|вылож|отправ|опублик|откры|"
+    r"провер|напиш|прогна|скан|"
+    r"github|гитхаб|handoff|cursor|курсор|unity|overlay|оверлей|comfy|inbox|шаг"
+    r")",
+    re.IGNORECASE | re.DOTALL,
+)
+
 # Старт / handoff / GitHub+Cursor — Ден просит не болтать, а делать.
 _ACTION_INTENT_RE = re.compile(
     r"(?:"
-    r"попробу(?:й|ешь|йте)|"
-    r"начни(?:ть|те)?|"
+    r"начни(?:ть|те)?\b|"
     r"стартуй|"
     r"приступай|"
     r"(?:вылож|запиши|отправ|опублику)(?:\w*\s+){0,8}(?:на\s+)?github|"
@@ -54,7 +67,7 @@ _GITHUB_DIAGNOSE_RE = re.compile(
 
 
 def route_telegram_message(text: str, *, waiting_for_user: bool = False) -> str:
-    """``reflect`` | ``work``."""
+    """``reflect`` (чат) | ``work`` (инструменты). По умолчанию — reflect."""
     if waiting_for_user:
         return "reflect"
     t = (text or "").strip()
@@ -63,6 +76,8 @@ def route_telegram_message(text: str, *, waiting_for_user: bool = False) -> str:
     if _EXPLICIT_WORK_RE.search(t):
         return "work"
     if _DO_WORK_RE.search(t):
+        return "work"
+    if _TRY_WITH_ACTION_RE.search(t):
         return "work"
     if _ACTION_INTENT_RE.search(t):
         return "work"

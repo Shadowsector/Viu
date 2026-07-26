@@ -18,8 +18,14 @@ def test_github_cursor_message_is_work():
     assert route_telegram_message(msg) == "work"
 
 
-def test_poprobuyesh_is_work():
-    assert route_telegram_message("Попробуешь?") == "work"
+def test_poprobuyesh_alone_is_reflect():
+    """Голое «Попробуешь?» — чат, не tools."""
+    assert route_telegram_message("Попробуешь?") == "reflect"
+
+
+def test_poprobuyesh_with_action_is_work():
+    assert route_telegram_message("Попробуешь выложить на GitHub?") == "work"
+    assert route_telegram_message("попробуй сделать следующий шаг") == "work"
 
 
 def test_github_diagnose_routes_work():

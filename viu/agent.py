@@ -643,14 +643,25 @@ class Agent:
             no_sys = reflect_no_system()
             system = REFLECT_BARE_MINIMAL if no_sys else REFLECT_BARE
             user_msg = user_text
+            extra_user_blocks: list[str] = []
+
+            def _attach(block: str) -> None:
+                nonlocal system
+                if not block:
+                    return
+                if no_sys:
+                    extra_user_blocks.append(block)
+                else:
+                    system += block if block.startswith("\n") else ("\n\n" + block)
+
             hint = list_delivery_hint(user_text)
             if hint:
-                system += hint
+                _attach(hint)
             try:
                 from .integrations.comfy.prompt_edit import is_comfy_short_task
 
                 if is_comfy_short_task(user_text):
-                    system += (
+                    _attach(
                         "\n\n--- Comfy/Wan ---\n"
                         "Ден просит короткий EN-промпт / действие для ComfyUI, "
                         "не сценарий игры. В final: 1–3 предложения, без эмодзи, "
@@ -667,25 +678,20 @@ class Agent:
                 # иначе system отбрасывается и привычки/«запомни» не доходят.
                 mem = format_reflect_block(self.config)
                 if mem:
-                    if no_sys:
-                        user_msg = user_text + "\n\n" + mem
-                    else:
-                        system += "\n\n" + mem
+                    _attach(mem)
             except Exception:  # noqa: BLE001
                 pass
             if needs_plot_file_context(user_text):
                 plot_notes = build_reflect_notes_plot(self.config)
                 if plot_notes:
                     plot_ctx = True
-                    plot_block = (
+                    _attach(
                         "--- Канон сюжета и квестов (читай, не выдумывай; "
                         "не зачитывай markdown списком) ---\n"
                         + plot_notes
                     )
-                    if no_sys:
-                        user_msg = user_msg + "\n\n" + plot_block
-                    else:
-                        system += "\n\n" + plot_block
+            if extra_user_blocks:
+                user_msg = user_text + "\n\n" + "\n\n".join(extra_user_blocks)
 
         messages: List[Dict[str, str]] = []
         if not (reflect_no_system() and not heartbeat):
