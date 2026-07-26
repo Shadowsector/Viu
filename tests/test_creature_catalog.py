@@ -382,11 +382,32 @@ def test_set_size_custom_height(tmp_path, monkeypatch):
 
 
 def test_suggest_facehug_and_croc():
-    assert "small" in suggest_size_from_name("Facehugger_v2")
+    assert "insect" in suggest_size_from_name("Facehugger_v2")
     assert "large" in suggest_size_from_name("Renekton_Croc")
     assert "mini" in suggest_size_from_name("FAIRIE_bee")
     assert "humanoid" in suggest_size_from_name("Lilia_Centauress")
     assert "large" in suggest_size_from_name("Bareoth_Werewolf_1")
+
+
+def test_special_size_classes_and_suggestions():
+    from viu.creature_catalog.models import (
+        ALL_SIZE_IDS,
+        SPECIAL_SIZE_CLASSES,
+        size_spec,
+        suggest_locomotion_from_name,
+    )
+
+    for sid in ("insect", "blob", "prop", "tentacle_med"):
+        assert sid in ALL_SIZE_IDS
+        assert sid in SPECIAL_SIZE_CLASSES
+        assert size_spec(sid) is not None
+    assert "prop" in suggest_size_from_name("Mimic_Chest_01")
+    assert suggest_locomotion_from_name("Mimic_Chest_01") == "mimic"
+    assert "blob" in suggest_size_from_name("Green_Slime")
+    assert suggest_locomotion_from_name("Green_Slime") == "amorph"
+    assert "insect" in suggest_size_from_name("Cave_Spider")
+    assert "tentacle_med" in suggest_size_from_name("Octopus_kraken")
+    assert suggest_locomotion_from_name("Octopus_kraken") == "tentacle"
 
 
 def test_creature_studio_session_and_sync(tmp_path, monkeypatch):

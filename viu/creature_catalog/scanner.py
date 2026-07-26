@@ -124,7 +124,7 @@ def scan_creatures_inbox(config: Config) -> Tuple[int, int, str]:
 
 
 def list_size_classes_text() -> str:
-    from .models import QUAD_SIZE_CLASSES, SIZE_CLASSES
+    from .models import QUAD_SIZE_CLASSES, SIZE_CLASSES, SPECIAL_SIZE_CLASSES
 
     lines = ["Классы роста (target ± допуск):", "", "Бипеды / антропоморфы:"]
     for sid, spec in SIZE_CLASSES.items():
@@ -135,6 +135,13 @@ def list_size_classes_text() -> str:
     lines.append("")
     lines.append("Четвероногие (высота):")
     for sid, spec in QUAD_SIZE_CLASSES.items():
+        lines.append(
+            f"  • `{sid}` — {spec['label_ru']}: "
+            f"target {spec['target_m']}m ({spec['min_m']}–{spec['max_m']}) — {spec['notes']}"
+        )
+    lines.append("")
+    lines.append("Особые (мимик / слизень / насекомое / щупальца) — locomotion отдельно:")
+    for sid, spec in SPECIAL_SIZE_CLASSES.items():
         lines.append(
             f"  • `{sid}` — {spec['label_ru']}: "
             f"target {spec['target_m']}m ({spec['min_m']}–{spec['max_m']}) — {spec['notes']}"

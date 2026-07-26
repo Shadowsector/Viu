@@ -398,19 +398,61 @@ def import_asset(path: Path, *, for_shanya: bool = False, target_coll=None):
 
 
 def wrap_root(imported, root_name="VIU_CREATURE_ROOT", target_coll=None):
+    """Wrap imported objects under an empty. Reuse existing root from prepared.blend."""
+    coll = target_coll or bpy.context.collection
+    imported_list = list(imported or [])
+    existing = next((o for o in imported_list if o.name == root_name), None)
+    if existing is not None:
+        if target_coll is not None and existing.name not in target_coll.objects:
+            try:
+                target_coll.objects.link(existing)
+            except RuntimeError:
+                pass
+        bpy.context.view_layer.update()
+        return existing
     root = bpy.data.objects.new(root_name, None)
     root.empty_display_type = "PLAIN_AXES"
     root.empty_display_size = 0.2
-    coll = target_coll or bpy.context.collection
     coll.objects.link(root)
-    imported_set = set(imported)
-    for o in imported:
+    imported_set = set(imported_list)
+    for o in imported_list:
         if o.parent is None or o.parent not in imported_set:
             mw = o.matrix_world.copy()
             o.parent = root
             o.matrix_world = mw
     bpy.context.view_layer.update()
     return root
+
+
+def absorb_direct_fbx_scales(root) -> float:
+    """Absorb only classic FBX scales (10 / 100) on *direct* children into root.
+
+    Deep normalize/fold was twisting Blue Devil / faces — wardrobe never did that.
+    """
+    if root is None:
+        return 1.0
+    absorbed = 1.0
+    for ch in list(root.children):
+        u = uniform_scale_value(ch)
+        if u is None:
+            continue
+        if not (abs(u - 10.0) < 0.05 or abs(u - 100.0) < 0.5):
+            continue
+        try:
+            mw = ch.matrix_world.copy()
+            root.scale = (
+                float(root.scale[0]) * u,
+                float(root.scale[1]) * u,
+                float(root.scale[2]) * u,
+            )
+            ch.scale = (1.0, 1.0, 1.0)
+            bpy.context.view_layer.update()
+            ch.matrix_world = mw
+            absorbed *= u
+        except (ReferenceError, AttributeError, RuntimeError):
+            continue
+    bpy.context.view_layer.update()
+    return absorbed
 
 
 def mesh_points(obj, depsgraph):
@@ -1207,12 +1249,17 @@ def set_mesh_viewport_visible(obj, visible: bool) -> None:
         return
     hidden = not visible
     try:
-        obj.hide_set(hidden)
         obj.hide_render = hidden
         try:
             obj.hide_viewport = hidden
         except AttributeError:
             pass
+        # hide_set только если объект в View Layer — иначе RuntimeError и меш «пропадает».
+        if _object_in_view_layer(obj):
+            try:
+                obj.hide_set(hidden)
+            except RuntimeError:
+                pass
         for attr in (
             "visible_camera",
             "visible_diffuse",

@@ -81,7 +81,7 @@ Lab\Creatures\Prepared\<slug>\<slug>_prepared.blend
 2. Blender → **Viu — студия** (N-панель):
    1. **Класс** + **Locomotion** (+ гениталии / контакт) → **Применить разметку**
    2. Сравни с **Шаней** слева; выставь **Рост (м)** → **Применить рост**  
-      Смотри scale у пустышки **`VIU_CREATURE_ROOT`**, не у арматуры: FBX часто держит scale=10 на риге — кнопка переносит его на root и подгоняет к целевым метрам.
+      Смотри scale у пустышки **`VIU_CREATURE_ROOT`**, не у арматуры: FBX часто держит scale=10 на риге — студия переносит **только 10/100** на root и подгоняет рост (без fold в кости).
    3. **Снять скрины** → **Сохранить эталон FBX** (только существо, не Шаня)
    4. **Скрины ок** или **Заметка для Вью**
 3. **Синхр. студии** во Вью — иначе каталог не увидит FBX/разметку
@@ -97,10 +97,22 @@ Lab\Creatures\Processed\<slug>\transform_log.json    ← scale/высоты дл
 Lab\Creatures\Processed\<slug>\texture_manifest.json
 ```
 
-**Как устроен scale:** после «Применить рост» scale с пустышки уходит на детей (root=1).  
+**Как устроен scale:** рост живёт на пустышке **`VIU_CREATURE_ROOT`** (как в wardrobe). Студия **не** делает deep-normalize / fold scale в кости — от этого кривились морды и Blue Devil.  
+При загрузке снимается только классический FBX scale **10/100** с прямых детей на root.  
 FBX пишется с **копий** armature+mesh (apply scale только на копиях) — окно студии не сжимается.  
 Для проверки в Blender удобнее открывать `_ready.blend`. FBX — для Unity.  
-Если модель «пустая» в сравнении — **Показать меши тела** / перезагрузка.
+Если модель «пустая» — **Показать меши тела** / **Перезагрузить**. Если prepared уже был испорчен старой студией — пересобери из Inbox (**Подготовить модели**).  
+**Bursting Head** — только вручную (кнопка), не при каждой загрузке.
+
+### Классы роста
+
+| Группа | id |
+|--------|-----|
+| Бипеды | `mini` · `small` · `humanoid` · `large` · `huge` |
+| Четвероногие | `quad_mini` · `quad_med` · `quad_large` |
+| Особые | `insect` · `blob` · `prop` · `tentacle_med` |
+
+**Класс ≠ locomotion.** Мимик: класс `prop`, locomotion `mimic`. Слизень: `blob` + `amorph`. Паук: `insect` + `quadruped`/`unknown`. Осьминог: `tentacle_med` + `tentacle`.
 
 Разметка из Blender попадает в `creature_catalog.json` (size_class, locomotion, рост, photo_ok).
 
