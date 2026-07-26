@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-26T15:41:47Z",
+  "updated_at": "2026-07-26T15:48:51Z",
   "note": "Reflect/work modes locked. Re-queue PNG probe after tool landed.",
   "tasks": [
     {
@@ -19,7 +19,7 @@
     },
     {
       "id": "png-char-cards-probe-20260726b",
-      "status": "in_progress",
+      "status": "done",
       "priority": 2,
       "title": "Probe PNG character cards in U:\\TempUnityCard (retry)",
       "created_by": "Cursor",
@@ -32,7 +32,9 @@
       },
       "instructions": "Повтор: прошлый запуск упал с «Нет инструмента» до обновления кода. Сейчас character_card_probe уже в сборке. Прогони U:\\TempUnityCard, handoff отчёт Cursor. Не зови Дена.",
       "acceptance": "summary_json в отчёте; with_json>=1 или WARN с сырыми находками.",
-      "started_at": "2026-07-26T15:41:47Z"
+      "started_at": "2026-07-26T15:41:47Z",
+      "result": "PNG character-card probe: 40 file(s)\n\n============================================================\nFILE: U:\\TempUnityCard\\AI_002103.png\nok=True size=1812328 252x352 err=''\nchunks: IHDR, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IEND\nafter_iend_bytes=1685535\npayloads: 1\n  [0] source=after_iend kind=text bytes=2399352 notes=''\n      preview:\n      d\u0000\u0000\u0000\u000fãAIS_Charaã\u00051.0.0\u0000\u0000\u0000\u0000$2014543c-7e27-4887-8b6f-2d7f24c1595b$b93efbfa-8e83-4638-854c-2fad718e6024`\u0001\u0000\u0000§lstInfo¤name¤KKEx§version¡3£posÍPF¤sizeÎ\u0000\u0019f\u0005¤name¦Custom§version¥0.0.0£pos\u0000¤sizeÍ\u000fÏ¤nameªCoordinate§version¥0.0.0£posÍ\u000fÏ¤sizeÍ8{¤name©Parameter§version¥0.0.1£posÍHJ¤sizeo¤name¨GameInfo§version¥0.0.0£posÍH¹¤sizeÍ\u0001ó¤name¦Status§version¥0.0.0£posÍJ¬¤sizeÍ\u00038¤nameªParameter2§version¥0.0.0£posÍMä¤sizeD¤name©GameInfo2§version¥0.0.0£posÍN(¤sizeÍ\u0002\n      K¶\u0019\u0000\u0000\u0000\u0000\u0000\"\u0006\u0000\u0000Þ\u0000\u001a§version¥0.0.2®shapeValue\n\n============================================================\nFILE: U:\\TempUnityCard\\AI_003056.png\nok=True size=1393506 252x352 err=''\nchunks: IHDR, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IEND\nafter_iend_bytes=1252677\npayloads: 1\n  [0] source=after_iend kind=text bytes=1715800 notes=''\n      preview:\n      d\u0000\u0000\u0000\u000fãAIS_Charaã\u00051.0.0\u0000\u0000\u0000\u0000$2f95dc30-4af3-4e2e-bd6a-9760ce3f2ffd$088b1ee6-84f7-48a4-97aa-4f58426f208f`\u0001\u0000\u0000§lstInfo¤name¤KKEx§version¡3£posÍPi¤sizeÎ\u0000\u0012Ë\b¤name¦Custom§version¥0.0.0£pos\u0000¤sizeÍ\u000fË¤nameªCoordinate§version¥0.0.0£posÍ\u000fË¤sizeÍ8 ¤name©Parameter§version¥0.0.1£posÍHk¤sizeq¤name¨GameInfo§version¥0.0.0£posÍHÜ¤sizeÍ\u0001ó¤name¦Status§version¥0.0.0£posÍJÏ¤sizeÍ\u00038¤nameªParameter2§version¥0.0.0£posÍN\u0007¤sizeD¤name©GameInfo2§version¥0.0.0£posÍNK¤sizeÍ\u0002\n      q\u001b\u0013\u0000\u0000\u0000\u0000\u0000\n      \u0006\u0000\u0000Þ\u0000\u001a§version¥0.0.2®shapeValue\n\n============================================================\nFILE: U:\\TempUnityCard\\AI_003622.png\nok=True size=9885139 252x352 err=''\nchunks: IHDR, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IEND\nafter_iend_bytes=9770010\npayloads: 1\n  [0] source=after_iend kind=text bytes=14945347 notes=''\n      preview:\n      d\u0000\u0000\u0000\u000fãAIS_Charaã\u00051.0.0\u0000\u0000\u0000\u0000$ad12aa09-e36b-4208-ad7a-f28f2227660b$bd45d5e5-c79d-486a-bb8b-aa375c2acf44`\u0001\u0000\u0000§lstInfo¤name¤KKEx§version¡3£posÍO¸¤sizeÎ\u0000Â¤name¦Custom§version¥0.0.0£pos\u0000¤sizeÍ\u000f¤nameªCoordinate§version¥0.0.0£posÍ\u000f¤sizeÍ81¤name©Parameter§version¥0.0.1£posÍGÃ¤sizeh¤name¨GameInfo§version¥0.0.0£posÍH+¤sizeÍ\u0001ó¤name¦Status§version¥0.0.0£posÍJ\n      ¤sizeÍ\u00038¤nameªParameter2§version¥0.0.0£posÍMV¤sizeD¤name©GameInfo2§version¥0.0.0£posÍM¤sizeÍ\u0002\n      F\u0012\u0000\u0000\u0000\u0000\u0000!\u0006\u0000\u0000Þ\u0000\u001a§version¥0.0.2®shapeValue\n\n============================================================\nFILE: U:\\TempUnityCard\\AI_005108.png\nok=True size=11323547 252x352 err=''\nchunks: IHDR, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IDAT, IEND\nafter_iend_bytes=11185920\npayloads: 1\n  [0] source=after_iend kind=text bytes=17093536 notes=''\n      preview:\n      d\u0000\u0000\u0000\u000fãAIS_Charaã\u00051.0.0\u0000\u0000\u0000\u0000$e1bcbe9f-874d-4381-bc93-70238f01888c$23cfe99f-8950-4095-a3b5-eb3dbc5ee911\u0007\u0001\u0000\u0000§lstInfo¤name¤KKEx§version¡3£posÍL\n      ¤sizeÎ\u0000ªag¤name¦Custom§version¥0.0.0£pos\u0000¤sizeÍ\u000en¤nameªCoordinate§version¥0.0.0£posÍ\u000en¤sizeÍ82¤name©Parameter§version¥0.0.1£posÍF ¤sized¤name¨GameInfo§version¥0.0.0£posÍG\u0004¤sizeÍ\u0001ó¤name¦Status§version¥0.0.0£posÍH÷¤sizeÍ\u0003'\n      ­ª\u0000\u0000\u0000\u0000\u0000!\u0006\u0000\u0000Þ\u0000\u001a§version¥0.0.2®shapeValueFaceÜ\u0000;Ê?\u0012ì\u000eÊ¿\u0000\u0000Ê?·\u0019êÊ@@\u0000\u0000Ê½§f",
+      "finished_at": "2026-07-26T15:48:51Z"
     }
   ]
 }
