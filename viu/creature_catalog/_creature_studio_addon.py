@@ -458,10 +458,13 @@ class VIU_OT_StudioApplyHeight(bpy.types.Operator):
         target = float(props.target_height_m or entry.get("target_height_m") or 1.0)
         bm = props.body_mesh if props.body_mesh and props.body_mesh != "AUTO" else (_STATE.get("body_mesh") or "")
         before = S.height_of_objects(objs, bm if bm else "")
+        pre_child = 1.0
+        for o in objs:
+            u = S.uniform_scale_value(o)
+            if u is not None and u > pre_child:
+                pre_child = u
         root.scale = (1.0, 1.0, 1.0)
         bpy.context.view_layer.update()
-        absorbed = S.normalize_uniform_scales_under_root(root)
-        # Place measures+fits; normalize inside is a no-op if children already folded.
         _place_creature(root, objs, float(_SESSION.get("creature_offset_m") or 1.35), target, bm)
         measured = S.height_of_objects(objs, bm if bm else "")
         entry["target_height_m"] = target
@@ -479,7 +482,7 @@ class VIU_OT_StudioApplyHeight(bpy.types.Operator):
             if u is not None and abs(u - 1.0) > 0.05:
                 leftover.append(f"{o.name}={u:.3g}")
         warn = f" ⚠ residual {', '.join(leftover[:3])}" if leftover else ""
-        abs_txt = f", FBX scale×{absorbed:.3g}→{_ROOT}" if abs(absorbed - 1.0) > 1e-3 else ""
+        abs_txt = f", был scale×{pre_child:.3g} на детях" if pre_child > 1.05 else ""
         self.report(
             {"INFO"},
             f"Рост {before:.2f}→{measured:.2f}м (цель {target:.2f}); "
