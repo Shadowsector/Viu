@@ -603,6 +603,7 @@ class Agent:
             AWAY_PING_TASK,
             HEARTBEAT_SYSTEM,
             HEARTBEAT_TASK,
+            REFLECT_BARE,
             REFLECT_BARE_MINIMAL,
             reflect_include_story_history,
             reflect_no_history,
@@ -637,7 +638,10 @@ class Agent:
                 system = HEARTBEAT_SYSTEM
                 user_msg = HEARTBEAT_TASK
         else:
-            system = REFLECT_BARE_MINIMAL
+            # При NO_SYSTEM system не уходит в Ollama (личность в Modelfile).
+            # Если system всё же шлём — полный REFLECT_VOICE, не урезанный minimal.
+            no_sys = reflect_no_system()
+            system = REFLECT_BARE_MINIMAL if no_sys else REFLECT_BARE
             user_msg = user_text
             hint = list_delivery_hint(user_text)
             if hint:
@@ -659,22 +663,29 @@ class Agent:
             try:
                 from .viu_memory import format_reflect_block
 
-                # В system, не в user: склейка памяти к реплике Дена заставляла
-                # модели зачитывать VIU_MEMORY.md вместо ответа.
+                # Короткий digest (не весь файл). При NO_SYSTEM=1 — в user,
+                # иначе system отбрасывается и привычки/«запомни» не доходят.
                 mem = format_reflect_block(self.config)
                 if mem:
-                    system += "\n\n" + mem
+                    if no_sys:
+                        user_msg = user_text + "\n\n" + mem
+                    else:
+                        system += "\n\n" + mem
             except Exception:  # noqa: BLE001
                 pass
             if needs_plot_file_context(user_text):
                 plot_notes = build_reflect_notes_plot(self.config)
                 if plot_notes:
                     plot_ctx = True
-                    system += (
-                        "\n\n--- Канон сюжета и квестов (читай, не выдумывай; "
+                    plot_block = (
+                        "--- Канон сюжета и квестов (читай, не выдумывай; "
                         "не зачитывай markdown списком) ---\n"
                         + plot_notes
                     )
+                    if no_sys:
+                        user_msg = user_msg + "\n\n" + plot_block
+                    else:
+                        system += "\n\n" + plot_block
 
         messages: List[Dict[str, str]] = []
         if not (reflect_no_system() and not heartbeat):
