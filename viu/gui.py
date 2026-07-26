@@ -98,9 +98,10 @@ class ViuGUI:
             self._story_ingest_msg = ""
 
         try:
-            from .viu_memory import ensure_viu_memory
+            from .viu_memory import ensure_viu_memory, sanitize_poisoned_summaries
 
             ensure_viu_memory(self.agent.config)
+            sanitize_poisoned_summaries(self.agent.config)
         except OSError:
             pass
 

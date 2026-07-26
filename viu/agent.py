@@ -659,22 +659,20 @@ class Agent:
             try:
                 from .viu_memory import format_reflect_block
 
+                # В system, не в user: склейка памяти к реплике Дена заставляла
+                # модели зачитывать VIU_MEMORY.md вместо ответа.
                 mem = format_reflect_block(self.config)
                 if mem:
-                    user_msg = (
-                        user_text
-                        + "\n\n--- Память Вью (учитывай, не зачитывай списком) ---\n"
-                        + mem
-                    )
+                    system += "\n\n" + mem
             except Exception:  # noqa: BLE001
                 pass
             if needs_plot_file_context(user_text):
                 plot_notes = build_reflect_notes_plot(self.config)
                 if plot_notes:
                     plot_ctx = True
-                    user_msg = (
-                        user_msg
-                        + "\n\n--- Канон сюжета и квестов (читай, не выдумывай) ---\n"
+                    system += (
+                        "\n\n--- Канон сюжета и квестов (читай, не выдумывай; "
+                        "не зачитывай markdown списком) ---\n"
                         + plot_notes
                     )
 
@@ -810,6 +808,8 @@ class Agent:
             return result
 
         max_words = reflect_max_words_per_part(self.config)
+        from .viu_memory import looks_like_memory_echo
+
         for attempt in range(4):
             self._maybe_dump_reflect_request(
                 mode="bare",
@@ -827,10 +827,35 @@ class Agent:
                 result.completed = True
                 return result
             text, thought, truncated, parsed = parse_reflect_response(raw)
+            candidate = (text or "").strip()
+            if not candidate and raw and raw.strip():
+                candidate = raw.strip()[:4000]
+            if candidate and looks_like_memory_echo(candidate):
+                self._log(f"REFLECT_MEMORY_ECHO attempt={attempt}")
+                if attempt < 3:
+                    messages.append({"role": "assistant", "content": raw or ""})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Не зачитывай VIU_MEMORY / «Память Вью». "
+                                'Живой короткий ответ Дену в JSON: {"final":"…"}'
+                            ),
+                        }
+                    )
+                    continue
+                result.final = (
+                    "Ой, я чуть память вместо ответа не выдала. "
+                    "Повтори, пожалуйста — я на связи."
+                )
+                result.completed = True
+                return result
             if text and not truncated:
                 return _accept(text, thought or "", parsed)
             if text and truncated and attempt >= 2:
                 salvaged = salvage_partial_final(raw)
+                if salvaged and looks_like_memory_echo(salvaged):
+                    continue
                 if salvaged:
                     return _accept(salvaged, "salvage", parsed, initial_truncated=True)
                 return _accept(text, thought or "", parsed, initial_truncated=True)

@@ -83,14 +83,119 @@ def read_viu_memory(config: Config, *, max_chars: int = 3200) -> str:
     return text
 
 
-def format_reflect_block(config: Config, *, max_chars: int = 2800) -> str:
-    body = read_viu_memory(config, max_chars=max_chars).strip()
+_MEMORY_ECHO_MARKERS = (
+    "# Память Вью",
+    "## Явные записи",
+    "## Привычки и предпочтения",
+    "## Референсы (вдохновение)",
+    "## Итоги чатов",
+    "--- VIU_MEMORY",
+    "--- Память Вью",
+)
+
+
+def looks_like_memory_echo(text: str) -> bool:
+    """Ответ модели = дамп VIU_MEMORY.md (после склейки памяти в user-msg)."""
+    body = (text or "").strip()
     if not body:
+        return False
+    hits = sum(1 for m in _MEMORY_ECHO_MARKERS if m in body)
+    if hits >= 2:
+        return True
+    if body.lstrip().startswith("# Память Вью"):
+        return True
+    if "<!-- сюда попадает" in body or "<!-- короткие summary" in body:
+        return True
+    return False
+
+
+def _strip_html_comments(text: str) -> str:
+    return re.sub(r"<!--.*?-->", "", text or "", flags=re.DOTALL)
+
+
+def _section_body(text: str, section_header: str) -> str:
+    idx = text.find(section_header)
+    if idx < 0:
         return ""
+    after = idx + len(section_header)
+    rest = text[after:]
+    next_h = re.search(r"\n## ", rest)
+    chunk = rest[: next_h.start()] if next_h else rest
+    lines = []
+    for raw in chunk.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("<!--"):
+            continue
+        lines.append(raw.rstrip())
+    return "\n".join(lines).strip()
+
+
+def format_reflect_block(config: Config, *, max_chars: int = 1600) -> str:
+    """Короткий digest для reflect — без «Итогов чатов» (они провоцируют эхо)."""
+    try:
+        sanitize_poisoned_summaries(config)
+    except OSError:
+        pass
+    raw = read_viu_memory(config, max_chars=12000)
+    if not raw:
+        return ""
+    text = _strip_html_comments(raw)
+    parts: list[str] = []
+    for header, label in (
+        (_SECTION_EXPLICIT, "Явные"),
+        (_SECTION_PREFS, "Привычки"),
+        (_SECTION_REFS, "Референсы"),
+    ):
+        body = _section_body(text, header)
+        if body:
+            parts.append(f"{label}:\n{body}")
+    digest = "\n\n".join(parts).strip()
+    if not digest:
+        return ""
+    if len(digest) > max_chars:
+        digest = digest[:max_chars].rstrip() + "\n…"
     return (
-        "--- VIU_MEMORY (редактируемая память; опирайся, не зачитывай списком) ---\n"
-        + body
+        "--- VIU_MEMORY (опирайся тихо; НЕ цитируй и НЕ пересказывай файл целиком) ---\n"
+        + digest
     )
+
+
+def sanitize_poisoned_summaries(config: Config) -> int:
+    """Убрать из «Итоги чатов» строки, где Вью зачитала память вместо ответа."""
+    path = viu_memory_path(config)
+    if not path.is_file():
+        return 0
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return 0
+    if _SECTION_SUMMARIES not in text:
+        return 0
+    idx = text.find(_SECTION_SUMMARIES)
+    head = text[: idx + len(_SECTION_SUMMARIES)]
+    rest = text[idx + len(_SECTION_SUMMARIES) :]
+    next_h = re.search(r"\n## ", rest)
+    section = rest[: next_h.start()] if next_h else rest
+    tail = rest[next_h.start() :] if next_h else ""
+    kept: list[str] = []
+    removed = 0
+    for line in section.splitlines():
+        if looks_like_memory_echo(line) or (
+            line.strip().startswith("-")
+            and any(m in line for m in ("# Память Вью", "## Явные", "VIU_MEMORY"))
+        ):
+            removed += 1
+            continue
+        kept.append(line)
+    if removed <= 0:
+        return 0
+    new_section = "\n".join(kept)
+    if not new_section.startswith("\n"):
+        new_section = "\n" + new_section
+    if not new_section.endswith("\n"):
+        new_section += "\n"
+    path.write_text(head + new_section + tail, encoding="utf-8")
+    return removed
 
 
 def _load_meta(config: Config) -> dict:
@@ -226,8 +331,8 @@ def record_reference_inspiration(config: Config, entry) -> None:
 
 
 def _one_line_summary(user_text: str, assistant_text: str) -> str:
-    u = re.sub(r"\s+", " ", user_text).strip()[:200]
-    a = re.sub(r"\s+", " ", assistant_text).strip()[:200]
+    u = re.sub(r"\s+", " ", user_text).strip()[:160]
+    a = re.sub(r"\s+", " ", assistant_text).strip()[:160]
     return f"Ден: {u} → Вью: {a}"
 
 
@@ -238,6 +343,9 @@ def maybe_record_chat_summary(
 ) -> bool:
     """Короткий итог — не каждую реплику, а периодически и по весу темы."""
     from .prompts.reflect_mode import looks_like_story_chat
+
+    if looks_like_memory_echo(assistant_text):
+        return False
 
     combined = len(user_text) + len(assistant_text)
     story = looks_like_story_chat(user_text)
@@ -280,6 +388,12 @@ def process_reflect_exchange(
 ) -> None:
     """После ответа reflect: явное «запомни» и редкие summary."""
     ensure_viu_memory(config)
+    try:
+        sanitize_poisoned_summaries(config)
+    except OSError:
+        pass
+    if looks_like_memory_echo(assistant_text):
+        return
     if record_explicit_memory(config, user_text, source=source):
         return
     maybe_record_chat_summary(config, user_text, assistant_text)
