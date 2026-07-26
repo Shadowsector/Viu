@@ -1430,32 +1430,89 @@ def materialize_textures_beside_fbx(out_dir: Path, objects: Sequence = ()) -> Tu
     return n, len(imgs)
 
 
-def _bake_export_world_transforms(export_objs: Sequence) -> List[Tuple]:
-    """Unparent keep-transform + apply scale so FBX without wrap-empty keeps mesh≈rig size.
+def fold_root_scale_into_children(root) -> dict:
+    """Move wrap-empty scale into direct children; root.scale → 1.
 
-    Studio scales VIU_CREATURE_ROOT; FBX exports only ARMATURE/MESH, so without this
-    the armature often stays at local scale while the mesh keeps world size.
+    Does not apply mesh/bone data — only redistributes object scales so the
+    live studio scene keeps looking the same while root is identity.
     """
-    restore: List[Tuple] = []
-    objs = [o for o in export_objs if o is not None]
-    if not objs:
-        return restore
-    for obj in sorted(objs, key=_object_depth, reverse=True):
+    log: dict = {"folded": False, "root_scale_before": [1.0, 1.0, 1.0]}
+    if root is None:
+        return log
+    try:
+        sx, sy, sz = float(root.scale[0]), float(root.scale[1]), float(root.scale[2])
+    except (ReferenceError, AttributeError, TypeError):
+        return log
+    log["root_scale_before"] = [sx, sy, sz]
+    if max(abs(sx - 1.0), abs(sy - 1.0), abs(sz - 1.0)) < 1e-5:
+        return log
+    for ch in list(root.children):
         try:
-            restore.append(
-                (
-                    obj,
-                    obj.parent,
-                    obj.matrix_parent_inverse.copy(),
-                    obj.matrix_local.copy(),
-                )
+            ch.scale = (
+                float(ch.scale[0]) * sx,
+                float(ch.scale[1]) * sy,
+                float(ch.scale[2]) * sz,
             )
-            mw = obj.matrix_world.copy()
-            obj.parent = None
-            obj.matrix_world = mw
-        except (ReferenceError, AttributeError, RuntimeError):
+            ch.location = (
+                float(ch.location[0]) * sx,
+                float(ch.location[1]) * sy,
+                float(ch.location[2]) * sz,
+            )
+        except (ReferenceError, AttributeError):
             continue
+    root.scale = (1.0, 1.0, 1.0)
     bpy.context.view_layer.update()
+    log["folded"] = True
+    log["root_scale_after"] = [1.0, 1.0, 1.0]
+    return log
+
+
+def collect_transform_log(root, objects: Sequence, *, target_height_m: float = 0.0) -> dict:
+    """Snapshot for Viu feedback — why FBX/rig/mesh sizes disagree."""
+    arm = _pick_armature(objects)
+    meshes = [o for o in (objects or []) if getattr(o, "type", "") == "MESH"]
+    best = max(meshes, key=mesh_vertex_count) if meshes else None
+    log: dict = {
+        "target_height_m": float(target_height_m or 0),
+        "mesh_height_m": float(height_of_objects(objects or [])),
+        "root": None,
+        "armature": None,
+        "body_mesh": None,
+    }
+    if root is not None:
+        try:
+            log["root"] = {
+                "name": root.name,
+                "scale": [float(x) for x in root.scale],
+                "location": [float(x) for x in root.location],
+            }
+        except (ReferenceError, AttributeError, TypeError):
+            pass
+    if arm is not None:
+        try:
+            log["armature"] = {
+                "name": arm.name,
+                "scale": [float(x) for x in arm.scale],
+                "dimensions": [float(x) for x in arm.dimensions],
+                "parent": arm.parent.name if arm.parent else None,
+            }
+        except (ReferenceError, AttributeError, TypeError):
+            pass
+    if best is not None:
+        try:
+            log["body_mesh"] = {
+                "name": best.name,
+                "scale": [float(x) for x in best.scale],
+                "dimensions": [float(x) for x in best.dimensions],
+                "verts": mesh_vertex_count(best),
+                "parent": best.parent.name if best.parent else None,
+            }
+        except (ReferenceError, AttributeError, TypeError):
+            pass
+    return log
+
+
+def _apply_scale_selected(objs: Sequence) -> None:
     view_layer = bpy.context.view_layer
     for obj in bpy.data.objects:
         try:
@@ -1464,102 +1521,152 @@ def _bake_export_world_transforms(export_objs: Sequence) -> List[Tuple]:
         except RuntimeError:
             pass
     active = None
+    live = []
     for obj in objs:
         try:
             safe_unhide_object(obj)
             if _object_in_view_layer(obj, view_layer):
                 obj.select_set(True)
+                live.append(obj)
                 if active is None or obj.type == "ARMATURE":
                     active = obj
         except RuntimeError:
-            pass
-    if active is not None:
-        view_layer.objects.active = active
-        try:
-            if bpy.context.mode != "OBJECT":
-                bpy.ops.object.mode_set(mode="OBJECT")
-        except RuntimeError:
-            pass
-        try:
-            with bpy.context.temp_override(
-                scene=bpy.context.scene,
-                view_layer=view_layer,
-                active_object=active,
-                selected_objects=[o for o in objs if _object_in_view_layer(o, view_layer)],
-            ):
-                bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-        except RuntimeError:
-            pass
-    bpy.context.view_layer.update()
-    return restore
-
-
-def _restore_export_transforms(restore: Sequence[Tuple]) -> None:
-    for row in reversed(list(restore or [])):
-        try:
-            obj, parent, mpi, ml = row
-            obj.parent = parent
-            obj.matrix_parent_inverse = mpi
-            obj.matrix_local = ml
-        except (ReferenceError, AttributeError, RuntimeError, ValueError):
             continue
+    if active is None or not live:
+        return
+    view_layer.objects.active = active
     try:
-        bpy.context.view_layer.update()
-    except (ReferenceError, AttributeError):
+        if bpy.context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+    except RuntimeError:
         pass
+    try:
+        with bpy.context.temp_override(
+            scene=bpy.context.scene,
+            view_layer=view_layer,
+            active_object=active,
+            selected_objects=live,
+        ):
+            bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    except RuntimeError:
+        pass
+    bpy.context.view_layer.update()
 
 
-def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str]:
+def _duplicate_for_export(arm, meshes: Sequence) -> Tuple[object, List, List]:
+    """Copy arm+meshes with world matrices (includes wrap-root scale). Live scene untouched."""
+    deps = bpy.context.evaluated_depsgraph_get()
+    coll = bpy.context.scene.collection
+    dups: List = []
+    arm_dup = arm.copy()
+    arm_dup.data = arm.data.copy()
+    coll.objects.link(arm_dup)
+    arm_dup.parent = None
+    arm_dup.matrix_world = arm.evaluated_get(deps).matrix_world.copy()
+    dups.append(arm_dup)
+    mesh_dups: List = []
+    for mesh in meshes:
+        md = mesh.copy()
+        if mesh.data is not None:
+            md.data = mesh.data.copy()
+        coll.objects.link(md)
+        md.parent = None
+        md.matrix_world = mesh.evaluated_get(deps).matrix_world.copy()
+        for mod in md.modifiers:
+            if getattr(mod, "type", "") == "ARMATURE":
+                mod.object = arm_dup
+        # Keep mesh under armature for a clean export hierarchy.
+        mw = md.matrix_world.copy()
+        md.parent = arm_dup
+        md.matrix_world = mw
+        dups.append(md)
+        mesh_dups.append(md)
+    bpy.context.view_layer.update()
+    return arm_dup, mesh_dups, dups
+
+
+def _remove_export_duplicates(dups: Sequence) -> None:
+    datas = []
+    for obj in list(dups or []):
+        try:
+            datas.append(obj.data)
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except (ReferenceError, RuntimeError):
+            continue
+    for data in datas:
+        if data is None or getattr(data, "users", 1) != 0:
+            continue
+        try:
+            if hasattr(data, "vertices"):
+                bpy.data.meshes.remove(data)
+            else:
+                bpy.data.armatures.remove(data)
+        except (ReferenceError, RuntimeError, AttributeError):
+            pass
+
+
+def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str, dict]:
+    """Export arm+mesh via TEMP duplicates only — never mutates the studio scene.
+
+    Returns (ok, message, transform_log).
+    """
     filepath = Path(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     allowed = {o for o in objects if o is not None}
-    # Пустышка-root и всё под ним — без объектов Шани из сцены.
     arm = _pick_armature(list(allowed))
     if arm is None:
-        return False, "Нет armature у существа (не у Шани)"
-    scene = bpy.context.scene
-    view_layer = bpy.context.view_layer
-    export_list = [arm]
-    for obj in list(allowed):
-        if obj.type == "MESH" and _mesh_for_character(obj, arm, allowed=allowed):
-            export_list.append(obj)
-    if len(export_list) < 2:
-        return False, "Нет skinned mesh у существа для FBX"
+        return False, "Нет armature у существа (не у Шани)", {}
+    meshes = [
+        o
+        for o in allowed
+        if o.type == "MESH" and _mesh_for_character(o, arm, allowed=allowed)
+    ]
+    if not meshes:
+        return False, "Нет skinned mesh у существа для FBX", {}
+
+    root = bpy.data.objects.get("VIU_CREATURE_ROOT")
+    tlog = collect_transform_log(root, list(allowed))
 
     tex_n, tex_imgs = 0, 0
     try:
-        tex_n, tex_imgs = materialize_textures_beside_fbx(filepath.parent, export_list)
+        tex_n, tex_imgs = materialize_textures_beside_fbx(filepath.parent, [arm, *meshes])
     except Exception:
         pass
 
-    bake_restore: List[Tuple] = []
+    dups: List = []
+    selected: List[str] = []
     try:
-        bake_restore = _bake_export_world_transforms(export_list)
+        arm_dup, mesh_dups, dups = _duplicate_for_export(arm, meshes)
+        _apply_scale_selected([arm_dup, *mesh_dups])
+        # After apply, arm+mesh should both be scale 1 at the visual size.
+        tlog["export_dup_arm_scale"] = [float(x) for x in arm_dup.scale]
+        tlog["export_dup_arm_dim"] = [float(x) for x in arm_dup.dimensions]
+        if mesh_dups:
+            tlog["export_dup_mesh_scale"] = [float(x) for x in mesh_dups[0].scale]
+            tlog["export_dup_mesh_dim"] = [float(x) for x in mesh_dups[0].dimensions]
+
+        scene = bpy.context.scene
+        view_layer = bpy.context.view_layer
         for obj in bpy.data.objects:
             try:
                 if _object_in_view_layer(obj, view_layer):
                     obj.select_set(False)
             except RuntimeError:
                 pass
-        selected = []
-        for obj in export_list:
+        for obj in dups:
             try:
-                safe_unhide_object(obj)
-                if not _object_in_view_layer(obj, view_layer):
-                    continue
-                obj.select_set(True)
-                selected.append(obj.name)
+                if _object_in_view_layer(obj, view_layer):
+                    obj.select_set(True)
+                    selected.append(obj.name)
             except RuntimeError:
                 pass
-        if arm.name not in selected or len(selected) < 2:
-            return False, "Не удалось выделить armature+mesh для FBX"
-        view_layer.objects.active = arm
+        view_layer.objects.active = arm_dup
         try:
             if bpy.context.mode != "OBJECT":
                 bpy.ops.object.mode_set(mode="OBJECT")
         except RuntimeError:
             pass
-        with bpy.context.temp_override(scene=scene, view_layer=view_layer, active_object=arm):
+        with bpy.context.temp_override(scene=scene, view_layer=view_layer, active_object=arm_dup):
             kwargs = dict(
                 filepath=str(filepath),
                 use_selection=True,
@@ -1571,7 +1678,6 @@ def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str]:
                 mesh_smooth_type="FACE",
                 apply_scale_options="FBX_SCALE_ALL",
             )
-            # COPY + embed: текстуры внутри FBX (и копия в textures/ только существа).
             exported = False
             for extra in (
                 {"path_mode": "COPY", "embed_textures": True},
@@ -1585,17 +1691,28 @@ def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str]:
                 except TypeError:
                     continue
             if not exported:
-                return False, "export_scene.fbx не принял аргументы"
+                return False, "export_scene.fbx не принял аргументы", tlog
     finally:
-        _restore_export_transforms(bake_restore)
+        _remove_export_duplicates(dups)
 
     if not filepath.is_file():
-        return False, "FBX не записан"
+        return False, "FBX не записан", tlog
+    try:
+        (filepath.parent / "transform_log.json").write_text(
+            json.dumps(tlog, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
     if tex_imgs == 0:
         tex_note = "⚠ в материалах 0 текстур"
     else:
         tex_note = f"текстур {tex_imgs} (файлов {tex_n}, embed)"
-    return True, f"FBX: {filepath.name} ({len(selected)} obj, scale baked, {tex_note})"
+    return (
+        True,
+        f"FBX: {filepath.name} ({len(selected)} dup-obj, сцена не тронута, {tex_note})",
+        tlog,
+    )
 
 
 def legs_hint(locomotion: str) -> str:
