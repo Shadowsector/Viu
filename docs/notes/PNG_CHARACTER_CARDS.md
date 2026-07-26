@@ -1,29 +1,50 @@
-# PNG character cards — разбор зашитого JSON
+# PNG character cards — 【AIS_Chara】
 
-Старые ассеты «карточек» персонажей: обычный PNG, внутри которого лежит
-конфиг кастомизации (слайдеры лица, ID причёсок и т.п.).
+Лог Вью (`png-char-cards-probe-20260726b`, 2026-07-26): в `U:\TempUnityCard`
+**40 PNG**, данные **после IEND**, маркер `【AIS_Chara】` + MessagePack.
 
-## Где лежат примеры
+Это карточки AI★Girl / Illusion (семейство Koikatsu), **не** JSON в tEXt.
 
-`U:\TempUnityCard\` — несколько PNG от Дена для разбора формата.
+## Структура файла
 
-## Инструмент Вью
-
-```text
-character_card_probe path=U:\TempUnityCard
+```
+[PNG preview 252×352]
+[IEND]
+product_no:int32
+header:len(b) + 「【AIS_Chara】」
+version:len(b) + 「1.0.0」
+face_thumb:len(i) + bytes
+lstInfo:len(i) + MessagePack { lstInfo: [{name,version,pos,size},…] }
+payload:len(q) + blocks…
 ```
 
-Что делает:
+Блоки: `Custom`, `Coordinate`, `Parameter`, `Status`, `Parameter2`, `GameInfo*`, `KKEx`, …
 
-1. Читает чанки `tEXt` / `zTXt` / `iTXt` (в т.ч. base64 JSON, как у `chara`)
-2. Смотрит хвост **после `IEND`**
-3. Если JSON не найден — грубый brace-scan по байтам файла
-4. Пишет дампы в `.viu/character_cards_extract/*.json`
-5. В отчёте — `summary_json` с ключами для Cursor
+`Custom` = три MessagePack подряд (face / body / hair), у face — `shapeValueFace` (слайдеры).
 
-Код: `viu/character_card_png.py`, tool: `viu/tools/character_card_tool.py`.
+## Код Вью
 
-## Дальше
+| Модуль | Зачем |
+|--------|--------|
+| `viu/ais_chara.py` | десериализатор → `AnabarraAppearance` |
+| `character_card_probe` | каталог карточек |
+| `character_card_deserialize` | один файл |
 
-После того как Вью прогонит probe и отдаст handoff/ключи JSON —
-Cursor пишет класс-десериализатор под структуру данных Анабарры.
+Зависимость: `pip install msgpack` (на машине Дена).
+
+```text
+character_card_probe path=U:\TempUnityCard limit=10
+character_card_deserialize path=U:\TempUnityCard\AI_002103.png
+```
+
+Дампы: `.viu/character_cards_extract/*__anabarra.json`
+
+## AnabarraAppearance
+
+- `face_shape_values` — слайдеры лица  
+- `body_shape_values` — тело  
+- `hair_ids` / `hair_parts` — ID причёсок  
+- `character_name`, `raw_parameter` — из Parameter  
+- `face_detail` — прочие поля face без огромных массивов  
+
+Ориентир формата: [KoikatuCharaLoader](https://github.com/great-majority/KoikatuCharaLoader).
