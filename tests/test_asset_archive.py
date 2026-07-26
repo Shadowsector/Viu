@@ -18,6 +18,7 @@ from viu.asset_archive.layout import (
 )
 from viu.asset_archive.provenance import (
     PILOT_SHANYA_ERISA,
+    PILOT_SHANYA_TRACER,
     ProvenanceEntry,
     license_allows_derivatives,
     license_ok_for_anabarra_build,
@@ -145,17 +146,24 @@ def test_license_ok_personal_nd_vs_public():
     assert "ND" in msg_pub
 
 
-def test_pilot_shanya_erisa_card():
+def test_pilot_shanya_tracer_beerware():
+    p = PILOT_SHANYA_TRACER
+    assert p.id == "shanya_tracer_beerware"
+    assert p.source == "smutbase"
+    assert normalize_license(p.license) == "beerware"
+    assert "pilot" in p.tags
+    ok, msg = license_ok_for_anabarra_build(p.license, personal_only=True, will_modify=True)
+    assert ok
+    assert "beerware" in msg.lower() or "лицензия" in msg.lower()
+    pilots = seed_pilot_entries()
+    assert pilots[0].id == "shanya_tracer_beerware"
+    assert any(e.id == "shanya_erisa_redeyes" for e in pilots)
+
+
+def test_pilot_shanya_erisa_archived():
     p = PILOT_SHANYA_ERISA
     assert p.id == "shanya_erisa_redeyes"
-    assert p.source == "smutbase"
-    assert "ND" in p.license.upper() or "nd" in normalize_license(p.license)
-    assert "smutba.se" in p.url
-    assert p.mascot_category == "Women"
-    assert p.local_path.lower().endswith("women") or "Desktop Mascot" in p.local_path
-    ok, _ = license_ok_for_anabarra_build(p.license, personal_only=True, will_modify=True)
-    assert ok
-    assert len(seed_pilot_entries()) >= 1
+    assert "archive" in p.tags
 
 
 def test_provenance_store_persists(tmp_path, monkeypatch):
@@ -166,15 +174,15 @@ def test_provenance_store_persists(tmp_path, monkeypatch):
     assert n >= 1
     assert path.is_file()
     again = ProvenanceStore(path)
-    assert again.get("shanya_erisa_redeyes") is not None
-    assert "Erisa" in again.render_summary() or "erisa" in again.render_summary().lower()
+    assert again.get("shanya_tracer_beerware") is not None
+    assert "Tracer" in again.render_summary() or "tracer" in again.render_summary().lower()
 
 
 def test_provenance_entry_roundtrip():
-    raw = PILOT_SHANYA_ERISA.to_dict()
+    raw = PILOT_SHANYA_TRACER.to_dict()
     back = ProvenanceEntry.from_dict(raw)
-    assert back.id == PILOT_SHANYA_ERISA.id
-    assert back.credits == PILOT_SHANYA_ERISA.credits
+    assert back.id == PILOT_SHANYA_TRACER.id
+    assert back.credits == PILOT_SHANYA_TRACER.credits
 
 
 def test_tools_registered():
@@ -202,4 +210,4 @@ def test_asset_provenance_tool_ensure(tmp_path, monkeypatch):
     )
     result = AssetProvenanceTool().run({"action": "ensure_pilots"}, ctx)
     assert result.ok
-    assert "shanya_erisa" in result.content.lower() or "Erisa" in result.content
+    assert "tracer" in result.content.lower() or "beerware" in result.content.lower()

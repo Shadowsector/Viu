@@ -15,82 +15,75 @@ from .config import Config
 
 # Шаги для человека без жаргона. id стабильные.
 #
-# Канон: в игру уезжает тело со Smutbase (лучше CC0/CC-BY).
-# Карта из HS2 Studio — только образец пропорций (временный), не в билд.
+# Канон 2026-07: рабочее тело = Tracer cutdown (Smutbase, Beerware).
+# HS2-карта — опциональное лекало; Shrinkwrap можно пропустить.
 BODY_STEPS: Tuple[Dict[str, str], ...] = (
     {
         "id": "stage_pack",
-        "title": "1. Положить два файла в Inbox",
+        "title": "1. Положить Tracer в Inbox",
         "how": (
-            "Правильная схема (чтобы не тащить чужой «ванильный» меш в игру):\n"
+            "Рабочее тело сейчас: **Tracer cutdown** со Smutbase (лицензия Beerware).\n"
+            "Скины Classic / OW2 / … лежат отдельными .blend; в паке есть скрипт "
+            "в сайдбаре Blender, который их подцепляет.\n"
             "\n"
-            "A) ОБРАЗЕЦ — твоя карта персонажа из HS2 Studio "
-            "(пропорции, которые ты накрутил). Экспорт в FBX/OBJ тем способом, "
-            "которым ты уже пользуешься → в Inbox. "
-            "Это лекало. В Unity оно НЕ поедет.\n"
+            "1) Папка пака из U:\\Desktop Mascot\\Women (или свежий скачан) →\n"
+            "   U:\\Anabarra\\Inbox\\creatures\\Tracer\\ "
+            "(или asset_archive_stage … category=Women).\n"
+            "2) Provenance уже знает пилот shanya_tracer_beerware "
+            "(кнопка/чат: asset_provenance action=ensure_pilots).\n"
             "\n"
-            "B) РАБОЧЕЕ ТЕЛО — пак со Smutbase из U:\\Desktop Mascot\\Women "
-            "(лучше лицензия CC0 или CC-BY; Erisa = CC BY-ND — как образец ок, "
-            "как единственное тело в билде хуже). Это меш для игры.\n"
-            "\n"
-            "Не путать: не «Smutbase вокруг Smutbase». "
-            "А «Smutbase обтягиваем по форме твоей HS2-карты».\n"
-            "\n"
-            "Клади оба в U:\\Anabarra\\Inbox\\creatures\\ "
-            "(или asset_archive_stage … category=Women)."
+            "HS2-карту в Inbox класть НЕ обязательно — только если захочешь "
+            "подогнать пропорции Shrinkwrap’ом (шаг 3)."
         ),
     },
     {
         "id": "open_blender",
-        "title": "2. Открыть оба в Blender",
+        "title": "2. Открыть Tracer в Blender",
         "how": (
-            "1) Открой или импортируй ОБРАЗЕЦ (экспорт HS2-карты).\n"
-            "2) Положи рядом РАБОЧЕЕ тело со Smutbase:\n"
-            "   • если это .blend — File → Append → Object → mesh тела;\n"
-            "   • если .fbx / .obj — File → Import.\n"
-            "3) В сцене видны оба меша.\n"
+            "1) File → Open — главный .blend пака Tracer (cutdown).\n"
+            "2) Если просят скрипт/сайдбар для скинов — включи add-on из пака "
+            "по их README/видео; для Шани хватит одного скина (например Classic).\n"
+            "3) Сохрани копию под Анабарру, например "
+            "U:\\Anabarra\\Library\\Blender\\Shanya_Tracer.blend "
+            "(чтобы не портить оригинал в хламнике).\n"
             "\n"
-            "Можно без Shrinkwrap: смотри на HS2-образец и правишь "
-            "Smutbase руками. Образец — референс в сцене или на втором мониторе.\n"
-            "\n"
-            "Blender сам ничего не скачает — только откроет файлы с диска."
+            "Автор просит кредит (Twitter/Bsky) — Beerware; для личной Анабарры ок."
         ),
     },
     {
         "id": "shrinkwrap",
-        "title": "3. Форма (по желанию Shrinkwrap)",
+        "title": "3. Форма (Shrinkwrap — по желанию)",
         "how": (
-            "Если формы уже совпадают — шаг можно пропустить "
-            "(«Шаг тела — готово» сразу).\n"
+            "Большого резона нет, если пропорции Tracer уже устраивают — "
+            "жми «Шаг тела — готово» и переходи к Rigify.\n"
             "\n"
-            "Если нужен Shrinkwrap:\n"
-            "• выдели РАБОЧЕЕ тело (Smutbase);\n"
-            "• Modifiers → Shrinkwrap → Target = образец (HS2-карта);\n"
-            "• когда ок — Apply, Ctrl+S;\n"
-            "• образец HS2 спрячь или удали — в экспорт не попадает.\n"
+            "Если всё же хочешь фигуру как у своей HS2-карты:\n"
+            "• импортируй экспорт карты как лекало;\n"
+            "• Shrinkwrap на меше Tracer, Target = HS2;\n"
+            "• Apply → HS2 убрать из сцены (в Unity не поедет).\n"
             "\n"
-            "Erisa тут не обязательна: резон был только если хочешь "
-            "её пропорции вместо своей HS2-карты. Раз карта уже твоя — "
-            "лекало = HS2-экспорт."
+            "Erisa больше не нужна как основной пилот."
         ),
     },
     {
         "id": "rigify",
         "title": "4. Скелет Rigify",
         "how": (
-            "Риг только на РАБОЧЕМ теле (Smutbase), не на HS2-образце.\n"
-            "Rigify → привязка меша → Ctrl+S.\n"
-            "Проверка: инструмент rig_check."
+            "Риг на теле Tracer (тот меш, что останется в игре).\n"
+            "Если в паке уже есть свой риг — либо используй его и потом "
+            "rig_check / Humanoid map, либо переведи на Rigify, как удобнее.\n"
+            "Цель: скелет, который Unity съест как Humanoid.\n"
+            "Ctrl+S. Проверка: rig_check."
         ),
     },
     {
         "id": "export_fbx",
         "title": "5. Выгрузить FBX в Unity",
         "how": (
-            "Перед экспортом в сцене не должно остаться меша HS2-образца "
-            "(или сними с него экспорт).\n"
-            "Инструмент blender_export_shanya → FBX в Assets/Characters/Shanya/.\n"
-            "В игру уезжает только Smutbase+Rigify."
+            "В экспорте только тело Шани (Tracer-база) + нужный скин/одежда, "
+            "без лишних скин-файлов пака.\n"
+            "Инструмент blender_export_shanya → Assets/Characters/Shanya/.\n"
+            "Виджеты рига (WGT) экспорт сам прячет."
         ),
     },
     {
@@ -163,6 +156,7 @@ def render_checklist(config: Config) -> str:
     cur = state.current_step
     lines = [
         "Тело Шани — что делать сейчас (просто)",
+        "Рабочее тело: Tracer cutdown (Beerware) со Smutbase.",
         "",
     ]
     for s in BODY_STEPS:
@@ -182,7 +176,8 @@ def render_checklist(config: Config) -> str:
             info["how"],
             "",
             "Сделал шаг? Нажми кнопку «Шаг тела — готово» или в чате: body_pipeline action=done",
-            "Подробнее простыми словами: docs/NOW.md",
+            "Сбросить чеклист на шаг: body_pipeline action=set step=rigify",
+            "Подробнее: docs/NOW.md",
         ]
     )
     if state.notes:
@@ -219,3 +214,12 @@ def set_step(config: Config, step_id: str) -> Tuple[bool, str]:
     state.current_step = step_id
     save_state(config, state)
     return True, f"текущий шаг: {step_id}"
+
+
+def reset_progress(config: Config, *, at_step: str = "stage_pack") -> Tuple[bool, str]:
+    """Сбросить галочки (смена пилота тела — например на Tracer)."""
+    if not any(s["id"] == at_step for s in BODY_STEPS):
+        return False, "неизвестный step"
+    state = BodyPipelineState(current_step=at_step, done_steps=[], notes="reset: tracer pilot")
+    save_state(config, state)
+    return True, f"чеклист сброшен → {at_step}"
