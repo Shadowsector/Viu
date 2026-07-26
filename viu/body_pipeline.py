@@ -1,7 +1,7 @@
 """Чеклист «тело Шани» простыми словами.
 
-Не делает магию за тебя в Blender — показывает, какой шаг сейчас
-и что нажать. Состояние: ``.viu/body_pipeline.json``.
+Дирижёр кнопок «Blender — существа», не параллельный ручной Blender.
+Канон: ``docs/SHANYA_PIPELINE.md``. Состояние: ``.viu/body_pipeline.json``.
 """
 
 from __future__ import annotations
@@ -13,85 +13,92 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .config import Config
 
-# Шаги для человека без жаргона. id стабильные.
-#
-# Канон 2026-07: рабочее тело = Tracer cutdown (Smutbase, Beerware).
-# HS2-карта — опциональное лекало; Shrinkwrap можно пропустить.
+# id стабильные. Смысл — полуавтомат Вью (prep / студия / FBX).
 BODY_STEPS: Tuple[Dict[str, str], ...] = (
     {
         "id": "stage_pack",
-        "title": "1. Положить Tracer в Inbox",
+        "title": "1. Tracer → Inbox как существо shanya",
         "how": (
-            "Рабочее тело сейчас: **Tracer cutdown** со Smutbase (лицензия Beerware).\n"
-            "Скины Classic / OW2 / … лежат отдельными .blend; в паке есть скрипт "
-            "в сайдбаре Blender, который их подцепляет.\n"
+            "Рабочее тело: **Tracer cutdown** (Beerware). Риг уже в паке.\n"
             "\n"
-            "1) Папка пака из U:\\Desktop Mascot\\Women (или свежий скачан) →\n"
-            "   U:\\Anabarra\\Inbox\\creatures\\Tracer\\ "
-            "(или asset_archive_stage … category=Women).\n"
-            "2) Provenance уже знает пилот shanya_tracer_beerware "
-            "(кнопка/чат: asset_provenance action=ensure_pilots).\n"
+            "Положи пак сюда (как обычное существо):\n"
+            "  U:\\Anabarra\\Inbox\\creatures\\shanya\\\n"
+            "Один основной скин + textures по README пака.\n"
             "\n"
-            "HS2-карту в Inbox класть НЕ обязательно — только если захочешь "
-            "подогнать пропорции Shrinkwrap’ом (шаг 3)."
+            "Чат: asset_provenance action=ensure_pilots\n"
+            "Полный план: docs/SHANYA_PIPELINE.md\n"
+            "\n"
+            "HS2 сюда не кладём как меш — только потом анимации (фаза B)."
         ),
     },
     {
         "id": "open_blender",
-        "title": "2. Открыть Tracer в Blender",
+        "title": "2. Очистить модель + текстуры (кнопка Вью)",
         "how": (
-            "1) File → Open — главный .blend пака Tracer (cutdown).\n"
-            "2) Если просят скрипт/сайдбар для скинов — включи add-on из пака "
-            "по их README/видео; для Шани хватит одного скина (например Classic).\n"
-            "3) Сохрани копию под Анабарру, например "
-            "U:\\Anabarra\\Library\\Blender\\Shanya_Tracer.blend "
-            "(чтобы не портить оригинал в хламнике).\n"
+            "Жми в сайдбаре:\n"
+            "  **Blender — существа → 1. Очистить модель**\n"
             "\n"
-            "Автор просит кредит (Twitter/Bsky) — Beerware; для личной Анабарры ок."
+            "Вью поднимет prep: упакует/перепривяжет текстуры "
+            "(наше «запечь» сейчас → texture_manifest), "
+            "сохранит prepared.blend.\n"
+            "\n"
+            "Один скин Tracer. Лишние скин-.blend пака не тащи в prepared.\n"
+            "После Ctrl+S: кнопка **4. Забрать правки в каталог**."
         ),
     },
     {
         "id": "shrinkwrap",
-        "title": "3. Форма (Shrinkwrap — по желанию)",
+        "title": "3. Рост в студии (форма — по желанию)",
         "how": (
-            "Большого резона нет, если пропорции Tracer уже устраивают — "
-            "жми «Шаг тела — готово» и переходи к Rigify.\n"
+            "Главное — **рост**, не Shrinkwrap.\n"
             "\n"
-            "Если всё же хочешь фигуру как у своей HS2-карты:\n"
-            "• импортируй экспорт карты как лекало;\n"
-            "• Shrinkwrap на меше Tracer, Target = HS2;\n"
-            "• Apply → HS2 убрать из сцены (в Unity не поедет).\n"
+            "Кнопка: **Blender — существа → 3. Фото роста и эталон**\n"
+            "• класс humanoid, рост ~1.70 м;\n"
+            "• «Применить рост»;\n"
+            "• скрины front/side.\n"
             "\n"
-            "Erisa больше не нужна как основной пилот."
+            "Shrinkwrap на HS2-лекало — только если пропорции бесят; "
+            "HS2-меш в Unity не едет.\n"
+            "\n"
+            "Потом **4. Забрать правки в каталог**."
         ),
     },
     {
         "id": "rigify",
-        "title": "4. Скелет Rigify",
+        "title": "4. Риг пака — только проверить",
         "how": (
-            "Риг на теле Tracer (тот меш, что останется в игре).\n"
-            "Если в паке уже есть свой риг — либо используй его и потом "
-            "rig_check / Humanoid map, либо переведи на Rigify, как удобнее.\n"
-            "Цель: скелет, который Unity съест как Humanoid.\n"
-            "Ctrl+S. Проверка: rig_check."
+            "Rigify **не** ставим — у Tracer риг уже есть.\n"
+            "\n"
+            "Инструмент: rig_check (при необходимости rig_map).\n"
+            "Цель: Unity съест как Humanoid.\n"
+            "Ок → эталон FBX."
         ),
     },
     {
         "id": "export_fbx",
-        "title": "5. Выгрузить FBX в Unity",
+        "title": "5. Эталон FBX (студия / export)",
         "how": (
-            "В экспорте только тело Шани (Tracer-база) + нужный скин/одежда, "
-            "без лишних скин-файлов пака.\n"
-            "Инструмент blender_export_shanya → Assets/Characters/Shanya/.\n"
-            "Виджеты рига (WGT) экспорт сам прячет."
+            "В студии: **Сохранить эталон FBX** → "
+            "Processed/shanya/shanya_ready.fbx (+ manifest).\n"
+            "\n"
+            "Запасной путь: blender_export_shanya из prepared.blend.\n"
+            "\n"
+            "Куда:\n"
+            "  • Unity: Assets/Characters/Shanya/\n"
+            "  • эталон для монстров: Lab/Models/CascadeurReady/Shanya.fbx\n"
+            "\n"
+            "Тот же полуавтомат, что для других существ."
         ),
     },
     {
         "id": "unity_humanoid",
-        "title": "6. Включить Humanoid в Unity",
+        "title": "6. Unity Humanoid + тестовая сцена",
         "how": (
-            "В Unity: модель → Rig → Humanoid → Apply.\n"
-            "Потом «Запустить тестовую сцену»."
+            "FBX → Rig → Humanoid → Apply.\n"
+            "Кнопка: **▶ Запустить тестовую сцену**.\n"
+            "\n"
+            "Фаза A готова. Фаза B: PR #66 → анимации HS2 на этот Humanoid.\n"
+            "docs/SHANYA_PIPELINE.md"
         ),
     },
 )
@@ -156,7 +163,7 @@ def render_checklist(config: Config) -> str:
     cur = state.current_step
     lines = [
         "Тело Шани — что делать сейчас (просто)",
-        "Рабочее тело: Tracer cutdown (Beerware) со Smutbase.",
+        "Tracer → конвейер существ (prep / рост / FBX). См. docs/SHANYA_PIPELINE.md",
         "",
     ]
     for s in BODY_STEPS:
@@ -175,9 +182,9 @@ def render_checklist(config: Config) -> str:
             "",
             info["how"],
             "",
-            "Сделал шаг? Нажми кнопку «Шаг тела — готово» или в чате: body_pipeline action=done",
-            "Сбросить чеклист на шаг: body_pipeline action=set step=rigify",
-            "Подробнее: docs/NOW.md",
+            "Сделал шаг? «Шаг тела — готово» или body_pipeline action=done",
+            "Сброс: body_pipeline action=reset",
+            "Канон: docs/SHANYA_PIPELINE.md",
         ]
     )
     if state.notes:
@@ -201,7 +208,7 @@ def mark_step_done(
         )
     else:
         state.current_step = sid
-        msg = "все шаги тела отмечены — Idle сделаем позже"
+        msg = "фаза A (тело) отмечена — дальше HS2-анимации (PR #66)"
     save_state(config, state)
     return state, msg
 
@@ -217,9 +224,11 @@ def set_step(config: Config, step_id: str) -> Tuple[bool, str]:
 
 
 def reset_progress(config: Config, *, at_step: str = "stage_pack") -> Tuple[bool, str]:
-    """Сбросить галочки (смена пилота тела — например на Tracer)."""
+    """Сбросить галочки."""
     if not any(s["id"] == at_step for s in BODY_STEPS):
         return False, "неизвестный step"
-    state = BodyPipelineState(current_step=at_step, done_steps=[], notes="reset: tracer pilot")
+    state = BodyPipelineState(
+        current_step=at_step, done_steps=[], notes="reset: shanya creature pipeline"
+    )
     save_state(config, state)
     return True, f"чеклист сброшен → {at_step}"
