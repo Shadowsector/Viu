@@ -510,8 +510,33 @@ def ensure_shot_lights() -> List:
 _RENDER_KEEP_TYPES = frozenset({"CAMERA", "LIGHT"})
 
 
-def isolate_creature_for_render(creature_root) -> List[Tuple]:
-    """Спрятать всё кроме существа, камер и ламп. Возвращает список для restore."""
+def _find_layer_collection(layer_coll, name: str):
+    if layer_coll is None:
+        return None
+    try:
+        if layer_coll.collection.name == name:
+            return layer_coll
+    except (AttributeError, ReferenceError):
+        return None
+    for child in getattr(layer_coll, "children", []) or []:
+        found = _find_layer_collection(child, name)
+        if found is not None:
+            return found
+    return None
+
+
+def isolate_creature_for_render(
+    creature_root,
+    *,
+    extra_hide_roots: Optional[Sequence] = None,
+    extra_hide_collections: Optional[Sequence[str]] = None,
+) -> List[Tuple]:
+    """Спрятать всё кроме существа, камер и ламп. Возвращает список для restore.
+
+    extra_hide_roots — целиком убрать из кадра (VIU_SHANYA_ROOT: тело + одежда).
+    Если одежда Шани оказалась вне иерархии root или случайно под creature —
+    её всё равно прячем по коллекции / forced set.
+    """
     keep = set()
 
     def walk(obj):
@@ -521,25 +546,99 @@ def isolate_creature_for_render(creature_root) -> List[Tuple]:
 
     if creature_root is not None:
         walk(creature_root)
+
+    forced_hide = set()
+    for root in extra_hide_roots or []:
+        if root is None:
+            continue
+        for o in gather_under_root(root):
+            forced_hide.add(o)
+            keep.discard(o)
+
     restore: List[Tuple] = []
-    for obj in bpy.data.objects:
-        if obj in keep or obj.type in _RENDER_KEEP_TYPES:
+
+    view_layer = getattr(bpy.context, "view_layer", None)
+    layer_root = getattr(view_layer, "layer_collection", None) if view_layer else None
+    for name in extra_hide_collections or []:
+        if not name:
+            continue
+        coll = bpy.data.collections.get(name)
+        if coll is None:
             continue
         try:
-            restore.append((obj, obj.hide_get(), obj.hide_render))
+            restore.append(("coll", coll, bool(coll.hide_render), bool(getattr(coll, "hide_viewport", False))))
+            coll.hide_render = True
+            try:
+                coll.hide_viewport = True
+            except (AttributeError, TypeError):
+                pass
+        except (ReferenceError, AttributeError):
+            pass
+        lc = _find_layer_collection(layer_root, name)
+        if lc is not None:
+            try:
+                restore.append(("layer_coll", lc, bool(lc.exclude), bool(lc.hide_viewport)))
+                lc.exclude = True
+                lc.hide_viewport = True
+            except (ReferenceError, AttributeError):
+                pass
+        for obj in list(getattr(coll, "objects", []) or []):
+            forced_hide.add(obj)
+            keep.discard(obj)
+
+    for obj in bpy.data.objects:
+        if obj.type in _RENDER_KEEP_TYPES:
+            continue
+        if obj in keep and obj not in forced_hide:
+            continue
+        try:
+            hvp = bool(getattr(obj, "hide_viewport", False))
+            restore.append(("obj", obj, bool(obj.hide_get()), bool(obj.hide_render), hvp))
             obj.hide_set(True)
             obj.hide_render = True
+            try:
+                obj.hide_viewport = True
+            except (AttributeError, TypeError):
+                pass
         except (ReferenceError, AttributeError):
             pass
     return restore
 
 
 def restore_render_visibility(restore: Sequence[Tuple]) -> None:
-    for obj, hv, hr in restore:
+    for row in restore or []:
+        if not row:
+            continue
         try:
-            obj.hide_set(hv)
-            obj.hide_render = hr
-        except ReferenceError:
+            tag = row[0]
+        except (IndexError, TypeError):
+            continue
+        try:
+            if tag == "obj":
+                _, obj, hv, hr, hvp = row
+                obj.hide_set(hv)
+                obj.hide_render = hr
+                try:
+                    obj.hide_viewport = hvp
+                except (AttributeError, TypeError):
+                    pass
+            elif tag == "coll":
+                _, coll, hr, hvp = row
+                coll.hide_render = hr
+                try:
+                    coll.hide_viewport = hvp
+                except (AttributeError, TypeError):
+                    pass
+            elif tag == "layer_coll":
+                _, lc, excl, hvp = row
+                lc.exclude = excl
+                lc.hide_viewport = hvp
+            else:
+                # legacy: (obj, hide_get, hide_render)
+                obj, hv, hr = row  # type: ignore[misc]
+                obj.hide_set(hv)
+                obj.hide_render = hr
+        except (ReferenceError, AttributeError, ValueError, TypeError):
             pass
 
 
