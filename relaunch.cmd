@@ -5,17 +5,22 @@ chcp 65001 >nul
 cd /d "%~dp0"
 set PYTHONUTF8=1
 set PYTHONPATH=%~dp0
-echo.
-echo [relaunch] Только GUI — GitHub не трогаю.
-for /f "delims=" %%V in ('python -c "from viu.updater import version_label,running_sha; s=running_sha() or ''; print('  Версия:', version_label(), s[:7] if s else '?')" 2^>nul') do echo %%V
-echo.
 rem Ждём, пока старый процесс освободит порт (single-instance).
 ping -n 4 127.0.0.1 >nul
-rem python, не pythonw — иначе после «Обновить Вью» GUI молча не поднимается.
+rem По умолчанию pythonw — без чёрной консоли. Отладка: set VIU_SHOW_CONSOLE=1
 where python >nul 2>&1
 if errorlevel 1 (
   echo [ОШИБКА] Python не найден в PATH.
   exit /b 1
 )
-start "" python "%~dp0run_gui.pyw"
+if defined VIU_SHOW_CONSOLE (
+  start "" python "%~dp0run_gui.pyw"
+  exit /b 0
+)
+where pythonw >nul 2>&1
+if errorlevel 1 (
+  start "" python "%~dp0run_gui.pyw"
+) else (
+  start "" pythonw "%~dp0run_gui.pyw"
+)
 exit /b 0

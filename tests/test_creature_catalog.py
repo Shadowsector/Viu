@@ -808,25 +808,60 @@ def test_prep_queue_scans_subfolders_and_no_empty_prepared_dir(tmp_path, monkeyp
     assert path.parent.is_dir()
 
 
-def test_height_fit_multiplier_fbx_scale_and_cm():
-    """Studio height fit: scale-10 visual (~17m) and cm exports (~170)."""
+def _extract_shared_fns(*names: str):
     import ast
     from pathlib import Path
 
-    # Pure helper lives in Blender shared module; extract without importing bpy.
     src = Path("viu/creature_catalog/_creature_blender_shared.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
-    fn = None
+    wanted = {n: None for n in names}
     for node in tree.body:
-        if isinstance(node, ast.FunctionDef) and node.name == "height_fit_multiplier":
-            fn = node
-            break
-    assert fn is not None
-    ns: dict = {}
-    exec(compile(ast.Module(body=[fn], type_ignores=[]), "<height_fit>", "exec"), ns)
+        if isinstance(node, ast.FunctionDef) and node.name in wanted:
+            wanted[node.name] = node
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id in wanted:
+                    wanted[t.id] = node
+    body = [wanted[n] for n in names if wanted[n] is not None]
+    assert len(body) == len(names), {k: v is not None for k, v in wanted.items()}
+    ns: dict = {"re": __import__("re"), "List": list, "Optional": type(None)}
+    # typing List used in annotations — provide simple substitutes
+    import typing
+
+    ns["List"] = typing.List
+    ns["Optional"] = typing.Optional
+    exec(compile(ast.Module(body=body, type_ignores=[]), "<shared_extract>", "exec"), ns)
+    return ns
+
+
+def test_height_fit_multiplier_fbx_scale_and_cm():
+    """Studio height fit: scale-10 visual (~17m) and cm exports (~170)."""
+    ns = _extract_shared_fns("height_fit_multiplier")
     height_fit_multiplier = ns["height_fit_multiplier"]
 
     assert abs(height_fit_multiplier(17.0, 1.7) - 0.1) < 1e-9
     assert abs(height_fit_multiplier(170.0, 1.7) - 0.01) < 1e-9
     assert abs(height_fit_multiplier(1.7, 1.7) - 1.0) < 1e-9
     assert height_fit_multiplier(0.0, 1.7) == 1.0
+
+
+def test_rig_helper_tokens_do_not_false_positive_body_names():
+    ns = _extract_shared_fns(
+        "_RIG_HIDE_TOKENS",
+        "_name_tokens",
+        "is_wgt_name",
+        "is_control_shape_name",
+        "is_gzm_name",
+        "is_rig_helper_mesh_name",
+    )
+    is_helper = ns["is_rig_helper_mesh_name"]
+    assert is_helper("WGT-Hand") is True
+    assert is_helper("cs_foot") is True
+    assert is_helper("IK_Foot") is True
+    assert is_helper("Body_Shadow") is True
+    # Раньше substring «ik»/«target» прятал такие меши → Ahmed/Blue Devil «пустые».
+    assert is_helper("Spike") is False
+    assert is_helper("LikeBody") is False
+    assert is_helper("retarget_mesh") is False
+    assert is_helper("BlueDevil_Body") is False
+    assert is_helper("Ahmed_Skin") is False

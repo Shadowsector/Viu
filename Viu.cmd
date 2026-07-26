@@ -119,13 +119,23 @@ if exist "%STATUS%" del "%STATUS%" >nul 2>&1
 if exist "%STARTUP_ERR%" del "%STARTUP_ERR%" >nul 2>&1
 
 echo Запускаю GUI (run_gui.pyw)...
-rem python, не pythonw: pythonw часто молча падает после апдейта / без консоли.
+rem По умолчанию pythonw (без чёрной консоли). Ошибки → viu_startup.log / MessageBox.
+rem Отладка: set VIU_SHOW_CONSOLE=1
 where python >nul 2>&1
 if errorlevel 1 (
   echo [ОШИБКА] Python не найден в PATH.
   goto :fail
 )
-start "" python "%~dp0run_gui.pyw"
+if defined VIU_SHOW_CONSOLE (
+  start "" python "%~dp0run_gui.pyw"
+) else (
+  where pythonw >nul 2>&1
+  if errorlevel 1 (
+    start "" python "%~dp0run_gui.pyw"
+  ) else (
+    start "" pythonw "%~dp0run_gui.pyw"
+  )
+)
 
 set /a _n=0
 :waitgui

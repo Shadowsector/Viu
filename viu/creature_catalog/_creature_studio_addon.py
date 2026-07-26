@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 2, 9),
+    "version": (0, 3, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -326,10 +326,13 @@ def _render_shots(entry: dict) -> tuple[str, str, str]:
         try:
             S.restore_render_visibility(hidden)
         finally:
-            # Если isolate/restore споткнулись — Шаню всё равно вернуть в кадр.
+            # Если isolate/restore споткнулись — вернуть и Шаню, и существо.
             S.reveal_collection(_SHANYA_COLL)
+            S.reveal_collection(_SLOT)
             if shanya_root is not None:
                 S.reveal_objects([shanya_root, *S.gather_under_root(shanya_root)])
+            if creature_root is not None:
+                S.reveal_objects([creature_root, *S.gather_under_root(creature_root)])
     return str(front), str(three_quarter), str(side)
 
 
@@ -615,6 +618,30 @@ class VIU_OT_StudioScreenshot(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class VIU_OT_StudioShowBody(bpy.types.Operator):
+    bl_idname = "viu.studio_show_body"
+    bl_label = "Показать меши тела"
+
+    def execute(self, context):
+        root, objs = _resolve_creature()
+        S.reveal_collection(_SLOT)
+        n = 0
+        for o in objs:
+            if getattr(o, "type", "") != "MESH":
+                continue
+            if S.skip_mesh(o.name):
+                continue
+            S.safe_unhide_object(o)
+            n += 1
+        if root is not None:
+            S.safe_unhide_object(root)
+        if n == 0:
+            self.report({"WARNING"}, "Нет MESH у существа — перезагрузи из Вью")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"Показано MESH: {n}")
+        return {"FINISHED"}
+
+
 class VIU_OT_StudioSaveFbx(bpy.types.Operator):
     bl_idname = "viu.studio_save"
     bl_label = "Сохранить эталон FBX"
@@ -622,22 +649,36 @@ class VIU_OT_StudioSaveFbx(bpy.types.Operator):
     def execute(self, context):
         entry = _current_entry()
         if not entry:
+            self.report({"ERROR"}, "Нет существа в очереди")
             return {"CANCELLED"}
         props = context.scene.viu_creature_studio
         if not (props.size_class or entry.get("size_class")):
             self.report({"ERROR"}, "Сначала разметка (класс + locomotion)")
             return {"CANCELLED"}
+        root, objs = _resolve_creature()
+        if root is None:
+            self.report({"ERROR"}, "Нет VIU_CREATURE_ROOT — перезагрузи существо")
+            return {"CANCELLED"}
+        export_objs = S.gather_under_root(root)
+        # На всякий случай выкинуть всё под Шанёй, если вдруг попало в иерархию.
+        shanya = _STATE.get("shanya_root") or bpy.data.objects.get("VIU_SHANYA_ROOT")
+        if shanya is not None:
+            ban = set(S.gather_under_root(shanya))
+            export_objs = [o for o in export_objs if o not in ban]
+        if not export_objs:
+            self.report({"ERROR"}, "Под root нет объектов существа")
+            return {"CANCELLED"}
         slug = str(entry.get("slug") or S.slugify(entry.get("name")))
         out_dir = Path(str(_SESSION.get("processed_root") or "")) / slug
         fbx = out_dir / f"{slug}_ready.fbx"
-        objs = S.gather_under_root(_STATE.get("creature_root"))
         try:
-            ok, msg = S.export_creature_fbx(fbx, objs)
+            tex_n = S.materialize_textures_beside_fbx(out_dir)
+            ok, msg = S.export_creature_fbx(fbx, export_objs)
             if not ok:
                 self.report({"ERROR"}, msg)
                 return {"CANCELLED"}
-            measured = S.height_of_objects(_STATE.get("creature_objects") or [], _STATE.get("body_mesh") or "")
-            rows = S.audit_textures(objs)
+            measured = S.height_of_objects(objs, _STATE.get("body_mesh") or "")
+            rows = S.audit_textures(export_objs)
             manifest = S.write_texture_manifest(
                 out_dir,
                 stage="processed",
@@ -654,7 +695,10 @@ class VIU_OT_StudioSaveFbx(bpy.types.Operator):
                 target_height_m=float(entry.get("target_height_m") or props.target_height_m or 0),
                 **_markup_fields(props, entry),
             )
-            self.report({"INFO"}, f"Эталон FBX: {fbx.name}; manifest OK")
+            self.report(
+                {"INFO"},
+                f"Эталон FBX: {fbx.name} (без Шани); textures≈{tex_n}; manifest OK",
+            )
         except Exception as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
@@ -781,11 +825,12 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         layout.separator()
         layout.label(text="2. Рост (сравнить с Шаней слева)", icon="ARROW_LEFTRIGHT")
         layout.operator("viu.studio_hide_ik", icon="HIDE_ON")
+        layout.operator("viu.studio_show_body", icon="HIDE_OFF")
         layout.operator("viu.studio_bursting_head", icon="MODIFIER")
         layout.prop(props, "target_height_m")
         layout.operator("viu.studio_apply_height", icon="ARROW_LEFTRIGHT")
         layout.separator()
-        layout.label(text="3. Эталон FBX (только существо)", icon="EXPORT")
+        layout.label(text="3. Эталон FBX (только существо, +textures/)", icon="EXPORT")
         layout.operator("viu.studio_screenshot", icon="RENDER_STILL")
         layout.operator("viu.studio_save", icon="EXPORT")
         layout.prop(props, "photo_notes")
@@ -821,6 +866,7 @@ _CLASSES = (
     VIU_OT_StudioNext,
     VIU_OT_StudioReload,
     VIU_OT_StudioHideIk,
+    VIU_OT_StudioShowBody,
     VIU_OT_StudioBurstingHead,
     VIU_OT_StudioApplyMarkup,
     VIU_OT_StudioApplyHeight,
