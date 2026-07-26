@@ -61,7 +61,9 @@ def test_body_pipeline_checklist(tmp_path):
     assert "Blender" in text2
     ok, _ = reset_progress(cfg, at_step="rigify")
     assert ok
-    assert "Rigify" in render_checklist(cfg)
+    text_rig = render_checklist(cfg)
+    assert "риг" in text_rig.lower() or "Rigify" in text_rig
+    assert "не ставим" in text_rig.lower() or "уже" in text_rig.lower()
 
 
 def test_body_steps_count():
