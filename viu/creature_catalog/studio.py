@@ -97,6 +97,7 @@ def _entry_payload(e: CreatureEntry, config: Config) -> Dict[str, Any]:
         "photo_side": e.photo_side,
         "photo_three_quarter": e.photo_three_quarter,
         "photo_notes": e.photo_notes,
+        "studio_problem": bool(e.studio_problem),
         "prepared_path": str(prep) if prep else "",
         "ready_fbx_path": e.ready_fbx_path,
         "notes": (e.notes or "").split("\n")[0][:200],
@@ -277,11 +278,15 @@ def sync_studio_feedback(config: Config) -> Tuple[int, str]:
             e.photo_notes = issue
         if "photo_ok" in row:
             e.photo_ok = bool(row["photo_ok"])
+        if "studio_problem" in row:
+            e.studio_problem = bool(row["studio_problem"])
         if e.photo_ok and e.size_class:
             e.status = STATUS_READY
         store.upsert(e)
         n += 1
         tag = "скрины ок" if e.photo_ok else (e.size_class or "обновлено")
+        if e.studio_problem:
+            tag += " ⚠ проблема роста"
         lines.append(f"  • {e.name}: {tag}")
     if n:
         store.save()

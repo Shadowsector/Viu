@@ -450,6 +450,7 @@ def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
     assert (session.parent / "viu_creature_blender_shared.py").is_file()
 
     fb = session.parent / "studio_feedback.json"
+    assert "studio_problem" in data["queue"][0]
     fb.write_text(
         __import__("json").dumps(
             {
@@ -461,6 +462,7 @@ def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
                         "photo_three_quarter": str(tmp_path / "three_quarter.png"),
                         "photo_side": str(tmp_path / "side.png"),
                         "photo_ok": True,
+                        "studio_problem": True,
                         "target_height_m": 0.96,
                         "size_class": "quad_med",
                         "locomotion": "quadruped",
@@ -476,6 +478,8 @@ def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
     w = CreatureCatalogStore(creature_catalog_path(cfg)).load().get("w1")
     assert w is not None
     assert w.photo_ok
+    assert w.studio_problem is True
+    assert "проблема роста" in sync_msg
     assert w.photo_three_quarter.endswith("three_quarter.png")
     assert w.target_height_m == 0.96
     assert w.ready_fbx_path.endswith("wolf_alpha_ready.fbx")

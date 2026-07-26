@@ -334,6 +334,8 @@ class CreatureEntry:
     photo_three_quarter: str = ""
     photo_ok: bool = False          # Ден подтвердил скрины lineup
     photo_notes: str = ""           # что не так: IK, текстуры, …
+    # Студия: над полом / неверный меш роста / scale врёт — Ден отмечает вручную.
+    studio_problem: bool = False
     # Внешность для анимации / Comfy (из VL по скрину или руками).
     appearance_en: str = ""              # English prompt / tags for Comfy
     appearance_ru: str = ""              # коротко для чата Вью
@@ -391,6 +393,7 @@ class CreatureEntry:
             photo_three_quarter=str(d.get("photo_three_quarter") or ""),
             photo_ok=bool(d.get("photo_ok")),
             photo_notes=str(d.get("photo_notes") or ""),
+            studio_problem=bool(d.get("studio_problem")),
             appearance_en=str(d.get("appearance_en") or ""),
             appearance_ru=str(d.get("appearance_ru") or ""),
             appearance_tags=list(d.get("appearance_tags") or []),
