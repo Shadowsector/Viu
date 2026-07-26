@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-26T15:55:00Z",
+  "updated_at": "2026-07-26T15:56:47Z",
   "note": "AIS_Chara deserializer ready — dump AnabarraAppearance from TempUnityCard.",
   "tasks": [
     {
@@ -26,7 +26,7 @@
     },
     {
       "id": "ais-chara-dump-20260726",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "Deserialize AIS_Chara cards → AnabarraAppearance JSON",
       "created_by": "Cursor",
@@ -38,7 +38,8 @@
         "limit": "12"
       },
       "instructions": "Формат подтверждён: 【AIS_Chara】 MessagePack после IEND. Нужен msgpack (pip install msgpack если нет). Прогони character_card_probe на U:\\TempUnityCard limit=12 full=1 dump=1. В отчёте должны быть face_shape_values / hair_ids / name. Дампы в .viu/character_cards_extract/*__anabarra.json. Handoff уйдёт сам. Не зови Дена.",
-      "acceptance": "summary_json.ais_ok >= 1 и в отчёте есть face_shape_values или явную ошибку msgpack."
+      "acceptance": "summary_json.ais_ok >= 1 и в отчёте есть face_shape_values или явную ошибку msgpack.",
+      "started_at": "2026-07-26T15:56:47Z"
     }
   ]
 }
