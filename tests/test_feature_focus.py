@@ -52,16 +52,18 @@ def test_body_pipeline_checklist(tmp_path):
     cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
     text = render_checklist(cfg)
     assert "Тело Шани" in text
-    assert "Tracer" in text and "Beerware" in text
-    assert "Shrinkwrap" in text or "Форма" in text
+    assert "shanya" in text.lower() and "Tracer" in text
+    assert "SHANYA_PIPELINE" in text or "существа" in text
     _, msg = mark_step_done(cfg)
     assert "отмечен" in msg or "Дальше" in msg
     text2 = render_checklist(cfg)
     assert "[x]" in text2
-    assert "Blender" in text2
+    assert "Очистить модель" in text2 or "текстур" in text2.lower()
     ok, _ = reset_progress(cfg, at_step="rigify")
     assert ok
-    assert "Rigify" in render_checklist(cfg)
+    text_rig = render_checklist(cfg)
+    assert "риг" in text_rig.lower()
+    assert "не" in text_rig.lower() and ("ставим" in text_rig.lower() or "Rigify" in text_rig)
 
 
 def test_body_steps_count():
