@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 3, 5),
+    "version": (0, 3, 6),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -17,7 +17,13 @@ import traceback
 from pathlib import Path
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
+from bpy.props import (
+    BoolProperty,
+    EnumProperty,
+    FloatProperty,
+    IntProperty,
+    StringProperty,
+)
 
 _SESSION: dict = {}
 _STATE = {
@@ -418,6 +424,10 @@ def _sync_props_from_entry(entry: dict):
     props = bpy.context.scene.viu_creature_studio
     props.target_height_m = float(entry.get("target_height_m") or 1.0)
     props.photo_notes = str(entry.get("photo_notes") or "")
+    props.studio_problem = bool(entry.get("studio_problem"))
+    q = _SESSION.get("queue") or []
+    idx = int(_SESSION.get("index") or 0)
+    props.jump_to_n = max(1, min(idx + 1, max(len(q), 1)))
     sc = str(entry.get("size_class") or "")
     if sc:
         props.size_class = sc
@@ -430,6 +440,27 @@ def _sync_props_from_entry(entry: dict):
     props.contact_oral = "oral" in modes
     props.contact_tentacle = "tentacle" in modes
     props.contact_hand = "hand" in modes
+
+
+def _write_studio_problem(entry: dict, flagged: bool) -> None:
+    entry["studio_problem"] = bool(flagged)
+    S.write_feedback_file(
+        _feedback_path(),
+        entry,
+        studio_problem=bool(flagged),
+        **_markup_fields(bpy.context.scene.viu_creature_studio, entry),
+    )
+
+
+def _on_studio_problem_update(self, context):
+    entry = _current_entry()
+    if not entry:
+        return
+    flagged = bool(self.studio_problem)
+    # Не писать feedback при _sync_props_from_entry (значение уже совпадает).
+    if bool(entry.get("studio_problem")) == flagged:
+        return
+    _write_studio_problem(entry, flagged)
 
 
 def _target_from_size(size_id: str) -> float:
@@ -541,6 +572,28 @@ class VIU_OT_StudioNext(bpy.types.Operator):
         entry = _current_entry()
         _load_creature_entry(entry)
         _sync_props_from_entry(entry)
+        return {"FINISHED"}
+
+
+class VIU_OT_StudioGoto(bpy.types.Operator):
+    bl_idname = "viu.studio_goto"
+    bl_label = "Перейти к №"
+
+    def execute(self, context):
+        q = _SESSION.get("queue") or []
+        if not q:
+            self.report({"ERROR"}, "Очередь пуста")
+            return {"CANCELLED"}
+        n = int(context.scene.viu_creature_studio.jump_to_n or 1)
+        if n < 1 or n > len(q):
+            self.report({"ERROR"}, f"Номер 1…{len(q)} (сейчас {n})")
+            return {"CANCELLED"}
+        _SESSION["index"] = n - 1
+        entry = _current_entry()
+        msg = _load_creature_entry(entry)
+        _sync_props_from_entry(entry)
+        flag = " ⚠проблема" if entry.get("studio_problem") else ""
+        self.report({"INFO"}, f"№{n}/{len(q)}: {entry.get('name')}{flag} — {msg[:48]}")
         return {"FINISHED"}
 
 
@@ -874,6 +927,7 @@ class VIU_OT_StudioPhotoOk(bpy.types.Operator):
             entry,
             photo_ok=True,
             photo_notes="",
+            studio_problem=bool(props.studio_problem),
             **_markup_fields(props, entry),
         )
         self.report({"INFO"}, f"OK: {entry.get('name')}")
@@ -888,8 +942,15 @@ class VIU_OT_StudioPhotoBad(bpy.types.Operator):
         entry = _current_entry()
         if not entry:
             return {"CANCELLED"}
-        note = context.scene.viu_creature_studio.photo_notes or "нужна правка"
-        S.write_feedback_file(_feedback_path(), entry, photo_ok=False, photo_notes=note)
+        props = context.scene.viu_creature_studio
+        note = props.photo_notes or "нужна правка"
+        S.write_feedback_file(
+            _feedback_path(),
+            entry,
+            photo_ok=False,
+            photo_notes=note,
+            studio_problem=bool(props.studio_problem),
+        )
         return {"FINISHED"}
 
 
@@ -916,12 +977,15 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         if not entry:
             layout.label(text="Очередь пуста")
             return
-        layout.label(text=f"{idx + 1}/{len(q)}: {entry.get('name')}")
+        props = context.scene.viu_creature_studio
+        title = f"{idx + 1}/{len(q)}: {entry.get('name')}"
+        if props.studio_problem or entry.get("studio_problem"):
+            title += " ⚠"
+        layout.label(text=title)
         box = layout.box()
         box.label(text="Порядок: разметка → рост vs Шаня → скрины → FBX")
         box.label(text="Потом во Вью: Синхр. студии")
         box.label(text="Рост смотри у VIU_CREATURE_ROOT, не у арматуры")
-        props = context.scene.viu_creature_studio
         shanya_msg = props.shanya_status or _STATE.get("shanya_status") or ""
         if shanya_msg:
             icon = "CHECKMARK" if shanya_msg.startswith("Шаня:") else "ERROR"
@@ -932,10 +996,12 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         col = layout.column(align=True)
         col.operator("viu.studio_prev", icon="TRIA_LEFT")
         col.operator("viu.studio_next", icon="TRIA_RIGHT")
+        jump = layout.row(align=True)
+        jump.prop(props, "jump_to_n", text="№")
+        jump.operator("viu.studio_goto", icon="FORWARD")
         col.operator("viu.studio_reload", icon="FILE_REFRESH")
         layout.separator()
         layout.label(text="1. Разметка (класс / ноги / анатомия)", icon="OUTLINER_OB_ARMATURE")
-        props = context.scene.viu_creature_studio
         layout.prop(props, "size_class", text="Класс")
         layout.prop(props, "locomotion", text="Locomotion")
         loco = props.locomotion or entry.get("locomotion") or ""
@@ -955,6 +1021,9 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         layout.operator("viu.studio_bursting_head", icon="MODIFIER")
         layout.prop(props, "target_height_m")
         layout.operator("viu.studio_apply_height", icon="ARROW_LEFTRIGHT")
+        layout.prop(props, "studio_problem", text="Проблема роста (пол / меш)")
+        if props.studio_problem:
+            layout.label(text="Отмечено → Синхр. студии во Вью", icon="ERROR")
         layout.separator()
         layout.label(text="3. Эталон FBX (только существо, +textures/)", icon="EXPORT")
         layout.operator("viu.studio_screenshot", icon="RENDER_STILL")
@@ -976,6 +1045,19 @@ class VIU_CreatureStudioProps(bpy.types.PropertyGroup):
     body_mesh: StringProperty(name="Меш роста", default="AUTO")
     photo_notes: StringProperty(name="Заметка", default="")
     shanya_status: StringProperty(name="Шаня", default="")
+    jump_to_n: IntProperty(
+        name="№ существа",
+        description="1-based номер в текущей очереди студии",
+        default=1,
+        min=1,
+        max=9999,
+    )
+    studio_problem: BoolProperty(
+        name="Проблема роста",
+        description="Над полом, неверный меш/рост, scale врёт — отметить для Вью",
+        default=False,
+        update=_on_studio_problem_update,
+    )
     size_class: EnumProperty(name="Класс", items=_size_enum_items)
     locomotion: EnumProperty(name="Locomotion", items=_loco_enum_items)
     genital_profile: EnumProperty(name="Гениталии", items=_genital_enum_items, default=0)
@@ -990,6 +1072,7 @@ _CLASSES = (
     VIU_OT_StudioReloadShanya,
     VIU_OT_StudioPrev,
     VIU_OT_StudioNext,
+    VIU_OT_StudioGoto,
     VIU_OT_StudioReload,
     VIU_OT_StudioHideIk,
     VIU_OT_StudioShowBody,

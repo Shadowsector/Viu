@@ -364,6 +364,8 @@ class CreatureCatalogReviewWindow:
                     hint += " ✓фото"
                 elif e.has_photo_files():
                     hint += " ?фото"
+            if getattr(e, "studio_problem", False):
+                hint = (hint + " ⚠рост").strip() if hint else "⚠рост"
             self.tree.insert(
                 "",
                 "end",
@@ -435,6 +437,8 @@ class CreatureCatalogReviewWindow:
             photo_msg = "Скрины есть — проверь и жми «Скрины ок» или «Плохо»"
         if e.photo_notes:
             photo_msg += f" · {e.photo_notes[:80]}"
+        if getattr(e, "studio_problem", False):
+            photo_msg += " · ⚠ проблема роста (пол / меш)"
         self.photo_status.config(text=photo_msg)
         self._load_photo_previews(e)
         self.status_lbl.config(text="")
