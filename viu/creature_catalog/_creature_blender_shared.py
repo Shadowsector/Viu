@@ -557,6 +557,117 @@ def gather_under_root(root) -> List:
     return out
 
 
+def uniform_scale_value(obj, *, tol: float = 1e-3) -> Optional[float]:
+    """Return uniform XYZ scale, or None if missing / non-uniform / near-zero."""
+    if obj is None:
+        return None
+    try:
+        sx, sy, sz = float(obj.scale[0]), float(obj.scale[1]), float(obj.scale[2])
+    except (AttributeError, TypeError, IndexError):
+        return None
+    if min(abs(sx), abs(sy), abs(sz)) < 1e-8:
+        return None
+    if max(abs(sx - sy), abs(sy - sz), abs(sx - sz)) > tol:
+        return None
+    return (abs(sx) + abs(sy) + abs(sz)) / 3.0
+
+
+def _object_depth(obj) -> int:
+    d = 0
+    cur = obj
+    seen = set()
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        d += 1
+        cur = cur.parent
+    return d
+
+
+def normalize_uniform_scales_under_root(root) -> float:
+    """Fold uniform local scales under root into ancestors (usually the wrap empty).
+
+    FBX/Mixamo packs often leave scale=10 on the armature. Height fit only scaled
+    VIU_CREATURE_ROOT, so Outliner still showed 10 and «Применить рост» looked broken.
+    Returns the product of absorbed scale factors (1.0 if nothing changed).
+    """
+    if root is None:
+        return 1.0
+    nodes = [o for o in gather_under_root(root) if o != root]
+    if not nodes:
+        return 1.0
+
+    by_parent: Dict[object, List] = {}
+    for o in nodes:
+        parent = o.parent
+        if parent is None:
+            continue
+        by_parent.setdefault(parent, []).append(o)
+
+    absorbed = 1.0
+    parents = sorted(by_parent.keys(), key=_object_depth, reverse=True)
+    for parent in parents:
+        children = list(by_parent.get(parent) or [])
+        if not children:
+            continue
+        scales = []
+        for ch in children:
+            u = uniform_scale_value(ch)
+            if u is not None and abs(u - 1.0) > 1e-4:
+                scales.append(u)
+        if not scales:
+            continue
+        # Absorb one shared factor when siblings match (typical FBX root scale).
+        s0 = scales[0]
+        if any(abs(u - s0) > 1e-2 for u in scales):
+            # Different sibling scales: fold each child individually via matrix restore.
+            for ch in children:
+                u = uniform_scale_value(ch)
+                if u is None or abs(u - 1.0) <= 1e-4:
+                    continue
+                mw = ch.matrix_world.copy()
+                parent.scale = (
+                    float(parent.scale[0]) * u,
+                    float(parent.scale[1]) * u,
+                    float(parent.scale[2]) * u,
+                )
+                ch.scale = (1.0, 1.0, 1.0)
+                bpy.context.view_layer.update()
+                ch.matrix_world = mw
+                absorbed *= u
+            bpy.context.view_layer.update()
+            continue
+
+        mws = [ch.matrix_world.copy() for ch in children]
+        parent.scale = (
+            float(parent.scale[0]) * s0,
+            float(parent.scale[1]) * s0,
+            float(parent.scale[2]) * s0,
+        )
+        for ch in children:
+            u = uniform_scale_value(ch)
+            if u is not None and abs(u - s0) <= 1e-2:
+                ch.scale = (1.0, 1.0, 1.0)
+        bpy.context.view_layer.update()
+        for ch, mw in zip(children, mws):
+            ch.matrix_world = mw
+        absorbed *= s0
+        bpy.context.view_layer.update()
+    return absorbed
+
+
+def height_fit_multiplier(measured_m: float, target_m: float) -> float:
+    """Pure helper: root scale multiplier to go from measured height to target metres."""
+    if measured_m <= 1e-6 or target_m <= 0:
+        return 1.0
+    h = float(measured_m)
+    pre = 1.0
+    if h > 20.0 and target_m < 10.0:
+        # Likely centimetres exported as metres.
+        pre = 0.01
+        h *= pre
+    return pre * (float(target_m) / h)
+
+
 def save_objects_blend(filepath: Path, objects: Sequence) -> bool:
     if not objects:
         return False

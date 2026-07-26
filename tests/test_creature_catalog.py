@@ -806,3 +806,27 @@ def test_prep_queue_scans_subfolders_and_no_empty_prepared_dir(tmp_path, monkeyp
     assert not path.parent.is_dir()
     path = creature_prepared_blend_path(cfg, queue[0].slug, ensure_dir=True)
     assert path.parent.is_dir()
+
+
+def test_height_fit_multiplier_fbx_scale_and_cm():
+    """Studio height fit: scale-10 visual (~17m) and cm exports (~170)."""
+    import ast
+    from pathlib import Path
+
+    # Pure helper lives in Blender shared module; extract without importing bpy.
+    src = Path("viu/creature_catalog/_creature_blender_shared.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    fn = None
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "height_fit_multiplier":
+            fn = node
+            break
+    assert fn is not None
+    ns: dict = {}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), "<height_fit>", "exec"), ns)
+    height_fit_multiplier = ns["height_fit_multiplier"]
+
+    assert abs(height_fit_multiplier(17.0, 1.7) - 0.1) < 1e-9
+    assert abs(height_fit_multiplier(170.0, 1.7) - 0.01) < 1e-9
+    assert abs(height_fit_multiplier(1.7, 1.7) - 1.0) < 1e-9
+    assert height_fit_multiplier(0.0, 1.7) == 1.0
