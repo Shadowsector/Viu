@@ -90,14 +90,15 @@ Lab\Creatures\Prepared\<slug>\<slug>_prepared.blend
 
 ```
 Lab\Creatures\Processed\<slug>\front.png, side.png   ← 1536², весь рост в кадре
-Lab\Creatures\Processed\<slug>\<slug>_ready.fbx      ← текстуры embed внутрь FBX
-Lab\Creatures\Processed\<slug>\textures\             ← и копия рядом
+Lab\Creatures\Processed\<slug>\<slug>_ready.fbx      ← scale baked; текстуры embed
+Lab\Creatures\Processed\<slug>\textures\             ← только текстуры существа
 Lab\Creatures\Processed\<slug>\texture_manifest.json
 ```
 
-Эталон FBX — **только существо** (Шаня в сцене не экспортируется).  
-Текстуры **вшиты** в FBX (`embed_textures`) + лежат в `textures/`.  
-Если модель «пустая» в сравнении — **Показать меши тела** / перезагрузка (студия умеет fallback на Inbox).
+Эталон FBX — **только существо** (Шаня и её текстуры не попадают в экспорт).  
+Перед записью bake scale с `VIU_CREATURE_ROOT` → риг и меш одного размера.  
+В статусе Blender: `текстур N` или `⚠ в материалах 0 текстур`.  
+Если модель «пустая» в сравнении — **Показать меши тела** / перезагрузка.
 
 Разметка из Blender попадает в `creature_catalog.json` (size_class, locomotion, рост, photo_ok).
 
