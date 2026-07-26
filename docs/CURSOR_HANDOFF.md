@@ -2307,3 +2307,17 @@ Inbox/
 
 web_search (`Unity 6 list_dir [OK] .viu/ Inbox/`):
 Ничего не найдено по запросу.
+
+
+---
+
+## 2026-07-26 18:18 — ESCALATE `character_card_probe` / png-char-cards-probe-20260726 (Viu)
+
+ЭСКАЛАЦИЯ: инструмент `character_card_probe` не справился.
+Inbox task: `png-char-cards-probe-20260726`
+
+Ошибка / лог:
+Нет инструмента `character_card_probe`
+
+web_search (`Unity 6 character_card_probe Нет инструмента `character_card_probe``):
+Ничего не найдено по запросу.
