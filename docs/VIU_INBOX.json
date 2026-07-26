@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-26T15:10:00Z",
+  "updated_at": "2026-07-26T15:18:04Z",
   "note": "PNG character cards: probe U:\\TempUnityCard → handoff Cursor schema.",
   "tasks": [
     {
@@ -19,7 +19,7 @@
     },
     {
       "id": "png-char-cards-probe-20260726",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "title": "Probe PNG character cards in U:\\TempUnityCard",
       "created_by": "Cursor",
@@ -31,7 +31,8 @@
         "limit": "40"
       },
       "instructions": "Ден сложил старые PNG-карточки персонажей в U:\\TempUnityCard. В них зашит JSON кастомизации (слайдеры лица, ID причёсок и т.п.). Вызови character_card_probe по этому каталогу. Нужен полный отчёт: какие чанки/хвост после IEND, ключи JSON, preview. JSON дампы уже пишутся в .viu/character_cards_extract/. После успеха handoff уйдёт Cursor автоматически (direct). Не зови Дена.",
-      "acceptance": "Отчёт по каждому PNG: способ вложения + sample keys + preview JSON. summary_json.with_json >= 1 ИЛИ явный WARN что JSON не найден с сырыми находками."
+      "acceptance": "Отчёт по каждому PNG: способ вложения + sample keys + preview JSON. summary_json.with_json >= 1 ИЛИ явный WARN что JSON не найден с сырыми находками.",
+      "started_at": "2026-07-26T15:18:04Z"
     }
   ]
 }
