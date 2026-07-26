@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-26T15:40:00Z",
+  "updated_at": "2026-07-26T15:41:47Z",
   "note": "Reflect/work modes locked. Re-queue PNG probe after tool landed.",
   "tasks": [
     {
@@ -19,7 +19,7 @@
     },
     {
       "id": "png-char-cards-probe-20260726b",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 2,
       "title": "Probe PNG character cards in U:\\TempUnityCard (retry)",
       "created_by": "Cursor",
@@ -31,7 +31,8 @@
         "limit": "40"
       },
       "instructions": "Повтор: прошлый запуск упал с «Нет инструмента» до обновления кода. Сейчас character_card_probe уже в сборке. Прогони U:\\TempUnityCard, handoff отчёт Cursor. Не зови Дена.",
-      "acceptance": "summary_json в отчёте; with_json>=1 или WARN с сырыми находками."
+      "acceptance": "summary_json в отчёте; with_json>=1 или WARN с сырыми находками.",
+      "started_at": "2026-07-26T15:41:47Z"
     }
   ]
 }
