@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 3, 0),
+    "version": (0, 3, 1),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -205,81 +205,143 @@ def _show_shanya_now() -> str:
     return f"Шаня снова видима ({len(live)} obj)"
 
 
-def _load_creature_entry(entry: dict):
-    _clear_creature()
-    path = Path(str(entry.get("path") or ""))
-    if not path.is_file():
-        return f"Нет файла: {path}"
+def _force_show_body_meshes(objects) -> list:
+    """Unhide real body geo; keep only WGT/cs_/GZM_ hidden."""
+    body = []
+    for o in objects or []:
+        if getattr(o, "type", "") != "MESH":
+            continue
+        if S.is_wgt_name(o.name) or S.is_control_shape_name(o.name) or S.is_gzm_name(o.name):
+            continue
+        S.safe_unhide_object(o)
+        if S.mesh_vertex_count(o) > 32:
+            body.append(o)
+    return body
+
+
+def _load_creature_from_path(path: Path, entry: dict):
     slot = S.ensure_collection(_SLOT)
     S.reveal_collection(_SLOT)
     S.reveal_collection(_SHANYA_COLL)
     imported, import_colls = S.import_asset(path, target_coll=slot)
-    # Source blends often ship with hide_viewport/hide_render on body meshes.
-    for o in imported:
-        if getattr(o, "type", "") == "MESH" and not S.skip_mesh(o.name):
-            S.safe_unhide_object(o)
+    body_meshes = _force_show_body_meshes(imported)
+    # Diffeomorphic face scale=0 can collapse the whole preview.
+    try:
+        S.repair_bursting_head(imported)
+    except Exception:
+        pass
     root = S.wrap_root(imported, root_name=_ROOT, target_coll=slot)
-    S.hide_helpers(imported)
-    body_meshes = [
-        o
-        for o in imported
-        if o.type == "MESH" and not S.skip_mesh(o.name) and not o.hide_render
-    ]
-    if not body_meshes:
-        body_meshes = [o for o in imported if o.type == "MESH" and not S.skip_mesh(o.name)]
-        for o in body_meshes:
-            S.safe_unhide_object(o)
+    # Hide only true helpers — not Shadow/Control body meshes.
+    for o in imported:
+        if S.is_wgt_name(o.name) or S.is_control_shape_name(o.name) or S.is_gzm_name(o.name):
+            S.safe_hide_object_for_render(o)
+        elif getattr(o, "type", "") in ("EMPTY", "CURVE"):
+            S.safe_hide_object_for_render(o)
+        elif getattr(o, "type", "") == "ARMATURE":
+            try:
+                o.data.display_type = "STICK"
+            except (AttributeError, ReferenceError):
+                pass
+    body_meshes = _force_show_body_meshes(imported) or body_meshes
     target = float(entry.get("target_height_m") or 1.0)
     offset = float(_SESSION.get("creature_offset_m") or 1.35)
     props = bpy.context.scene.viu_creature_studio
-    bm = props.body_mesh if props.body_mesh and props.body_mesh != "AUTO" else ""
+    bm = ""
+    if body_meshes:
+        best = max(body_meshes, key=S.mesh_vertex_count)
+        bm = best.name
+        if props.body_mesh and props.body_mesh != "AUTO":
+            bm = props.body_mesh
     _place_creature(root, imported, offset, target, bm)
     S.reveal_collection(_SLOT)
     S.safe_unhide_object(root)
-    measured = S.height_of_objects(imported, bm if bm else "")
+    _force_show_body_meshes(imported)
+    measured = S.height_of_objects(imported, bm)
+    # If height-fit crushed the model, reset and place once more without absorb glitches.
+    if body_meshes and measured < 0.05:
+        root.scale = (1.0, 1.0, 1.0)
+        bpy.context.view_layer.update()
+        _place_creature(root, imported, offset, target, bm)
+        measured = S.height_of_objects(imported, bm)
+    return bm, root, imported, import_colls, measured, target
+
+
+def _load_creature_entry(entry: dict):
+    _clear_creature()
+    path = Path(str(entry.get("path") or ""))
+    inbox = Path(str(entry.get("source_inbox") or ""))
+    if not path.is_file():
+        if inbox.is_file():
+            path = inbox
+        else:
+            return f"Нет файла: {path}"
+    try:
+        bm, root, imported, import_colls, measured, target = _load_creature_from_path(path, entry)
+    except Exception as exc:
+        return f"Ошибка импорта {path.name}: {exc}"
+    # prepared.blend пустой/сломан — пробуем исходник из Inbox (как в prep).
+    if (not bm or measured < 0.05) and inbox.is_file() and inbox.resolve() != path.resolve():
+        _clear_creature()
+        try:
+            bm, root, imported, import_colls, measured, target = _load_creature_from_path(inbox, entry)
+            path = inbox
+        except Exception:
+            pass
     _STATE["creature_root"] = root
     _STATE["creature_objects"] = imported
     _STATE["creature_import_colls"] = import_colls
-    if body_meshes:
-        best = max(body_meshes, key=lambda o: len(o.data.vertices) if o.data else 0)
-        _STATE["body_mesh"] = best.name
-    else:
-        _STATE["body_mesh"] = ""
-    if not body_meshes:
-        return f"Загружено: {entry.get('name')} — ⚠ тела не видно (0 mesh)"
+    _STATE["body_mesh"] = bm or ""
+    mesh_n = sum(1 for o in imported if getattr(o, "type", "") == "MESH")
+    if not bm:
+        return (
+            f"Загружено: {entry.get('name')} — ⚠ тела не видно "
+            f"(MESH={mesh_n}, файл {path.name}). Жми «Показать меши тела»"
+        )
     if measured < 0.05:
         return (
             f"Загружено: {entry.get('name')} — ⚠ рост≈{measured:.3f}m "
-            f"(меш {_STATE['body_mesh']}) — проверь scale/единицы"
+            f"(меш {bm}, {path.name}) — жми Показать меши + Применить рост"
         )
     return (
         f"Загружено: {entry.get('name')} "
-        f"(меш: {_STATE['body_mesh']}, h≈{measured:.2f}m → {target:.2f}m)"
+        f"(меш: {bm}, h≈{measured:.2f}m → {target:.2f}m, {path.name})"
     )
 
 
 def _setup_camera_for_shot(yaw_deg: float, objects):
     deps = bpy.context.evaluated_depsgraph_get()
     pts = []
-    for o in objects:
-        pts.extend(S.mesh_points(o, deps))
+    # Prefer the chosen body mesh so clothing helpers don't pull the framing out.
+    bm = _STATE.get("body_mesh") or ""
+    if bm:
+        obj = bpy.data.objects.get(bm)
+        if obj is not None:
+            pts.extend(S.mesh_points(obj, deps))
+    if not pts:
+        for o in objects:
+            pts.extend(S.mesh_points(o, deps))
     if not pts:
         return None
     mins, maxs = S.aabb_pts(pts)
+    # Чуть выше середины — полный рост в кадре, меньше пола/воздуха.
     center = (mins + maxs) * 0.5
-    span = max(maxs.x - mins.x, maxs.y - mins.y, maxs.z - mins.z, 0.25)
-    dist = max(span * 2.2, 1.0)
+    center = center.copy()
+    center.z = mins.z + (maxs.z - mins.z) * 0.52
+    height = max(maxs.z - mins.z, 0.2)
+    span = max(maxs.x - mins.x, maxs.y - mins.y, height, 0.2)
+    # Ближе к модели (было 2.2) — существо крупнее в кадре.
+    dist = max(span * 1.15, height * 1.35, 0.4)
     rad = math.radians(yaw_deg)
     cam_data = bpy.data.cameras.new("VIU_StudioCam")
-    cam_data.lens = 50.0
+    cam_data.lens = 70.0
     cam_data.clip_start = 0.01
-    cam_data.clip_end = max(dist * 4.0, maxs.z - mins.z + 10.0)
+    cam_data.clip_end = max(dist * 6.0, height + 10.0)
     cam = bpy.data.objects.new("VIU_StudioCam", cam_data)
     bpy.context.collection.objects.link(cam)
     cam.location = (
         center.x + dist * math.sin(rad),
         center.y - dist * math.cos(rad),
-        center.z + span * 0.1,
+        center.z + height * 0.02,
     )
     direction = center - cam.location
     if direction.length > 1e-6:
@@ -295,7 +357,7 @@ def _render_shots(entry: dict) -> tuple[str, str, str]:
     three_quarter = out_dir / "three_quarter.png"
     side = out_dir / "side.png"
     scene = bpy.context.scene
-    S.setup_shot_render(scene, res=768)
+    S.setup_shot_render(scene, res=1536)
     S.ensure_shot_lights()
     root, objs = _resolve_creature()
     if not objs:
@@ -625,20 +687,16 @@ class VIU_OT_StudioShowBody(bpy.types.Operator):
     def execute(self, context):
         root, objs = _resolve_creature()
         S.reveal_collection(_SLOT)
-        n = 0
-        for o in objs:
-            if getattr(o, "type", "") != "MESH":
-                continue
-            if S.skip_mesh(o.name):
-                continue
-            S.safe_unhide_object(o)
-            n += 1
+        body = _force_show_body_meshes(objs)
         if root is not None:
             S.safe_unhide_object(root)
-        if n == 0:
+        if not body:
             self.report({"WARNING"}, "Нет MESH у существа — перезагрузи из Вью")
             return {"CANCELLED"}
-        self.report({"INFO"}, f"Показано MESH: {n}")
+        if body:
+            best = max(body, key=S.mesh_vertex_count)
+            _STATE["body_mesh"] = best.name
+        self.report({"INFO"}, f"Показано MESH: {len(body)} (осн. {_STATE.get('body_mesh')})")
         return {"FINISHED"}
 
 
@@ -897,7 +955,7 @@ def load_session(session_path: str) -> None:
     if not _GENITAL_ITEMS:
         _GENITAL_ITEMS = [("none", "нет", "")]
     bpy.ops.wm.read_homefile(use_empty=True)
-    S.setup_shot_render(bpy.context.scene, res=768)
+    S.setup_shot_render(bpy.context.scene, res=1536)
     S.ensure_shot_lights()
     shanya_msg = _ensure_shanya()
     _STATE["shanya_status"] = shanya_msg

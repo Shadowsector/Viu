@@ -89,14 +89,15 @@ Lab\Creatures\Prepared\<slug>\<slug>_prepared.blend
 Выход:
 
 ```
-Lab\Creatures\Processed\<slug>\front.png, side.png
-Lab\Creatures\Processed\<slug>\<slug>_ready.fbx
-Lab\Creatures\Processed\<slug>\textures\          ← рядом с FBX
+Lab\Creatures\Processed\<slug>\front.png, side.png   ← 1536², крупный кадр
+Lab\Creatures\Processed\<slug>\<slug>_ready.fbx      ← текстуры embed внутрь FBX
+Lab\Creatures\Processed\<slug>\textures\             ← и копия рядом
 Lab\Creatures\Processed\<slug>\texture_manifest.json
 ```
 
 Эталон FBX — **только существо** (Шаня в сцене не экспортируется).  
-Если модель «пустая» в сравнении — кнопка **Показать меши тела**, потом снова рост.
+Текстуры **вшиты** в FBX (`embed_textures`) + лежат в `textures/`.  
+Если модель «пустая» в сравнении — **Показать меши тела** / перезагрузка (студия умеет fallback на Inbox).
 
 Разметка из Blender попадает в `creature_catalog.json` (size_class, locomotion, рост, photo_ok).
 

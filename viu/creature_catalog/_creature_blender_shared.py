@@ -87,7 +87,23 @@ def is_rig_helper_mesh_name(name: str) -> bool:
     return any(tok in tokens for tok in _RIG_HIDE_TOKENS)
 
 
-def skip_mesh(name: str) -> bool:
+def mesh_vertex_count(obj) -> int:
+    try:
+        if obj is None or getattr(obj, "type", "") != "MESH" or not obj.data:
+            return 0
+        return int(len(obj.data.vertices))
+    except (ReferenceError, AttributeError, TypeError):
+        return 0
+
+
+def skip_mesh(name: str, obj=None) -> bool:
+    """True for real rig helpers. Large body meshes keep showing even if named Shadow/etc."""
+    if is_wgt_name(name) or is_control_shape_name(name) or is_gzm_name(name):
+        return True
+    vc = mesh_vertex_count(obj) if obj is not None else 0
+    # Ahmed/Blue Devil: body often named *Shadow* / *Control* but is real geo.
+    if vc >= 400:
+        return False
     return is_rig_helper_mesh_name(name)
 
 
@@ -269,12 +285,12 @@ def post_import_visibility(objects):
         if is_wgt_name(obj.name) or is_control_shape_name(obj.name) or is_gzm_name(obj.name):
             safe_hide_object_for_render(obj)
             continue
-        if obj.type == "MESH" and skip_mesh(obj.name):
+        if obj.type == "MESH" and skip_mesh(obj.name, obj):
             safe_hide_object_for_render(obj)
             continue
         if obj.type == "MESH":
             safe_unhide_object(obj)
-            vc = len(obj.data.vertices) if obj.data else 0
+            vc = mesh_vertex_count(obj)
             if vc > 32:
                 body.append(obj)
         elif obj.type == "ARMATURE":
@@ -398,7 +414,7 @@ def wrap_root(imported, root_name="VIU_CREATURE_ROOT", target_coll=None):
 
 
 def mesh_points(obj, depsgraph):
-    if obj.type != "MESH" or skip_mesh(obj.name):
+    if obj.type != "MESH" or skip_mesh(obj.name, obj):
         return []
     ev = obj.evaluated_get(depsgraph)
     try:
@@ -430,13 +446,15 @@ def height_of_objects(objects, body_mesh: str = ""):
         if obj:
             pts = mesh_points(obj, deps)
             if pts:
-                _, maxs = aabb_pts(pts)
-                mins, _ = aabb_pts(pts)
+                mins, maxs = aabb_pts(pts)
                 return float(maxs.z - mins.z)
-    meshes = [o for o in objects if o.type == "MESH" and not skip_mesh(o.name)]
+    meshes = [o for o in objects if o.type == "MESH" and not skip_mesh(o.name, o)]
+    if not meshes:
+        # Last resort: any mesh with geometry (studio visibility for odd names).
+        meshes = [o for o in objects if o.type == "MESH" and mesh_vertex_count(o) > 32]
     if not meshes:
         return 0.0
-    best = max(meshes, key=lambda o: len(o.data.vertices) if o.data else 0)
+    best = max(meshes, key=mesh_vertex_count)
     pts = mesh_points(best, deps)
     if not pts:
         return 0.0
@@ -479,10 +497,11 @@ def setup_shot_world(
         pass
 
 
-def setup_shot_render(scene, *, res: int = 768) -> str:
+def setup_shot_render(scene, *, res: int = 1536) -> str:
     engine = set_render_engine(scene)
     scene.render.resolution_x = int(res)
     scene.render.resolution_y = int(res)
+    scene.render.resolution_percentage = 100
     scene.render.image_settings.file_format = "PNG"
     scene.render.film_transparent = False
     setup_shot_world(scene)
@@ -1325,35 +1344,49 @@ def _pick_armature(objects: Sequence):
 
 
 def materialize_textures_beside_fbx(out_dir: Path) -> int:
-    """Unpack/copy textures into Processed/<slug>/textures/ and rebind image paths."""
+    """Unpack/copy textures into Processed/<slug>/textures/ and rebind as //textures/…"""
     out_dir = Path(out_dir)
     tex_dir = out_dir / "textures"
     tex_dir.mkdir(parents=True, exist_ok=True)
     n = 0
     for img in list(bpy.data.images):
         try:
-            if not img or getattr(img, "type", "") == "RENDER_RESULT":
+            if not img or getattr(img, "type", "") in ("RENDER_RESULT", "COMPOSITING"):
                 continue
             packed = getattr(img, "packed_file", None)
-            if packed is None:
-                continue
-            raw_name = Path(img.name or "tex").name
+            raw_name = Path((img.name or "tex").replace("\\", "/")).name
             if not re.search(r"\.(png|jpe?g|tga|tif{1,2}|exr|bmp|webp)$", raw_name, re.I):
                 raw_name = f"{raw_name}.png"
             dest = tex_dir / raw_name
-            img.filepath_raw = str(dest)
-            try:
-                img.save()
-                n += 1
-            except RuntimeError:
+            if packed is not None:
+                img.filepath_raw = str(dest)
                 try:
-                    img.unpack(method="WRITE_LOCAL")
+                    img.save()
                     n += 1
                 except RuntimeError:
+                    try:
+                        img.unpack(method="WRITE_LOCAL")
+                        n += 1
+                    except RuntimeError:
+                        pass
+            # Relative path next to FBX — Blender re-import finds textures/.
+            if dest.is_file() or packed is not None:
+                try:
+                    img.filepath = f"//textures/{dest.name}"
+                    img.reload()
+                except (RuntimeError, AttributeError):
                     pass
         except (ReferenceError, AttributeError):
             continue
     n += relocate_external_textures(tex_dir, out_dir)
+    for img in list(bpy.data.images):
+        try:
+            raw = (img.filepath or "").replace("\\", "/")
+            if "/textures/" in raw:
+                name = Path(raw).name
+                img.filepath = f"//textures/{name}"
+        except (ReferenceError, AttributeError):
+            pass
     return n
 
 
@@ -1418,14 +1451,25 @@ def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str]:
             mesh_smooth_type="FACE",
             apply_scale_options="FBX_SCALE_ALL",
         )
-        # COPY кладёт текстуры рядом с FBX (Blender 3/4).
-        try:
-            bpy.ops.export_scene.fbx(**kwargs, path_mode="COPY")
-        except TypeError:
-            bpy.ops.export_scene.fbx(**kwargs)
+        # COPY + embed: текстуры внутри FBX (и копия в textures/ на диске).
+        exported = False
+        for extra in (
+            {"path_mode": "COPY", "embed_textures": True},
+            {"path_mode": "COPY"},
+            {},
+        ):
+            try:
+                bpy.ops.export_scene.fbx(**kwargs, **extra)
+                exported = True
+                break
+            except TypeError:
+                continue
+        if not exported:
+            return False, "export_scene.fbx не принял аргументы"
     if not filepath.is_file():
         return False, "FBX не записан"
-    return True, f"FBX: {filepath.name} ({len(selected)} obj, без Шани)"
+    embed_note = "embed+textures/" if (filepath.parent / "textures").is_dir() else "embed?"
+    return True, f"FBX: {filepath.name} ({len(selected)} obj, без Шани, {embed_note})"
 
 
 def legs_hint(locomotion: str) -> str:
