@@ -73,6 +73,39 @@ QUAD_SIZE_CLASSES: Dict[str, Dict[str, Any]] = {
     },
 }
 
+# Не-бипеды / не-квадры: рост для масштаба рядом с Шаней.
+# Locomotion отдельно (mimic / amorph / tentacle / …).
+SPECIAL_SIZE_CLASSES: Dict[str, Dict[str, Any]] = {
+    "insect": {
+        "label_ru": "Насекомое / паук",
+        "target_m": 0.45,
+        "min_m": 0.25,
+        "max_m": 0.70,
+        "notes": "жуки, пауки, facehugger-scale",
+    },
+    "blob": {
+        "label_ru": "Слизень / аморф",
+        "target_m": 0.90,
+        "min_m": 0.50,
+        "max_m": 1.40,
+        "notes": "slime / slug / ooze (locomotion=amorph)",
+    },
+    "prop": {
+        "label_ru": "Мимик / проп",
+        "target_m": 1.00,
+        "min_m": 0.70,
+        "max_m": 1.40,
+        "notes": "сундук-мимик, живой проп (locomotion=mimic)",
+    },
+    "tentacle_med": {
+        "label_ru": "Щупальца / осьминог",
+        "target_m": 1.50,
+        "min_m": 1.10,
+        "max_m": 2.20,
+        "notes": "осьминог / кракен-младший (locomotion=tentacle)",
+    },
+}
+
 LOCOMOTION = (
     "biped",
     "quadruped",
@@ -120,7 +153,11 @@ GIRL_SOCKETS: Tuple[Dict[str, str], ...] = (
     {"id": "socket_cleavage", "bone_hint": "spine / chest", "label_ru": "меж грудей"},
 )
 
-ALL_SIZE_IDS = tuple(list(SIZE_CLASSES.keys()) + list(QUAD_SIZE_CLASSES.keys()))
+ALL_SIZE_IDS = tuple(
+    list(SIZE_CLASSES.keys())
+    + list(QUAD_SIZE_CLASSES.keys())
+    + list(SPECIAL_SIZE_CLASSES.keys())
+)
 
 
 def size_spec(size_id: str) -> Optional[Dict[str, Any]]:
@@ -128,6 +165,8 @@ def size_spec(size_id: str) -> Optional[Dict[str, Any]]:
         return SIZE_CLASSES[size_id]
     if size_id in QUAD_SIZE_CLASSES:
         return QUAD_SIZE_CLASSES[size_id]
+    if size_id in SPECIAL_SIZE_CLASSES:
+        return SPECIAL_SIZE_CLASSES[size_id]
     return None
 
 
@@ -142,7 +181,7 @@ def suggest_size_from_name(name: str) -> List[str]:
     hits: List[str] = []
     rules = (
         (("fairy", "faerie", "pixie", "sprite", "фея", "fairie"), "mini"),
-        (("facehug", "face_hug", "imp", "goblin", "gnome", "гоблин", "карлик"), "small"),
+        (("imp", "goblin", "gnome", "гоблин", "карлик"), "small"),
         (("centaur", "кентавр"), "humanoid"),
         (
             (
@@ -160,12 +199,25 @@ def suggest_size_from_name(name: str) -> List[str]:
             "large",
         ),
         (("dragon", "giant", "coloss", "титан", "гигант"), "huge"),
-        (("slime", "slug", "ooze", "слиз"), "humanoid"),  # рост потом руками
-        (("mimic", "chest", "сундук"), "humanoid"),
+        (("slime", "slug", "ooze", "слиз", "blob"), "blob"),
+        (("mimic", "chest", "сундук"), "prop"),
+        (
+            (
+                "insect",
+                "spider",
+                "bug",
+                "beetle",
+                "паук",
+                "жук",
+                "facehug",
+                "face_hug",
+            ),
+            "insect",
+        ),
         (("wolf", "dog", "hound", "волк", "собак"), "quad_med"),
         (("horse", "cow", "deer", "лошад", "коров"), "quad_large"),
         (("weasel", "badger", "ferret", "куниц", "барсук"), "quad_mini"),
-        (("octopus", "tentacle", "щупаль"), "humanoid"),
+        (("octopus", "tentacle", "щупаль", "kraken"), "tentacle_med"),
     )
     for keys, size in rules:
         if any(k in low for k in keys):

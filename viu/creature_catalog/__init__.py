@@ -12,6 +12,7 @@ from .models import (
     LOCOMOTION,
     QUAD_SIZE_CLASSES,
     SIZE_CLASSES,
+    SPECIAL_SIZE_CLASSES,
     CreatureEntry,
     size_spec,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "LOCOMOTION",
     "QUAD_SIZE_CLASSES",
     "SIZE_CLASSES",
+    "SPECIAL_SIZE_CLASSES",
     "auto_apply_size_guesses",
     "build_lineup_job",
     "creature_catalog_path",

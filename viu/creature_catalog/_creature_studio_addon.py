@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 3, 4),
+    "version": (0, 3, 5),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -109,9 +109,10 @@ def _resolve_creature():
 
 
 def _place_creature(root, objects, x_offset: float, target_h: float, body_mesh: str = ""):
+    """Scale only the wrap empty — like wardrobe, without twisting the rig."""
     bpy.context.view_layer.update()
-    # Move FBX scale=10 (etc.) from armature/mesh up to the wrap empty first.
-    S.normalize_uniform_scales_under_root(root)
+    # Только классический FBX scale 10/100 на прямых детях — без deep normalize/fold.
+    S.absorb_direct_fbx_scales(root)
     bpy.context.view_layer.update()
     h = S.height_of_objects(objects, body_mesh)
     if h > 1e-6 and target_h > 0:
@@ -131,9 +132,6 @@ def _place_creature(root, objects, x_offset: float, target_h: float, body_mesh: 
     if pts:
         mins, _ = S.aabb_pts(pts)
         root.location.z -= mins.z
-    bpy.context.view_layer.update()
-    # Root scale → children (arm/mesh). Root stays 1 so FBX/dup export match viewport.
-    S.fold_root_scale_into_children(root)
     bpy.context.view_layer.update()
 
 
@@ -216,36 +214,45 @@ def _force_show_body_meshes(objects) -> list:
             continue
         if S.is_wgt_name(o.name) or S.is_control_shape_name(o.name) or S.is_gzm_name(o.name):
             continue
-        S.safe_unhide_object(o)
+        # Не прятать крупное тело даже если имя похоже на helper (Shadow/Control…).
+        if S.skip_mesh(o.name, o):
+            continue
+        try:
+            S.set_mesh_viewport_visible(o, True)
+        except Exception:
+            S.safe_unhide_object(o)
         if S.mesh_vertex_count(o) > 32:
             body.append(o)
     return body
 
 
 def _load_creature_from_path(path: Path, entry: dict):
+    """Load like wardrobe: import → wrap → show meshes → soft height place.
+
+    No auto Bursting Head / deep normalize / fold — they twisted Blue Devil.
+    """
     slot = S.ensure_collection(_SLOT)
     S.reveal_collection(_SLOT)
     S.reveal_collection(_SHANYA_COLL)
     imported, import_colls = S.import_asset(path, target_coll=slot)
-    body_meshes = _force_show_body_meshes(imported)
-    # Diffeomorphic face scale=0 can collapse the whole preview.
-    try:
-        S.repair_bursting_head(imported)
-    except Exception:
-        pass
     root = S.wrap_root(imported, root_name=_ROOT, target_coll=slot)
-    # Hide only true helpers — not Shadow/Control body meshes.
+    # Как wardrobe: спрятать только риг-хелперы, тело показать.
+    S.hide_helpers(imported)
+    # Nested colls из prepared.blend иногда остаются exclude — открыть слот и импорт.
+    S.reveal_collection(_SLOT)
+    for coll in import_colls or []:
+        try:
+            S.reveal_collection(coll.name)
+        except (AttributeError, ReferenceError):
+            pass
+    body_meshes = _force_show_body_meshes(imported)
     for o in imported:
-        if S.is_wgt_name(o.name) or S.is_control_shape_name(o.name) or S.is_gzm_name(o.name):
-            S.safe_hide_object_for_render(o)
-        elif getattr(o, "type", "") in ("EMPTY", "CURVE"):
-            S.safe_hide_object_for_render(o)
-        elif getattr(o, "type", "") == "ARMATURE":
+        if getattr(o, "type", "") == "ARMATURE":
             try:
                 o.data.display_type = "STICK"
             except (AttributeError, ReferenceError):
                 pass
-    body_meshes = _force_show_body_meshes(imported) or body_meshes
+            S.safe_unhide_object(o)
     target = float(entry.get("target_height_m") or 1.0)
     offset = float(_SESSION.get("creature_offset_m") or 1.35)
     props = bpy.context.scene.viu_creature_studio
@@ -253,19 +260,14 @@ def _load_creature_from_path(path: Path, entry: dict):
     if body_meshes:
         best = max(body_meshes, key=S.mesh_vertex_count)
         bm = best.name
-        if props.body_mesh and props.body_mesh != "AUTO":
+        if props.body_mesh and props.body_mesh != "AUTO" and bpy.data.objects.get(props.body_mesh):
             bm = props.body_mesh
     _place_creature(root, imported, offset, target, bm)
     S.reveal_collection(_SLOT)
     S.safe_unhide_object(root)
-    _force_show_body_meshes(imported)
+    S.reveal_objects([root, *imported])
+    body_meshes = _force_show_body_meshes(imported) or body_meshes
     measured = S.height_of_objects(imported, bm)
-    # If height-fit crushed the model, reset and place once more without absorb glitches.
-    if body_meshes and measured < 0.05:
-        root.scale = (1.0, 1.0, 1.0)
-        bpy.context.view_layer.update()
-        _place_creature(root, imported, offset, target, bm)
-        measured = S.height_of_objects(imported, bm)
     return bm, root, imported, import_colls, measured, target
 
 
@@ -701,16 +703,47 @@ class VIU_OT_StudioShowBody(bpy.types.Operator):
     def execute(self, context):
         root, objs = _resolve_creature()
         S.reveal_collection(_SLOT)
-        body = _force_show_body_meshes(objs)
         if root is not None:
             S.safe_unhide_object(root)
+            # Если scale уехал в ноль после старых багов — вернуть единицу.
+            try:
+                if min(abs(float(s)) for s in root.scale) < 1e-4:
+                    root.scale = (1.0, 1.0, 1.0)
+            except (TypeError, ValueError, AttributeError):
+                pass
+        body = []
+        for o in objs:
+            if getattr(o, "type", "") != "MESH":
+                if getattr(o, "type", "") == "ARMATURE":
+                    S.safe_unhide_object(o)
+                continue
+            if S.is_wgt_name(o.name) or S.is_control_shape_name(o.name) or S.is_gzm_name(o.name):
+                continue
+            # Как wardrobe: явный viewport+render unhide.
+            try:
+                S.set_mesh_viewport_visible(o, True)
+            except Exception:
+                S.safe_unhide_object(o)
+            if S.mesh_vertex_count(o) > 32:
+                body.append(o)
         if not body:
-            self.report({"WARNING"}, "Нет MESH у существа — перезагрузи из Вью")
+            # Последний шанс: любой MESH с геометрией.
+            for o in objs:
+                if getattr(o, "type", "") == "MESH" and S.mesh_vertex_count(o) > 32:
+                    try:
+                        S.set_mesh_viewport_visible(o, True)
+                    except Exception:
+                        S.safe_unhide_object(o)
+                    body.append(o)
+        if not body:
+            self.report(
+                {"WARNING"},
+                "Нет MESH — перезагрузи существо или открой из Inbox (не битый prepared)",
+            )
             return {"CANCELLED"}
-        if body:
-            best = max(body, key=S.mesh_vertex_count)
-            _STATE["body_mesh"] = best.name
-        self.report({"INFO"}, f"Показано MESH: {len(body)} (осн. {_STATE.get('body_mesh')})")
+        best = max(body, key=S.mesh_vertex_count)
+        _STATE["body_mesh"] = best.name
+        self.report({"INFO"}, f"Показано MESH: {len(body)} (осн. {best.name})")
         return {"FINISHED"}
 
 
@@ -744,8 +777,6 @@ class VIU_OT_StudioSaveFbx(bpy.types.Operator):
         out_dir = Path(str(_SESSION.get("processed_root") or "")) / slug
         fbx = out_dir / f"{slug}_ready.fbx"
         try:
-            # На всякий случай ещё раз сложить scale root→дети перед экспортом.
-            S.fold_root_scale_into_children(root)
             target = float(entry.get("target_height_m") or props.target_height_m or 0)
             ok, msg, tlog = S.export_creature_fbx(fbx, export_objs)
             if not ok:

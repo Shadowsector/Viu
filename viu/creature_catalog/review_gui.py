@@ -19,6 +19,7 @@ from .models import (
     LOCOMOTION,
     QUAD_SIZE_CLASSES,
     SIZE_CLASSES,
+    SPECIAL_SIZE_CLASSES,
     STATUS_SKIP,
     CreatureEntry,
     suggest_size_from_name,
@@ -248,6 +249,30 @@ class CreatureCatalogReviewWindow:
             )
             btn.grid(row=0, column=i, padx=3, pady=2, sticky="ew")
             quad_btns.columnconfigure(i, weight=1)
+
+        special_fr = ttk.LabelFrame(
+            self.detail,
+            text="Особые (мимик / слизень / насекомое / щупальца)",
+            padding=6,
+        )
+        special_fr.pack(fill="x", pady=4)
+        special_btns = ttk.Frame(special_fr)
+        special_btns.pack(fill="x")
+        for i, (sid, spec) in enumerate(SPECIAL_SIZE_CLASSES.items()):
+            txt = f"{spec['label_ru']}\n~{int(spec['target_m'] * 100)} см"
+            btn = ttk.Button(
+                special_btns,
+                text=txt,
+                width=16,
+                command=lambda s=sid: self._apply_size(s),
+            )
+            btn.grid(row=0, column=i, padx=3, pady=2, sticky="ew")
+            special_btns.columnconfigure(i, weight=1)
+        ttk.Label(
+            special_fr,
+            text="Locomotion (mimic/amorph/tentacle) выбирай отдельно от класса роста.",
+            foreground="#555",
+        ).pack(anchor="w", pady=(4, 0))
 
         skip_row = ttk.Frame(self.detail)
         skip_row.pack(fill="x", pady=(12, 4))
