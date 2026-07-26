@@ -853,8 +853,11 @@ def test_rig_helper_tokens_do_not_false_positive_body_names():
         "is_control_shape_name",
         "is_gzm_name",
         "is_rig_helper_mesh_name",
+        "mesh_vertex_count",
+        "skip_mesh",
     )
     is_helper = ns["is_rig_helper_mesh_name"]
+    skip_mesh = ns["skip_mesh"]
     assert is_helper("WGT-Hand") is True
     assert is_helper("cs_foot") is True
     assert is_helper("IK_Foot") is True
@@ -865,3 +868,12 @@ def test_rig_helper_tokens_do_not_false_positive_body_names():
     assert is_helper("retarget_mesh") is False
     assert is_helper("BlueDevil_Body") is False
     assert is_helper("Ahmed_Skin") is False
+    # Крупный меш с токеном Shadow не skip — иначе Ahmed пустой в студии.
+    class _Mesh:
+        type = "MESH"
+
+        class data:
+            vertices = [0] * 800
+
+    assert skip_mesh("Body_Shadow", _Mesh()) is False
+    assert skip_mesh("WGT-Hand", _Mesh()) is True
