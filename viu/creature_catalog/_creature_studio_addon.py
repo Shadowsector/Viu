@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 2, 6),
+    "version": (0, 2, 7),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -83,16 +83,44 @@ def _clear_creature():
     _STATE["body_mesh"] = ""
 
 
+def _alive(obj) -> bool:
+    if obj is None:
+        return False
+    try:
+        return obj.name in bpy.data.objects
+    except ReferenceError:
+        return False
+
+
+def _resolve_creature():
+    """Rebind root/objects after addon reload or lost _STATE refs."""
+    root = _STATE.get("creature_root")
+    if not _alive(root):
+        root = bpy.data.objects.get(_ROOT)
+    objs = []
+    for o in _STATE.get("creature_objects") or []:
+        if _alive(o):
+            objs.append(o)
+    if root is not None and not objs:
+        objs = [o for o in S.gather_under_root(root) if o != root]
+    _STATE["creature_root"] = root
+    _STATE["creature_objects"] = objs
+    return root, objs
+
+
 def _place_creature(root, objects, x_offset: float, target_h: float, body_mesh: str = ""):
+    bpy.context.view_layer.update()
+    # Move FBX scale=10 (etc.) from armature/mesh up to the wrap empty first.
+    S.normalize_uniform_scales_under_root(root)
     bpy.context.view_layer.update()
     h = S.height_of_objects(objects, body_mesh)
     if h > 1e-6 and target_h > 0:
-        if h > 20 and target_h < 10:
-            root.scale *= 0.01
-            bpy.context.view_layer.update()
-            h = S.height_of_objects(objects, body_mesh)
-        s = target_h / h
-        root.scale *= s
+        factor = S.height_fit_multiplier(h, target_h)
+        root.scale = (
+            float(root.scale[0]) * factor,
+            float(root.scale[1]) * factor,
+            float(root.scale[2]) * factor,
+        )
         bpy.context.view_layer.update()
     root.location = (x_offset, 0.0, 0.0)
     root.rotation_euler = (0.0, 0.0, 0.0)
@@ -414,14 +442,26 @@ class VIU_OT_StudioApplyHeight(bpy.types.Operator):
     def execute(self, context):
         props = context.scene.viu_creature_studio
         entry = _current_entry()
-        root = _STATE.get("creature_root")
-        objs = _STATE.get("creature_objects") or []
-        if not root or not entry:
+        if not entry:
+            self.report({"ERROR"}, "Нет существа в очереди — запусти студию из Вью")
+            return {"CANCELLED"}
+        root, objs = _resolve_creature()
+        if root is None:
+            self.report(
+                {"ERROR"},
+                "Нет VIU_CREATURE_ROOT — жми «Перезагрузить» или снова открой студию из Вью",
+            )
+            return {"CANCELLED"}
+        if not objs:
+            self.report({"ERROR"}, "Под root нет объектов — перезагрузи существо")
             return {"CANCELLED"}
         target = float(props.target_height_m or entry.get("target_height_m") or 1.0)
+        bm = props.body_mesh if props.body_mesh and props.body_mesh != "AUTO" else (_STATE.get("body_mesh") or "")
+        before = S.height_of_objects(objs, bm if bm else "")
         root.scale = (1.0, 1.0, 1.0)
         bpy.context.view_layer.update()
-        bm = props.body_mesh if props.body_mesh and props.body_mesh != "AUTO" else (_STATE.get("body_mesh") or "")
+        absorbed = S.normalize_uniform_scales_under_root(root)
+        # Place measures+fits; normalize inside is a no-op if children already folded.
         _place_creature(root, objs, float(_SESSION.get("creature_offset_m") or 1.35), target, bm)
         measured = S.height_of_objects(objs, bm if bm else "")
         entry["target_height_m"] = target
@@ -432,7 +472,19 @@ class VIU_OT_StudioApplyHeight(bpy.types.Operator):
             measured_height_m=measured,
             **_markup_fields(props, entry),
         )
-        self.report({"INFO"}, f"Рост {measured:.2f}м → цель {target:.2f}м")
+        root_s = float(root.scale[0])
+        leftover = []
+        for o in objs:
+            u = S.uniform_scale_value(o)
+            if u is not None and abs(u - 1.0) > 0.05:
+                leftover.append(f"{o.name}={u:.3g}")
+        warn = f" ⚠ residual {', '.join(leftover[:3])}" if leftover else ""
+        abs_txt = f", FBX scale×{absorbed:.3g}→{_ROOT}" if abs(absorbed - 1.0) > 1e-3 else ""
+        self.report(
+            {"INFO"},
+            f"Рост {before:.2f}→{measured:.2f}м (цель {target:.2f}); "
+            f"{_ROOT}.scale≈{root_s:.3g}{abs_txt}{warn}",
+        )
         return {"FINISHED"}
 
 
@@ -599,6 +651,10 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
             layout.label(text="Очередь пуста")
             return
         layout.label(text=f"{idx + 1}/{len(q)}: {entry.get('name')}")
+        box = layout.box()
+        box.label(text="Порядок: разметка → рост vs Шаня → скрины → FBX")
+        box.label(text="Потом во Вью: Синхр. студии")
+        box.label(text="Рост смотри у VIU_CREATURE_ROOT, не у арматуры")
         props = context.scene.viu_creature_studio
         shanya_msg = props.shanya_status or _STATE.get("shanya_status") or ""
         if shanya_msg:
@@ -610,7 +666,7 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         col.operator("viu.studio_next", icon="TRIA_RIGHT")
         col.operator("viu.studio_reload", icon="FILE_REFRESH")
         layout.separator()
-        layout.label(text="Разметка", icon="OUTLINER_OB_ARMATURE")
+        layout.label(text="1. Разметка (класс / ноги / анатомия)", icon="OUTLINER_OB_ARMATURE")
         props = context.scene.viu_creature_studio
         layout.prop(props, "size_class", text="Класс")
         layout.prop(props, "locomotion", text="Locomotion")
@@ -623,12 +679,13 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         row.prop(props, "contact_hand", text="Руки")
         layout.operator("viu.studio_apply_markup", icon="CHECKMARK")
         layout.separator()
+        layout.label(text="2. Рост (сравнить с Шаней слева)", icon="ARROW_LEFTRIGHT")
         layout.operator("viu.studio_hide_ik", icon="HIDE_ON")
         layout.operator("viu.studio_bursting_head", icon="MODIFIER")
         layout.prop(props, "target_height_m")
         layout.operator("viu.studio_apply_height", icon="ARROW_LEFTRIGHT")
         layout.separator()
-        layout.label(text="Эталон = FBX (только существо)", icon="INFO")
+        layout.label(text="3. Эталон FBX (только существо)", icon="EXPORT")
         layout.operator("viu.studio_screenshot", icon="RENDER_STILL")
         layout.operator("viu.studio_save", icon="EXPORT")
         layout.prop(props, "photo_notes")
