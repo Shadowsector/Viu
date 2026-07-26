@@ -21,21 +21,30 @@ def escalate_failure(
     search: bool = True,
 ) -> Tuple[bool, str]:
     """
-    1) web_search по ошибке (если сеть разрешена)
+    1) web_search по ошибке (если сеть разрешена и это не ложный OK)
     2) cursor_handoff + push — чтобы Cursor увидел лог
     Не зовёт Дена кнопками. Возвращает (ok_handoff, отчёт).
     """
-    lines: list[str] = [
-        f"ЭСКАЛАЦИЯ: инструмент `{tool_name}` не справился.",
-    ]
+    content = (error_text or "").strip()
+    looks_ok = content.startswith("[OK]") or content.lower().startswith("ok:")
+    if looks_ok:
+        lines: list[str] = [
+            f"ПОВТОР: инструмент `{tool_name}` отвечал OK, но вызывался снова.",
+            "Это не падение tool — застряла в цикле work-режима.",
+        ]
+    else:
+        lines = [
+            f"ЭСКАЛАЦИЯ: инструмент `{tool_name}` не справился.",
+        ]
     if task_id:
         lines.append(f"Inbox task: `{task_id}`")
     lines.append("")
-    lines.append("Ошибка / лог:")
-    lines.append((error_text or "(пусто)")[:3500])
+    lines.append("Ошибка / лог:" if not looks_ok else "Последний ответ:")
+    lines.append(content[:3500] or "(пусто)")
 
     search_notes = ""
-    if search and getattr(ctx.config, "allow_network", True):
+    do_search = search and not looks_ok and getattr(ctx.config, "allow_network", True)
+    if do_search:
         try:
             from .tools.web import WebSearchTool
 
@@ -54,7 +63,11 @@ def escalate_failure(
     try:
         from .integrations.github.handoff import append_handoff, push_handoff
 
-        title = f"ESCALATE `{tool_name}`" + (f" / {task_id}" if task_id else "")
+        title = (
+            f"REPEAT-OK `{tool_name}`"
+            if looks_ok
+            else f"ESCALATE `{tool_name}`"
+        ) + (f" / {task_id}" if task_id else "")
         append_handoff(title, body[:8000], author="Viu")
         handoff_ok, handoff_msg = push_handoff(message=f"Viu escalate: {tool_name}")
     except Exception as exc:  # noqa: BLE001

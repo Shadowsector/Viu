@@ -916,9 +916,12 @@ class ViuGUI:
         if self._maybe_handle_comfy_reply(text):
             return
         from .integrations.telegram.router import route_user_message
+        from .modes import mode_log_label
 
         mode = route_user_message(text, waiting_for_user=self._telegram_waiting_reply)
+        # Reflect — обычный чат, без плашки. Work — явно «сейчас делаю», без слов reflect/work.
         if mode == "work":
+            self._append("система", f"· {mode_log_label(mode)}", tag="sys")
             self._run_agent_task(text)
         else:
             self._run_agent_reflect(text)
@@ -1765,6 +1768,9 @@ class ViuGUI:
         mode = route_telegram_message(text, waiting_for_user=self._telegram_waiting_reply)
         self._telegram_waiting_reply = False
         if mode == "work":
+            from .modes import mode_log_label
+
+            self._append("система", f"· {mode_log_label(mode)} (Telegram)", tag="sys")
             self._run_agent_task(f"[Telegram — команда] {text}", via_telegram=True)
         else:
             self._run_agent_reflect(text, via_telegram=True)

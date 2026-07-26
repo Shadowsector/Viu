@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-07-26T15:18:09Z",
-  "note": "PNG character cards: probe U:\\TempUnityCard → handoff Cursor schema.",
+  "updated_at": "2026-07-26T15:40:00Z",
+  "note": "Reflect/work modes locked. Re-queue PNG probe after tool landed.",
   "tasks": [
     {
       "id": "overlay-magenta-20260712b",
@@ -18,10 +18,10 @@
       "finished_at": "2026-07-12T11:10:05Z"
     },
     {
-      "id": "png-char-cards-probe-20260726",
-      "status": "blocked",
-      "priority": 1,
-      "title": "Probe PNG character cards in U:\\TempUnityCard",
+      "id": "png-char-cards-probe-20260726b",
+      "status": "pending",
+      "priority": 2,
+      "title": "Probe PNG character cards in U:\\TempUnityCard (retry)",
       "created_by": "Cursor",
       "direct_tool": "character_card_probe",
       "direct_args": {
@@ -30,11 +30,8 @@
         "dump": "1",
         "limit": "40"
       },
-      "instructions": "Ден сложил старые PNG-карточки персонажей в U:\\TempUnityCard. В них зашит JSON кастомизации (слайдеры лица, ID причёсок и т.п.). Вызови character_card_probe по этому каталогу. Нужен полный отчёт: какие чанки/хвост после IEND, ключи JSON, preview. JSON дампы уже пишутся в .viu/character_cards_extract/. После успеха handoff уйдёт Cursor автоматически (direct). Не зови Дена.",
-      "acceptance": "Отчёт по каждому PNG: способ вложения + sample keys + preview JSON. summary_json.with_json >= 1 ИЛИ явный WARN что JSON не найден с сырыми находками.",
-      "started_at": "2026-07-26T15:18:04Z",
-      "result": "Нет инструмента `character_card_probe`",
-      "finished_at": "2026-07-26T15:18:09Z"
+      "instructions": "Повтор: прошлый запуск упал с «Нет инструмента» до обновления кода. Сейчас character_card_probe уже в сборке. Прогони U:\\TempUnityCard, handoff отчёт Cursor. Не зови Дена.",
+      "acceptance": "summary_json в отчёте; with_json>=1 или WARN с сырыми находками."
     }
   ]
 }
