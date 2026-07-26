@@ -82,6 +82,39 @@ def test_reflect_no_system_omits_system_message(tmp_path, monkeypatch):
     assert roles == ["user"]
 
 
+def test_reflect_no_system_still_binds_memory(tmp_path, monkeypatch):
+    """При NO_SYSTEM память должна ехать в user — иначе привязка к reflect пропадает."""
+    from viu.agent import Agent
+    from viu.config import Config
+    from viu.llm.mock import MockLLM
+    from viu.viu_memory import append_memory_line, ensure_viu_memory, _SECTION_PREFS
+
+    monkeypatch.setenv("VIU_ROOT", str(tmp_path / "Viu"))
+    monkeypatch.setenv("VIU_REFLECT_NO_SYSTEM", "1")
+    root = tmp_path / "Viu"
+    root.mkdir()
+    cfg = Config(root=root, data_dir=root / ".viu").ensure_dirs()
+    ensure_viu_memory(cfg)
+    append_memory_line(cfg, _SECTION_PREFS, "- Мяучиться в ответ")
+
+    seen: list[list[dict]] = []
+
+    class CaptureLLM(MockLLM):
+        def complete(self, messages, *, temperature=None, model=None):
+            seen.append(list(messages))
+            return '{"thought":"ok","final":"мяу"}'
+
+    agent = Agent(llm=CaptureLLM(), config=cfg)
+    result = agent.run_reflect("Вью, как там?")
+    assert result.completed
+    assert seen
+    user = seen[0][-1]["content"]
+    assert "Вью, как там?" in user
+    assert "VIU_MEMORY" in user
+    assert "Мяучиться" in user
+    assert "# Память Вью" not in user  # digest, не весь файл
+
+
 def test_reflect_no_history_omits_history(tmp_path, monkeypatch):
     from viu.agent import Agent
     from viu.config import Config
@@ -243,8 +276,10 @@ def test_plot_notes_injected_in_bare_reflect(tmp_path, monkeypatch):
     )
     assert seen
     user = next(m["content"] for m in seen[0] if m["role"] == "user")
-    assert "PLOT_CANVAS" in user or "домовой" in user.lower()
-    assert "Корпорация" not in user
+    # При NO_SYSTEM=1 канон едет в user (иначе отваливается вместе с system).
+    assert "PLOT_CANVAS" in user
+    assert "домовой" in user.lower()
+    assert "QUESTS" in user or "снежин" in user.lower()
 
 
 def test_build_reflect_notes_plot_has_canvas(tmp_path, monkeypatch):
