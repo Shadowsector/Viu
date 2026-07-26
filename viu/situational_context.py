@@ -161,6 +161,16 @@ def _build_reflect_notes_chat(config: Config, *, user_text: str = "") -> str:
     if intimate or (user_text or "").strip():
         block = _shanya_chat_block()
         try:
+            from .integrations.comfy.intent import (
+                format_reflect_comfy_block,
+                mentions_comfy,
+            )
+
+            if mentions_comfy(user_text):
+                block = block + "\n\n" + format_reflect_comfy_block(config)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
             from .viu_memory import format_reflect_block
 
             mem = format_reflect_block(config, max_chars=1800)

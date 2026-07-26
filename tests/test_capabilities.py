@@ -13,6 +13,7 @@ def test_capability_brief_mentions_pipeline():
     assert "тело Шани" in CAPABILITY_BRIEF or "body_pipeline" in CAPABILITY_BRIEF
     assert "паузе" in CAPABILITY_BRIEF.lower() or "Паузе" in CAPABILITY_BRIEF
     assert "Comfy" in CAPABILITY_BRIEF  # упомянут как на паузе
+    assert "Комфи" in CAPABILITY_BRIEF or "триггер" in CAPABILITY_BRIEF.lower()
     assert "Cascadeur" in CAPABILITY_BRIEF
     assert "NOW.md" in CAPABILITY_BRIEF
 
@@ -43,6 +44,40 @@ def test_reflect_notes_include_capability(tmp_path, monkeypatch):
     cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
     notes = build_reflect_notes(cfg, user_text="чем занимаешься сейчас")
     assert "тело" in notes.lower() or "body_pipeline" in notes or "NOW" in notes or "Comfy" in notes
+
+
+def test_reflect_notes_include_comfy_trigger(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
+    cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
+    notes = build_reflect_notes(
+        cfg, user_text="сгенерируй мне это видео в ComfyUi"
+    )
+    assert "триггер" in notes.lower() or "ComfyUI" in notes
+    assert "камер" in notes.lower()
+
+
+def test_reflect_bare_injects_comfy_on_user_when_no_system(tmp_path, monkeypatch):
+    from viu.agent import Agent
+    from viu.llm.mock import MockLLM
+
+    monkeypatch.setenv("VIU_REFLECT_NO_SYSTEM", "1")
+    seen: list[list[dict]] = []
+
+    class CaptureLLM(MockLLM):
+        def complete(self, messages, *, temperature=None, model=None):
+            seen.append(list(messages))
+            return '{"thought":"ok","final":"Comfy сейчас на паузе — сначала тело."}'
+
+    agent = Agent(
+        llm=CaptureLLM(),
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    agent.run_reflect("сгенерируй видео в ComfyUi, у тебя есть доступ")
+    assert seen
+    user = seen[0][-1]["content"]
+    assert "ComfyUi" in user or "Comfy" in user
+    assert "триггер" in user.lower() or "пайплайн" in user.lower()
+    assert "system" not in [m["role"] for m in seen[0]]
 
 
 def test_resolve_model_roles(tmp_path):

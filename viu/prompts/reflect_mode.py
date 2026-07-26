@@ -324,7 +324,7 @@ def viu_voice_issues(
     text: str, *, has_history: bool = False, user_text: str = ""
 ) -> list[str]:
     """Минимум: пустой ответ и утечка meta про reflect/work."""
-    del has_history, user_text
+    del has_history
     issues: list[str] = []
     body = (text or "").strip()
     if not body:
@@ -338,6 +338,22 @@ def viu_voice_issues(
 
         if looks_like_memory_echo(body):
             issues.append("эхо VIU_MEMORY — не зачитывать файл памяти")
+    except Exception:  # noqa: BLE001
+        pass
+    # Ден сказал Comfy/Комфи — запрет врать про «нет камер / нет Comfy».
+    try:
+        from ..integrations.comfy.intent import mentions_comfy
+
+        if mentions_comfy(user_text) and re.search(
+            r"(?i)нет\s+доступа\s+к\s+(?:камер|comfy|комфи)|"
+            r"не\s+могу\s+(?:создать|сгенерировать)\s+видео|"
+            r"просто\s+беседую|"
+            r"нет\s+доступа\s+к\s+систем",
+            body,
+        ):
+            issues.append(
+                "отказ от Comfy — Ден назвал Comfy/Комфи; скажи про паузу/кнопки, не про камеры"
+            )
     except Exception:  # noqa: BLE001
         pass
     return issues
