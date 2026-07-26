@@ -4,19 +4,19 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ..body_pipeline import mark_step_done, render_checklist, set_step
+from ..body_pipeline import mark_step_done, render_checklist, reset_progress, set_step
 from .base import AgentContext, Tool, ToolResult
 
 
 class BodyPipelineTool(Tool):
     name = "body_pipeline"
     description = (
-        "Чеклист тела Шани простыми словами: status | done | set. "
-        "Не Comfy/Cascadeur — только Inbox → Blender → Rigify → Unity."
+        "Чеклист тела Шани (Tracer Beerware): status | done | set | reset. "
+        "Inbox → Blender → Rigify → Unity. Не Comfy."
     )
     parameters = {
-        "action": "status | done | set",
-        "step": "для set или done: stage_pack|open_blender|shrinkwrap|rigify|export_fbx|unity_humanoid",
+        "action": "status | done | set | reset",
+        "step": "для set/done/reset: stage_pack|open_blender|shrinkwrap|rigify|export_fbx|unity_humanoid",
     }
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
@@ -39,4 +39,11 @@ class BodyPipelineTool(Tool):
                 ok=ok,
                 content=f"{msg}\n\n{render_checklist(ctx.config)}" if ok else msg,
             )
-        return ToolResult(ok=False, content="action: status|done|set")
+        if action == "reset":
+            step = str(args.get("step") or "stage_pack").strip()
+            ok, msg = reset_progress(ctx.config, at_step=step)
+            return ToolResult(
+                ok=ok,
+                content=f"{msg}\n\n{render_checklist(ctx.config)}" if ok else msg,
+            )
+        return ToolResult(ok=False, content="action: status|done|set|reset")

@@ -145,30 +145,47 @@ def license_ok_for_anabarra_build(
     return False, f"неизвестная лицензия: {code}"
 
 
-# Пилот тела Шани — карточка с Smutbase (скрин Дена, 2026-07-25).
+# Архив: старый пилот Erisa (больше не основной).
 PILOT_SHANYA_ERISA = ProvenanceEntry(
     id="shanya_erisa_redeyes",
-    title="Shanya / Erisa body (RedEyes)",
+    title="Shanya / Erisa body (RedEyes) — архив",
     source="smutbase",
     author="RedEyes (@x_RedEyes)",
     license="CC BY-ND 4.0",
     url="https://smutba.se/project/f66e34d7-fcbb-4a26-861c-7cd4fd0ab2cc/",
     local_path=r"U:\Desktop Mascot\Women",
     mascot_category="Women",
-    notes=(
-        "Пилот: пропорции/референс → Blender Shrinkwrap на рабочее тело → Rigify. "
-        "ND: личная Анабарра ок; не выкладывать модификацию как редистрибутив. "
-        "В credits аплоадера: DAZ base / Epic skin — учитывать при публичном релизе."
-    ),
-    tags=["pilot", "shanya", "erisa", "body"],
+    notes="Снят с пилота. Основное тело теперь Tracer Beerware.",
+    tags=["archive", "erisa", "body"],
     credits=[
         "Shapes: @therealcrute",
         "Base female mesh: ported from DaZStudio",
-        "Skin: EpicGames (uploader note)",
-        "Extra clothes: extracted from DaZStudio",
+    ],
+)
+
+# Текущий пилот: Tracer cutdown, Beerware (скрин Дена, 2026-07-26).
+PILOT_SHANYA_TRACER = ProvenanceEntry(
+    id="shanya_tracer_beerware",
+    title="Shanya working body — Tracer cutdown (Beerware)",
+    source="smutbase",
+    author="(см. страницу Smutbase / кредит Twitter·Bsky автора)",
+    license="Beerware",
+    url="",
+    local_path=r"U:\Desktop Mascot\Women",
+    mascot_category="Women",
+    notes=(
+        "Основное тело Шани для Анабарры. Free cutdown; скины в отдельных .blend + UI-скрипт. "
+        "Beerware: можно ремиксы при сохранении notice; автор просит кредит. "
+        "Фан-арт Overwatch — только личная Анабарра (не публичный релиз как продукт Blizzard). "
+        "HS2-карта опциональна как лекало; Shrinkwrap не обязателен."
+    ),
+    tags=["pilot", "shanya", "tracer", "body", "beerware"],
+    credits=[
+        "Beerware — retain notice; optional beer for the author",
+        "Credit author socials as requested on the project page",
     ],
 )
 
 
 def seed_pilot_entries() -> List[ProvenanceEntry]:
-    return [PILOT_SHANYA_ERISA]
+    return [PILOT_SHANYA_TRACER, PILOT_SHANYA_ERISA]

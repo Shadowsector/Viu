@@ -14,6 +14,7 @@ from .layout import (
 from .provenance import (
     LICENSE_ALLOWS_GAME_MODIFY,
     PILOT_SHANYA_ERISA,
+    PILOT_SHANYA_TRACER,
     ProvenanceEntry,
     license_allows_derivatives,
     license_ok_for_anabarra_build,
@@ -26,6 +27,7 @@ __all__ = [
     "MASCOT_CATEGORY_TO_INBOX",
     "MASCOT_TOP_CATEGORIES",
     "PILOT_SHANYA_ERISA",
+    "PILOT_SHANYA_TRACER",
     "ProvenanceEntry",
     "ProvenanceStore",
     "classify_mascot_category",
