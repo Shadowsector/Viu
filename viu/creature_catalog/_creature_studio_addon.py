@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 3, 1),
+    "version": (0, 3, 2),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -323,17 +323,28 @@ def _setup_camera_for_shot(yaw_deg: float, objects):
     if not pts:
         return None
     mins, maxs = S.aabb_pts(pts)
-    # Чуть выше середины — полный рост в кадре, меньше пола/воздуха.
-    center = (mins + maxs) * 0.5
-    center = center.copy()
-    center.z = mins.z + (maxs.z - mins.z) * 0.52
-    height = max(maxs.z - mins.z, 0.2)
-    span = max(maxs.x - mins.x, maxs.y - mins.y, height, 0.2)
-    # Ближе к модели (было 2.2) — существо крупнее в кадре.
-    dist = max(span * 1.15, height * 1.35, 0.4)
+    height = max(float(maxs.z - mins.z), 0.2)
+    width = max(float(maxs.x - mins.x), float(maxs.y - mins.y), 0.15)
+    center = ((mins + maxs) * 0.5).copy()
+    center.z = mins.z + height * 0.50
+
+    # FOV-fit: весь AABB в квадратном кадре + небольшой запас (не обрезать голову/ноги).
+    lens = 55.0
+    sensor = 36.0  # Blender default camera sensor
+    margin = 1.22  # ~18% воздуха — крупно, но целиком
+    half_fov = math.atan((sensor * 0.5) / lens)
+    dist_h = (height * 0.5) / max(math.tan(half_fov), 1e-6)
+    dist_w = (width * 0.5) / max(math.tan(half_fov), 1e-6)
+    # ¾/side чуть шире по горизонтали силуэта
+    yaw = abs(yaw_deg) % 180.0
+    if 20.0 < yaw < 160.0:
+        dist_w *= 1.12
+    dist = max(dist_h, dist_w) * margin
+    dist = max(dist, 0.5)
+
     rad = math.radians(yaw_deg)
     cam_data = bpy.data.cameras.new("VIU_StudioCam")
-    cam_data.lens = 70.0
+    cam_data.lens = lens
     cam_data.clip_start = 0.01
     cam_data.clip_end = max(dist * 6.0, height + 10.0)
     cam = bpy.data.objects.new("VIU_StudioCam", cam_data)
@@ -341,7 +352,7 @@ def _setup_camera_for_shot(yaw_deg: float, objects):
     cam.location = (
         center.x + dist * math.sin(rad),
         center.y - dist * math.cos(rad),
-        center.z + height * 0.02,
+        center.z,
     )
     direction = center - cam.location
     if direction.length > 1e-6:

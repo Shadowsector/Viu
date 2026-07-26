@@ -89,7 +89,7 @@ Lab\Creatures\Prepared\<slug>\<slug>_prepared.blend
 Выход:
 
 ```
-Lab\Creatures\Processed\<slug>\front.png, side.png   ← 1536², крупный кадр
+Lab\Creatures\Processed\<slug>\front.png, side.png   ← 1536², весь рост в кадре
 Lab\Creatures\Processed\<slug>\<slug>_ready.fbx      ← текстуры embed внутрь FBX
 Lab\Creatures\Processed\<slug>\textures\             ← и копия рядом
 Lab\Creatures\Processed\<slug>\texture_manifest.json
