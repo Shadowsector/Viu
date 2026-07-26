@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 2, 7),
+    "version": (0, 2, 8),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -160,6 +160,18 @@ def _ensure_shanya() -> str:
 
     _STATE["shanya_objects"] = imported
     root = S.wrap_root(imported, root_name="VIU_SHANYA_ROOT", target_coll=slot)
+    # Одежда иногда остаётся вне иерархии empty — дожимаем под root.
+    under = set(S.gather_under_root(root))
+    for o in imported:
+        if o in under or o == root:
+            continue
+        try:
+            mw = o.matrix_world.copy()
+            o.parent = root
+            o.matrix_world = mw
+        except (ReferenceError, AttributeError):
+            pass
+    bpy.context.view_layer.update()
     target = float(_SESSION.get("shanya_target_m") or 1.70)
     h = S.height_of_objects(imported)
     if h > 1e-6:
@@ -236,10 +248,21 @@ def _render_shots(entry: dict) -> tuple[str, str, str]:
     scene = bpy.context.scene
     S.setup_shot_render(scene, res=768)
     S.ensure_shot_lights()
-    objs = list(_STATE.get("creature_objects") or [])
+    root, objs = _resolve_creature()
+    if not objs:
+        objs = list(_STATE.get("creature_objects") or [])
     S.hide_helpers(objs)
-    creature_root = _STATE.get("creature_root")
-    hidden = S.isolate_creature_for_render(creature_root)
+    creature_root = root or _STATE.get("creature_root")
+    shanya_root = _STATE.get("shanya_root")
+    if not _alive(shanya_root):
+        shanya_root = bpy.data.objects.get("VIU_SHANYA_ROOT")
+        _STATE["shanya_root"] = shanya_root
+    # Весь root Шани (тело + одежда + риг), не только body-mesh.
+    hidden = S.isolate_creature_for_render(
+        creature_root,
+        extra_hide_roots=[shanya_root],
+        extra_hide_collections=[_SHANYA_COLL],
+    )
     try:
         for yaw, path in ((0.0, front), (45.0, three_quarter), (90.0, side)):
             cam = _setup_camera_for_shot(yaw, objs)
@@ -680,6 +703,8 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         row.prop(props, "contact_oral", text="Рот")
         row.prop(props, "contact_tentacle", text="Щуп.")
         row.prop(props, "contact_hand", text="Руки")
+        layout.label(text="Контакт — только если NSFW без гениталий")
+        layout.label(text="(мимик/язык, щуп., лапы). Не всем biped")
         layout.operator("viu.studio_apply_markup", icon="CHECKMARK")
         layout.separator()
         layout.label(text="2. Рост (сравнить с Шаней слева)", icon="ARROW_LEFTRIGHT")
