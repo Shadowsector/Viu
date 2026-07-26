@@ -1343,21 +1343,54 @@ def _pick_armature(objects: Sequence):
     return max(arms, key=score)
 
 
-def materialize_textures_beside_fbx(out_dir: Path) -> int:
-    """Unpack/copy textures into Processed/<slug>/textures/ and rebind as //textures/…"""
+def images_from_objects(objects: Sequence) -> List:
+    """Image datablocks used by MESH materials under the given objects only."""
+    out: List = []
+    seen = set()
+    for obj in objects or []:
+        if getattr(obj, "type", "") != "MESH":
+            continue
+        for slot in getattr(obj, "material_slots", []) or []:
+            mat = getattr(slot, "material", None)
+            if mat is None:
+                continue
+            try:
+                if mat.use_nodes and mat.node_tree:
+                    for node in mat.node_tree.nodes:
+                        if getattr(node, "type", "") != "TEX_IMAGE":
+                            continue
+                        img = getattr(node, "image", None)
+                        if img is None or id(img) in seen:
+                            continue
+                        if getattr(img, "type", "") in ("RENDER_RESULT", "COMPOSITING"):
+                            continue
+                        seen.add(id(img))
+                        out.append(img)
+            except (ReferenceError, AttributeError):
+                continue
+    return out
+
+
+def materialize_textures_beside_fbx(out_dir: Path, objects: Sequence = ()) -> Tuple[int, int]:
+    """Unpack/copy only creature textures into Processed/<slug>/textures/.
+
+    Returns (files_written, images_on_creature). Does NOT touch Shanya images.
+    """
     out_dir = Path(out_dir)
     tex_dir = out_dir / "textures"
     tex_dir.mkdir(parents=True, exist_ok=True)
+    imgs = images_from_objects(objects)
+    # Чистый каталог — иначе остаются чужие файлы Шани от прошлых экспортов.
+    keep_names = set()
     n = 0
-    for img in list(bpy.data.images):
+    for img in imgs:
         try:
-            if not img or getattr(img, "type", "") in ("RENDER_RESULT", "COMPOSITING"):
-                continue
-            packed = getattr(img, "packed_file", None)
             raw_name = Path((img.name or "tex").replace("\\", "/")).name
             if not re.search(r"\.(png|jpe?g|tga|tif{1,2}|exr|bmp|webp)$", raw_name, re.I):
                 raw_name = f"{raw_name}.png"
             dest = tex_dir / raw_name
+            keep_names.add(dest.name.lower())
+            packed = getattr(img, "packed_file", None)
             if packed is not None:
                 img.filepath_raw = str(dest)
                 try:
@@ -1369,25 +1402,111 @@ def materialize_textures_beside_fbx(out_dir: Path) -> int:
                         n += 1
                     except RuntimeError:
                         pass
-            # Relative path next to FBX — Blender re-import finds textures/.
-            if dest.is_file() or packed is not None:
+            else:
+                raw = (img.filepath or "").strip()
+                src = Path(bpy.path.abspath(raw)) if raw else None
+                if src is not None and src.is_file():
+                    if not dest.is_file() or dest.stat().st_size != src.stat().st_size:
+                        shutil.copy2(src, dest)
+                    n += 1
+            if dest.is_file():
                 try:
                     img.filepath = f"//textures/{dest.name}"
                     img.reload()
                 except (RuntimeError, AttributeError):
                     pass
-        except (ReferenceError, AttributeError):
+        except (ReferenceError, AttributeError, OSError):
             continue
-    n += relocate_external_textures(tex_dir, out_dir)
-    for img in list(bpy.data.images):
+    # Удалить чужие текстуры (Шаня и т.п.) из папки существа.
+    try:
+        for p in tex_dir.iterdir():
+            if p.is_file() and p.name.lower() not in keep_names:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return n, len(imgs)
+
+
+def _bake_export_world_transforms(export_objs: Sequence) -> List[Tuple]:
+    """Unparent keep-transform + apply scale so FBX without wrap-empty keeps mesh≈rig size.
+
+    Studio scales VIU_CREATURE_ROOT; FBX exports only ARMATURE/MESH, so without this
+    the armature often stays at local scale while the mesh keeps world size.
+    """
+    restore: List[Tuple] = []
+    objs = [o for o in export_objs if o is not None]
+    if not objs:
+        return restore
+    for obj in sorted(objs, key=_object_depth, reverse=True):
         try:
-            raw = (img.filepath or "").replace("\\", "/")
-            if "/textures/" in raw:
-                name = Path(raw).name
-                img.filepath = f"//textures/{name}"
-        except (ReferenceError, AttributeError):
+            restore.append(
+                (
+                    obj,
+                    obj.parent,
+                    obj.matrix_parent_inverse.copy(),
+                    obj.matrix_local.copy(),
+                )
+            )
+            mw = obj.matrix_world.copy()
+            obj.parent = None
+            obj.matrix_world = mw
+        except (ReferenceError, AttributeError, RuntimeError):
+            continue
+    bpy.context.view_layer.update()
+    view_layer = bpy.context.view_layer
+    for obj in bpy.data.objects:
+        try:
+            if _object_in_view_layer(obj, view_layer):
+                obj.select_set(False)
+        except RuntimeError:
             pass
-    return n
+    active = None
+    for obj in objs:
+        try:
+            safe_unhide_object(obj)
+            if _object_in_view_layer(obj, view_layer):
+                obj.select_set(True)
+                if active is None or obj.type == "ARMATURE":
+                    active = obj
+        except RuntimeError:
+            pass
+    if active is not None:
+        view_layer.objects.active = active
+        try:
+            if bpy.context.mode != "OBJECT":
+                bpy.ops.object.mode_set(mode="OBJECT")
+        except RuntimeError:
+            pass
+        try:
+            with bpy.context.temp_override(
+                scene=bpy.context.scene,
+                view_layer=view_layer,
+                active_object=active,
+                selected_objects=[o for o in objs if _object_in_view_layer(o, view_layer)],
+            ):
+                bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        except RuntimeError:
+            pass
+    bpy.context.view_layer.update()
+    return restore
+
+
+def _restore_export_transforms(restore: Sequence[Tuple]) -> None:
+    for row in reversed(list(restore or [])):
+        try:
+            obj, parent, mpi, ml = row
+            obj.parent = parent
+            obj.matrix_parent_inverse = mpi
+            obj.matrix_local = ml
+        except (ReferenceError, AttributeError, RuntimeError, ValueError):
+            continue
+    try:
+        bpy.context.view_layer.update()
+    except (ReferenceError, AttributeError):
+        pass
 
 
 def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str]:
@@ -1400,76 +1519,83 @@ def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str]:
         return False, "Нет armature у существа (не у Шани)"
     scene = bpy.context.scene
     view_layer = bpy.context.view_layer
-    for obj in bpy.data.objects:
-        try:
-            if _object_in_view_layer(obj, view_layer):
-                obj.select_set(False)
-        except RuntimeError:
-            pass
-    selected = []
-    try:
-        safe_unhide_object(arm)
-        if _object_in_view_layer(arm, view_layer):
-            arm.select_set(True)
-            selected.append(arm.name)
-        else:
-            return False, "armature не в View Layer"
-    except RuntimeError as exc:
-        return False, f"armature: {exc}"
+    export_list = [arm]
     for obj in list(allowed):
-        if obj.type != "MESH" or not _mesh_for_character(obj, arm, allowed=allowed):
-            continue
-        try:
-            safe_unhide_object(obj)
-            if not _object_in_view_layer(obj, view_layer):
-                continue
-            obj.select_set(True)
-            selected.append(obj.name)
-        except RuntimeError:
-            pass
-    if len(selected) < 2:
+        if obj.type == "MESH" and _mesh_for_character(obj, arm, allowed=allowed):
+            export_list.append(obj)
+    if len(export_list) < 2:
         return False, "Нет skinned mesh у существа для FBX"
+
+    tex_n, tex_imgs = 0, 0
     try:
-        materialize_textures_beside_fbx(filepath.parent)
+        tex_n, tex_imgs = materialize_textures_beside_fbx(filepath.parent, export_list)
     except Exception:
         pass
-    view_layer.objects.active = arm
+
+    bake_restore: List[Tuple] = []
     try:
-        if bpy.context.mode != "OBJECT":
-            bpy.ops.object.mode_set(mode="OBJECT")
-    except RuntimeError:
-        pass
-    with bpy.context.temp_override(scene=scene, view_layer=view_layer, active_object=arm):
-        kwargs = dict(
-            filepath=str(filepath),
-            use_selection=True,
-            object_types={"ARMATURE", "MESH"},
-            use_mesh_modifiers=True,
-            use_armature_deform_only=True,
-            bake_anim=False,
-            add_leaf_bones=False,
-            mesh_smooth_type="FACE",
-            apply_scale_options="FBX_SCALE_ALL",
-        )
-        # COPY + embed: текстуры внутри FBX (и копия в textures/ на диске).
-        exported = False
-        for extra in (
-            {"path_mode": "COPY", "embed_textures": True},
-            {"path_mode": "COPY"},
-            {},
-        ):
+        bake_restore = _bake_export_world_transforms(export_list)
+        for obj in bpy.data.objects:
             try:
-                bpy.ops.export_scene.fbx(**kwargs, **extra)
-                exported = True
-                break
-            except TypeError:
-                continue
-        if not exported:
-            return False, "export_scene.fbx не принял аргументы"
+                if _object_in_view_layer(obj, view_layer):
+                    obj.select_set(False)
+            except RuntimeError:
+                pass
+        selected = []
+        for obj in export_list:
+            try:
+                safe_unhide_object(obj)
+                if not _object_in_view_layer(obj, view_layer):
+                    continue
+                obj.select_set(True)
+                selected.append(obj.name)
+            except RuntimeError:
+                pass
+        if arm.name not in selected or len(selected) < 2:
+            return False, "Не удалось выделить armature+mesh для FBX"
+        view_layer.objects.active = arm
+        try:
+            if bpy.context.mode != "OBJECT":
+                bpy.ops.object.mode_set(mode="OBJECT")
+        except RuntimeError:
+            pass
+        with bpy.context.temp_override(scene=scene, view_layer=view_layer, active_object=arm):
+            kwargs = dict(
+                filepath=str(filepath),
+                use_selection=True,
+                object_types={"ARMATURE", "MESH"},
+                use_mesh_modifiers=True,
+                use_armature_deform_only=True,
+                bake_anim=False,
+                add_leaf_bones=False,
+                mesh_smooth_type="FACE",
+                apply_scale_options="FBX_SCALE_ALL",
+            )
+            # COPY + embed: текстуры внутри FBX (и копия в textures/ только существа).
+            exported = False
+            for extra in (
+                {"path_mode": "COPY", "embed_textures": True},
+                {"path_mode": "COPY"},
+                {},
+            ):
+                try:
+                    bpy.ops.export_scene.fbx(**kwargs, **extra)
+                    exported = True
+                    break
+                except TypeError:
+                    continue
+            if not exported:
+                return False, "export_scene.fbx не принял аргументы"
+    finally:
+        _restore_export_transforms(bake_restore)
+
     if not filepath.is_file():
         return False, "FBX не записан"
-    embed_note = "embed+textures/" if (filepath.parent / "textures").is_dir() else "embed?"
-    return True, f"FBX: {filepath.name} ({len(selected)} obj, без Шани, {embed_note})"
+    if tex_imgs == 0:
+        tex_note = "⚠ в материалах 0 текстур"
+    else:
+        tex_note = f"текстур {tex_imgs} (файлов {tex_n}, embed)"
+    return True, f"FBX: {filepath.name} ({len(selected)} obj, scale baked, {tex_note})"
 
 
 def legs_hint(locomotion: str) -> str:

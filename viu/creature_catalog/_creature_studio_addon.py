@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 3, 2),
+    "version": (0, 3, 3),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -741,7 +741,6 @@ class VIU_OT_StudioSaveFbx(bpy.types.Operator):
         out_dir = Path(str(_SESSION.get("processed_root") or "")) / slug
         fbx = out_dir / f"{slug}_ready.fbx"
         try:
-            tex_n = S.materialize_textures_beside_fbx(out_dir)
             ok, msg = S.export_creature_fbx(fbx, export_objs)
             if not ok:
                 self.report({"ERROR"}, msg)
@@ -764,10 +763,8 @@ class VIU_OT_StudioSaveFbx(bpy.types.Operator):
                 target_height_m=float(entry.get("target_height_m") or props.target_height_m or 0),
                 **_markup_fields(props, entry),
             )
-            self.report(
-                {"INFO"},
-                f"Эталон FBX: {fbx.name} (без Шани); textures≈{tex_n}; manifest OK",
-            )
+            # msg уже содержит scale baked + счётчик текстур (0 = в материалах пусто).
+            self.report({"INFO"}, f"{msg}; manifest OK")
         except Exception as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
