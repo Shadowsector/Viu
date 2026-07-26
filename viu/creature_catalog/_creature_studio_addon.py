@@ -2,7 +2,7 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 2, 8),
+    "version": (0, 2, 9),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
     "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
@@ -149,6 +149,7 @@ def _ensure_shanya() -> str:
         return f"⚠ Шаня: файл не найден — {path or '(путь пуст в session)'}"
 
     slot = S.ensure_collection(_SHANYA_COLL)
+    S.reveal_collection(_SHANYA_COLL)
     try:
         imported, _ = S.import_asset(path, for_shanya=True, target_coll=slot)
     except Exception as exc:
@@ -178,7 +179,30 @@ def _ensure_shanya() -> str:
         root.scale *= target / h
     root.location = (0.0, 0.0, 0.0)
     _STATE["shanya_root"] = root
+    S.reveal_collection(_SHANYA_COLL)
+    S.reveal_objects([root, *imported])
     return f"Шаня: {path.name} ({len(meshes)} мешей, h≈{target:.2f}m)"
+
+
+def _show_shanya_now() -> str:
+    """Recovery after a failed screenshot left Shanya excluded/hidden."""
+    S.reveal_collection(_SHANYA_COLL)
+    root = _STATE.get("shanya_root")
+    if not _alive(root):
+        root = bpy.data.objects.get("VIU_SHANYA_ROOT")
+        _STATE["shanya_root"] = root
+    objs = list(_STATE.get("shanya_objects") or [])
+    live = []
+    for o in objs:
+        if _alive(o):
+            live.append(o)
+    if root is not None and not live:
+        live = [o for o in S.gather_under_root(root) if o != root]
+    if root is None and not live:
+        return _ensure_shanya()
+    S.reveal_objects(([root] if root is not None else []) + live)
+    _STATE["shanya_objects"] = live
+    return f"Шаня снова видима ({len(live)} obj)"
 
 
 def _load_creature_entry(entry: dict):
@@ -187,15 +211,32 @@ def _load_creature_entry(entry: dict):
     if not path.is_file():
         return f"Нет файла: {path}"
     slot = S.ensure_collection(_SLOT)
+    S.reveal_collection(_SLOT)
+    S.reveal_collection(_SHANYA_COLL)
     imported, import_colls = S.import_asset(path, target_coll=slot)
+    # Source blends often ship with hide_viewport/hide_render on body meshes.
+    for o in imported:
+        if getattr(o, "type", "") == "MESH" and not S.skip_mesh(o.name):
+            S.safe_unhide_object(o)
     root = S.wrap_root(imported, root_name=_ROOT, target_coll=slot)
     S.hide_helpers(imported)
-    body_meshes = [o for o in imported if o.type == "MESH" and not o.hide_get()]
+    body_meshes = [
+        o
+        for o in imported
+        if o.type == "MESH" and not S.skip_mesh(o.name) and not o.hide_render
+    ]
+    if not body_meshes:
+        body_meshes = [o for o in imported if o.type == "MESH" and not S.skip_mesh(o.name)]
+        for o in body_meshes:
+            S.safe_unhide_object(o)
     target = float(entry.get("target_height_m") or 1.0)
     offset = float(_SESSION.get("creature_offset_m") or 1.35)
     props = bpy.context.scene.viu_creature_studio
     bm = props.body_mesh if props.body_mesh and props.body_mesh != "AUTO" else ""
     _place_creature(root, imported, offset, target, bm)
+    S.reveal_collection(_SLOT)
+    S.safe_unhide_object(root)
+    measured = S.height_of_objects(imported, bm if bm else "")
     _STATE["creature_root"] = root
     _STATE["creature_objects"] = imported
     _STATE["creature_import_colls"] = import_colls
@@ -205,8 +246,16 @@ def _load_creature_entry(entry: dict):
     else:
         _STATE["body_mesh"] = ""
     if not body_meshes:
-        return f"Загружено: {entry.get('name')} — ⚠ тела не видно"
-    return f"Загружено: {entry.get('name')} (меш: {_STATE['body_mesh']})"
+        return f"Загружено: {entry.get('name')} — ⚠ тела не видно (0 mesh)"
+    if measured < 0.05:
+        return (
+            f"Загружено: {entry.get('name')} — ⚠ рост≈{measured:.3f}m "
+            f"(меш {_STATE['body_mesh']}) — проверь scale/единицы"
+        )
+    return (
+        f"Загружено: {entry.get('name')} "
+        f"(меш: {_STATE['body_mesh']}, h≈{measured:.2f}m → {target:.2f}m)"
+    )
 
 
 def _setup_camera_for_shot(yaw_deg: float, objects):
@@ -258,12 +307,13 @@ def _render_shots(entry: dict) -> tuple[str, str, str]:
         shanya_root = bpy.data.objects.get("VIU_SHANYA_ROOT")
         _STATE["shanya_root"] = shanya_root
     # Весь root Шани (тело + одежда + риг), не только body-mesh.
-    hidden = S.isolate_creature_for_render(
-        creature_root,
-        extra_hide_roots=[shanya_root],
-        extra_hide_collections=[_SHANYA_COLL],
-    )
+    hidden: list = []
     try:
+        hidden = S.isolate_creature_for_render(
+            creature_root,
+            extra_hide_roots=[shanya_root],
+            extra_hide_collections=[_SHANYA_COLL],
+        )
         for yaw, path in ((0.0, front), (45.0, three_quarter), (90.0, side)):
             cam = _setup_camera_for_shot(yaw, objs)
             if cam is None:
@@ -273,7 +323,13 @@ def _render_shots(entry: dict) -> tuple[str, str, str]:
             bpy.ops.render.render(write_still=True)
             bpy.data.objects.remove(cam, do_unlink=True)
     finally:
-        S.restore_render_visibility(hidden)
+        try:
+            S.restore_render_visibility(hidden)
+        finally:
+            # Если isolate/restore споткнулись — Шаню всё равно вернуть в кадр.
+            S.reveal_collection(_SHANYA_COLL)
+            if shanya_root is not None:
+                S.reveal_objects([shanya_root, *S.gather_under_root(shanya_root)])
     return str(front), str(three_quarter), str(side)
 
 
@@ -324,11 +380,25 @@ def _markup_fields(props, entry: dict) -> dict:
     }
 
 
+class VIU_OT_StudioShowShanya(bpy.types.Operator):
+    bl_idname = "viu.studio_show_shanya"
+    bl_label = "Показать Шаню"
+
+    def execute(self, context):
+        msg = _show_shanya_now()
+        _STATE["shanya_status"] = msg
+        context.scene.viu_creature_studio.shanya_status = msg
+        self.report({"INFO"}, msg)
+        return {"FINISHED"}
+
+
 class VIU_OT_StudioReloadShanya(bpy.types.Operator):
     bl_idname = "viu.studio_reload_shanya"
     bl_label = "Перезагрузить Шаню"
 
     def execute(self, context):
+        # Un-exclude first — otherwise remove/hide ops trip View Layer errors.
+        S.reveal_collection(_SHANYA_COLL)
         coll = bpy.data.collections.get(_SHANYA_COLL)
         if coll:
             for obj in list(coll.all_objects):
@@ -686,7 +756,9 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         if shanya_msg:
             icon = "CHECKMARK" if shanya_msg.startswith("Шаня:") else "ERROR"
             layout.label(text=shanya_msg[:72], icon=icon)
-        layout.operator("viu.studio_reload_shanya", icon="FILE_REFRESH")
+        row_sh = layout.row(align=True)
+        row_sh.operator("viu.studio_show_shanya", icon="HIDE_OFF")
+        row_sh.operator("viu.studio_reload_shanya", icon="FILE_REFRESH")
         col = layout.column(align=True)
         col.operator("viu.studio_prev", icon="TRIA_LEFT")
         col.operator("viu.studio_next", icon="TRIA_RIGHT")
@@ -743,6 +815,7 @@ class VIU_CreatureStudioProps(bpy.types.PropertyGroup):
 
 _CLASSES = (
     VIU_CreatureStudioProps,
+    VIU_OT_StudioShowShanya,
     VIU_OT_StudioReloadShanya,
     VIU_OT_StudioPrev,
     VIU_OT_StudioNext,
