@@ -150,6 +150,8 @@ def all_places() -> List[Place]:
     )
     from .inbox_layout import (
         inbox_animations_dir,
+        inbox_ais_assets_dir,
+        inbox_ais_cards_dir,
         inbox_cascadeur_dir,
         inbox_references_dir,
     )
@@ -196,6 +198,22 @@ def all_places() -> List[Place]:
             "Входы",
             "Очередь .fbx / .blend для Cascadeur.",
             inbox_cascadeur_dir,
+        ),
+        Place(
+            "inbox_ais_cards",
+            "Inbox — AIS карточки",
+            "folder",
+            "Входы",
+            "PNG 【AIS_Chara】 → character_card_probe → JSON внешности.",
+            inbox_ais_cards_dir,
+        ),
+        Place(
+            "inbox_ais_assets",
+            "Inbox — AIS ассеты",
+            "folder",
+            "Входы",
+            "Россыпь fbx/zip/png под карточку → character_card_match.",
+            inbox_ais_assets_dir,
         ),
         Place(
             "models_inbox",

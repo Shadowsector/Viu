@@ -13,6 +13,8 @@ INBOX_SUBDIRS: dict[str, str] = {
     "animations": "Анимации FBX — по одной, Mixamo/Cascadeur export",
     "references": "Референсы: картинки и видео для MoCap / идей",
     "cascadeur": "Очередь Cascadeur (.fbx / .blend)",
+    "ais_cards": "PNG-карточки 【AIS_Chara】 → character_card_probe",
+    "ais_assets": "Россыпь ассетов под карточку → character_card_match",
 }
 
 
@@ -39,6 +41,14 @@ def inbox_cascadeur_dir(config: Config) -> Path:
     return _subdir(config, "cascadeur")
 
 
+def inbox_ais_cards_dir(config: Config) -> Path:
+    return _subdir(config, "ais_cards")
+
+
+def inbox_ais_assets_dir(config: Config) -> Path:
+    return _subdir(config, "ais_assets")
+
+
 def ensure_inbox_readme(config: Config) -> None:
     root = inbox_dir(config)
     root.mkdir(parents=True, exist_ok=True)
@@ -56,6 +66,8 @@ def ensure_inbox_readme(config: Config) -> None:
             "Референсы → references/ → «Референсы — окно» в ComfyUI.",
             "Существа → creatures/ → Blender — существа (шаги 1–3).",
             "Анимации → animations/ → «Описать новые FBX».",
+            "Карточки AIS → ais_cards/ → character_card_probe (JSON в .viu/character_cards_extract).",
+            "Ассеты AIS → ais_assets/ → character_card_match json=…__anabarra.json.",
         ]
     )
     text = "\n".join(lines) + "\n"

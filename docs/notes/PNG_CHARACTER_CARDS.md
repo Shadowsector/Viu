@@ -1,50 +1,34 @@
-# PNG character cards — 【AIS_Chara】
+# PNG character cards — 【AIS_Chara】 + ассеты
 
-Лог Вью (`png-char-cards-probe-20260726b`, 2026-07-26): в `U:\TempUnityCard`
-**40 PNG**, данные **после IEND**, маркер `【AIS_Chara】` + MessagePack.
+## Папки (создаёт `character_card_setup`)
 
-Это карточки AI★Girl / Illusion (семейство Koikatsu), **не** JSON в tEXt.
+| Путь | Зачем |
+|------|--------|
+| `U:\Anabarra\Inbox\ais_cards\` | PNG-карточки |
+| `U:\Anabarra\Inbox\ais_assets\` | россыпь ассетов (fbx/zip/png/…) |
+| `U:\Viu\.viu\character_cards_extract\` | JSON после десериализации |
 
-## Структура файла
+## Процесс
 
-```
-[PNG preview 252×352]
-[IEND]
-product_no:int32
-header:len(b) + 「【AIS_Chara】」
-version:len(b) + 「1.0.0」
-face_thumb:len(i) + bytes
-lstInfo:len(i) + MessagePack { lstInfo: [{name,version,pos,size},…] }
-payload:len(q) + blocks…
-```
+1. **Обновить Вью** + `pip install msgpack`
+2. `character_card_setup copy_from=U:\TempUnityCard` — папки + копия карточек  
+   (или кинь PNG руками в `ais_cards/`)
+3. `character_card_probe` — вытащит `*__anabarra.json` (слайдеры, hair_ids)
+4. Скинь вразнобой ассеты в `ais_assets/`
+5. `character_card_match json=…\AI_002103__anabarra.json` — поиск по ID/имени
 
-Блоки: `Custom`, `Coordinate`, `Parameter`, `Status`, `Parameter2`, `GameInfo*`, `KKEx`, …
+## Инструменты
 
-`Custom` = три MessagePack подряд (face / body / hair), у face — `shapeValueFace` (слайдеры).
+| Tool | |
+|------|--|
+| `character_card_setup` | папки + README (+ copy_from) |
+| `character_card_probe` | каталог PNG → JSON |
+| `character_card_deserialize` | один PNG |
+| `character_card_match` | JSON → кандидаты в ais_assets |
 
-## Код Вью
+Матчинг эвристический: `hair_ids` / числа в имени файла / токены имени / kkex / имена внутри zip.  
+Это не «собери модель», а **найти что похоже** из кучи файлов.
 
-| Модуль | Зачем |
-|--------|--------|
-| `viu/ais_chara.py` | десериализатор → `AnabarraAppearance` |
-| `character_card_probe` | каталог карточек |
-| `character_card_deserialize` | один файл |
+## Формат карточки
 
-Зависимость: `pip install msgpack` (на машине Дена).
-
-```text
-character_card_probe path=U:\TempUnityCard limit=10
-character_card_deserialize path=U:\TempUnityCard\AI_002103.png
-```
-
-Дампы: `.viu/character_cards_extract/*__anabarra.json`
-
-## AnabarraAppearance
-
-- `face_shape_values` — слайдеры лица  
-- `body_shape_values` — тело  
-- `hair_ids` / `hair_parts` — ID причёсок  
-- `character_name`, `raw_parameter` — из Parameter  
-- `face_detail` — прочие поля face без огромных массивов  
-
-Ориентир формата: [KoikatuCharaLoader](https://github.com/great-majority/KoikatuCharaLoader).
+PNG + MessagePack после IEND, маркер `【AIS_Chara】`. См. `viu/ais_chara.py`.
