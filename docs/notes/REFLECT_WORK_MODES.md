@@ -14,21 +14,14 @@
 - `VIU_MEMORY.md` — память, не «режим»
 - `U:\Anabarra\ViuPrompts\reflect_mode.py` — **только голос** чата (переживает update)
 - `viu/prompts/reflect_mode.py` — пакет: голос-fallback + флаги/функции
+- `.viu/vision.md` — мечта/жизнь/сюжет (creative), без техбэклога
 
-## Почему после апдейта «отъезжал» reflect
+## Жизнь Вью должна доезжать
 
-Раньше в Anabarra клался **полный снимок** `reflect_mode.py`. Он переживал zip/git update и при импорте **целиком** подменял пакет — откатывались фиксы (#85 memory-echo, #86 NO_SYSTEM+digest, #90 modes).
+По умолчанию `VIU_REFLECT_NO_SYSTEM` **выкл.**: в Ollama уходит **system** с `REFLECT_VOICE` (характер + жизнь из reflect / Anabarra).
 
-Теперь:
-1. Seed / миграция → файл только с `REFLECT_VOICE` и строками (маркер `REFLECT_OVERRIDE_FORMAT`).
-2. `load_reflect_mode_override` применяет **allowlist** строк; функции из Anabarra игнорируются.
-3. Старый полный снимок при старте/апдейте → `.bak-full-*` + voice-only.
+В bare-чат всегда ещё `format_reflect_life_block()`: канон Шаньки + creative `vision.md` (мечта, отношения) — не только когда спросили «про сюжет».
 
-## Почему звала «Owner»
+`VIU_REFLECT_NO_SYSTEM=1` — отладка «только Modelfile»; тогда якорь имени + жизнь/память едут в user.
 
-При `VIU_REFLECT_NO_SYSTEM=1` (дефолт) system от Viu не уходит — личность только из Modelfile.
-Magnum/Euryale без жёсткого «Ден» скатываются в карточный **Owner**.
-
-Фикс: в user-turn якорь `REFLECT_IDENTITY_ANCHOR` + строка имени в `VIU_MEMORY` prefs + retry/soft-replace Owner→Ден.
-
-Править в Anabarra можно голос. Имя и флаги — из пакета / памяти.
+После апдейта: новый чат (старая история тянет старый тон).
