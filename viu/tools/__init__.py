@@ -130,7 +130,12 @@ from .asset_archive_tool import (
 )
 from .machine_bind_tool import MachineBindTool
 from .body_pipeline_tool import BodyPipelineTool
-from .character_card_tool import CharacterCardDeserializeTool, CharacterCardProbeTool
+from .character_card_tool import (
+    CharacterCardDeserializeTool,
+    CharacterCardMatchTool,
+    CharacterCardProbeTool,
+    CharacterCardSetupTool,
+)
 
 __all__ = [
     "AgentContext",
@@ -180,6 +185,8 @@ def build_default_registry() -> ToolRegistry:
         BodyPipelineTool(),
         CharacterCardProbeTool(),
         CharacterCardDeserializeTool(),
+        CharacterCardMatchTool(),
+        CharacterCardSetupTool(),
         PrepareUnityAssetTool(),
         RunNextStepTool(),
         VisionReadTool(),
