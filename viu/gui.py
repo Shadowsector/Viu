@@ -1652,6 +1652,7 @@ class ViuGUI:
         from .presence import is_away
 
         cid = tg_settings.chat_id(cfg)
+        owners = ",".join(str(x) for x in sorted(tg_settings.owner_ids(cfg)))
         home = "нет дома" if is_away(cfg) else "дома"
         return (
             f"{version_label()}\n"
@@ -1660,6 +1661,7 @@ class ViuGUI:
             f"Unity: {unity}\n"
             f"Занята: {getattr(self, '_busy_label', None) or ('да' if (self._tool_busy or self._llm_busy) else 'нет')}\n"
             f"Telegram chat: {cid or 'не привязан'} ({chat})\n"
+            f"Telegram owner: {owners}\n"
             f"Ждём ответ: {'да' if self._telegram_waiting_reply else 'нет'}"
         )
 
