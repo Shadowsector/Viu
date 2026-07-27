@@ -605,13 +605,13 @@ class Agent:
             HEARTBEAT_TASK,
             REFLECT_BARE,
             REFLECT_BARE_MINIMAL,
-            REFLECT_IDENTITY_ANCHOR,
             addresses_user_as_owner,
             reflect_include_story_history,
             reflect_no_history,
             reflect_no_system,
             reflect_temperature,
             reflect_use_filters,
+            reflect_voice_user_block,
         )
         from .reflect_delivery import (
             collect_final_parts,
@@ -640,8 +640,8 @@ class Agent:
                 system = HEARTBEAT_SYSTEM
                 user_msg = HEARTBEAT_TASK
         else:
-            # При NO_SYSTEM system не уходит в Ollama (личность в Modelfile).
-            # Если system всё же шлём — полный REFLECT_VOICE, не урезанный minimal.
+            # При NO_SYSTEM system не уходит в Ollama (jailbreak в Modelfile).
+            # Голос Вью + JSON-формат всё равно нужны — иначе характер «отъезжает».
             no_sys = reflect_no_system()
             system = REFLECT_BARE_MINIMAL if no_sys else REFLECT_BARE
             user_msg = user_text
@@ -656,9 +656,8 @@ class Agent:
                 else:
                     system += block if block.startswith("\n") else ("\n\n" + block)
 
-            # Имя «Ден» должно доезжать даже без system — иначе Magnum → Owner.
             if no_sys:
-                _attach(REFLECT_IDENTITY_ANCHOR)
+                _attach(reflect_voice_user_block())
 
             hint = list_delivery_hint(user_text)
             if hint:

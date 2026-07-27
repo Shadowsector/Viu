@@ -82,8 +82,10 @@ def test_reflect_no_system_omits_system_message(tmp_path, monkeypatch):
     assert roles == ["user"]
     user = seen[0][-1]["content"]
     assert "тест без system" in user
+    # Голос Вью едет в user (иначе характер отъезжает).
+    assert "Ты — **Вью**" in user or "Ты — Вью" in user
     assert "Ден" in user
-    assert "Owner" in user  # запрет в якоре
+    assert "final" in user  # JSON-minimal
 
 
 def test_reflect_no_system_still_binds_memory(tmp_path, monkeypatch):
@@ -117,7 +119,18 @@ def test_reflect_no_system_still_binds_memory(tmp_path, monkeypatch):
     assert "VIU_MEMORY" in user
     assert "Мяучиться" in user
     assert "Ден" in user
+    assert "озорн" in user.lower() or "Вью" in user
     assert "# Память Вью" not in user  # digest, не весь файл
+
+
+def test_reflect_voice_user_block_includes_persona():
+    from viu.prompts.reflect_mode import reflect_voice_user_block
+
+    block = reflect_voice_user_block()
+    assert "Вью" in block
+    assert "Ден" in block
+    assert "Owner" in block
+    assert "final" in block
 
 
 def test_reflect_retries_owner_address(tmp_path, monkeypatch):

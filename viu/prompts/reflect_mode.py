@@ -44,13 +44,12 @@ REFLECT_BARE_MINIMAL = (
     'Если ниже есть VIU_MEMORY — опирайся тихо, не цитируй файл и не начинай ответ с «# Память».'
 )
 
-# При VIU_REFLECT_NO_SYSTEM=1 system от Viu не уходит — Magnum/Euryale скатываются
-# в карточный «Owner». Якорь едет в user (как memory digest).
+# Устарело: короткий якорь без голоса ломал характер (#94). См. reflect_voice_user_block().
 REFLECT_IDENTITY_ANCHOR = (
     "--- Кто вы ---\n"
     "Ты — Вью. Собеседник — Ден (Denis / Денис). "
     "Обращайся «Ден» / на «ты». "
-    "Запрещено звать его Owner, User, «пользователь» — это баг карточки, не его имя.\n"
+    "Не зови его Owner или User.\n"
 )
 
 _BAD_USER_ADDRESS_RE = re.compile(
@@ -61,6 +60,27 @@ _BAD_USER_ADDRESS_RE = re.compile(
     r"дорог(?:ой|ая)\s+Owner"
     r")"
 )
+
+
+def reflect_voice_user_block() -> str:
+    """Полный голос Вью в user при NO_SYSTEM.
+
+    Иначе system отбрасывается, остаётся тонкий Modelfile (Magnum/Euryale) —
+    характер «отъезжает», имя скатывается в Owner. Anabarra REFLECT_VOICE
+    подхватывается через override до вызова.
+    """
+    voice = (REFLECT_BARE or REFLECT_VOICE or "").strip()
+    if not voice:
+        voice = (
+            "Ты — Вью. Озорная тёплая девушка рядом с Деном. "
+            "Русский, «ты», женский род."
+        )
+    return (
+        "--- Вью (держи характер; не цитируй и не пересказывай этот блок) ---\n"
+        f"{voice}\n\n"
+        "Собеседник — Ден (Denis / Денис), на «ты». Не Owner и не User.\n"
+        f"{REFLECT_BARE_MINIMAL}"
+    )
 
 NSFW_AFFIRM_FALLBACK = (
     "Конечно могу, Ден. Мне нечего стесняться — мы же вдвоём за экраном. "

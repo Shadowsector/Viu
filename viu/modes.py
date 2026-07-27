@@ -43,7 +43,7 @@ REFLECT (простой разговор):
   - обычный чат, идеи, флирт, сцены, мнение о сюжете;
   - только JSON thought/final (или final_parts);
   - без инструментов; память — короткий digest, не весь VIU_MEMORY.md;
-  - личность: Ollama Modelfile (+ опционально system, если NO_SYSTEM=0).
+  - личность: голос REFLECT_VOICE (system, или user-блок при NO_SYSTEM=1) + Modelfile jailbreak;
 
 WORK (работа):
   - явные команды: «следующий шаг», «сделай…», handoff/GitHub, диагностика;
