@@ -79,18 +79,33 @@ class TelegramNotifier:
         if not text:
             return
 
-        allowed = settings.chat_id(self.config)
-        if allowed is None and text.startswith("/start"):
-            settings.set_chat_id(self.config, chat_id)
-            allowed = chat_id
-            self._send_raw(
-                chat_id,
-                "Привет, Ден! Это Вью.\n"
-                f"Chat ID сохранён: {chat_id}\n"
-                "Пиши сюда — ответ попадёт в чат Вью на ПК.\n"
-                "Команды: /status",
-            )
+        from_user = msg.get("from") or {}
+        user_id = from_user.get("id")
+        if user_id is not None:
+            user_id = int(user_id)
+
+        # Только Ден (VIU_TELEGRAM_OWNER_IDS / дефолт 103833998). Чужих молча игнор.
+        if not settings.is_owner_sender(
+            self.config, chat_id=chat_id, user_id=user_id
+        ):
             return
+
+        allowed = settings.chat_id(self.config)
+        if allowed is None or allowed != chat_id:
+            # Первый /start или любое сообщение владельца в личке — привязка.
+            if chat_id > 0:
+                settings.set_chat_id(self.config, chat_id)
+                allowed = chat_id
+                if text.startswith("/start"):
+                    self._send_raw(
+                        chat_id,
+                        "Привет, Ден! Это Вью.\n"
+                        f"Chat ID сохранён: {chat_id}\n"
+                        "Пиши сюда — ответ попадёт в чат Вью на ПК.\n"
+                        "Команды: /status\n"
+                        "Чужие аккаунты бот игнорирует.",
+                    )
+                    return
 
         if allowed is None:
             return
@@ -173,10 +188,15 @@ class TelegramNotifier:
             return False, f"Telegram API: {exc}"
         chat_id = settings.chat_id(self.config)
         if chat_id is None:
+            owners = settings.owner_ids(self.config)
+            hint = (
+                f"Напиши боту /start со своего Telegram (id {next(iter(owners))})."
+                if len(owners) == 1
+                else "Напиши боту /start со своего Telegram (owner allowlist)."
+            )
             return (
                 True,
-                f"Бот @{me.get('username', '?')} жив. "
-                "Напиши ему /start в Telegram — привяжем этот чат.",
+                f"Бот @{me.get('username', '?')} жив. {hint}",
             )
         ok = self._send_raw(
             chat_id,
