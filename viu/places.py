@@ -417,7 +417,7 @@ def all_places() -> List[Place]:
             "Промпты Вью (личные)",
             "folder",
             "Файлы",
-            "U:\\Anabarra\\ViuPrompts — reflect_mode.py; обновления Вью не затирают.",
+            "U:\\Anabarra\\ViuPrompts — только голос reflect_mode.py; апдейт не затирает.",
             user_prompts_dir,
         ),
         Place(
