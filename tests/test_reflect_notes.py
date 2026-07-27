@@ -232,9 +232,17 @@ def test_reflect_no_history_auto_dump(tmp_path, monkeypatch):
     assert reflect_request_log_path(cfg).is_file()
 
 
-def test_reflect_no_system_default_on():
+def test_reflect_no_system_default_off():
+    """По умолчанию system с REFLECT_VOICE — иначе жизнь из reflect не доезжает."""
     from viu.prompts.reflect_mode import reflect_no_system
 
+    assert reflect_no_system() is False
+
+
+def test_reflect_no_system_explicit_on(monkeypatch):
+    from viu.prompts.reflect_mode import reflect_no_system
+
+    monkeypatch.setenv("VIU_REFLECT_NO_SYSTEM", "1")
     assert reflect_no_system() is True
 
 
@@ -243,6 +251,51 @@ def test_reflect_no_system_explicit_off(monkeypatch):
 
     monkeypatch.setenv("VIU_REFLECT_NO_SYSTEM", "0")
     assert reflect_no_system() is False
+
+
+def test_reflect_bare_sends_voice_in_system_by_default(tmp_path, monkeypatch):
+    from viu.agent import Agent
+    from viu.config import Config
+    from viu.llm.mock import MockLLM
+
+    monkeypatch.delenv("VIU_REFLECT_NO_SYSTEM", raising=False)
+    monkeypatch.setenv("VIU_ROOT", str(tmp_path / "Viu"))
+    root = tmp_path / "Viu"
+    root.mkdir()
+    seen: list[list[dict]] = []
+
+    class CaptureLLM(MockLLM):
+        def complete(self, messages, *, temperature=None, model=None):
+            seen.append(list(messages))
+            return '{"thought":"ok","final":"привет"}'
+
+    cfg = Config(root=root, data_dir=root / ".viu").ensure_dirs()
+    agent = Agent(llm=CaptureLLM(), config=cfg)
+    result = agent.run_reflect("привет")
+    assert result.completed
+    assert seen
+    roles = [m["role"] for m in seen[0]]
+    assert "system" in roles
+    system = next(m["content"] for m in seen[0] if m["role"] == "system")
+    assert "Вью" in system
+    assert "Ден" in system
+    # Жизнь/мечта из vision — всегда в bare.
+    assert "vision" in system.lower() or "Мечта" in system or "Шань" in system
+
+
+def test_format_reflect_life_block(tmp_path, monkeypatch):
+    from viu.config import Config
+    from viu.situational_context import format_reflect_life_block
+    from viu.vision import ensure_vision
+
+    monkeypatch.setenv("VIU_ROOT", str(tmp_path / "Viu"))
+    root = tmp_path / "Viu"
+    root.mkdir()
+    cfg = Config(root=root, data_dir=root / ".viu").ensure_dirs()
+    ensure_vision(cfg)
+    block = format_reflect_life_block(cfg)
+    assert "Шань" in block or "шан" in block.lower()
+    assert "Мечта" in block or "Вью" in block
 
 
 def test_reflect_request_dump_writes_json(tmp_path, monkeypatch):
@@ -267,8 +320,12 @@ def test_reflect_request_dump_writes_json(tmp_path, monkeypatch):
 
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["mode"] == "bare"
+    # Дефолт: system с голосом; user — реплика (+ опционально блоки при NO_SYSTEM).
+    assert any(m["role"] == "system" for m in data["messages"])
     assert data["messages"][-1]["content"].startswith("покажи дамп")
-    assert "Ден" in data["messages"][-1]["content"]
+    system = next(m["content"] for m in data["messages"] if m["role"] == "system")
+    assert "Вью" in system
+    assert "Ден" in system
 
 
 def test_weak_scene_reply_not_filtered():
@@ -322,6 +379,7 @@ def test_plot_notes_injected_in_bare_reflect(tmp_path, monkeypatch):
     from viu.llm.mock import MockLLM
     from viu.plot_canvas import ensure_plot_canvas, ensure_quests
 
+    monkeypatch.delenv("VIU_REFLECT_NO_SYSTEM", raising=False)
     monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
     cfg = Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs()
     canvas = ensure_plot_canvas(cfg)
@@ -343,11 +401,11 @@ def test_plot_notes_injected_in_bare_reflect(tmp_path, monkeypatch):
         "Просмотри файлы сюжета игры. Хотелось бы твоё мнение о нём."
     )
     assert seen
-    user = next(m["content"] for m in seen[0] if m["role"] == "user")
-    # При NO_SYSTEM=1 канон едет в user (иначе отваливается вместе с system).
-    assert "PLOT_CANVAS" in user
-    assert "домовой" in user.lower()
-    assert "QUESTS" in user or "снежин" in user.lower()
+    system = next(m["content"] for m in seen[0] if m["role"] == "system")
+    # Дефолт: канон в system вместе с REFLECT_VOICE.
+    assert "PLOT_CANVAS" in system
+    assert "домовой" in system.lower()
+    assert "QUESTS" in system or "снежин" in system.lower()
 
 
 def test_build_reflect_notes_plot_has_canvas(tmp_path, monkeypatch):

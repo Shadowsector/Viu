@@ -629,7 +629,11 @@ class Agent:
         )
         user_text = (task or "").strip()
 
-        from .situational_context import build_reflect_notes_plot, needs_plot_file_context
+        from .situational_context import (
+            build_reflect_notes_plot,
+            format_reflect_life_block,
+            needs_plot_file_context,
+        )
 
         plot_ctx = False
         if heartbeat:
@@ -640,8 +644,8 @@ class Agent:
                 system = HEARTBEAT_SYSTEM
                 user_msg = HEARTBEAT_TASK
         else:
-            # При NO_SYSTEM system не уходит в Ollama (личность в Modelfile).
-            # Если system всё же шлём — полный REFLECT_VOICE, не урезанный minimal.
+            # По умолчанию system = полный REFLECT_VOICE (жизнь/характер из reflect).
+            # VIU_REFLECT_NO_SYSTEM=1 — только Modelfile; тогда якорь/жизнь едут в user.
             no_sys = reflect_no_system()
             system = REFLECT_BARE_MINIMAL if no_sys else REFLECT_BARE
             user_msg = user_text
@@ -656,9 +660,15 @@ class Agent:
                 else:
                     system += block if block.startswith("\n") else ("\n\n" + block)
 
-            # Имя «Ден» должно доезжать даже без system — иначе Magnum → Owner.
             if no_sys:
                 _attach(REFLECT_IDENTITY_ANCHOR)
+
+            try:
+                life = format_reflect_life_block(self.config)
+                if life:
+                    _attach(life)
+            except Exception:  # noqa: BLE001
+                pass
 
             hint = list_delivery_hint(user_text)
             if hint:

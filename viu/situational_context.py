@@ -109,6 +109,41 @@ def build_reflect_notes_plot(config: Config) -> str:
     return _build_reflect_notes_plot(config)
 
 
+def format_reflect_life_block(config: Config, *, max_chars: int = 2000) -> str:
+    """Жизнь/мечта Вью для bare-reflect (всегда, не только на вопрос про сюжет).
+
+    Без этого блока при NO_SYSTEM или без plot-триггера модель не знает vision.md
+    и канон Шаньки — «понятия не имеет о своей жизни».
+    """
+    parts: list[str] = []
+    try:
+        from .lore.shanya import SHANYA_REFLECT_COMPACT
+
+        parts.append(
+            "--- Шанька (канон Анабарра; не зачитывать списком) ---\n"
+            + SHANYA_REFLECT_COMPACT.strip()
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from .vision import read_vision_creative
+
+        creative = read_vision_creative(config, max_chars=max(400, max_chars - 400)).strip()
+        if creative:
+            parts.append(
+                "--- Жизнь/мечта Вью (vision; опирайся тихо, не зачитывай) ---\n"
+                + creative
+            )
+    except OSError:
+        pass
+    text = "\n\n".join(parts).strip()
+    if not text:
+        return ""
+    if len(text) > max_chars:
+        text = text[:max_chars].rstrip() + "\n…"
+    return text
+
+
 def _needs_full_work_notes(user_text: str) -> bool:
     low = (user_text or "").lower()
     if not low.strip():

@@ -44,13 +44,12 @@ REFLECT_BARE_MINIMAL = (
     'Если ниже есть VIU_MEMORY — опирайся тихо, не цитируй файл и не начинай ответ с «# Память».'
 )
 
-# При VIU_REFLECT_NO_SYSTEM=1 system от Viu не уходит — Magnum/Euryale скатываются
-# в карточный «Owner». Якорь едет в user (как memory digest).
+# При явном VIU_REFLECT_NO_SYSTEM=1 system от Viu не уходит — короткий якорь имени.
 REFLECT_IDENTITY_ANCHOR = (
     "--- Кто вы ---\n"
     "Ты — Вью. Собеседник — Ден (Denis / Денис). "
     "Обращайся «Ден» / на «ты». "
-    "Запрещено звать его Owner, User, «пользователь» — это баг карточки, не его имя.\n"
+    "Не зови его Owner или User.\n"
 )
 
 _BAD_USER_ADDRESS_RE = re.compile(
@@ -160,13 +159,17 @@ def reflect_use_filters() -> bool:
 
 
 def reflect_no_system() -> bool:
-    """Без system от Viu — только Modelfile. По умолчанию вкл. (VIU_REFLECT_NO_SYSTEM=0 — выкл.)."""
+    """Без system от Viu — только Modelfile.
+
+    По умолчанию **выкл.**: system несёт REFLECT_VOICE (жизнь/характер из reflect).
+    VIU_REFLECT_NO_SYSTEM=1 — отладка «только Modelfile» (голос из reflect не едет).
+    """
     raw = os.environ.get("VIU_REFLECT_NO_SYSTEM", "").strip().lower()
     if raw in ("1", "true", "yes"):
         return True
     if raw in ("0", "false", "no"):
         return False
-    return True
+    return False
 
 
 def reflect_no_history() -> bool:
