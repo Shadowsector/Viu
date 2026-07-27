@@ -23,6 +23,12 @@ _SECTION_PREFS = "## Привычки и предпочтения"
 _SECTION_REFS = "## Референсы (вдохновение)"
 _SECTION_SUMMARIES = "## Итоги чатов"
 
+# Без этой строки при NO_SYSTEM Magnum/Euryale зовут Дена Owner.
+_IDENTITY_PREF_LINE = (
+    "- Собеседника зовут Ден (Denis / Денис); обращаться «Ден» / на «ты», "
+    "не Owner и не User."
+)
+
 _TEMPLATE = """# Память Вью
 
 Редактируй свободно — Вью читает этот файл при размышлении.
@@ -33,6 +39,8 @@ _TEMPLATE = """# Память Вью
 <!-- сюда попадает «запомни» / «сохрани» из чата -->
 
 ## Привычки и предпочтения
+
+- Собеседника зовут Ден (Denis / Денис); обращаться «Ден» / на «ты», не Owner и не User.
 
 <!-- твои привычки, что нравится / не нравится в пайплайне и в игре -->
 
@@ -69,6 +77,11 @@ def ensure_viu_memory(config: Config) -> Path:
     if not path.is_file():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(_TEMPLATE, encoding="utf-8")
+    else:
+        try:
+            ensure_identity_pref(config)
+        except Exception:  # noqa: BLE001
+            pass
     return path
 
 
@@ -135,6 +148,10 @@ def format_reflect_block(config: Config, *, max_chars: int = 1600) -> str:
     try:
         sanitize_poisoned_summaries(config)
     except OSError:
+        pass
+    try:
+        ensure_identity_pref(config)
+    except Exception:  # noqa: BLE001
         pass
     raw = read_viu_memory(config, max_chars=12000)
     if not raw:
@@ -240,6 +257,30 @@ def _append_under_section(text: str, section_header: str, line: str) -> str:
         insert_at = after + next_h.start()
         return text[:insert_at].rstrip() + f"\n{line}\n" + text[insert_at:]
     return text.rstrip() + f"\n{line}\n"
+
+
+def ensure_identity_pref(config: Config) -> bool:
+    """Дописать имя Дена в prefs, если в памяти его ещё нет (старые пустые файлы)."""
+    path = viu_memory_path(config)
+    if not path.is_file():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    if _IDENTITY_PREF_LINE in text:
+        return False
+    prefs = _section_body(_strip_html_comments(text), _SECTION_PREFS)
+    if re.search(r"(?i)\bден\b|\bdenis\b|\bденис\b", prefs or ""):
+        return False
+    updated = _append_under_section(text, _SECTION_PREFS, _IDENTITY_PREF_LINE)
+    if updated == text:
+        return False
+    try:
+        path.write_text(updated, encoding="utf-8")
+    except OSError:
+        return False
+    return True
 
 
 def append_memory_line(

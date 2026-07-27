@@ -80,6 +80,10 @@ def test_reflect_no_system_omits_system_message(tmp_path, monkeypatch):
     roles = [m["role"] for m in seen[0]]
     assert "system" not in roles
     assert roles == ["user"]
+    user = seen[0][-1]["content"]
+    assert "тест без system" in user
+    assert "Ден" in user
+    assert "Owner" in user  # запрет в якоре
 
 
 def test_reflect_no_system_still_binds_memory(tmp_path, monkeypatch):
@@ -112,7 +116,70 @@ def test_reflect_no_system_still_binds_memory(tmp_path, monkeypatch):
     assert "Вью, как там?" in user
     assert "VIU_MEMORY" in user
     assert "Мяучиться" in user
+    assert "Ден" in user
     assert "# Память Вью" not in user  # digest, не весь файл
+
+
+def test_reflect_retries_owner_address(tmp_path, monkeypatch):
+    from viu.agent import Agent
+    from viu.config import Config
+    from viu.llm.mock import MockLLM
+
+    monkeypatch.setenv("VIU_REFLECT_NO_SYSTEM", "1")
+    calls = {"n": 0}
+
+    class OwnerThenOk(MockLLM):
+        def complete(self, messages, *, temperature=None, model=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return '{"thought":"x","final":"Hi, Owner, how are you?"}'
+            return '{"thought":"x","final":"Привет, Ден — я на связи."}'
+
+    agent = Agent(
+        llm=OwnerThenOk(),
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    result = agent.run_reflect("привет")
+    assert result.completed
+    assert calls["n"] == 2
+    assert "Ден" in result.final
+    assert "Owner" not in result.final
+
+
+def test_addresses_user_as_owner():
+    from viu.prompts.reflect_mode import addresses_user_as_owner, viu_voice_issues
+
+    assert addresses_user_as_owner("Hello, Owner!")
+    assert not addresses_user_as_owner("Привет, Ден")
+    assert any("Owner" in i for i in viu_voice_issues("Hello, Owner!"))
+
+
+def test_ensure_identity_pref_seeds_old_memory(tmp_path, monkeypatch):
+    from viu.config import Config
+    from viu.viu_memory import (
+        ensure_identity_pref,
+        format_reflect_block,
+        viu_memory_path,
+    )
+
+    monkeypatch.setenv("VIU_ROOT", str(tmp_path / "Viu"))
+    root = tmp_path / "Viu"
+    root.mkdir()
+    cfg = Config(root=root, data_dir=root / ".viu").ensure_dirs()
+    path = viu_memory_path(cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "# Память Вью\n\n## Явные записи\n\n## Привычки и предпочтения\n\n"
+        "## Референсы (вдохновение)\n\n## Итоги чатов\n",
+        encoding="utf-8",
+    )
+    assert ensure_identity_pref(cfg) is True
+    text = path.read_text(encoding="utf-8")
+    assert "Ден" in text
+    assert "Owner" in text
+    digest = format_reflect_block(cfg)
+    assert "Ден" in digest
+    assert ensure_identity_pref(cfg) is False
 
 
 def test_reflect_no_history_omits_history(tmp_path, monkeypatch):
@@ -142,7 +209,7 @@ def test_reflect_no_history_omits_history(tmp_path, monkeypatch):
     assert result.completed
     roles = [m["role"] for m in seen[0]]
     assert roles.count("user") == 1
-    assert seen[0][-1]["content"] == "тест"
+    assert seen[0][-1]["content"].startswith("тест")
 
 
 def test_reflect_no_history_auto_dump(tmp_path, monkeypatch):
@@ -200,7 +267,8 @@ def test_reflect_request_dump_writes_json(tmp_path, monkeypatch):
 
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["mode"] == "bare"
-    assert data["messages"][-1]["content"] == "покажи дамп"
+    assert data["messages"][-1]["content"].startswith("покажи дамп")
+    assert "Ден" in data["messages"][-1]["content"]
 
 
 def test_weak_scene_reply_not_filtered():

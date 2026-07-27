@@ -605,6 +605,8 @@ class Agent:
             HEARTBEAT_TASK,
             REFLECT_BARE,
             REFLECT_BARE_MINIMAL,
+            REFLECT_IDENTITY_ANCHOR,
+            addresses_user_as_owner,
             reflect_include_story_history,
             reflect_no_history,
             reflect_no_system,
@@ -653,6 +655,10 @@ class Agent:
                     extra_user_blocks.append(block)
                 else:
                     system += block if block.startswith("\n") else ("\n\n" + block)
+
+            # Имя «Ден» должно доезжать даже без system — иначе Magnum → Owner.
+            if no_sys:
+                _attach(REFLECT_IDENTITY_ANCHOR)
 
             hint = list_delivery_hint(user_text)
             if hint:
@@ -867,6 +873,26 @@ class Agent:
                 )
                 result.completed = True
                 return result
+            if candidate and addresses_user_as_owner(candidate):
+                self._log(f"REFLECT_OWNER_SLIP attempt={attempt}")
+                if attempt < 3:
+                    messages.append({"role": "assistant", "content": raw or ""})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Его зовут Ден, не Owner и не User. "
+                                'Перепиши final с обращением к Дену: {"final":"…"}'
+                            ),
+                        }
+                    )
+                    continue
+                # Последняя попытка — не отдавать Owner Дену.
+                fixed = re.sub(r"(?i)\bOwner\b", "Ден", candidate)
+                fixed = re.sub(r"(?i)\bUser\b", "Ден", fixed)
+                if text:
+                    text = fixed
+                candidate = fixed
             if text and not truncated:
                 return _accept(text, thought or "", parsed)
             if text and truncated and attempt >= 2:

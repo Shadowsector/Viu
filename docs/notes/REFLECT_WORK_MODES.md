@@ -24,6 +24,11 @@
 2. `load_reflect_mode_override` применяет **allowlist** строк; функции из Anabarra игнорируются.
 3. Старый полный снимок при старте/апдейте → `.bak-full-*` + voice-only.
 
-Править в Anabarra можно голос. `VIU_REFLECT_NO_SYSTEM` и логика памяти — всегда из `U:\Viu`.
+## Почему звала «Owner»
 
-Сегодня (#85/#86/#90 + guard): чат не зачитывает весь `VIU_MEMORY.md`; голое «Попробуешь?» — чат, не tools; апдейт не откатывает plumbing.
+При `VIU_REFLECT_NO_SYSTEM=1` (дефолт) system от Viu не уходит — личность только из Modelfile.
+Magnum/Euryale без жёсткого «Ден» скатываются в карточный **Owner**.
+
+Фикс: в user-turn якорь `REFLECT_IDENTITY_ANCHOR` + строка имени в `VIU_MEMORY` prefs + retry/soft-replace Owner→Ден.
+
+Править в Anabarra можно голос. Имя и флаги — из пакета / памяти.
