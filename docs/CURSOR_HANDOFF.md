@@ -2507,3 +2507,17 @@ payloads: 1
       preview:
       d   ãAIS_Charaã1.0.0    $bc887ec2-48d1-4eec-af5c-e4d5666f7dda$76ac3bce-bc51-49a2-a4d0-48593cd589e6  §lstInfo¤name¤KKEx§version¡3£posÍN¤sizeÎ 2f
       ¤name¦Custom§version¥0.0.0£pos ¤sizeÍÒ¤nameªCoordinate§version¥0.0.0£posÍÒ¤sizeÍ8©¤name©Parameter§version¥0.0.1£posÍH{¤sizen¤name¨
+
+
+---
+
+## 2026-07-27 13:40 — ESCALATE `character_card_setup` / ais-layout-dump-20260727 (Viu)
+
+ЭСКАЛАЦИЯ: инструмент `character_card_setup` не справился.
+Inbox task: `ais-layout-dump-20260727`
+
+Ошибка / лог:
+Нет инструмента `character_card_setup`
+
+web_search (`Unity 6 character_card_setup Нет инструмента `character_card_setup``):
+Ничего не найдено по запросу.
