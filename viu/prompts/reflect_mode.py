@@ -44,6 +44,24 @@ REFLECT_BARE_MINIMAL = (
     'Если ниже есть VIU_MEMORY — опирайся тихо, не цитируй файл и не начинай ответ с «# Память».'
 )
 
+# При VIU_REFLECT_NO_SYSTEM=1 system от Viu не уходит — Magnum/Euryale скатываются
+# в карточный «Owner». Якорь едет в user (как memory digest).
+REFLECT_IDENTITY_ANCHOR = (
+    "--- Кто вы ---\n"
+    "Ты — Вью. Собеседник — Ден (Denis / Денис). "
+    "Обращайся «Ден» / на «ты». "
+    "Запрещено звать его Owner, User, «пользователь» — это баг карточки, не его имя.\n"
+)
+
+_BAD_USER_ADDRESS_RE = re.compile(
+    r"(?i)(?:"
+    r"\bOwner\b|"
+    r"\bUser\b|"
+    r"мой\s+Owner|"
+    r"дорог(?:ой|ая)\s+Owner"
+    r")"
+)
+
 NSFW_AFFIRM_FALLBACK = (
     "Конечно могу, Ден. Мне нечего стесняться — мы же вдвоём за экраном. "
     "Продолжим ту мысль или накину что-нибудь погадостнее?"
@@ -325,6 +343,11 @@ def user_is_greeting(user_text: str) -> bool:
     return bool(_GREETING_START_RE.match(t) and len(t.split()) <= 4)
 
 
+def addresses_user_as_owner(text: str) -> bool:
+    """Модель скатилась в карточный Owner/User вместо «Ден»."""
+    return bool(_BAD_USER_ADDRESS_RE.search(text or ""))
+
+
 def viu_voice_issues(
     text: str, *, has_history: bool = False, user_text: str = ""
 ) -> list[str]:
@@ -338,6 +361,8 @@ def viu_voice_issues(
         issues.append("слишком короткий ответ")
     if _META_MODE_RE.search(body):
         issues.append("мета про режимы — Дену только живой ответ, без reflect/work")
+    if addresses_user_as_owner(body):
+        issues.append("зовёт Дена Owner/User — нужно имя Ден")
     try:
         from ..viu_memory import looks_like_memory_echo
 
