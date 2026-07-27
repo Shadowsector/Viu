@@ -112,7 +112,7 @@ def user_reflect_mode_path(config: Config) -> Path:
 
 
 def preserve_user_reflect_mode(config: Config | None = None) -> str:
-    """Сохранить текущий reflect_mode в Анабарру (если там ещё нет). До апдейта."""
+    """Seed/migrate личный голос в Анабарру. Полный снимок → voice-only."""
     from install_merge import preserve_reflect_mode
 
     if config is not None:

@@ -788,7 +788,8 @@ def bootstrap_zip_force(branch: str = DEFAULT_BRANCH) -> Tuple[bool, str]:
 
 _UPDATE_DATA_NOTE = (
     "Готово. Референсы и файлы лежат в U:\\Anabarra\\Inbox — обновление их не трогает. "
-    "Личный reflect_mode — в U:\\Anabarra\\ViuPrompts\\ (не в U:\\Viu\\viu\\prompts\\). "
+    "Личный голос чата — U:\\Anabarra\\ViuPrompts\\reflect_mode.py (только строки; "
+    "флаги/память всегда из пакета, полный снимок больше не откатывает reflect). "
     "Память (.viu\\memory.json) — твоя, с GitHub не качается. "
     "Окно перезапустится само — новые кнопки появятся после перезапуска."
 )

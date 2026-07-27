@@ -1,4 +1,9 @@
-"""Личность Вью в reflect-чате — без пост-цензуры (jailbreak в Ollama Modelfile)."""
+"""Личность Вью в reflect-чате — без пост-цензуры (jailbreak в Ollama Modelfile).
+
+Личный голос: U:\\Anabarra\\ViuPrompts\\reflect_mode.py (только строки REFLECT_VOICE…).
+Функции/флаги (NO_SYSTEM, фильтры, memory-echo) всегда из этого пакета — Anabarra
+их больше не перекрывает (см. install_merge.REFLECT_OVERRIDE_ALLOWLIST).
+"""
 
 from __future__ import annotations
 
@@ -450,7 +455,7 @@ def format_reflect_fail_message(
 
 
 def _apply_anabarra_override() -> None:
-    """Личная редакция: U:\\Anabarra\\ViuPrompts\\reflect_mode.py перекрывает шаблон из пакета."""
+    """Личный голос из Anabarra; plumbing пакета не затирается."""
     try:
         from install_merge import load_reflect_mode_override
     except ImportError:
