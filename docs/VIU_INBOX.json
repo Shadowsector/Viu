@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-27T10:39:59Z",
+  "updated_at": "2026-07-27T10:40:03Z",
   "note": "AIS folders + JSON dump + asset match workflow.",
   "tasks": [
     {
@@ -12,7 +12,7 @@
     },
     {
       "id": "ais-layout-dump-20260727",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": 1,
       "title": "Setup ais_cards/ais_assets + dump JSON from TempUnityCard",
       "created_by": "Cursor",
@@ -24,7 +24,9 @@
       },
       "instructions": "Создай Inbox/ais_cards + ais_assets, скопируй PNG из U:\\TempUnityCard, сразу probe→JSON. Нужен msgpack (pip install msgpack). Открой ais_assets — Ден туда скинет ассеты вразнобой. Не зови Дена.",
       "acceptance": "Папки есть; summary ais_ok>=1 или FAIL про msgpack; *__anabarra.json в .viu/character_cards_extract.",
-      "started_at": "2026-07-27T10:39:59Z"
+      "started_at": "2026-07-27T10:39:59Z",
+      "result": "Нет инструмента `character_card_setup`",
+      "finished_at": "2026-07-27T10:40:03Z"
     }
   ]
 }
