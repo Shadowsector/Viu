@@ -22,7 +22,8 @@ PENDING_FILENAME = "viu_lab_pending.json"
 # (см. cascadeur.com/help/installation/file_structure)
 IMPORT_COMMAND_SOURCE = '''"""Viu Lab — импорт FBX из viu_lab_pending.json (Commands → Viu.Lab Import).
 
-Preset «Scene» / import_scene — персонаж из Blender (скелет + mesh) в пустую сцену.
+mode=scene — персонаж (скелет + mesh).
+mode=animation — клип с анимацией (Open first take / import_animation если есть).
 """
 import json
 import os
@@ -68,6 +69,7 @@ def run(scene):
         scene.error(f"FBX не найден: {fbx}")
         return
 
+    mode = (data.get("mode") or "scene").strip().lower()
     app = csc.app.get_application()
     current = _ensure_scene(app)
     if current is None:
@@ -77,15 +79,29 @@ def run(scene):
     tools = app.get_tools_manager()
     loader_tool = tools.get_tool("FbxSceneLoader")
     fbx_loader = loader_tool.get_fbx_loader(current)
-    # FbxLoader.import_scene ≈ UI preset «Scene» (скелет + mesh из Blender FBX).
-    fbx_loader.import_scene(fbx_norm)
-    scene.info(f"Imported (Scene): {os.path.basename(fbx_norm)}")
+    # Animation: предпочитаем import_animation; иначе Scene (Animations ✓ в UI).
+    if mode in ("animation", "anim", "clip"):
+        imported = False
+        for meth in ("import_animation", "import_anim", "import_scene"):
+            fn = getattr(fbx_loader, meth, None)
+            if callable(fn):
+                fn(fbx_norm)
+                scene.info(f"Imported ({meth}): {os.path.basename(fbx_norm)}")
+                imported = True
+                break
+        if not imported:
+            scene.error("FbxLoader: нет import_animation/import_scene")
+            return
+    else:
+        fbx_loader.import_scene(fbx_norm)
+        scene.info(f"Imported (Scene): {os.path.basename(fbx_norm)}")
 '''
 
 CONSOLE_IMPORT_TEMPLATE = '''"""Viu Lab — импорт FBX через Python Console (Window → Python console → Load → Execute)."""
 import csc
 
 FBX_PATH = r"{fbx_path}"
+IMPORT_MODE = "{import_mode}"
 
 
 def _ensure_scene(app):
@@ -109,8 +125,19 @@ if scene_tab is None:
     raise RuntimeError("No scene tab — create New scene first")
 path = FBX_PATH.replace("\\\\", "/")
 loader = app.get_tools_manager().get_tool("FbxSceneLoader").get_fbx_loader(scene_tab)
-loader.import_scene(path)
-print("Viu lab import OK:", path)
+mode = (IMPORT_MODE or "scene").strip().lower()
+if mode in ("animation", "anim", "clip"):
+    for meth in ("import_animation", "import_anim", "import_scene"):
+        fn = getattr(loader, meth, None)
+        if callable(fn):
+            fn(path)
+            print("Viu lab import OK:", meth, path)
+            break
+    else:
+        raise RuntimeError("no import_animation/import_scene on FbxLoader")
+else:
+    loader.import_scene(path)
+    print("Viu lab import OK:", path)
 '''
 
 
@@ -246,11 +273,16 @@ def write_console_import_script(
     fbx_path: Path,
     *,
     topic: str = "cascadeur",
+    mode: str = "scene",
 ) -> Tuple[bool, str, Path]:
     """Скрипт для Window → Python console → Load → Execute (обходит Commands menu)."""
     art = config.data_dir / "lab" / topic / "artifacts" / CONSOLE_FILENAME
     art.parent.mkdir(parents=True, exist_ok=True)
-    body = CONSOLE_IMPORT_TEMPLATE.format(fbx_path=str(fbx_path.resolve()))
+    import_mode = (mode or "scene").strip().lower()
+    body = CONSOLE_IMPORT_TEMPLATE.format(
+        fbx_path=str(fbx_path.resolve()),
+        import_mode=import_mode,
+    )
     try:
         art.write_text(body, encoding="utf-8")
     except OSError as exc:
@@ -308,8 +340,17 @@ def deploy_import_command(config: Config) -> Tuple[bool, str, Path]:
     return True, msg, Path(written[0])
 
 
-def write_pending_import(config: Config, fbx_path: Path, *, topic: str = "cascadeur") -> Tuple[bool, str]:
-    payload = {"fbx": str(fbx_path.resolve())}
+def write_pending_import(
+    config: Config,
+    fbx_path: Path,
+    *,
+    topic: str = "cascadeur",
+    mode: str = "scene",
+) -> Tuple[bool, str]:
+    payload = {
+        "fbx": str(fbx_path.resolve()),
+        "mode": (mode or "scene").strip().lower(),
+    }
     lab_pending = pending_import_path(config, topic)
     lab_pending.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
@@ -381,33 +422,43 @@ def trigger_fbx_import(
     fbx_path: Optional[Path] = None,
     *,
     topic: str = "cascadeur",
+    mode: str = "scene",
 ) -> Tuple[bool, str, bool]:
     """Deploy команды, pending, опционально открыть FBX. Третье значение — opened автоматически."""
     fbx = fbx_path or latest_inbox_fbx(config)
     if fbx is None or not fbx.is_file():
         return False, "Нет FBX в Cascadeur Inbox — сначала шаг Inbox.", False
 
+    import_mode = (mode or "scene").strip().lower()
+
     ok_deploy, deploy_msg, _script = deploy_import_command(config)
     if not ok_deploy:
         return False, deploy_msg, False
 
-    ok_pending, pending_msg = write_pending_import(config, fbx, topic=topic)
+    ok_pending, pending_msg = write_pending_import(
+        config, fbx, topic=topic, mode=import_mode
+    )
     if not ok_pending:
         return False, pending_msg, False
 
-    ok_console, console_msg, _console_path = write_console_import_script(config, fbx, topic=topic)
+    ok_console, console_msg, _console_path = write_console_import_script(
+        config, fbx, topic=topic, mode=import_mode
+    )
     diag = scripts_status_text(config)
     opened_ok, open_msg = _try_open_fbx(fbx, config)
     lines = [deploy_msg, pending_msg]
     if ok_console:
         lines.append(console_msg)
     lines.append(diag)
+    anim_hint = ""
+    if import_mode in ("animation", "anim", "clip"):
+        anim_hint = " INCLUDE: **Animations** ✓; **Open first take** ✓."
     manual = (
         "\n--- Ручной импорт (проверенный путь) ---\n"
         "1. Фокус Cascadeur (активное окно / 3-й монитор).\n"
         "2. **New scene** (если welcome).\n"
         "3. **File → Import → Fbx/Dae**.\n"
-        "4. Preset **Scene**; Import mode **Add new**; INCLUDE: Animations, Objects, Blendshapes; **Open first take**.\n"
+        f"4. Preset **Scene**; Import mode **Add new**;{anim_hint}\n"
         f"5. Import → `{fbx}`\n"
         "6. **Rig Mode Helper** → **No** (для lab; rig позже).\n"
         "\n--- Python Console (если Commands не видит скрипт) ---\n"

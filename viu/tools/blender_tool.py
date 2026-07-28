@@ -197,6 +197,116 @@ class BlenderExportShanyaTool(Tool):
         )
 
 
+class BlenderMakeAnimTool(Tool):
+    name = "blender_make_anim"
+    description = (
+        "Сделать простой клип в Blender на арматуре персонажа: idle, wave, nod, "
+        "look_left, look_right, stretch. Сохраняет .blend с Action (грубый ключ; "
+        "полировка — в Cascadeur)."
+    )
+    parameters = {
+        "blend_file": "путь к .blend с ригом",
+        "preset": "idle|wave|nod|look_left|look_right|stretch",
+        "action_name": "имя Action (опционально)",
+        "out_blend": "куда сохранить .blend (опционально)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.blender.exe import resolve_blender_exe
+        from ..integrations.blender.make_anim import ANIM_PRESETS, make_simple_anim
+
+        blend = args.get("blend_file", "")
+        if not blend:
+            return ToolResult(False, "Не указан blend_file")
+        preset = str(args.get("preset") or "idle").strip().lower()
+        if preset not in ANIM_PRESETS:
+            return ToolResult(False, f"preset: {', '.join(ANIM_PRESETS)}")
+        try:
+            exe = resolve_blender_exe(ctx.config)
+            path, meta = make_simple_anim(
+                blend,
+                preset=preset,
+                action_name=str(args.get("action_name") or ""),
+                out_blend=args.get("out_blend") or None,
+                blender_exe=exe,
+            )
+        except (FileNotFoundError, RuntimeError, ValueError, OSError) as exc:
+            return ToolResult(False, str(exc))
+        return ToolResult(
+            True,
+            f"Клип готов: {path}\n"
+            f"action={meta.get('action')}, frames={meta.get('frames')}, "
+            f"bones={meta.get('bones_used')}\n"
+            "Дальше: blender_export_cascadeur_anim или blender_anim_to_cascadeur.",
+        )
+
+
+class BlenderExportCascadeurAnimTool(Tool):
+    name = "blender_export_cascadeur_anim"
+    description = (
+        "Экспорт .blend с анимацией → FBX (bake_anim) для Cascadeur, без WGT, deform bones"
+    )
+    parameters = {
+        "blend_file": "путь к .blend (уже с Action)",
+        "output_fbx": "куда сохранить (опционально)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.blender.exe import resolve_blender_exe
+        from ..integrations.blender.export_cascadeur import export_cascadeur_anim_fbx
+
+        blend = args.get("blend_file", "")
+        if not blend:
+            return ToolResult(False, "Не указан blend_file")
+        try:
+            exe = resolve_blender_exe(ctx.config)
+            path, meta = export_cascadeur_anim_fbx(
+                blend, args.get("output_fbx"), blender_exe=exe
+            )
+        except (FileNotFoundError, RuntimeError, OSError) as exc:
+            return ToolResult(False, str(exc))
+        return ToolResult(
+            True,
+            f"Anim FBX: {path}\n"
+            f"deform_bones={meta.get('deform_bones')}, bake_anim={meta.get('bake_anim')}",
+        )
+
+
+class BlenderAnimToCascadeurTool(Tool):
+    name = "blender_anim_to_cascadeur"
+    description = (
+        "Полный шаг: простой клип в Blender → FBX с анимацией → Cascadeur Inbox "
+        "+ pending LabImport (mode=animation). Потом полируй в Cascadeur."
+    )
+    parameters = {
+        "blend_file": "путь к .blend с ригом",
+        "preset": "idle|wave|nod|look_left|look_right|stretch (если skip_make=0)",
+        "skip_make": "1 = не создавать клип, только экспорт уже готового .blend",
+        "open_cascadeur": "1 = поднять Cascadeur (default 1)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.blender.anim_to_cascadeur import run_blender_anim_to_cascadeur
+
+        blend = args.get("blend_file", "")
+        if not blend:
+            return ToolResult(False, "Не указан blend_file")
+        skip = str(args.get("skip_make", "0")).lower() in ("1", "true", "yes")
+        open_csc = str(args.get("open_cascadeur", "1")).lower() not in (
+            "0",
+            "false",
+            "no",
+        )
+        ok, msg, _meta = run_blender_anim_to_cascadeur(
+            ctx.config,
+            blend,
+            preset=str(args.get("preset") or "idle"),
+            skip_make=skip,
+            open_cascadeur=open_csc,
+        )
+        return ToolResult(ok, msg)
+
+
 class BlenderScreenshotTool(Tool):
     name = "blender_screenshot"
     description = "Сделать снимок окна Blender и вернуть путь к файлу (для анализа vision-моделью)"

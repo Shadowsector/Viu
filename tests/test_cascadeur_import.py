@@ -1,5 +1,6 @@
 """Тесты импорта FBX в Cascadeur."""
 
+import json
 import os
 from pathlib import Path
 
@@ -69,7 +70,32 @@ def test_write_pending_import(tmp_path):
     assert ok
     lab_pending = cfg.data_dir / "lab" / "cascadeur" / "pending_import.json"
     assert lab_pending.is_file()
-    assert "model.fbx" in lab_pending.read_text(encoding="utf-8")
+    text = lab_pending.read_text(encoding="utf-8")
+    assert "model.fbx" in text
+    assert '"mode": "scene"' in text
+
+
+def test_write_pending_import_animation_mode(tmp_path):
+    cfg = _cfg(tmp_path)
+    fbx = tmp_path / "clip.fbx"
+    fbx.write_text("fake", encoding="utf-8")
+    ok, msg = write_pending_import(cfg, fbx, mode="animation")
+    assert ok
+    lab_pending = cfg.data_dir / "lab" / "cascadeur" / "pending_import.json"
+    data = json.loads(lab_pending.read_text(encoding="utf-8"))
+    assert data["mode"] == "animation"
+
+
+def test_deploy_command_supports_animation_mode(tmp_path):
+    cfg = _cfg(tmp_path)
+    commands = tmp_path / "Cascadeur" / "resources" / "scripts" / "python" / "commands"
+    commands.mkdir(parents=True)
+    os.environ["VIU_CASCADEUR_SCRIPTS"] = str(commands)
+    ok, msg, script = deploy_import_command(cfg)
+    assert ok
+    text = script.read_text(encoding="utf-8")
+    assert "import_animation" in text
+    assert 'mode in ("animation"' in text or "animation" in text
 
 
 def test_trigger_fbx_import_no_fbx(tmp_path):

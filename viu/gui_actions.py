@@ -206,6 +206,16 @@ GUI_ACTIONS: List[GuiAction] = [
         pause_reason=_PAUSE_CASCADEUR,
     ),
     GuiAction(
+        "blender_anim_to_cascadeur",
+        "1b. Клип Blender → Cascadeur",
+        "Cascadeur — анимации",
+        tool="blender_anim_to_cascadeur",
+        hint=(
+            "Простой клип в Blender (idle/wave/…) → FBX с анимацией → Inbox Cascadeur. "
+            "В чате укажи blend_file и preset. Полировка — в Cascadeur."
+        ),
+    ),
+    GuiAction(
         "lab_cascadeur",
         "2. Lab: один тестовый шаг",
         "Cascadeur — анимации",
