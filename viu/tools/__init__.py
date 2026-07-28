@@ -14,7 +14,12 @@ from .blender_tool import (
 )
 from .filesystem import ListDirTool, ReadFileTool, WriteFileTool
 from .loader import load_custom_tools
-from .memory_tool import MemorySearchTool, MemoryWriteTool
+from .memory_tool import (
+    ChatLogsClearTool,
+    EventMemoryShowTool,
+    MemorySearchTool,
+    MemoryWriteTool,
+)
 from .planning_tool import PlanCreateTool, PlanShowTool, PlanUpdateTool
 from .director_tool import RunNextStepTool
 from .prepare_asset_tool import PrepareUnityAssetTool
@@ -172,6 +177,8 @@ def build_default_registry() -> ToolRegistry:
         VisionReferenceTool(),
         MemoryWriteTool(),
         MemorySearchTool(),
+        ChatLogsClearTool(),
+        EventMemoryShowTool(),
         PlanCreateTool(),
         PlanUpdateTool(),
         PlanShowTool(),

@@ -37,5 +37,50 @@ class MemorySearchTool(Tool):
         records = ctx.memory.search(query, limit=limit)
         if not records:
             return ToolResult(True, "Память пуста или ничего не найдено.")
-        lines = [f"- {r.text}" + (f" [{', '.join(r.tags)}]" if r.tags else "") for r in records]
+        lines = [
+            f"- {r.text}" + (f" [{', '.join(r.tags)}]" if r.tags else "")
+            for r in records
+        ]
         return ToolResult(True, "\n".join(lines))
+
+
+class ChatLogsClearTool(Tool):
+    name = "chat_logs_clear"
+    description = (
+        "Удалить сырые логи чатов и story_memory. "
+        "События (event_memory), vision и канву не трогает."
+    )
+    parameters: Dict[str, str] = {}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        del args
+        from ..event_memory import clear_chat_transcripts
+
+        info = clear_chat_transcripts(ctx.config)
+        removed = info.get("removed") or []
+        if not removed:
+            return ToolResult(True, "Нечего чистить — логов чата уже нет.")
+        return ToolResult(
+            True,
+            "Удалила сырые логи:\n- "
+            + "\n- ".join(removed)
+            + "\n\nСобытия и канон на месте.",
+        )
+
+
+class EventMemoryShowTool(Tool):
+    name = "event_memory_show"
+    description = "Показать последние события приключений (не логи чата)"
+    parameters = {"limit": "сколько событий (опционально)"}
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..event_memory import get_event_memory
+
+        try:
+            limit = int(args.get("limit", 12))
+        except (TypeError, ValueError):
+            limit = 12
+        digest = get_event_memory(ctx.config).format_digest(limit=limit)
+        if not digest:
+            return ToolResult(True, "Событий пока нет — сыграйте сцену в чате.")
+        return ToolResult(True, digest)

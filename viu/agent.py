@@ -606,6 +606,7 @@ class Agent:
             REFLECT_BARE,
             REFLECT_BARE_MINIMAL,
             REFLECT_IDENTITY_ANCHOR,
+            REFLECT_LIVING_HINT,
             addresses_user_as_owner,
             reflect_include_story_history,
             reflect_no_history,
@@ -643,6 +644,21 @@ class Agent:
             else:
                 system = HEARTBEAT_SYSTEM
                 user_msg = HEARTBEAT_TASK
+            # Чтобы сама писала «из жизни» — события + лор, не пустой тик.
+            try:
+                from .event_memory import format_events_digest
+
+                ev = format_events_digest(self.config, limit=6)
+                if ev:
+                    system += "\n\n" + ev
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                life = format_reflect_life_block(self.config, max_chars=1200)
+                if life:
+                    system += "\n\n" + life
+            except Exception:  # noqa: BLE001
+                pass
         else:
             # По умолчанию system = полный REFLECT_VOICE (жизнь/характер из reflect).
             # VIU_REFLECT_NO_SYSTEM=1 — только Modelfile; тогда якорь/жизнь едут в user.
@@ -663,10 +679,30 @@ class Agent:
             if no_sys:
                 _attach(REFLECT_IDENTITY_ANCHOR)
 
+            _attach(REFLECT_LIVING_HINT)
+
             try:
                 life = format_reflect_life_block(self.config)
                 if life:
                     _attach(life)
+            except Exception:  # noqa: BLE001
+                pass
+
+            try:
+                from .lore_digest import format_lore_digest
+
+                lore = format_lore_digest(self.config)
+                if lore:
+                    _attach(lore)
+            except Exception:  # noqa: BLE001
+                pass
+
+            try:
+                from .event_memory import format_events_digest
+
+                ev = format_events_digest(self.config)
+                if ev:
+                    _attach(ev)
             except Exception:  # noqa: BLE001
                 pass
 
@@ -830,6 +866,15 @@ class Agent:
                     )
                 except OSError:
                     pass
+                try:
+                    from .event_memory import maybe_capture_scene_event
+
+                    if not (parsed and (parsed.get("event_update") or parsed.get("events"))):
+                        maybe_capture_scene_event(
+                            self.config, user_text, full, source="chat"
+                        )
+                except Exception:  # noqa: BLE001
+                    pass
             if parsed:
                 try:
                     from .plot_canvas import apply_reflect_updates
@@ -837,6 +882,13 @@ class Agent:
                     for note in apply_reflect_updates(self.config, parsed):
                         self._log(f"PLOT: {note}")
                 except OSError:
+                    pass
+                try:
+                    from .event_memory import apply_event_updates
+
+                    for note in apply_event_updates(self.config, parsed):
+                        self._log(f"EVENT: {note}")
+                except Exception:  # noqa: BLE001
                     pass
             return result
 
