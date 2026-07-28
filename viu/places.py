@@ -83,6 +83,19 @@ def _viu_memory(config: Config) -> Path:
     return ensure_viu_memory(config)
 
 
+def _lore_digest(config: Config) -> Path:
+    from .lore_digest import ensure_lore_digest
+
+    return ensure_lore_digest(config)
+
+
+def _event_memory(config: Config) -> Path:
+    from .event_memory import event_memory_path, get_event_memory
+
+    get_event_memory(config)  # seed file
+    return event_memory_path(config)
+
+
 def _characters(config: Config) -> Path:
     from .characters_vision import ensure_characters_vision
 
@@ -345,6 +358,22 @@ def all_places() -> List[Place]:
             "Файлы",
             "Редактируемая память: «запомни», привычки, референсы, итоги чатов — U:\\Viu\\VIU_MEMORY.md",
             _viu_memory,
+        ),
+        Place(
+            "lore_digest",
+            "Лор Анабарры (кратко)",
+            "file",
+            "Файлы",
+            "Биомы и существа без перегруза Reflect — .viu/LORE_DIGEST.md",
+            _lore_digest,
+        ),
+        Place(
+            "event_memory",
+            "События приключений",
+            "file",
+            "Файлы",
+            "Память сцен/битов (не логи чата) — .viu/event_memory.json",
+            _event_memory,
         ),
         Place(
             "characters_vision",

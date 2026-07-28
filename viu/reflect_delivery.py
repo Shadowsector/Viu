@@ -145,13 +145,31 @@ def should_fetch_more_parts(
 def list_delivery_hint(user_text: str) -> str:
     n = requested_item_count(user_text)
     if n < 2:
-        return ""
+        return scene_delivery_hint(user_text)
     return (
         f"\n\n--- Формат для {n} пунктов ---\n"
         f'Верни JSON с массивом final_parts из {n} коротких сообщений '
         f'(каждое 1–3 предложения, отдельный пузырь в чате). '
         f'Пример: {{"thought":"…","final_parts":["пункт 1…","пункт 2…",…]}}. '
         f"Поле final можно опустить или оставить пустым."
+    )
+
+
+def scene_delivery_hint(user_text: str) -> str:
+    """Для сцен/ERP — мягко просим 2–3 пузыря без требования «N событий»."""
+    low = (user_text or "").lower()
+    if not re.search(
+        r"представь|твои\s+действия|сцен|ролев|nsfw|эротик|секс|интим|"
+        r"что\s+делаешь|продолж|дальше|ещё",
+        low,
+    ):
+        return ""
+    return (
+        "\n\n--- Сцена: несколько пузырей ---\n"
+        "Лучше final_parts из 2–3 коротких сообщений "
+        "(завязка / тело и действие / ощущение). "
+        'Можно {"thought":"…","final_parts":["…","…"],'
+        '"event_update":{"title":"…","what":"…","senses":"…"}}.'
     )
 
 
