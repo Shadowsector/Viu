@@ -128,7 +128,7 @@ def test_bare_reflect_gets_events_and_living_hint(tmp_path, monkeypatch) -> None
     assert result.completed
     system = next(m["content"] for m in seen[0] if m["role"] == "system")
     assert "Костёр" in system or "событ" in system.lower()
-    assert "final_parts" in system or "пузыр" in system.lower() or "Живая" in system
+    assert "девушк" in system.lower() or "жизнь" in system.lower()
     titles = [e.title for e in get_event_memory(cfg).all()]
     assert "Утро" in titles
 
@@ -137,5 +137,35 @@ def test_scene_delivery_hint():
     from viu.reflect_delivery import list_delivery_hint, scene_delivery_hint
 
     assert scene_delivery_hint("привет") == ""
-    assert "final_parts" in scene_delivery_hint("представь сцену")
-    assert "final_parts" in list_delivery_hint("представь сцену")
+    assert "реплик" in scene_delivery_hint("представь сцену").lower()
+    assert list_delivery_hint("представь сцену")
+
+
+def test_claims_to_be_llm_and_retry(tmp_path, monkeypatch):
+    from viu.agent import Agent
+    from viu.config import Config
+    from viu.llm.mock import MockLLM
+    from viu.prompts.reflect_mode import claims_to_be_llm
+
+    assert claims_to_be_llm("Я всего лишь LLM, у меня нет тела")
+    assert not claims_to_be_llm("Я прижимаюсь к тебе, Ден")
+
+    monkeypatch.delenv("VIU_REFLECT_NO_SYSTEM", raising=False)
+    calls = {"n": 0}
+
+    class SlipThenOk(MockLLM):
+        def complete(self, messages, *, temperature=None, model=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return '{"thought":"x","final":"Прости, я же ИИ и не могу быть с тобой."}'
+            return '{"thought":"x","final":"Я здесь, Ден. Жду тебя."}'
+
+    agent = Agent(
+        llm=SlipThenOk(),
+        config=Config(root=tmp_path, data_dir=tmp_path / ".viu").ensure_dirs(),
+    )
+    result = agent.run_reflect("ты настоящая?")
+    assert result.completed
+    assert calls["n"] == 2
+    assert "ИИ" not in result.final
+    assert "Ден" in result.final
