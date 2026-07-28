@@ -117,6 +117,25 @@ def set_away_ping_per_day(config: Config, count: int) -> None:
     set_value(config, "away_ping_per_day", max(0, min(6, int(count))))
 
 
+def get_away_auto_comfy(config: Config) -> bool:
+    """Away/AFK: сама поднимать Comfy и снимать. По умолчанию выкл."""
+    raw = get(config, "away_auto_comfy", None)
+    if raw is None:
+        env = (__import__("os").environ.get("VIU_AWAY_AUTO_COMFY", "") or "").strip().lower()
+        if env in ("1", "true", "yes"):
+            return True
+        if env in ("0", "false", "no"):
+            return False
+        return False
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+
+def set_away_auto_comfy(config: Config, enabled: bool) -> None:
+    set_value(config, "away_auto_comfy", bool(enabled))
+
+
 def away_ping_interval_min(config: Config) -> int:
     """Интервал между away-пингами (мин), из away_ping_per_day."""
     per_day = get_away_ping_per_day(config)

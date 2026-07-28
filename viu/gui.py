@@ -437,14 +437,24 @@ class ViuGUI:
                 self._append("Вью", flush, tag="tool")
                 self._telegram_notify_chat(flush[:1500])
         else:
-            self._append(
-                "система",
-                "Автономный режим (нет дома): inbox, lab и Comfy сама; "
-                "вопросы копятся. Через ~2 мин напишу тебе сама (Telegram), "
-                "если Ollama жива.",
-                tag="sys",
-            )
-            self.root.after(2000, lambda: self._lab_tick(auto=True))
+            from .runtime_settings import get_away_auto_comfy
+
+            if get_away_auto_comfy(self.agent.config):
+                away_note = (
+                    "Автономный режим (нет дома): inbox, lab и Comfy сама; "
+                    "вопросы копятся. Через ~2 мин напишу тебе сама (Telegram), "
+                    "если Ollama жива."
+                )
+                self.root.after(2000, lambda: self._lab_tick(auto=True))
+            else:
+                away_note = (
+                    "Автономный режим (нет дома): вопросы копятся, Comfy сама "
+                    "не поднимаю (away_auto_comfy выкл). Через ~2 мин напишу "
+                    "тебе сама (Telegram), если Ollama жива."
+                )
+                # Lab без Comfy (Cascadeur и т.п.) — по таймеру; Comfy в tick пропустится.
+                self.root.after(2000, lambda: self._lab_tick(auto=True))
+            self._append("система", away_note, tag="sys")
             # Первый away-ping не через 8 часов — через 2 минуты.
             self.root.after(120_000, self._run_away_ping)
 
@@ -2215,9 +2225,13 @@ class ViuGUI:
         from .lab.comfy_pipeline import COMFY_TOPIC
         from .lab.session import load_session
 
-        # Сначала дожать Comfy, если ждём/в процессе
+        from .runtime_settings import get_away_auto_comfy
+
+        away_comfy = (not auto) or get_away_auto_comfy(self.agent.config)
+
+        # Сначала дожать Comfy, если ждём/в процессе (в away — только если away_auto_comfy)
         comfy = load_session(self.agent.config, COMFY_TOPIC)
-        if comfy is not None and comfy.status in (
+        if away_comfy and comfy is not None and comfy.status in (
             "running",
             "paused",
             "awaiting_prompt",
@@ -2272,7 +2286,11 @@ class ViuGUI:
                 return
 
         # Периодически новая Comfy-съёмка (Вью сама выбирает кадр)
-        if auto and (comfy is None or comfy.status in ("completed", "idle", "awaiting_rating")):
+        if (
+            away_comfy
+            and auto
+            and (comfy is None or comfy.status in ("completed", "idle", "awaiting_rating"))
+        ):
             # чередование: если cascadeur активен — сначала его; иначе comfy
             cas = load_session(self.agent.config, CASCADEUR_TOPIC)
             if cas is not None and cas.status in ("running", "paused"):

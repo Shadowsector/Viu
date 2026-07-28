@@ -32,6 +32,11 @@ VIU_AWAY_PING_PER_DAY=3
 
 Инструмент агента: `presence_set away` / кнопка в GUI.
 
+## Away + Comfy
+
+По умолчанию в режиме «нет дома» **Comfy сама не поднимается** (`VIU_AWAY_AUTO_COMFY=0`).
+Включить авто-съёмку снова: `VIU_AWAY_AUTO_COMFY=1` или `away_auto_comfy` в runtime.
+
 ## Тихие часы
 
 С **00:00 до 07:00** (локальное время ПК) Viu **не** шлёт:
