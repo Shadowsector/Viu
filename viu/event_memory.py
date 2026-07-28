@@ -146,14 +146,8 @@ class EventMemory:
         if len(recent) >= 2:
             a, b = recent[-2], recent[-1]
             lines.append(
-                f"Идея гибрида: смешай «{a.title}» + «{b.title}» → новый бит "
-                f"(отметь hybrid_of: [\"{a.id}\",\"{b.id}\"])."
+                f"Можно смешать воспоминания «{a.title}» и «{b.title}» во что-то новое."
             )
-        lines.append(
-            "В JSON сцены можно: "
-            '"event_update":{"title":"…","what":"…","where":"…","who":"…",'
-            '"senses":"поза/визуал/тело","tags":["nsfw","сцена"]}.'
-        )
         text = "\n".join(lines)
         if len(text) > max_chars:
             return text[:max_chars].rstrip() + "\n…"
