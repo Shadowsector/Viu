@@ -55,10 +55,29 @@ _TEMPLATE = """# Память Вью
 
 _REMEMBER = re.compile(
     r"(?:^|[\s,.:;])(?:"
-    r"запомни(?:\s+что)?|сохрани(?:\s+в(?:\s+)?память)?|не\s+забудь|"
+    r"запомни(?:\s*,?\s*что)?|сохрани(?:\s+в(?:\s+)?память)?|не\s+забудь|"
     r"запиши\s+в\s+память|remember(?:\s+this)?|save\s+this"
     r")(?:\s|,|:|—|-|\.)?\s*",
     re.IGNORECASE | re.MULTILINE,
+)
+
+# «запомни это / тот квест / что обсуждали» — нужен контекст прошлых реплик
+_DEICTIC_PAYLOAD = re.compile(
+    r"(?is)^\s*(?:"
+    r"это|то|всё\s+это|все\s+это|"
+    r"(?:этот|тот|эту|ту|это|про)\s+"
+    r"(?:квест|событие|сюжет|сцен\w*|разговор|момент|бит)(?:\s+\w+){0,4}|"
+    r"(?:то\s*,?\s*)?что\s+(?:мы\s+)?(?:обсужда\w*|говорили|говорили)|"
+    r"что\s+(?:выше|раньше)|"
+    r"выше|предыдущ\w+|всё\s+выше"
+    r")\.?\s*$"
+)
+
+_CONTEXT_HINT = re.compile(
+    r"(?i)\b(?:"
+    r"квест|событие|сюжет|сцен|разговор|момент|"
+    r"обсужда|говорили|выше|этот|тот|это"
+    r")\b"
 )
 
 _SUMMARY_EVERY_N = 8
@@ -309,7 +328,12 @@ def append_memory_line(
 
 
 def extract_remember_payload(user_text: str) -> Optional[str]:
-    """Текст после «запомни» / «сохрани» — или None."""
+    """Текст после «запомни» / «сохрани» — или None.
+
+    Убирает лишнее «что» после запятой: «запомни, что X» → «X».
+    Для «запомни это» вернёт короткое указание — контекст добирает
+    ``resolve_remember_payload``.
+    """
     raw = (user_text or "").strip()
     if not raw:
         return None
@@ -317,18 +341,191 @@ def extract_remember_payload(user_text: str) -> Optional[str]:
     if not m:
         return None
     payload = raw[m.end() :].strip()
-    payload = re.sub(r"^[—\-:]+", "", payload).strip()
+    payload = re.sub(r"^[—\-:.,]+", "", payload).strip()
+    payload = re.sub(r"^(?:что|как)\s+", "", payload, flags=re.IGNORECASE).strip()
     if len(payload) < 3:
+        # «запомни» / «запомни это» без тела — всё равно remember-запрос
         payload = raw
     return payload[:1200]
+
+
+def remember_needs_context(payload: str) -> bool:
+    """Нужны ли прошлые реплики, а не только хвост после «запомни»."""
+    p = (payload or "").strip()
+    if not p:
+        return True
+    if _DEICTIC_PAYLOAD.match(p):
+        return True
+    if looks_like_remember_request(p) and len(p) < 80:
+        # payload = вся фраза «запомни этот квест»
+        return True
+    if len(p) < 48 and _CONTEXT_HINT.search(p):
+        return True
+    if len(p) < 24:
+        return True
+    return False
+
+
+def _format_turn_lines(
+    turns: list[tuple[str, str]],
+    *,
+    max_chars: int = 900,
+) -> str:
+    lines: list[str] = []
+    size = 0
+    for role, text in turns:
+        who = "Ден" if role == "user" else "Вью"
+        bit = re.sub(r"\s+", " ", (text or "").strip())
+        if not bit:
+            continue
+        if looks_like_remember_request(bit):
+            continue
+        piece = f"{who}: {bit[:320]}"
+        if size + len(piece) > max_chars and lines:
+            break
+        lines.append(piece)
+        size += len(piece) + 1
+    return " | ".join(lines)
+
+
+def build_remember_context(
+    config: Config,
+    user_text: str,
+    *,
+    history: Optional[list] = None,
+    assistant_text: str = "",
+    max_chars: int = 900,
+) -> str:
+    """Собрать суть события/квеста из нескольких предыдущих сообщений."""
+    turns: list[tuple[str, str]] = []
+
+    hist = list(history or [])
+    for m in hist:
+        role = str((m or {}).get("role") or "")
+        content = str((m or {}).get("content") or "").strip()
+        if role in ("user", "assistant") and content:
+            turns.append((role, content))
+
+    # story_memory: текущий ход уже мог записаться — берём хвост и фильтруем
+    try:
+        from .story_memory import get_story_memory
+
+        for beat in get_story_memory(config).recent(14):
+            turns.append((beat.role, beat.text))
+    except OSError:
+        pass
+
+    # Убрать дубли подряд и remember-фразу
+    deduped: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for role, text in turns:
+        key = f"{role}:{text[:120]}"
+        if key in seen:
+            continue
+        seen.add(key)
+        if looks_like_remember_request(text):
+            continue
+        if text.strip() == (user_text or "").strip():
+            continue
+        deduped.append((role, text))
+
+    # Последние реплики до «запомни» важнее
+    recent = deduped[-8:]
+    body = _format_turn_lines(recent, max_chars=max_chars)
+
+    # Недавние события (если уже были биты)
+    try:
+        from .event_memory import get_event_memory
+
+        events = get_event_memory(config).recent(3)
+        if events:
+            bits = []
+            for ev in events:
+                bits.append(f"{ev.title}: {ev.what}"[:200])
+            extra = "События: " + " · ".join(bits)
+            if body:
+                room = max_chars - len(body) - 3
+                if room > 40:
+                    body = body + " || " + extra[:room]
+            else:
+                body = extra[:max_chars]
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Короткий ответ Вью в этом же ходе — часто пересказ
+    a = re.sub(r"\s+", " ", (assistant_text or "").strip())
+    if a and not looks_like_memory_echo(a) and len(a) > 20:
+        note = f"Вью сейчас: {a[:280]}"
+        if body:
+            room = max_chars - len(body) - 3
+            if room > 40:
+                body = body + " || " + note[:room]
+        else:
+            body = note[:max_chars]
+
+    return body.strip()
+
+
+def resolve_remember_payload(
+    config: Config,
+    user_text: str,
+    *,
+    history: Optional[list] = None,
+    assistant_text: str = "",
+) -> Optional[str]:
+    """Итоговая строка для «Явные записи»: факт + контекст разговора при нужде."""
+    payload = extract_remember_payload(user_text)
+    if payload is None:
+        return None
+
+    # Если payload = вся фраза «запомни этот квест» — выкинуть сам триггер
+    cleaned = payload
+    if looks_like_remember_request(cleaned) and _REMEMBER.search(cleaned):
+        m = _REMEMBER.search(cleaned)
+        assert m is not None
+        tail = cleaned[m.end() :].strip()
+        tail = re.sub(r"^[—\-:.,]+", "", tail).strip()
+        tail = re.sub(r"^(?:что|как)\s+", "", tail, flags=re.IGNORECASE).strip()
+        if tail:
+            cleaned = tail
+        # иначе оставляем deictic/целиком для needs_context
+
+    if not remember_needs_context(cleaned):
+        return cleaned[:1200]
+
+    ctx = build_remember_context(
+        config,
+        user_text,
+        history=history,
+        assistant_text=assistant_text,
+    )
+    if not ctx:
+        return cleaned[:1200] if cleaned else None
+
+    if cleaned and not _DEICTIC_PAYLOAD.match(cleaned) and len(cleaned) >= 12:
+        # Есть своя формулировка + добираем обсуждение
+        return f"{cleaned} — из разговора: {ctx}"[:1200]
+    return f"Из разговора (событие/квест): {ctx}"[:1200]
 
 
 def looks_like_remember_request(user_text: str) -> bool:
     return extract_remember_payload(user_text) is not None
 
 
-def record_explicit_memory(config: Config, user_text: str, *, source: str = "chat") -> bool:
-    payload = extract_remember_payload(user_text)
+def record_explicit_memory(
+    config: Config,
+    user_text: str,
+    *,
+    source: str = "chat",
+    history: Optional[list] = None,
+    assistant_text: str = "",
+) -> bool:
+    payload = resolve_remember_payload(
+        config,
+        user_text,
+        history=history,
+        assistant_text=assistant_text,
+    )
     if not payload:
         return False
     stamp = time.strftime("%Y-%m-%d")
@@ -339,6 +536,26 @@ def record_explicit_memory(config: Config, user_text: str, *, source: str = "cha
         line,
         tags=["explicit", "remember", source],
     )
+    # Если речь про событие/квест — продублировать короткий бит в event_memory
+    if re.search(r"(?i)квест|событие|сюжет|сцен", user_text + " " + payload):
+        try:
+            from .event_memory import get_event_memory
+
+            title = "Запись из чата"
+            m = re.search(
+                r"(?i)(?:квест|событие|сюжет|сцена)\s*[«\":]?\s*(.{4,60})",
+                payload,
+            )
+            if m:
+                title = m.group(1).strip(" .,—-")[:60] or title
+            get_event_memory(config).add(
+                title=title,
+                what=payload[:500],
+                tags=["explicit", "remember"],
+                source=source,
+            )
+        except Exception:  # noqa: BLE001
+            pass
     return True
 
 
@@ -426,6 +643,7 @@ def process_reflect_exchange(
     assistant_text: str,
     *,
     source: str = "chat",
+    history: Optional[list] = None,
 ) -> None:
     """После ответа reflect: явное «запомни» и редкие summary."""
     ensure_viu_memory(config)
@@ -435,6 +653,12 @@ def process_reflect_exchange(
         pass
     if looks_like_memory_echo(assistant_text):
         return
-    if record_explicit_memory(config, user_text, source=source):
+    if record_explicit_memory(
+        config,
+        user_text,
+        source=source,
+        history=history,
+        assistant_text=assistant_text,
+    ):
         return
     maybe_record_chat_summary(config, user_text, assistant_text)
