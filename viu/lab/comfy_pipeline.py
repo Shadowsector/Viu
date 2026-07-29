@@ -458,11 +458,11 @@ def _preserve_chat_directed_action(session: LabSession) -> bool:
 
 def step_generate_triple(config: Config, session: LabSession) -> StepResult:
     if session.status == "awaiting_prompt":
-        return True, "Жду одобрение промпта в Telegram (ок / правки / стоп).", None
+        return True, "Жду панель: Telegram «Снять» / Промпт / LoRA.", None
     if not session.meta.get("approved"):
         session.status = "awaiting_prompt"
         save_session(config, session)
-        return True, "Промпт ещё не одобрен — жду Telegram.", None
+        return True, "Ещё не жмякнули «Снять» — жду панель в Telegram.", None
 
     # Не долбить генерацию, если :8188 мёртв
     from ..integrations.comfy.client import ComfyClient

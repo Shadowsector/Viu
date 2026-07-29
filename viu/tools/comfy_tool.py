@@ -183,7 +183,7 @@ class ComfyEnsureTool(Tool):
             force_restart=force_restart,
             reload_if_reactor_missing=True,
         )
-        if ok and "face_swap:" not in msg:
+        if ok and "FaceRefs:" not in msg:
             client = _client(ctx)
             from ..integrations.comfy.face_refs import face_refs_status
 
