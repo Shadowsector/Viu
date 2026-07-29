@@ -898,7 +898,10 @@ class ViuGUI:
                 else:
                     self._telegram.notify_photo(path, caption="")
             if out.start_shoot and not self._tool_busy:
-                self.root.after(0, lambda: self._lab_comfy_action())
+                action = str(getattr(out, "shoot_action", "") or "")
+                self.root.after(
+                    0, lambda a=action: self._lab_comfy_action(action=a or None)
+                )
             return True
         except Exception:  # noqa: BLE001
             return False
@@ -2400,12 +2403,59 @@ class ViuGUI:
             args["reset"] = "1"
         self._run_tool("lab_start", args, label="Лаборатория: Cascadeur", echo_user=True)
 
-    def _lab_comfy_action(self, *, auto: bool = False) -> None:
-        """Вью сама выбирает кадр (каталог/граф). Без диалога idle stand."""
+    def _lab_comfy_action(self, *, auto: bool = False, action: str | None = None) -> None:
+        """Вью сама выбирает кадр (каталог/граф). Без диалога idle stand.
+
+        action= — явная сцена из чата (описание Дена), без invent.
+        """
         from .lab.comfy_director import invent_next_shot
         from .lab.comfy_pipeline import COMFY_TOPIC
         from .lab.session import load_session
         from .presence import is_away
+
+        chat_action = (action or "").strip()
+        if chat_action and not auto:
+            from .lab.comfy_director import infer_slug_from_action
+            from .lab.session import new_session, save_session
+
+            existing = load_session(self.agent.config, COMFY_TOPIC)
+            if existing is None:
+                existing = new_session(COMFY_TOPIC)
+            slug = infer_slug_from_action(chat_action) or "chat_scene"
+            existing.status = "running"
+            existing.step = 0
+            existing.meta["shoot_intent"] = True
+            existing.meta["auto_approved_shoot"] = True
+            existing.meta["approved"] = True
+            existing.meta["action"] = chat_action
+            existing.meta["approved_action"] = chat_action
+            existing.meta["catalog_slug"] = slug
+            existing.meta["prompt_user_edited"] = True
+            existing.meta.pop("lora_pick_done", None)
+            existing.meta.pop("clip_batch_id", None)
+            existing.meta.pop("clip_candidate_ids", None)
+            save_session(self.agent.config, existing)
+            self._append(
+                "Вью",
+                f"Снимаю сцену из чата — {chat_action[:120]}.\n"
+                "Клип пришлю, когда будет готов.",
+                tag="viu",
+            )
+            self._run_tool(
+                "lab_start",
+                {
+                    "topic": COMFY_TOPIC,
+                    "run_all": "1",
+                    "reset": "1",
+                    "shoot": "1",
+                    "action": chat_action,
+                    "catalog_slug": slug,
+                    "shot_reason": "chat: directed scene",
+                },
+                label="MoCap: сцена из чата",
+                echo_user=True,
+            )
+            return
 
         existing = load_session(self.agent.config, COMFY_TOPIC)
         # Уже ждём промпт/LoRA ИЛИ Ден правил Wan-промпт — не invent+reset
