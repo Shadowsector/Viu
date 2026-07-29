@@ -71,17 +71,17 @@ def _is_redraft_request(text: str) -> bool:
 
 
 def send_prompt_for_approval(config: Config, action: str, draft_text: str) -> Tuple[bool, str]:
-    """Отправить Дена в Telegram текст на одобрение."""
+    """Отправить Дена в Telegram текст на одобрение (с кнопками)."""
+    from .tg_buttons import prompt_approval_keyboard
+
+    # Коротко: детали в черновике, действия — кнопками.
+    draft = (draft_text or "").strip()
+    if len(draft) > 2800:
+        draft = draft[:2797] + "…"
     body = (
-        "🎬 Comfy → Cascadeur MoCap\n\n"
-        f"{draft_text.strip()}\n\n"
-        "Ответь:\n"
-        f"• ок — дальше выбор LoRA, потом {mocap_take_count()} дублей ¾\n"
-        "• нет / другой кадр — предложу следующий по графу\n"
-        "• правки: sit_down — slug или короткий EN (без moaning/sweat/jiggle)\n"
-        "• промпт comfy — показать Wan POSITIVE/NEGATIVE и поправить\n"
-        "• промпт+: … или вставь блок --- POSITIVE --- / NEGATIVE / ДЕЙСТВИЕ\n"
-        "• стоп — отменить этот промпт"
+        "🎬 Comfy MoCap\n\n"
+        f"{draft}\n\n"
+        f"Дублей ¾: {mocap_take_count()}. Жми кнопку или напиши правки: sit_down"
     )
     if not tg_settings.enabled(config):
         return False, "Telegram выключен — одобри в чате Вью: ок / стоп / правки: …"
@@ -90,8 +90,12 @@ def send_prompt_for_approval(config: Config, action: str, draft_text: str) -> Tu
     if not token or chat_id is None:
         return False, "Telegram не привязан — одобри в чате Вью."
     try:
-        TelegramClient(token).send_message(chat_id, body)
-        return True, "Промпт ушёл в Telegram — жду ок / правки / стоп."
+        TelegramClient(token).send_message(
+            chat_id,
+            body,
+            reply_markup=prompt_approval_keyboard(),
+        )
+        return True, "Промпт ушёл в Telegram — кнопки: Снимать / Промпт / Другой / Стоп."
     except TelegramError as exc:
         return False, f"Telegram ошибка: {exc}"
 

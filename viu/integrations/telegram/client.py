@@ -61,37 +61,59 @@ class TelegramClient:
         text: str,
         *,
         disable_preview: bool = True,
+        reply_markup: Optional[Dict[str, Any]] = None,
     ) -> dict:
         text = (text or "").strip()
         if not text:
             raise ValueError("empty message")
         if len(text) <= 4000:
-            return self._call(
-                "sendMessage",
-                {
-                    "chat_id": chat_id,
-                    "text": text,
-                    "disable_web_page_preview": disable_preview,
-                },
-            )
+            payload: Dict[str, Any] = {
+                "chat_id": chat_id,
+                "text": text,
+                "disable_web_page_preview": disable_preview,
+            }
+            if reply_markup is not None:
+                payload["reply_markup"] = reply_markup
+            return self._call("sendMessage", payload)
         chunk_size = 3800
         last: dict = {}
+        chunks = []
         for i in range(0, len(text), chunk_size):
             chunk = text[i : i + chunk_size]
             if i + chunk_size < len(text):
                 chunk = chunk + "…"
-            last = self._call(
-                "sendMessage",
-                {
-                    "chat_id": chat_id,
-                    "text": chunk,
-                    "disable_web_page_preview": disable_preview,
-                },
-            )
+            chunks.append(chunk)
+        for i, chunk in enumerate(chunks):
+            payload = {
+                "chat_id": chat_id,
+                "text": chunk,
+                "disable_web_page_preview": disable_preview,
+            }
+            # Кнопки только на последнем куске — иначе Telegram режет.
+            if reply_markup is not None and i == len(chunks) - 1:
+                payload["reply_markup"] = reply_markup
+            last = self._call("sendMessage", payload)
         return last
 
+    def answer_callback_query(
+        self,
+        callback_query_id: str,
+        *,
+        text: str = "",
+        show_alert: bool = False,
+    ) -> dict:
+        payload: Dict[str, Any] = {"callback_query_id": str(callback_query_id)}
+        if text:
+            payload["text"] = text[:200]
+        if show_alert:
+            payload["show_alert"] = True
+        return self._call("answerCallbackQuery", payload)
+
     def get_updates(self, *, offset: int = 0, timeout: int = 25) -> List[dict]:
-        payload: Dict[str, Any] = {"timeout": timeout}
+        payload: Dict[str, Any] = {
+            "timeout": timeout,
+            "allowed_updates": ["message", "edited_message", "callback_query"],
+        }
         if offset:
             payload["offset"] = offset
         result = self._call("getUpdates", payload)

@@ -415,8 +415,9 @@ def step_request_lora_pick(config: Config, session: LabSession) -> StepResult:
     except Exception:
         away = False
 
-    # Всегда шлём список в Telegram.
+    # Всегда шлём список в Telegram (+ кнопки на последнем сообщении).
     try:
+        from ..integrations.comfy.tg_buttons import lora_pick_keyboard
         from ..integrations.telegram import settings as tg_settings
         from ..integrations.telegram.client import TelegramClient
 
@@ -426,15 +427,22 @@ def step_request_lora_pick(config: Config, session: LabSession) -> StepResult:
             if token and chat_id:
                 client = TelegramClient(token)
                 parts = format_lora_pick_telegram(entries)
+                idxs = [e.index for e in entries[:12]]
+                kb = lora_pick_keyboard(indices=idxs, last=last or None)
                 for i, part in enumerate(parts):
                     if directed:
-                        head = "🎛 Comfy: LoRA (уже ставлю прошлый/none — смени: lora: 1)"
+                        head = "🎛 Comfy: LoRA (ставлю прошлый/none — кнопкой можно сменить)"
                     else:
-                        head = "🎛 Comfy: выбери LoRA для пула"
+                        head = "🎛 Comfy: выбери LoRA"
                     if len(parts) > 1:
                         head += f" ({i + 1}/{len(parts)})"
                     extra = hint if i == 0 else ""
-                    client.send_message(chat_id, head + "\n\n" + part + extra)
+                    markup = kb if i == len(parts) - 1 else None
+                    client.send_message(
+                        chat_id,
+                        head + "\n\n" + part + extra,
+                        reply_markup=markup,
+                    )
     except Exception:
         pass
 

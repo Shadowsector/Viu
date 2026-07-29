@@ -81,6 +81,12 @@ class TelegramNotifier:
         return self._client.download_file(rel, dest)
 
     def _handle_update(self, upd: dict) -> None:
+        # Inline-кнопки Comfy (промпт / LoRA).
+        cb = upd.get("callback_query")
+        if isinstance(cb, dict):
+            self._handle_callback(cb)
+            return
+
         msg = upd.get("message") or upd.get("edited_message")
         if not isinstance(msg, dict):
             return
@@ -133,7 +139,8 @@ class TelegramNotifier:
         if text.startswith("/start"):
             self._send_raw(
                 chat_id,
-                "Вью на связи. Пиши текст или кидай фото — продолжим.",
+                "Вью на связи. Пиши текст или кидай фото — продолжим.\n"
+                "Для Comfy жми кнопки под сообщениями (Снимать / LoRA).",
             )
             return
         if text.startswith("/"):
@@ -156,11 +163,84 @@ class TelegramNotifier:
 
         self._on_reply(text)
 
-    def _send_raw(self, chat_id: int, text: str) -> bool:
+    def _handle_callback(self, cb: dict) -> None:
+        assert self._client is not None
+        cb_id = str(cb.get("id") or "")
+        data = str(cb.get("data") or "").strip()
+        from_user = cb.get("from") or {}
+        user_id = from_user.get("id")
+        if user_id is not None:
+            user_id = int(user_id)
+        msg = cb.get("message") or {}
+        chat = msg.get("chat") or {}
+        chat_id = chat.get("id")
+        if chat_id is None:
+            try:
+                self._client.answer_callback_query(cb_id, text="Нет chat_id")
+            except TelegramError:
+                pass
+            return
+        chat_id = int(chat_id)
+
+        if not settings.is_owner_sender(
+            self.config, chat_id=chat_id, user_id=user_id
+        ):
+            try:
+                self._client.answer_callback_query(cb_id, text="Не для тебя", show_alert=True)
+            except TelegramError:
+                pass
+            return
+
+        allowed = settings.chat_id(self.config)
+        if allowed is None and chat_id > 0:
+            settings.set_chat_id(self.config, chat_id)
+            allowed = chat_id
+        if allowed is None or chat_id != allowed:
+            try:
+                self._client.answer_callback_query(cb_id, text="Чат не привязан")
+            except TelegramError:
+                pass
+            return
+
+        last_lora: list[int] = []
+        try:
+            from ...lab.comfy_pipeline import COMFY_TOPIC
+            from ...lab.session import load_session
+
+            sess = load_session(self.config, COMFY_TOPIC)
+            if sess is not None:
+                last_lora = [
+                    int(x)
+                    for x in (sess.meta.get("lora_last_pick") or [])
+                    if str(x).isdigit()
+                ]
+        except Exception:  # noqa: BLE001
+            last_lora = []
+
+        from ..comfy.tg_buttons import callback_to_chat_text
+
+        text = callback_to_chat_text(data, last_lora=last_lora or None)
+        try:
+            if text:
+                self._client.answer_callback_query(cb_id, text="Ок…")
+            else:
+                self._client.answer_callback_query(cb_id, text="Не поняла кнопку")
+        except TelegramError:
+            pass
+        if text:
+            self._on_reply(text)
+
+    def _send_raw(
+        self,
+        chat_id: int,
+        text: str,
+        *,
+        reply_markup: Optional[dict] = None,
+    ) -> bool:
         if self._client is None:
             return False
         try:
-            self._client.send_message(chat_id, text)
+            self._client.send_message(chat_id, text, reply_markup=reply_markup)
             return True
         except TelegramError:
             return False
