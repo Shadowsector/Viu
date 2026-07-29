@@ -399,6 +399,107 @@ def _pids_on_port(port: int) -> List[int]:
     return sorted(set(pids))
 
 
+def _process_identity(pid: int) -> dict:
+    """Имя / путь / cmdline процесса (для «кто слушает :8188»)."""
+    out: dict = {"pid": pid, "name": "", "exe": "", "cmdline": ""}
+    if sys.platform == "win32":
+        try:
+            ps = (
+                f"$p = Get-CimInstance Win32_Process -Filter \"ProcessId={int(pid)}\" "
+                f"-ErrorAction SilentlyContinue; "
+                f"if ($p) {{ "
+                f"Write-Output ('NAME=' + $p.Name); "
+                f"Write-Output ('EXE=' + $p.ExecutablePath); "
+                f"Write-Output ('CMD=' + $p.CommandLine) "
+                f"}}"
+            )
+            kwargs: dict = {"capture_output": True, "text": True, "timeout": 20}
+            kwargs["creationflags"] = _CREATE_NO_WINDOW
+            proc = subprocess.run(  # noqa: S603
+                ["powershell", "-NoProfile", "-Command", ps],
+                **kwargs,
+            )
+            for line in (proc.stdout or "").splitlines():
+                if line.startswith("NAME="):
+                    out["name"] = line[5:].strip()
+                elif line.startswith("EXE="):
+                    out["exe"] = line[4:].strip()
+                elif line.startswith("CMD="):
+                    out["cmdline"] = line[4:].strip()
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        return out
+    try:
+        import os
+
+        out["name"] = Path(f"/proc/{pid}/comm").read_text(encoding="utf-8", errors="replace").strip()
+        out["exe"] = os.readlink(f"/proc/{pid}/exe")
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\x00", b" ").decode(
+            "utf-8", errors="replace"
+        )
+        out["cmdline"] = raw.strip()
+    except OSError:
+        pass
+    return out
+
+
+def _looks_like_comfy_process(ident: dict) -> bool:
+    blob = " ".join(
+        str(ident.get(k) or "") for k in ("name", "exe", "cmdline")
+    ).lower()
+    if not blob.strip():
+        return False
+    markers = (
+        "comfyui",
+        "comfy ui",
+        "main.py",
+        "python_embeded",
+        "python_embedded",
+        "\\comfyui\\",
+        "/comfyui/",
+    )
+    return any(m in blob for m in markers)
+
+
+def describe_port_listeners(port: int) -> str:
+    """Кто слушает :port — чтобы Ден видел не «Python Вью», а Comfy."""
+    pids = _pids_on_port(port)
+    if not pids:
+        return (
+            f":{port} — API отвечает, но PID слушателя не вижу "
+            f"(права/фильтр Task Manager). Ищи ComfyUI.exe или "
+            f"python.exe из …\\ComfyUI\\python_embeded\\, не процесс Вью."
+        )
+    lines = [f"Кто слушает :{port}:"]
+    any_comfy = False
+    for pid in pids[:6]:
+        ident = _process_identity(pid)
+        name = ident.get("name") or "?"
+        exe = ident.get("exe") or "—"
+        cmd = ident.get("cmdline") or ""
+        is_comfy = _looks_like_comfy_process(ident)
+        any_comfy = any_comfy or is_comfy
+        tag = " ← это Comfy" if is_comfy else ""
+        lines.append(f"  pid={pid} {name}{tag}")
+        if exe and exe != "—":
+            lines.append(f"    exe: {exe}")
+        if cmd and "main.py" in cmd.lower():
+            # укоротить cmdline
+            short = cmd if len(cmd) <= 220 else cmd[:217] + "…"
+            lines.append(f"    cmd: {short}")
+    if not any_comfy:
+        lines.append(
+            "⚠ По имени не похоже на Comfy (нет main.py / ComfyUI / python_embeded). "
+            "В Task Manager смотри путь exe, не только «Python»."
+        )
+    else:
+        lines.append(
+            "В диспетчере ищи этот pid/путь — часто это python_embeded\\python.exe "
+            "или ComfyUI.exe, не python Вью."
+        )
+    return "\n".join(lines)
+
+
 def stop_comfy_on_port(port: int) -> str:
     """Остановить процесс, слушающий :port (перед рестартом с CUDA)."""
     pids = _pids_on_port(port)
@@ -616,6 +717,7 @@ def _finalize_comfy_start(
     browser_note = open_comfy_browser(config)
     if browser_note:
         parts.append(browser_note)
+    parts.append(describe_port_listeners(port))
 
     if not reactor_needs_reload(config, client):
         parts.append(face_swap_status_line(config, client=client))
@@ -768,16 +870,22 @@ def ensure_comfy_running(
                 parts_up.append(
                     f"ComfyUI OK ({'CUDA' if has_cuda1 else 'CPU'}) из {root}."
                 )
+                parts_up.append(describe_port_listeners(port))
                 browser_note = open_comfy_browser(config)
                 if browser_note:
                     parts_up.append(browser_note)
                 return True, "\n".join(parts_up)
             return False, "\n".join(parts_up)
-        return True, f"{msg}\ntorch={ver0} CUDA=yes"
+        return True, (
+            f"{msg}\ntorch={ver0} CUDA=yes\n{describe_port_listeners(port)}"
+        )
     if ok:
         from .face_refs import face_swap_status_line
 
-        return True, f"{msg}\n{face_swap_status_line(config, client=client)}"
+        return True, (
+            f"{msg}\n{describe_port_listeners(port)}\n"
+            f"{face_swap_status_line(config, client=client)}"
+        )
 
     install_note = ""
     if root is None and auto_install:
