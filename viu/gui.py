@@ -2406,7 +2406,7 @@ class ViuGUI:
     def _lab_comfy_action(self, *, auto: bool = False, action: str | None = None) -> None:
         """Вью сама выбирает кадр (каталог/граф). Без диалога idle stand.
 
-        action= — явная сцена из чата (селфи / фентези / …), без invent.
+        action= — явная сцена из чата (описание Дена), без invent.
         """
         from .lab.comfy_director import invent_next_shot
         from .lab.comfy_pipeline import COMFY_TOPIC
@@ -2450,7 +2450,7 @@ class ViuGUI:
                     "shoot": "1",
                     "action": chat_action,
                     "catalog_slug": slug,
-                    "shot_reason": "chat: selfie/fantasy/scene",
+                    "shot_reason": "chat: directed scene",
                 },
                 label="MoCap: сцена из чата",
                 echo_user=True,

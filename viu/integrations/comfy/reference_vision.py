@@ -288,38 +288,57 @@ def look_at_photo(
 
 def build_scene_action_en(
     *,
-    kind: str,
+    kind: str = "scene",
     user_text: str = "",
     look_ru: str = "",
 ) -> str:
-    """Короткий EN action для lab/Comfy из желания Дена + взгляда на реф."""
-    wish = (user_text or "").strip()
+    """EN/сцена для lab/Comfy: главное — описание Дена, реф только якорь лица/стиля."""
+    wish = extract_scene_wish(user_text)
     look = (look_ru or "").strip()[:280]
-    base_look = f" matching the reference look ({look})" if look else " matching the reference face and style"
-    k = (kind or "").strip().lower()
-    if k in ("selfie", "селфи"):
+    base_look = (
+        f", matching the reference look ({look})"
+        if look
+        else ", matching the reference face and style"
+    )
+    k = (kind or "scene").strip().lower()
+
+    # Буквальное «селфи» без другой сцены — крупный план; иначе сцена Дена важнее.
+    if k in ("selfie", "селфи") and (
+        not wish or re.fullmatch(r"(?i)селфи|selfie|сво[её]\s+селфи", wish or "")
+    ):
         return (
             "young woman taking a selfie, looking at camera, close-up phone angle, "
             "soft natural light, gentle expression, upper body"
             + base_look
         )
-    if k in ("fantasy", "фентези", "пейзаж"):
-        scene = "fantasy landscape, magical atmosphere, dramatic sky"
-        if re.search(r"(?i)лес|forest", wish):
-            scene = "magical fantasy forest, soft mist, glowing light"
-        elif re.search(r"(?i)замок|castle", wish):
-            scene = "fantasy castle overlook, dramatic clouds"
-        elif re.search(r"(?i)горы|mountain", wish):
-            scene = "fantasy mountain vista, epic sky"
-        elif re.search(r"(?i)океан|море|beach|берег", wish):
-            scene = "fantasy coastal landscape, glowing horizon"
+
+    if not wish and k in ("fantasy", "фентези", "пейзаж"):
         return (
-            f"young woman standing in {scene}, full or medium shot, cinematic lighting"
+            "young woman standing in a fantasy landscape, magical atmosphere, "
+            "dramatic sky, medium shot, cinematic lighting"
             + base_look
         )
-    # общий «сними себя …»
-    return (
-        "young woman in the described scene, medium shot, natural motion"
-        + base_look
-        + (f"; scene from user: {wish[:200]}" if wish else "")
+
+    if not wish:
+        return "young woman in the described scene, medium shot, natural motion" + base_look
+
+    # Описание Дена — ядро кадра (может быть по-русски; Wan/lab подхватят).
+    return f"{wish}, medium shot, natural motion{base_look}"
+
+
+def extract_scene_wish(text: str) -> str:
+    """Вытащить описание сцены из фразы «сними себя в …» / «сцена: …»."""
+    s = (text or "").strip()
+    s = re.sub(r"(?i)^\[tg_photo:[^\]]+\]\s*", "", s)
+    s = re.sub(r"(?i)(?:вот,?\s*)?это\s+ты[!.…]?\s*", "", s)
+    s = re.sub(
+        r"(?i)^\s*(?:пожалуйста[,.]?\s*)?"
+        r"(?:сними|снять|снимай|сделай|создай|сгенер(?:ируй)?)\s+"
+        r"(?:себя|тебя|мне|из\s+(?:этого\s+)?референса(?:\s+сво[её])?|сво[её])?\s*",
+        "",
+        s,
     )
+    s = re.sub(r"(?i)^\s*(?:сцена|снимай|снять|кадр)\s*[:=\-–]\s*", "", s)
+    s = re.sub(r"(?i)\b(?:в\s+комфи|в\s+comfy(?:\s*ui)?|через\s+комфи)\b", "", s)
+    s = re.sub(r"(?i)^\s*из\s+(?:этого\s+)?референса\s*", "", s)
+    return " ".join(s.split()).strip(" .,;:—-")

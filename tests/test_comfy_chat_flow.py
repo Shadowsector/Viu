@@ -91,17 +91,31 @@ def test_chat_always_looks_on_new_photo(tmp_path, monkeypatch):
     assert get_pending_ref(cfg) is not None
 
 
-def test_chat_selfie_from_ref(tmp_path, monkeypatch):
+def test_chat_directed_scene_from_ref(tmp_path, monkeypatch):
     _mock_look(monkeypatch)
     cfg = _cfg(tmp_path)
     img = _png(tmp_path / "s.png")
     out = try_handle_comfy_chat(
-        cfg, f"[tg_photo:{img}]\nсделай из этого референса своё селфи"
+        cfg,
+        f"[tg_photo:{img}]\nсними себя в фентезийном пейзаже на закате",
     )
     assert out.handled
     assert out.start_shoot
-    assert "selfie" in out.shoot_action.lower()
-    assert "селфи" in out.message.lower()
+    assert "фентез" in out.shoot_action.lower() or "закат" in out.shoot_action.lower()
+    assert "снимаю" in out.message.lower()
+
+
+def test_chat_scene_description_after_pending(tmp_path, monkeypatch):
+    _mock_look(monkeypatch)
+    cfg = _cfg(tmp_path)
+    img = _png(tmp_path / "f.png")
+    set_pending_ref(cfg, img, caption="", look_text="светлые волосы")
+    out = try_handle_comfy_chat(
+        cfg, "сцена: стоишь у окна и поправляешь волосы, мягкий свет"
+    )
+    assert out.handled
+    assert out.start_shoot
+    assert "окн" in out.shoot_action.lower() or "волос" in out.shoot_action.lower()
 
 
 def test_chat_fantasy_landscape(tmp_path, monkeypatch):
@@ -112,14 +126,22 @@ def test_chat_fantasy_landscape(tmp_path, monkeypatch):
     out = try_handle_comfy_chat(cfg, "сними себя в фентезийном пейзаже")
     assert out.handled
     assert out.start_shoot
-    assert "fantasy" in out.shoot_action.lower()
+    assert "фентез" in out.shoot_action.lower() or "fantasy" in out.shoot_action.lower()
 
 
 def test_build_scene_action_en():
-    a = build_scene_action_en(kind="selfie", look_ru="рыжие волосы")
-    assert "selfie" in a.lower()
-    b = build_scene_action_en(kind="fantasy", user_text="в лесу", look_ru="я")
-    assert "forest" in b.lower() or "fantasy" in b.lower()
+    from viu.integrations.comfy.reference_vision import extract_scene_wish
+
+    a = build_scene_action_en(
+        kind="scene",
+        user_text="сними себя в лесу на закате",
+        look_ru="рыжие волосы",
+    )
+    assert "лес" in a.lower() or "закат" in a.lower()
+    assert "рыжие" in a.lower()
+    assert extract_scene_wish("сними себя в лесу") == "в лесу"
+    b = build_scene_action_en(kind="selfie", user_text="селфи", look_ru="я")
+    assert "selfie" in b.lower()
 
 
 def test_chat_assign_shanya_and_minotaur(tmp_path, monkeypatch):
@@ -164,7 +186,11 @@ def test_chat_comfy_hint_without_job(tmp_path):
     cfg = _cfg(tmp_path)
     out = try_handle_comfy_chat(cfg, "Комфи как тебе?")
     assert out.handled
-    assert "фото" in out.message.lower() or "селфи" in out.message.lower() or "реф" in out.message.lower()
+    assert (
+        "фото" in out.message.lower()
+        or "сцен" in out.message.lower()
+        or "реф" in out.message.lower()
+    )
 
 
 def test_set_pending_ref(tmp_path):

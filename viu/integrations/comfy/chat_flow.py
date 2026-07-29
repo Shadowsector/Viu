@@ -53,18 +53,29 @@ _PROCESS_RE = re.compile(
 )
 
 _SELFIE_RE = re.compile(
-    r"(?i)(?:селфи|selfie|"
-    r"сделай\s+(?:из\s+(?:этого\s+)?референса\s+)?(?:сво[её]\s+)?селфи|"
+    r"(?i)(?:\bселфи\b|\bselfie\b|"
     r"сво[её]\s+селфи|"
     r"сфотка(?:й|ть)\s+себя)"
 )
 
 _FANTASY_RE = re.compile(
     r"(?i)(?:фентез|фэнтез|fantasy|"
-    r"(?:в|на)\s+(?:фентез|фэнтез|fantasy)|"
     r"магическ(?:ом|ий)\s+пейзаж|"
     r"фентезийном\s+пейзаж|"
     r"фэнтезийном\s+пейзаж)"
+)
+
+# Ден говорит, ЧТО снимать — описание сцены, не обязательно слово «селфи».
+_DIRECTED_SHOOT_RE = re.compile(
+    r"(?i)(?:"
+    r"(?:сними|снять|снимай|сделай|создай|сгенер(?:ируй)?)\s+"
+    r"(?:себя|тебя|из\s+(?:этого\s+)?реф|клип|видео|сцен)|"
+    r"(?:сними|снять|снимай|сделай)\s+(?:в|на|у|под|возле|среди)\b|"
+    r"(?:сцена|снимай|снять|кадр)\s*[:=\-–]|"
+    r"хочу\s+(?:чтобы\s+)?ты\s+(?:была|сняла|снялась|стояла|шла|сидела|лежала)|"
+    r"из\s+(?:этого\s+)?референса|"
+    r"\bселфи\b|\bselfie\b"
+    r")"
 )
 
 _LORA_RE = re.compile(
@@ -198,20 +209,39 @@ def _wants_lora(text: str) -> bool:
     return bool(_LORA_RE.search(text or ""))
 
 
-def _wants_video(text: str, config: Config) -> bool:
-    if _wants_selfie(text) or _wants_fantasy(text):
+def _wants_directed_shoot(text: str, config: Config) -> bool:
+    """Ден описал сцену / сказал снимать — не путать с ролевой фантазией без рефа."""
+    t = text or ""
+    if _wants_selfie(t) or _wants_fantasy(t):
         return True
-    if looks_like_comfy_job_request(text or ""):
+    if looks_like_comfy_job_request(t):
         return True
-    if not _VIDEO_RE.search(text or ""):
+    has_ref = get_pending_ref(config) is not None
+    if _DIRECTED_SHOOT_RE.search(t):
+        if has_ref:
+            return True
+        if mentions_comfy(t):
+            return True
+        if re.search(r"(?i)\bсебя\b|референс|(?:сцена|снимай|снять|кадр)\s*[:=\-–]", t):
+            return True
+    # После рефа можно просто описать кадр: «в лесу на закате, ветер в волосах»
+    if has_ref and len(t.strip()) >= 18:
+        if _LOOK_RE.search(t) or _ASSIGN_RE.search(t) or _LORA_RE.search(t):
+            return False
+        if re.search(
+            r"(?i)^(?:в|на|у|под|возле|среди|сто[ия]шь|ид[её]шь|сидишь|лежишь)\b",
+            t.strip(),
+        ):
+            return True
+    if not _VIDEO_RE.search(t):
         return False
-    if mentions_comfy(text or ""):
-        return True
-    if get_pending_ref(config) is not None:
-        return True
-    if re.search(r"(?i)референс|из\s+реф", text or ""):
+    if mentions_comfy(t) or has_ref or re.search(r"(?i)референс|из\s+реф", t):
         return True
     return False
+
+
+def _wants_video(text: str, config: Config) -> bool:
+    return _wants_directed_shoot(text, config)
 
 
 def _look(
@@ -343,8 +373,18 @@ def _maybe_look_and_store(
     return text
 
 
+def _shoot_confirm_message(text: str) -> str:
+    from .reference_vision import extract_scene_wish
+
+    wish = extract_scene_wish(text)
+    if wish and len(wish) >= 8:
+        preview = wish if len(wish) <= 120 else wish[:117] + "…"
+        return f"Ок — снимаю: {preview}\nКлип пришлю, когда будет."
+    return "Ок — снимаю, как сказал. Клип пришлю, когда будет."
+
+
 def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
-    """NL-вход: посмотреть фото, рефы, LoRA, селфи/фентези/видео."""
+    """NL-вход: посмотреть фото, рефы, LoRA, съёмка по описанию сцены."""
     raw = (text or "").strip()
     if not raw:
         return ChatFlowOutcome(False)
@@ -365,6 +405,7 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
         return ChatFlowOutcome(True, format_character_refs_status(config))
 
     cid = _resolve_assign_character(body) if body else None
+    directed = _wants_directed_shoot(body, config) if body else False
 
     # --- Есть картинка + действие/подпись ---
     if image is not None and image.is_file() and (new_photo or body):
@@ -377,51 +418,42 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
             look_text = _maybe_look_and_store(
                 config, image, body=body, cid=cid
             )
-            if look_text and not look_text.startswith("(не разглядела"):
-                bits.append(look_text)
-            elif look_text:
+            if look_text:
                 bits.append(look_text)
 
         if cid:
             ok, msg = assign_character_ref(config, cid, image, notes=body[:200])
-            if ok:
-                bits.append(msg)
-            else:
-                bits.append(msg)
+            bits.append(msg)
 
         if _wants_analyze(body) and not new_photo:
-            # повторный технический разбор по просьбе
             bits.append(_analyze_ref(config, image, hint=body))
 
-        if _wants_process(body) or _wants_selfie(body) or _wants_fantasy(body):
-            pmsg, pout = _process_ref(config, image, character=cid or ("viu" if _wants_selfie(body) else None))
+        if _wants_process(body) or directed:
+            pmsg, pout = _process_ref(
+                config,
+                image,
+                character=cid or ("viu" if directed else None),
+            )
             bits.append(pmsg)
             if pout is not None:
                 media.append(("photo", str(pout)))
 
         start = False
         shoot_action = ""
-        if _wants_selfie(body) or _wants_fantasy(body) or _wants_video(body, config):
+        if directed:
             start = True
-            shoot_action = _shoot_action_for(config, body, look_ru=look_text or get_pending_look(config))
-            if _wants_selfie(body):
-                bits.append(
-                    "Ок — сделаю из этого рефа своё селфи (короткий клип с лица) и пришлю."
-                )
-            elif _wants_fantasy(body):
-                bits.append(
-                    "Ок — сниму себя в фентезийном пейзаже по этому рефу и пришлю клип."
-                )
-            else:
-                bits.append("Ок, запускаю съёмку — клип пришлю, когда будет.")
+            shoot_action = _shoot_action_for(
+                config, body, look_ru=look_text or get_pending_look(config)
+            )
+            bits.append(_shoot_confirm_message(body))
 
         if _wants_lora(body):
             bits.append(_arm_lora_pick(config))
 
         if new_photo and not cid and not (
-            _wants_selfie(body) or _wants_fantasy(body) or _wants_video(body, config) or _wants_lora(body) or _wants_process(body)
+            directed or _wants_lora(body) or _wants_process(body)
         ):
-            if not any("кто это" in b.lower() for b in bits):
+            if not any("шаня" in b.lower() or "минотавр" in b.lower() or "запомню" in b.lower() for b in bits):
                 bits.append("Если это я, Шаня или минотавр — скажи, запомню.")
 
         if bits:
@@ -433,7 +465,7 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
                 media_to_send=media,
             )
 
-    # Текст без картинки, но есть pending
+    # Текст без нового фото, но есть pending
     if image is not None and image.is_file():
         if cid:
             look = _look(config, image, as_self=cid == "viu", hint=body, character=cid)
@@ -457,25 +489,24 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
             media = [("photo", str(pout))] if pout else []
             return ChatFlowOutcome(True, pmsg, media_to_send=media)
 
-        if _wants_selfie(body) or _wants_fantasy(body) or _wants_video(body, config):
-            _process_ref(config, image, character="viu" if _wants_selfie(body) else None)
+        if directed:
+            _process_ref(config, image, character="viu")
             action = _shoot_action_for(config, body)
-            if _wants_selfie(body):
-                msg = "Ок — селфи из рефа. Кручу съёмку и пришлю."
-            elif _wants_fantasy(body):
-                msg = "Ок — фентезийный пейзаж. Снимаю и пришлю клип."
-            else:
-                msg = "Ок, кручу съёмку. Клип пришлю, когда будет готов."
-            return ChatFlowOutcome(True, msg, start_shoot=True, shoot_action=action)
+            return ChatFlowOutcome(
+                True,
+                _shoot_confirm_message(body),
+                start_shoot=True,
+                shoot_action=action,
+            )
 
     if _wants_lora(body):
         return ChatFlowOutcome(True, _arm_lora_pick(config))
 
-    if _wants_video(body, config) or _wants_selfie(body) or _wants_fantasy(body):
+    if directed:
         action = _shoot_action_for(config, body)
         return ChatFlowOutcome(
             True,
-            "Ок, кручу съёмку. Клип пришлю в Telegram, когда будет готов.",
+            _shoot_confirm_message(body),
             start_shoot=True,
             shoot_action=action,
         )
@@ -484,8 +515,8 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
         return ChatFlowOutcome(
             True,
             "Могу в чате: посмотреть фото и описать, запомнить «это я / Шаня / минотавр», "
-            "сделать селфи или снять в фентези-пейзаже, LoRA, видео — и прислать тебе.\n"
-            "Кинь фото или скажи, что сделать.",
+            "снять сцену как скажешь (по рефу), LoRA, видео — и прислать тебе.\n"
+            "Кинь фото или опиши кадр.",
         )
 
     return ChatFlowOutcome(False)
