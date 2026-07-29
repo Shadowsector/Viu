@@ -316,12 +316,16 @@ def reflect_no_history() -> bool:
 
 
 def reflect_include_story_history() -> bool:
-    """Подмешивать story_memory в reflect-историю (по умолчанию выкл.)."""
-    return os.environ.get("VIU_REFLECT_STORY_HISTORY", "0").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-    )
+    """Подмешивать story_memory в reflect при короткой сессии.
+
+    По умолчанию auto/on: после рестарта истории нет в RAM — без этого
+    Вью «забывает» сочинения. Выкл: VIU_REFLECT_STORY_HISTORY=0.
+    """
+    raw = os.environ.get("VIU_REFLECT_STORY_HISTORY", "auto").strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return False
+    # 1 / true / yes / on / auto / пусто
+    return True
 
 
 def reflect_dump_enabled() -> bool:

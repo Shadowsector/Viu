@@ -57,3 +57,29 @@ def test_as_chat_history(tmp_path):
     store.add("assistant", "ответ один")
     hist = store.as_chat_history(limit=4)
     assert hist[-1]["role"] == "assistant"
+
+
+def test_story_thread_to_event_memory(tmp_path, monkeypatch):
+    from viu.event_memory import maybe_capture_story_thread
+
+    monkeypatch.setenv("VIU_ROOT", str(tmp_path / "Viu"))
+    cfg = _cfg(tmp_path)
+    ev = maybe_capture_story_thread(
+        cfg,
+        "Давай придумаем сюжет: Шаня и преданность хозяину без чернухи",
+        "Ок — вечер у сарая, взгляд и одобрение, она отдаётся целиком.",
+    )
+    assert ev is not None
+    assert "story" in (ev.tags or [])
+
+
+def test_reflect_story_history_default_on(monkeypatch):
+    from viu.prompts.reflect_mode import reflect_include_story_history
+
+    monkeypatch.delenv("VIU_REFLECT_STORY_HISTORY", raising=False)
+    assert reflect_include_story_history() is True
+    monkeypatch.setenv("VIU_REFLECT_STORY_HISTORY", "0")
+    assert reflect_include_story_history() is False
+    monkeypatch.setenv("VIU_REFLECT_STORY_HISTORY", "auto")
+    assert reflect_include_story_history() is True
+

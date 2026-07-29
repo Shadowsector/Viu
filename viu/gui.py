@@ -88,14 +88,33 @@ class ViuGUI:
         self._boot_sha = running_sha(package_root())
         self._geometry_save_job: str | None = None
 
-        # story_memory: только ingest логов, без заливки в reflect-историю
+        # story_memory: ingest логов + засев короткой истории в сессию
+        # (иначе после рестарта RAM пустой — «забыла всё»).
         try:
-            from .story_memory import ensure_logs_ingested
+            from .story_memory import ensure_logs_ingested, get_story_memory
+            from .prompts.reflect_mode import scrub_poisoned_history
 
             n, msg = ensure_logs_ingested(self.agent.config)
             self._story_ingest_msg = msg if n else ""
+            seeded = scrub_poisoned_history(
+                get_story_memory(self.agent.config).as_chat_history(limit=12)
+            )
+            for turn in seeded:
+                role = turn.get("role") or ""
+                content = (turn.get("content") or "").strip()
+                if role in ("user", "assistant") and content:
+                    self._llm_turns.append(
+                        {"role": role, "content": content[:4000]}
+                    )
+            if seeded:
+                self._story_ingest_msg = (
+                    (self._story_ingest_msg + " · " if self._story_ingest_msg else "")
+                    + f"в чат подхватила {len(seeded)} реплик из памяти"
+                )
         except OSError:
             self._story_ingest_msg = ""
+        except Exception:  # noqa: BLE001
+            self._story_ingest_msg = getattr(self, "_story_ingest_msg", "") or ""
 
         try:
             from .viu_memory import ensure_viu_memory, sanitize_poisoned_summaries

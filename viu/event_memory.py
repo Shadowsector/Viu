@@ -234,6 +234,41 @@ def maybe_capture_scene_event(
     )
 
 
+def maybe_capture_story_thread(
+    config: Config,
+    user_text: str,
+    assistant_text: str,
+    *,
+    source: str = "chat",
+) -> Optional[StoryEvent]:
+    """Сюжетный чат → короткий бит в event_memory (переживает рестарт в digest)."""
+    try:
+        from .prompts.reflect_mode import looks_like_story_chat
+    except ImportError:
+        return None
+    if not looks_like_story_chat(user_text or ""):
+        return None
+    u = re.sub(r"\s+", " ", (user_text or "").strip())
+    a = re.sub(r"\s+", " ", (assistant_text or "").strip())
+    if len(u) < 24 and len(a) < 40:
+        return None
+    # Не дублировать почти то же самое подряд
+    mem = get_event_memory(config)
+    recent = mem.recent(limit=3) if hasattr(mem, "recent") else []
+    snippet = (u[:120] + " / " + a[:160]).strip(" /")
+    for ev in recent:
+        if snippet[:80] and snippet[:80] in (ev.what or ""):
+            return None
+    title = u[:50].rstrip(".,;:") + ("…" if len(u) > 50 else "")
+    return mem.add(
+        title=title or "Сюжет из чата",
+        what=snippet[:500],
+        who="Ден, Вью",
+        tags=["story", "thread", "auto"],
+        source=source,
+    )
+
+
 def clear_chat_transcripts(config: Config) -> dict:
     """Удалить логи чатов и сырой story_memory; события и канон не трогаем."""
     data = Path(config.data_dir)

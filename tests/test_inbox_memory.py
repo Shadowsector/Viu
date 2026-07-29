@@ -65,7 +65,29 @@ def test_extract_remember_payload() -> None:
     assert extract_remember_payload("запомни, что Inbox не должен пустеть") == (
         "Inbox не должен пустеть"
     )
+    assert extract_remember_payload("держи в памяти: Шаня — томбой") == (
+        "Шаня — томбой"
+    )
     assert extract_remember_payload("привет") is None
+
+
+def test_remember_survives_memory_echo_assistant(tmp_path: Path, monkeypatch) -> None:
+    """Даже если ассистент свалился в дамп VIU_MEMORY — «запомни» пишется."""
+    from viu.config import Config
+
+    monkeypatch.setenv("VIU_ROOT", str(tmp_path / "Viu"))
+    root = tmp_path / "Viu"
+    root.mkdir()
+    cfg = Config(root=root, data_dir=root / ".viu").ensure_dirs()
+    echo = "# Память Вью\n\n## Явные записи\n\n- старое\n"
+    process_reflect_exchange(
+        cfg,
+        "запомни: мы сочинили историю про сарай и Шаню",
+        echo,
+    )
+    text = read_viu_memory(cfg)
+    assert "сарай" in text.lower() or "шаню" in text.lower()
+
 
 
 def test_remember_with_conversation_context(tmp_path: Path, monkeypatch) -> None:

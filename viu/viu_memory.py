@@ -56,7 +56,8 @@ _TEMPLATE = """# Память Вью
 _REMEMBER = re.compile(
     r"(?:^|[\s,.:;])(?:"
     r"запомни(?:\s*,?\s*что)?|сохрани(?:\s+в(?:\s+)?память)?|не\s+забудь|"
-    r"запиши\s+в\s+память|remember(?:\s+this)?|save\s+this"
+    r"запиши\s+в\s+память|держи\s+в\s+памяти|зафиксируй|"
+    r"remember(?:\s+this)?|save\s+this"
     r")(?:\s|,|:|—|-|\.)?\s*",
     re.IGNORECASE | re.MULTILINE,
 )
@@ -66,17 +67,18 @@ _DEICTIC_PAYLOAD = re.compile(
     r"(?is)^\s*(?:"
     r"это|то|всё\s+это|все\s+это|"
     r"(?:этот|тот|эту|ту|это|про)\s+"
-    r"(?:квест|событие|сюжет|сцен\w*|разговор|момент|бит)(?:\s+\w+){0,4}|"
-    r"(?:то\s*,?\s*)?что\s+(?:мы\s+)?(?:обсужда\w*|говорили|говорили)|"
+    r"(?:квест|событие|сюжет|сцен\w*|разговор|момент|бит|истори\w*)(?:\s+\w+){0,4}|"
+    r"(?:то\s*,?\s*)?что\s+(?:мы\s+)?(?:обсужда\w*|говорили|сочиня\w*|придумал\w*)|"
     r"что\s+(?:выше|раньше)|"
-    r"выше|предыдущ\w+|всё\s+выше"
+    r"выше|предыдущ\w+|всё\s+выше|"
+    r"наши?\s+истори\w*|что\s+сочинили"
     r")\.?\s*$"
 )
 
 _CONTEXT_HINT = re.compile(
     r"(?i)\b(?:"
-    r"квест|событие|сюжет|сцен|разговор|момент|"
-    r"обсужда|говорили|выше|этот|тот|это"
+    r"квест|событие|сюжет|сцен|разговор|момент|истори|"
+    r"обсужда|говорили|сочиня|выше|этот|тот|это"
     r")\b"
 )
 
@@ -528,6 +530,14 @@ def record_explicit_memory(
     )
     if not payload:
         return False
+    # Не дублировать ту же запись (early remember + post-accept).
+    try:
+        existing = read_viu_memory(config, max_chars=12000)
+        needle = payload[:120].strip()
+        if needle and needle in existing:
+            return True
+    except OSError:
+        pass
     stamp = time.strftime("%Y-%m-%d")
     line = f"- ({stamp}, {source}) {payload}"
     append_memory_line(
@@ -536,14 +546,17 @@ def record_explicit_memory(
         line,
         tags=["explicit", "remember", source],
     )
-    # Если речь про событие/квест — продублировать короткий бит в event_memory
-    if re.search(r"(?i)квест|событие|сюжет|сцен", user_text + " " + payload):
+    # Если речь про событие/квест/историю — продублировать короткий бит в event_memory
+    if re.search(
+        r"(?i)квест|событие|сюжет|сцен|истори|сочин",
+        user_text + " " + payload,
+    ):
         try:
             from .event_memory import get_event_memory
 
             title = "Запись из чата"
             m = re.search(
-                r"(?i)(?:квест|событие|сюжет|сцена)\s*[«\":]?\s*(.{4,60})",
+                r"(?i)(?:квест|событие|сюжет|сцена|история)\s*[«\":]?\s*(.{4,60})",
                 payload,
             )
             if m:
@@ -645,14 +658,16 @@ def process_reflect_exchange(
     source: str = "chat",
     history: Optional[list] = None,
 ) -> None:
-    """После ответа reflect: явное «запомни» и редкие summary."""
+    """После ответа reflect: явное «запомни» и редкие summary.
+
+    «запомни» пишем даже если ассистент свалился в echo VIU_MEMORY —
+    иначе просьба Дена теряется на ретраях.
+    """
     ensure_viu_memory(config)
     try:
         sanitize_poisoned_summaries(config)
     except OSError:
         pass
-    if looks_like_memory_echo(assistant_text):
-        return
     if record_explicit_memory(
         config,
         user_text,
@@ -660,5 +675,7 @@ def process_reflect_exchange(
         history=history,
         assistant_text=assistant_text,
     ):
+        return
+    if looks_like_memory_echo(assistant_text):
         return
     maybe_record_chat_summary(config, user_text, assistant_text)

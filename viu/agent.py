@@ -792,6 +792,24 @@ class Agent:
             except Exception:  # noqa: BLE001
                 pass
 
+            # Сюжетный RAG: писали всегда, а в bare не читали — поэтому «забывала».
+            try:
+                from .prompts.reflect_mode import user_is_greeting
+                from .story_memory import ensure_logs_ingested, get_story_memory
+
+                ensure_logs_ingested(self.config)
+                if not user_is_greeting(user_text):
+                    story_ctx = get_story_memory(self.config).format_context(
+                        user_text, recent_n=6, search_n=4
+                    )
+                    if story_ctx:
+                        _attach(
+                            "--- Сюжетная память (продолжай нить, не с нуля) ---\n"
+                            + story_ctx
+                        )
+            except Exception:  # noqa: BLE001
+                pass
+
             hint = list_delivery_hint(user_text)
             if hint:
                 _attach(hint)
@@ -866,11 +884,28 @@ class Agent:
             messages.extend(hist[-16:])
         messages.append({"role": "user", "content": user_msg})
 
+        # «запомни» — сразу на диск, до ответа модели (echo/abort не сожрут).
+        if not heartbeat and user_text:
+            try:
+                from .viu_memory import looks_like_remember_request, record_explicit_memory
+
+                if looks_like_remember_request(user_text):
+                    if record_explicit_memory(
+                        self.config,
+                        user_text,
+                        source="chat-early",
+                        history=hist,
+                    ):
+                        self._log("MEMORY early remember ok")
+            except Exception:  # noqa: BLE001
+                pass
+
         reflect_model = self._model_for("reflect")
         self._log(
             f"REFLECT bare hist={len(hist)} tg={int(echo_telegram)}"
             f" no_sys={int(reflect_no_system())} no_hist={int(reflect_no_history())}"
             f" filtered={int(reflect_use_filters())} plot_ctx={int(plot_ctx)}"
+            f" story_hist={int(reflect_include_story_history())}"
         )
 
         def _extend_reflect_parts(parts: List[str]) -> List[str]:
@@ -947,13 +982,17 @@ class Agent:
                 self._log(f"REFLECT_MULTI parts={len(parts)}")
             if not heartbeat and user_text:
                 try:
+                    from .prompts.reflect_mode import looks_like_story_chat
                     from .story_memory import get_story_memory
 
+                    story_tags = ["dialog"]
+                    if plot_ctx or looks_like_story_chat(user_text):
+                        story_tags.append("story")
                     get_story_memory(self.config).add_exchange(
                         user_text,
                         full,
                         source="chat",
-                        tags=["dialog", "story"] if plot_ctx else ["dialog"],
+                        tags=story_tags,
                     )
                 except OSError:
                     pass
@@ -970,12 +1009,18 @@ class Agent:
                 except OSError:
                     pass
                 try:
-                    from .event_memory import maybe_capture_scene_event
+                    from .event_memory import (
+                        maybe_capture_scene_event,
+                        maybe_capture_story_thread,
+                    )
 
                     if not (parsed and (parsed.get("event_update") or parsed.get("events"))):
                         maybe_capture_scene_event(
                             self.config, user_text, full, source="chat"
                         )
+                    maybe_capture_story_thread(
+                        self.config, user_text, full, source="chat"
+                    )
                 except Exception:  # noqa: BLE001
                     pass
             if parsed:
@@ -1046,6 +1091,20 @@ class Agent:
                         }
                     )
                     continue
+                # Всё равно сохранить «запомни» / story — ответ Дену запасной.
+                if not heartbeat and user_text:
+                    try:
+                        from .viu_memory import process_reflect_exchange
+
+                        process_reflect_exchange(
+                            self.config,
+                            user_text,
+                            "",
+                            source="chat",
+                            history=hist,
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
                 result.final = (
                     "Ой, я чуть память вместо ответа не выдала. "
                     "Повтори, пожалуйста — я на связи."
@@ -1250,6 +1309,21 @@ class Agent:
             messages.extend(hist[-16:])
         messages.append({"role": "user", "content": user_text})
 
+        if user_text:
+            try:
+                from .viu_memory import looks_like_remember_request, record_explicit_memory
+
+                if looks_like_remember_request(user_text):
+                    if record_explicit_memory(
+                        self.config,
+                        user_text,
+                        source="chat-early",
+                        history=hist if use_hist else list(history or []),
+                    ):
+                        self._log("MEMORY early remember ok")
+            except Exception:  # noqa: BLE001
+                pass
+
         reflect_model = self._model_for("reflect")
         from .llm_roles import effective_model, model_label
 
@@ -1318,6 +1392,14 @@ class Agent:
                     )
                 except OSError:
                     pass
+            try:
+                from .event_memory import maybe_capture_story_thread
+
+                maybe_capture_story_thread(
+                    self.config, user_text, full, source="chat"
+                )
+            except Exception:  # noqa: BLE001
+                pass
             return result
 
         for attempt in range(4):
