@@ -710,6 +710,16 @@ def apply_clip_pick_decision(
         session.step = 6
     save_session(config, session)
     append_journal(config, COMFY_TOPIC, f"### Клип выбран\n\n{msg}")
+    # В Telegram — сам файл, не только текст.
+    try:
+        from ..integrations.comfy.chat_flow import send_media_to_telegram
+
+        if clip.path and Path(clip.path).is_file():
+            send_media_to_telegram(
+                config, "video", clip.path, caption="Оставила этот клип"
+            )
+    except Exception:
+        pass
     return msg + "\nДальше — отчёт lab."
 
 

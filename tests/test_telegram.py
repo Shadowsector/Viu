@@ -219,3 +219,70 @@ def test_notifier_rejects_spoofed_chat_with_foreign_from(tmp_path, monkeypatch):
     # The test case chat=4242 from=777 is impossible in real TG for private chats.
     # Tighten: require user_id in owners when user_id is present.
     assert got == []
+
+
+def test_client_send_photo_multipart(monkeypatch, tmp_path):
+    img = tmp_path / "a.jpg"
+    img.write_bytes(b"fake-jpeg")
+    captured = {}
+
+    def fake_urlopen(req, timeout=0):
+        captured["url"] = req.full_url
+        captured["ctype"] = req.headers.get("Content-type") or req.headers.get("Content-Type")
+        captured["data"] = req.data
+        resp = MagicMock()
+        resp.read.return_value = json.dumps(
+            {"ok": True, "result": {"message_id": 7}}
+        ).encode()
+        resp.__enter__ = lambda s: resp
+        resp.__exit__ = MagicMock(return_value=False)
+        return resp
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    client = TelegramClient("123:TOKEN")
+    client.send_photo(999, img, caption="hi")
+    assert "sendPhoto" in captured["url"]
+    assert "multipart/form-data" in (captured["ctype"] or "")
+    assert b"hi" in captured["data"]
+    assert b"fake-jpeg" in captured["data"]
+
+
+def test_notifier_forwards_photo(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIU_TELEGRAM_TOKEN", "123:TOKEN")
+    monkeypatch.setenv("VIU_TELEGRAM_OWNER_IDS", "4242")
+    cfg = _config(tmp_path)
+    tg_settings.set_chat_id(cfg, 4242)
+    got = []
+
+    def fake_get_file(self, file_id):
+        return {"file_path": "photos/file_1.jpg"}
+
+    def fake_download(self, file_path, dest):
+        p = Path(dest)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"img")
+        return p
+
+    monkeypatch.setattr(TelegramClient, "get_file", fake_get_file)
+    monkeypatch.setattr(TelegramClient, "download_file", fake_download)
+
+    from pathlib import Path
+
+    notifier = TelegramNotifier(cfg, on_reply=got.append, get_status=lambda: "ok")
+    notifier._handle_update(
+        {
+            "update_id": 9,
+            "message": {
+                "chat": {"id": 4242},
+                "from": {"id": 4242},
+                "caption": "это ты",
+                "photo": [
+                    {"file_id": "small", "file_size": 10},
+                    {"file_id": "big", "file_size": 99},
+                ],
+            },
+        }
+    )
+    assert len(got) == 1
+    assert got[0].startswith("[tg_photo:")
+    assert "это ты" in got[0]

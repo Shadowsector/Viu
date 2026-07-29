@@ -796,9 +796,22 @@ class Agent:
             if hint:
                 _attach(hint)
             try:
+                from .integrations.comfy.intent import (
+                    format_reflect_comfy_block,
+                    mentions_comfy,
+                )
                 from .integrations.comfy.prompt_edit import is_comfy_short_task
 
-                if is_comfy_short_task(user_text):
+                if mentions_comfy(user_text):
+                    comfy_block = format_reflect_comfy_block(self.config)
+                    if is_comfy_short_task(user_text):
+                        comfy_block += (
+                            "\nДен просит короткий EN-промпт / действие: "
+                            "1–3 предложения в final, без эмодзи и режиссёрского сценария. "
+                            "Полный Wan — «покажи промпт» / Промпт Wan → Comfy."
+                        )
+                    _attach("\n\n" + comfy_block)
+                elif is_comfy_short_task(user_text):
                     _attach(
                         "\n\n--- Comfy/Wan ---\n"
                         "Ден просит короткий EN-промпт / действие для ComfyUI, "
