@@ -183,7 +183,10 @@ def step_models(config: Config, session: LabSession) -> StepResult:
 
 
 def step_draft_prompt(config: Config, session: LabSession) -> StepResult:
+    from ..integrations.comfy.prompts import clean_action_for_wan, draft_bundle
+
     action = str(session.meta.get("action") or "").strip() or read_action_from_task(config)
+    action = clean_action_for_wan(action)
     session.meta["action"] = action
     draft = draft_bundle(action)
     session.meta["draft"] = draft

@@ -496,42 +496,28 @@ def build_scene_action_en(
     look_ru: str = "",
     config: Config | None = None,
 ) -> str:
-    """Сцена для lab/Comfy: описание Дена → EN action; реф — якорь внешности."""
+    """Сцена для lab/Comfy: описание Дена → чистый EN action (без RU look).
+
+    look_ru остаётся в чате/pending для Дена; в Wan не тащим — лицо/тело
+    даёт FaceRefs + ReActor, а не скобки «Вижу кадр…».
+    """
     from .scene_en import scene_wish_to_en
 
+    del look_ru  # не смешивать с MoCap positive
     wish = extract_scene_wish(user_text)
-    look = (look_ru or "").strip()[:280]
-    if look and re.search(r"[А-Яа-яЁё]", look):
-        look = look[:80]
-    base_look = (
-        f", matching the reference look ({look})"
-        if look
-        else ", matching the reference face, body and style"
-    )
     k = (kind or "scene").strip().lower()
 
     if k in ("selfie", "селфи") and (
         not wish or re.fullmatch(r"(?i)селфи|selfie|сво[её]\s+селфи", wish or "")
     ):
-        return (
-            "young woman taking a selfie, looking at camera, close-up phone angle, "
-            "soft natural light, gentle expression, upper body"
-            + base_look
-        )
+        return "young woman taking a selfie, looking at camera, phone angle, soft light, upper body"
 
     if not wish and k in ("fantasy", "фентези", "пейзаж"):
-        return (
-            "young woman standing in a fantasy landscape, magical atmosphere, "
-            "dramatic sky, medium shot, cinematic lighting"
-            + base_look
-        )
+        return "young woman standing in a fantasy landscape, magical atmosphere, dramatic sky, full body"
 
-    en_core = (
-        scene_wish_to_en(wish, config=config)
-        if wish
-        else "young woman in the described scene, medium shot, natural motion"
-    )
-    return f"{en_core}{base_look}"
+    if wish:
+        return scene_wish_to_en(wish, config=config)
+    return "young woman standing relaxed, weight on one leg, full body"
 
 
 def extract_scene_wish(text: str) -> str:

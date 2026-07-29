@@ -275,25 +275,27 @@ def test_build_scene_action_en():
     a = build_scene_action_en(
         kind="scene",
         user_text="сними себя в лесу на закате",
-        look_ru="рыжие волосы",
+        look_ru="рыжие волосы, Вижу кадр — запомнила референс.",
     )
     assert "sunset" in a.lower() or "forest" in a.lower()
-    assert "рыжие" in a.lower()
-    core = a.split("matching")[0]
-    assert not has_cyrillic(core)
+    assert not has_cyrillic(a)
+    assert "matching the reference" not in a.lower()
+    assert "рыжие" not in a.lower()
     assert extract_scene_wish("сними себя в лесу") == "в лесу"
     assert "armchair" in extract_scene_wish(
         "нарисуй себя, развалившуюся в кресле"
     ) or "кресл" in extract_scene_wish("нарисуй себя, развалившуюся в кресле")
     b = build_scene_action_en(kind="selfie", user_text="селфи", look_ru="я")
     assert "selfie" in b.lower()
+    assert not has_cyrillic(b)
     sprawl = build_scene_action_en(
         kind="scene",
         user_text="нарисуй себя, развалившуюся в кресле",
-        look_ru="",
+        look_ru="Вижу кадр — запомнила референс.",
     )
     assert "armchair" in sprawl.lower()
-    assert not has_cyrillic(sprawl.split("matching")[0])
+    assert not has_cyrillic(sprawl)
+    assert "matching" not in sprawl.lower()
 
 
 def test_chat_assign_shanya_and_minotaur(tmp_path, monkeypatch):
