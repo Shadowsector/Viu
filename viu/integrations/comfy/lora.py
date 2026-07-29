@@ -462,6 +462,142 @@ def specs_from_session_meta(meta: Dict[str, Any]) -> List[LoraSpec]:
     return specs
 
 
+def lora_comfy_path(spec: LoraSpec) -> str:
+    """Как Вью раньше писала в lora_name (subfolder/file)."""
+    name = (spec.file or "").strip()
+    sub = (spec.subfolder or "").replace("\\", "/").strip("/")
+    if sub:
+        return f"{sub}/{name}"
+    return name
+
+
+def fetch_comfy_lora_names(client) -> List[str]:
+    """Имена LoRA из живого Comfy (combo LoraLoader*) — единственный источник правды для /prompt."""
+    try:
+        info = client._get("/object_info")
+    except Exception:
+        return []
+    if not isinstance(info, dict):
+        return []
+    for class_type in ("LoraLoaderModelOnly", "LoraLoader"):
+        node = info.get(class_type)
+        if not isinstance(node, dict):
+            continue
+        inp = (node.get("input") or {}).get("required") or {}
+        if not isinstance(inp, dict):
+            inp = (node.get("input") or {}).get("optional") or {}
+        combo = inp.get("lora_name") if isinstance(inp, dict) else None
+        # формат: [["a.safetensors", "Body/x.safetensors"], {"default": "..."}]
+        if isinstance(combo, list) and combo and isinstance(combo[0], list):
+            return [str(x) for x in combo[0] if x]
+        if isinstance(combo, (list, tuple)):
+            flat = [str(x) for x in combo if isinstance(x, str)]
+            if flat:
+                return flat
+    return []
+
+
+def _norm_lora_key(name: str) -> str:
+    return name.replace("\\", "/").strip().lower()
+
+
+def resolve_lora_name_for_comfy(
+    wanted: str,
+    available: List[str],
+) -> Tuple[Optional[str], str]:
+    """Подобрать точное имя из списка Comfy. Возвращает (имя|None, пояснение)."""
+    wanted = (wanted or "").strip()
+    if not wanted:
+        return None, "пустое имя LoRA"
+    if not available:
+        return None, "Comfy не отдал список LoRA (object_info) — перезапусти Comfy"
+    if wanted in available:
+        return wanted, "exact"
+    want_n = _norm_lora_key(wanted)
+    for a in available:
+        if _norm_lora_key(a) == want_n:
+            return a, "slash/case"
+    base = Path(wanted.replace("\\", "/")).name.lower()
+    matches = [
+        a for a in available if Path(str(a).replace("\\", "/")).name.lower() == base
+    ]
+    if len(matches) == 1:
+        return matches[0], "basename"
+    if len(matches) > 1:
+        # предпочесть тот же subfolder
+        want_parent = str(Path(wanted.replace("\\", "/")).parent).lower()
+        if want_parent and want_parent != ".":
+            for m in matches:
+                if str(Path(str(m).replace("\\", "/")).parent).lower() == want_parent:
+                    return m, "basename+folder"
+        return None, (
+            f"несколько LoRA с именем «{Path(wanted).name}»: "
+            + ", ".join(matches[:5])
+        )
+    # частичное: stem без пробелов/скобок (только если stem достаточно длинный)
+    stem = Path(wanted.replace("\\", "/")).stem.lower()
+    stem_compact = re.sub(r"[\s_\-()]+", "", stem)
+    soft: List[str] = []
+    for a in available:
+        a_stem = Path(str(a).replace("\\", "/")).stem.lower()
+        a_compact = re.sub(r"[\s_\-()]+", "", a_stem)
+        if stem_compact and len(stem_compact) >= 6 and a_compact == stem_compact:
+            soft.append(a)
+        elif (
+            stem_compact
+            and len(stem_compact) >= 8
+            and len(a_compact) >= 8
+            and (stem_compact in a_compact or a_compact in stem_compact)
+        ):
+            soft.append(a)
+    soft = list(dict.fromkeys(soft))
+    if len(soft) == 1:
+        return soft[0], "fuzzy-stem"
+    sample = ", ".join(available[:8])
+    more = f"… (+{len(available) - 8})" if len(available) > 8 else ""
+    return None, (
+        f"«{wanted}» нет среди {len(available)} LoRA в Comfy. "
+        f"Примеры: {sample}{more}. "
+        "Проверь models/loras и comfy_lora_scan; Comfy видит только то, что в его списке."
+    )
+
+
+def resolve_specs_for_comfy(
+    client,
+    specs: List[LoraSpec],
+) -> Tuple[List[LoraSpec], List[str], List[str]]:
+    """Вернуть (resolved_specs, notes, errors). errors непустой → не слать /prompt."""
+    if not specs:
+        return [], [], []
+    available = fetch_comfy_lora_names(client)
+    resolved: List[LoraSpec] = []
+    notes: List[str] = []
+    errors: List[str] = []
+    for spec in specs:
+        wanted = lora_comfy_path(spec)
+        name, how = resolve_lora_name_for_comfy(wanted, available)
+        if name is None:
+            errors.append(how)
+            continue
+        # разобрать subfolder/file из имени Comfy
+        parts = name.replace("\\", "/").rsplit("/", 1)
+        if len(parts) == 2:
+            sub, file = parts[0], parts[1]
+        else:
+            sub, file = "", parts[0]
+        resolved.append(
+            LoraSpec(
+                file=file,
+                strength=spec.strength,
+                trigger=spec.trigger,
+                subfolder=sub,
+            )
+        )
+        if how != "exact" or name != wanted:
+            notes.append(f"LoRA «{wanted}» → «{name}» ({how})")
+    return resolved, notes, errors
+
+
 def update_library_entry(
     config: Config,
     lora_file: str,

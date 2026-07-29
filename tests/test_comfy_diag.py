@@ -29,6 +29,15 @@ def test_registry_has_comfy_diag():
     assert build_default_registry().get("comfy_diag") is not None
 
 
+def test_verdict_lora_mismatch():
+    v, actions = _verdict(
+        ["lora_name_mismatch", "got_prompt_recent", "comfy_idle_cpu", "executor_alive"],
+        ok_ping=True,
+    )
+    assert "LoRA" in v
+    assert any("lora" in a.lower() or "LoRA" in a or "restart" in a for a in actions)
+
+
 def test_verdict_waiting_panel():
     v, actions = _verdict(["waiting_panel", "executor_alive", "comfy_idle_cpu"], ok_ping=True)
     assert "ЖДЁТ" in v or "Снять" in v

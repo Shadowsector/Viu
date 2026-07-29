@@ -49,6 +49,10 @@ _LOG_BAD = (
     "exception:",
     "killed",
     "access is denied",
+    "value not in list",
+    "prompt_outputs_failed_validation",
+    "lora_name:",
+    "failed to validate prompt",
 )
 
 
@@ -278,6 +282,10 @@ def _log_tail_analysis(config: Config, *, max_lines: int = 40) -> Tuple[str, Lis
         flags.append("log_started")
     if "got prompt" in blob:
         flags.append("got_prompt_recent")
+    if "value not in list" in blob and "lora_name" in blob:
+        flags.append("lora_name_mismatch")
+    if "prompt_outputs_failed_validation" in blob:
+        flags.append("prompt_validation_failed")
     if any(m in blob for m in _LOG_BAD):
         flags.append("log_errors")
     # «Loading» без Starting server — часто UI/custom nodes зависли при старте
@@ -509,11 +517,33 @@ def _verdict(flags: List[str], *, ok_ping: bool) -> Tuple[str, List[str]]:
             ],
         )
 
+    if "lora_name_mismatch" in f or (
+        "prompt_validation_failed" in f and "got_prompt_recent" in f
+    ):
+        return (
+            "LoRA НЕ ИЗ СПИСКА COMFY — got prompt, но 400 value_not_in_list",
+            [
+                "Имена вроде Body/….safetensors не совпали с combo Comfy (у тебя ~56 шт.)",
+                "comfy_lora_scan → выбери LoRA заново или lora: none",
+                "Если файл на диске есть, а в списке нет — comfy_ensure restart=1",
+                "Потом снова «Снять»",
+            ],
+        )
+
     if "crash_summary" in f or "log_errors" in f:
         actions = ["Читай crash в comfy_launch.log", "comfy_ensure restart=1"]
         if "stuck_loading" in f:
             actions.append("Custom nodes залипли на Loading — отключи последний node pack")
         return ("ЛОГ С ОШИБКАМИ — генерация могла упасть", actions)
+
+    if "lab_should_queue" in f and "got_prompt_recent" in f and "comfy_idle_cpu" in f:
+        return (
+            "LAB СТАВИЛ JOBS, НО COMFY ИХ ОТКЛОНИЛ — очередь пуста, CPU спокойный",
+            [
+                "Смотри ERROR в comfy_launch.log (часто LoRA / нода)",
+                "диагностика comfy ещё раз после фикса",
+            ],
+        )
 
     if "waiting_panel" in f and "executor_alive" in f:
         return (
