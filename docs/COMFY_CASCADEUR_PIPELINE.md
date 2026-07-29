@@ -58,15 +58,15 @@ idle ◄──► walk ◄──► run
 | FPS = таймлайну Cascadeur (24/30) | Произвольный FPS без сверки |
 | Короткие клипы 1–4 с на одно действие | Минута «кино» |
 
-Промпт-шаблон Вью (актуально):
+Промпт-шаблон Вью (канон Дена):
 
 ```
-simple tanned young woman, soft frontal light, pure white studio,
-full body filling frame, [ACTION + micro-motions for idle],
-+ 3 дубля ¾ (разный seed/timing) → MP4
-стоячие: 576×1024 vertical | лежачие: 1024×576 horizontal
-длина: idle ~81 кадр (~3.4с @24fps), жест ~49, переход ~65
+a fit girl with a big fake breast and perfect body is [процесс + антураж]
+Negative: Tongue out, wet hair
 ```
+
+Отдельного «Action» / «Действие» в промпте нет — только хвост после `is`.  
+Дубли ¾ (разный seed) → MP4. Стоячие: vertical | лежачие: horizontal.
 
 После генерации: выбор лучшего → `Lab/Refs/kept/` + last-frame `Lab/Refs/seeds/`  
 + `enters_from` / `exits_to` в `animation_catalog.json` и `.viu/comfy_clips.json`.

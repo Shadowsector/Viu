@@ -46,36 +46,36 @@ def test_is_prompt_show_request():
 
 
 def test_parse_wan_editor():
-    from viu.integrations.comfy.prompt_edit import _WAN_ACT_MARK, _WAN_NEG_MARK, _WAN_POS_MARK, parse_wan_editor_text
+    from viu.integrations.comfy.prompt_edit import _WAN_NEG_MARK, _WAN_POS_MARK, parse_wan_editor_text
+    from viu.integrations.comfy.prompts import SUBJECT_PREFIX
 
     raw = (
         f"{_WAN_POS_MARK}\n"
-        "nude, idle, bed\n\n"
+        f"{SUBJECT_PREFIX} lying on a bed in soft light\n\n"
         f"{_WAN_NEG_MARK}\n"
-        "blur\n\n"
-        f"{_WAN_ACT_MARK}\n"
-        "touch self slow\n"
+        "Tongue out, wet hair\n"
     )
     p = parse_wan_editor_text(raw)
-    assert "nude" in p["positive"]
-    assert "blur" in p["negative"]
-    assert "touch" in p["action"]
+    assert SUBJECT_PREFIX in p["positive"]
+    assert "Tongue out" in p["negative"]
+    assert "lying on a bed" in p["action"]
 
 
 def test_parse_edited_draft():
     from viu.integrations.comfy.prompt_edit import parse_edited_draft
+    from viu.integrations.comfy.prompts import SUBJECT_PREFIX
 
     raw = (
         "Действие: touch self on bed\n\n"
         "Промпт (MoCap ref, 5 дублей ¾, разный seed):\n"
-        "nude young woman, idle, white background\n\n"
+        f"{SUBJECT_PREFIX} touch self on bed\n\n"
         "Кадр: вертикально.\n"
-        "Negative:\nblur, text"
+        "Negative:\nTongue out, wet hair"
     )
     p = parse_edited_draft(raw)
     assert "touch self" in p["action"]
-    assert "nude young woman" in p["positive"]
-    assert "blur" in p["negative"]
+    assert SUBJECT_PREFIX in p["positive"]
+    assert "Tongue out" in p["negative"]
 
     assert parse_clip_pick_reply("лучший: front")[0] == "keep"
     d, p = parse_clip_pick_reply("лучший: side 5 отлично")
