@@ -2893,6 +2893,9 @@ class ViuGUI:
             on_pick_clips=lambda: self._open_comfy_clip_review(),
             on_open_browser=lambda: self._open_comfy_ui(),
             on_shot_queue=lambda: self._open_comfy_shot_queue(),
+            on_comfy_diag=lambda: self._run_tool(
+                "comfy_diag", {}, label="Диагностика Comfy", echo_user=True
+            ),
         )
         open_comfy_studio(self.root, self.agent.config, cb)
 
