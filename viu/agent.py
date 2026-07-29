@@ -45,6 +45,16 @@ def _json_candidate_text(text: str) -> str:
     return t.strip()
 
 
+_PSEUDO_THOUGHT_RE = re.compile(
+    r"(?im)^\s*(?:\*\*|__|#+\s*)?\s*(?:thought|thinking|inner|размышл\w*)"
+    r"\s*(?:\*\*|__)?\s*[:：]\s*(?:\*\*|__)?"
+)
+_PSEUDO_FINAL_RE = re.compile(
+    r"(?im)^\s*(?:\*\*|__|#+\s*)?\s*(?:final|answer|ответ|результат)"
+    r"\s*(?:\*\*|__)?\s*[:：]\s*(?:\*\*|__)?"
+)
+
+
 def looks_like_leaked_protocol(text: str) -> bool:
     """Сырой протокол агента не должен уходить Дену в Telegram/GUI."""
     if not (text or "").strip():
@@ -59,7 +69,52 @@ def looks_like_leaked_protocol(text: str) -> bool:
         return True
     if re.search(r'^\s*\{\s*"thought"\s*:', t):
         return True
+    # Markdown / псевдо-протокол: **thought:** … **final:** …
+    if _PSEUDO_THOUGHT_RE.search(t) or _PSEUDO_FINAL_RE.search(t):
+        return True
     return False
+
+
+def extract_pseudo_final(text: str) -> str:
+    """Вытащить видимый ответ из markdown thought/final без JSON."""
+    body = (text or "").strip()
+    if not body:
+        return ""
+    fm = list(_PSEUDO_FINAL_RE.finditer(body))
+    if fm:
+        chunk = body[fm[-1].end() :].strip()
+        tm = _PSEUDO_THOUGHT_RE.search(chunk)
+        if tm and tm.start() > 0:
+            chunk = chunk[: tm.start()].strip()
+        return _strip_pseudo_labels(chunk)
+    if _PSEUDO_THOUGHT_RE.search(body):
+        return ""
+    return ""
+
+
+def _strip_pseudo_labels(text: str) -> str:
+    """Убрать оставшиеся метки thought/final из текста."""
+    lines: list[str] = []
+    skip = False
+    for line in (text or "").splitlines():
+        if _PSEUDO_THOUGHT_RE.match(line):
+            skip = True
+            continue
+        if _PSEUDO_FINAL_RE.match(line):
+            skip = False
+            continue
+        if skip:
+            if not line.strip():
+                skip = False
+            continue
+        lines.append(line)
+    out = "\n".join(lines).strip()
+    out = re.sub(
+        r"(?is)^\s*(?:\*\*)?(?:thought|thinking)(?:\*\*)?\s*[:：].*?(?=\n\n|\Z)",
+        "",
+        out,
+    ).strip()
+    return out
 
 
 def _unescape_json_string(s: str) -> str:
@@ -97,6 +152,25 @@ def extract_loose_final(text: str) -> tuple[str, bool]:
     return _unescape_json_string("".join(chars)).strip(), closed
 
 
+def sanitize_reflect_visible(text: str) -> str:
+    """То, что можно показать Дену: без JSON и без thought/final меток."""
+    body = (text or "").strip()
+    if not body:
+        return ""
+    if looks_like_leaked_protocol(body):
+        pseudo = extract_pseudo_final(body)
+        if pseudo and not looks_like_leaked_protocol(pseudo):
+            return pseudo[:4000]
+        loose, closed = extract_loose_final(_json_candidate_text(body))
+        if loose and closed and not looks_like_leaked_protocol(loose):
+            return loose[:4000]
+        return ""
+    cleaned = _strip_pseudo_labels(body)
+    if looks_like_leaked_protocol(cleaned):
+        return ""
+    return cleaned[:4000]
+
+
 def parse_reflect_response(
     raw: str,
 ) -> tuple[Optional[str], Optional[str], bool, Optional[dict]]:
@@ -128,6 +202,13 @@ def parse_reflect_response(
     if loose_final and not closed:
         return None, None, True, None
 
+    # Markdown thought/final → только кусок после final
+    pseudo = extract_pseudo_final(body)
+    if pseudo:
+        return pseudo[:2000], None, False, None
+    if _PSEUDO_THOUGHT_RE.search(body) or _PSEUDO_FINAL_RE.search(body):
+        return None, None, True, None
+
     if looks_like_leaked_protocol(body):
         return None, None, True, None
 
@@ -137,7 +218,7 @@ def parse_reflect_response(
     return None, None, True, None
 
 
-def salvage_partial_final(raw: str, *, min_len: int = 180) -> str:
+def salvage_partial_final(raw: str, *, min_len: int = 80) -> str:
     """Если JSON оборван — вернуть осмысленный кусок final, не сырой протокол."""
     body = (raw or "").strip()
     if not body:
@@ -610,6 +691,7 @@ class Agent:
             REFLECT_LIVING_HINT,
             addresses_user_as_owner,
             claims_to_be_llm,
+            has_english_slip,
             reflect_include_story_history,
             reflect_no_history,
             reflect_no_system,
@@ -916,9 +998,23 @@ class Agent:
                 result.completed = True
                 return result
             text, thought, truncated, parsed = parse_reflect_response(raw)
-            candidate = (text or "").strip()
+            candidate = sanitize_reflect_visible(text or "")
             if not candidate and raw and raw.strip():
-                candidate = raw.strip()[:4000]
+                candidate = sanitize_reflect_visible(raw)
+            if not candidate and raw and looks_like_leaked_protocol(raw):
+                self._log(f"REFLECT_PROTOCOL_LEAK attempt={attempt}")
+                if attempt < 3:
+                    messages.append({"role": "assistant", "content": raw or ""})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Дену нельзя показывать thought/final метки. "
+                                'Только живой русский текст в JSON: {"final":"…"}'
+                            ),
+                        }
+                    )
+                    continue
             if candidate and looks_like_memory_echo(candidate):
                 self._log(f"REFLECT_MEMORY_ECHO attempt={attempt}")
                 if attempt < 3:
@@ -956,8 +1052,6 @@ class Agent:
                 # Последняя попытка — не отдавать Owner Дену.
                 fixed = re.sub(r"(?i)\bOwner\b", "Ден", candidate)
                 fixed = re.sub(r"(?i)\bUser\b", "Ден", fixed)
-                if text:
-                    text = fixed
                 candidate = fixed
             if candidate and claims_to_be_llm(candidate):
                 self._log(f"REFLECT_LLM_SLIP attempt={attempt}")
@@ -973,15 +1067,31 @@ class Agent:
                         }
                     )
                     continue
-            if text and not truncated:
-                return _accept(text, thought or "", parsed)
-            if text and truncated and attempt >= 2:
-                salvaged = salvage_partial_final(raw)
+            if candidate and has_english_slip(candidate):
+                self._log(f"REFLECT_EN_SLIP attempt={attempt}")
+                if attempt < 3:
+                    messages.append({"role": "assistant", "content": raw or ""})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Только по-русски. Без английских слов и без меток "
+                                'thought/final в тексте. {"final":"…"}'
+                            ),
+                        }
+                    )
+                    continue
+            if candidate and not truncated:
+                return _accept(candidate, thought or "", parsed)
+            if candidate and truncated and attempt >= 2:
+                salvaged = sanitize_reflect_visible(salvage_partial_final(raw))
                 if salvaged and looks_like_memory_echo(salvaged):
+                    continue
+                if salvaged and has_english_slip(salvaged):
                     continue
                 if salvaged:
                     return _accept(salvaged, "salvage", parsed, initial_truncated=True)
-                return _accept(text, thought or "", parsed, initial_truncated=True)
+                return _accept(candidate, thought or "", parsed, initial_truncated=True)
             if truncated:
                 messages.append({"role": "assistant", "content": raw or ""})
                 messages.append(
@@ -994,13 +1104,17 @@ class Agent:
                 )
                 continue
             if raw and raw.strip():
-                plain = raw.strip()[:4000]
-                return _accept(plain, "")
+                plain = sanitize_reflect_visible(raw)
+                if plain and not has_english_slip(plain):
+                    return _accept(plain, "")
             messages.append({"role": "assistant", "content": raw or "{}"})
             messages.append(
                 {
                     "role": "user",
-                    "content": '{"thought":"…","final":"ответ Дену"}',
+                    "content": (
+                        'Только русский живой ответ Дену: {"final":"…"} '
+                        "без thought/final в самом тексте."
+                    ),
                 }
             )
 

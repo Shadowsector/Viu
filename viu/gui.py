@@ -1920,6 +1920,15 @@ class ViuGUI:
         if not clean or clean.startswith("["):
             return
         role = "user" if who in ("ты", "user") else "assistant"
+        if role == "assistant":
+            try:
+                from .agent import sanitize_reflect_visible
+
+                cleaned = sanitize_reflect_visible(clean)
+                if cleaned:
+                    clean = cleaned
+            except Exception:  # noqa: BLE001
+                pass
         self._llm_turns.append({"role": role, "content": clean[:4000]})
 
     def _run_agent_reflect(
