@@ -219,13 +219,28 @@ def parse_tg_photo_payload(text: str) -> Tuple[Optional[Path], str]:
 
 
 def _resolve_assign_character(text: str) -> Optional[str]:
+    """Только явные «это ты / это Шаня» — не цеплять любое «это …»."""
     m = _ASSIGN_RE.search(text or "")
     if not m:
-        if re.search(r"(?i)\b(?:это|вот|реф|выгляд)", text or ""):
-            return resolve_character_id(text or "")
         return None
     token = next((g for g in m.groups() if g), None) or ""
-    return resolve_character_id(token) or resolve_character_id(text or "")
+    return resolve_character_id(token)
+
+
+def _caption_allows_pending_assign(body: str) -> bool:
+    """Pending «это ты» + новое фото: не жрать литературные подписи вроде суккуба."""
+    t = (body or "").strip()
+    if len(t) < 12:
+        return True
+    if _ASSIGN_RE.search(t):
+        return True
+    if re.search(
+        r"(?i)(?:запомни|референс\s+для|вот\s+я|так\s+выгляд)",
+        t,
+    ):
+        return True
+    # Длинная подпись без явного assign — смотрим, но не привязываем к Вью автоматом.
+    return False
 
 
 def _wants_look(text: str) -> bool:
@@ -471,9 +486,16 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
 
     cid = _resolve_assign_character(body) if body else None
     if not cid and new_photo:
-        cid = get_pending_character(config)
+        pending_cid = get_pending_character(config)
+        if pending_cid and _caption_allows_pending_assign(body):
+            cid = pending_cid
     if cid and new_photo:
         clear_pending_character(config)
+    elif new_photo and get_pending_character(config) and not cid:
+        # Фото пришло, но подпись не про assign — pending «это ты» не сжигаем зря,
+        # если Ден явно не отменил; сбрасываем только при явной другой теме длиннее порога.
+        if len((body or "").strip()) >= 12:
+            clear_pending_character(config)
 
     directed = bool(body) and _wants_directed_shoot(body, config)
 
