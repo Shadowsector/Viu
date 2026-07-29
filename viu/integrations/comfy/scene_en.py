@@ -93,8 +93,9 @@ def translate_scene_via_ollama(config: "Config", wish: str) -> Optional[str]:
     )
     prompt = (
         "Convert this Russian scene direction into ONE short English line "
-        "for a MoCap video prompt: pose, body action, prop/place. "
-        "No style words, no emotion, no clothing essay. "
+        "for Wan MoCap: only pose, body action, and prop/place. "
+        "Rules: full body preferred; no medium shot; no clothing essay; "
+        "no emotions/face acting; no Russian words; no 'matching reference'. "
         "Output ONLY the English line.\n\n"
         f"RU: {wish.strip()[:240]}"
     )
@@ -130,17 +131,24 @@ def scene_wish_to_en(
     """RU/смешанное описание → EN action для Wan."""
     w = (wish or "").strip()
     if not w:
-        return "relaxed medium shot, natural motion, full body"
+        return "standing relaxed, full body"
     if not has_cyrillic(w):
-        return w
+        # уже EN — подчистить medium shot для MoCap
+        from .prompts import clean_action_for_wan
+
+        return clean_action_for_wan(w)
     mapped = map_scene_heuristics(w)
     if mapped:
         return mapped
     if config is not None:
         got = translate_scene_via_ollama(config, w)
         if got:
-            return got
+            from .prompts import clean_action_for_wan
+
+            return clean_action_for_wan(got)
     # Запас: не тащить сырой русский в Wan — нейтральная поза + якорь места.
     if re.search(r"(?i)кресл", w):
         return "lounging in an armchair, relaxed full body"
-    return "young woman in the described pose, medium shot, full body, natural motion"
+    if re.search(r"(?i)пальц|мастурб|фингер|fingering|киск|вагин", w):
+        return "sitting reclined, one hand between legs, full body"
+    return "standing relaxed, weight on one leg, full body"
