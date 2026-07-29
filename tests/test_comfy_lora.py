@@ -99,6 +99,73 @@ def test_inject_loras_chains_after_unet():
     assert out["48"]["inputs"]["model"] == [lora_id, 0]
 
 
+def test_resolve_lora_name_slash_and_basename():
+    from viu.integrations.comfy.lora import resolve_lora_name_for_comfy
+
+    available = [
+        r"Body\perfectBody(perfect body).safetensors",
+        "Solo/other.safetensors",
+        "plain.safetensors",
+    ]
+    name, how = resolve_lora_name_for_comfy(
+        "Body/perfectBody(perfect body).safetensors", available
+    )
+    assert name == r"Body\perfectBody(perfect body).safetensors"
+    assert how in ("slash/case", "exact")
+
+    name2, how2 = resolve_lora_name_for_comfy("plain.safetensors", available)
+    assert name2 == "plain.safetensors"
+
+    missing, err = resolve_lora_name_for_comfy("Body/nope.safetensors", available)
+    assert missing is None
+    assert "нет среди" in err or "нет" in err
+
+
+def test_inject_loras_uses_comfy_exact_name():
+    t2v = Path(__file__).resolve().parents[1] / "viu/integrations/comfy/templates/t2v.json"
+    wf = json.loads(t2v.read_text(encoding="utf-8"))
+    specs = [
+        LoraSpec(
+            file="perfectBody(perfect body).safetensors",
+            subfolder="Body",
+            strength=0.9,
+        )
+    ]
+    available = [r"Body\perfectBody(perfect body).safetensors"]
+    out = inject_loras(wf, specs, comfy_lora_names=available)
+    lora_nodes = [
+        n
+        for n in out.values()
+        if isinstance(n, dict) and n.get("class_type") == "LoraLoaderModelOnly"
+    ]
+    assert len(lora_nodes) == 1
+    assert (
+        lora_nodes[0]["inputs"]["lora_name"]
+        == r"Body\perfectBody(perfect body).safetensors"
+    )
+
+
+def test_resolve_specs_errors_when_missing():
+    from viu.integrations.comfy.lora import resolve_specs_for_comfy
+
+    class Fake:
+        def _get(self, path):
+            return {
+                "LoraLoaderModelOnly": {
+                    "input": {
+                        "required": {
+                            "lora_name": [["a.safetensors", "b.safetensors"], {}],
+                        }
+                    }
+                }
+            }
+
+    specs = [LoraSpec(file="perfectBody(perfect body).safetensors", subfolder="Body")]
+    resolved, notes, errors = resolve_specs_for_comfy(Fake(), specs)
+    assert not resolved
+    assert errors
+
+
 def test_registry_comfy_lora_tools():
     from viu.tools import build_default_registry
 

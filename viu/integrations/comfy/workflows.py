@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from .paths import comfy_workflows_dir
 
@@ -368,11 +368,22 @@ def ensure_mp4_output(
 def inject_loras(
     workflow: Dict[str, Any],
     loras: Sequence[Union[Any, str, Dict[str, Any]]],
+    *,
+    comfy_lora_names: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
-    """Вставить цепочку LoraLoaderModelOnly между UNET и ModelSamplingSD3/KSampler."""
+    """Вставить цепочку LoraLoaderModelOnly между UNET и ModelSamplingSD3/KSampler.
+
+    comfy_lora_names — список из object_info; если задан, имена резолвятся в точные
+    значения combo (иначе Comfy отвечает 400 value_not_in_list).
+    """
     if not loras:
         return workflow
-    from .lora import LoraSpec, _parse_lora_item
+    from .lora import (
+        LoraSpec,
+        _parse_lora_item,
+        lora_comfy_path,
+        resolve_lora_name_for_comfy,
+    )
 
     specs: List[LoraSpec] = []
     for raw in loras:
@@ -383,6 +394,21 @@ def inject_loras(
             if spec is not None:
                 specs.append(spec)
     if not specs:
+        return workflow
+
+    available = [str(x) for x in (comfy_lora_names or []) if x]
+    resolved_names: List[Tuple[LoraSpec, str]] = []
+    for spec in specs:
+        wanted = lora_comfy_path(spec)
+        if available:
+            name, _how = resolve_lora_name_for_comfy(wanted, available)
+            if name is None:
+                # вызывающий должен был отфильтровать; пропускаем битые
+                continue
+            resolved_names.append((spec, name))
+        else:
+            resolved_names.append((spec, wanted))
+    if not resolved_names:
         return workflow
 
     wf = json.loads(json.dumps(workflow))
@@ -409,11 +435,8 @@ def inject_loras(
         return wf
 
     prev_out: list = list(model_ref)
-    for i, spec in enumerate(specs):
+    for i, (spec, lora_name) in enumerate(resolved_names):
         lora_id = _next_node_id(wf, 850 + i)
-        lora_name = spec.file
-        if spec.subfolder:
-            lora_name = f"{spec.subfolder}/{spec.file}"
         wf[lora_id] = {
             "class_type": "LoraLoaderModelOnly",
             "inputs": {

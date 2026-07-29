@@ -96,7 +96,39 @@ def run_single_angle(
     wf = inject_text_prompt(wf, prompt)
     wf = inject_negative_prompt(wf, negative)
     wf = inject_seed(wf, _seed_for(action, angle.id, salt=seed_salt or slug))
-    wf = inject_loras(wf, loras)
+
+    client = _client(config)
+    ok, ping = client.ping()
+    if not ok:
+        return False, ping, []
+
+    lora_note = ""
+    use_loras = list(loras or [])
+    if use_loras:
+        from .lora import resolve_specs_for_comfy
+
+        resolved, notes, errors = resolve_specs_for_comfy(client, list(use_loras))
+        if errors:
+            detail = "\n".join(f"  • {e}" for e in errors[:6])
+            return (
+                False,
+                (
+                    "LoRA не из списка Comfy — /prompt получит 400 value_not_in_list.\n"
+                    f"{detail}\n"
+                    "Сделай comfy_lora_scan, выбери LoRA заново (lora: N) или lora: none.\n"
+                    "Если файл на диске есть, а в списке Comfy нет — перезапусти Comfy "
+                    "(comfy_ensure restart=1)."
+                ),
+                [],
+            )
+        use_loras = resolved
+        if notes:
+            lora_note = "; ".join(notes[:4])
+
+    from .lora import fetch_comfy_lora_names
+
+    comfy_names = fetch_comfy_lora_names(client) if use_loras else []
+    wf = inject_loras(wf, use_loras, comfy_lora_names=comfy_names)
     if use_i2v and wf_name == "i2v":
         from .workflows import inject_end_seed_image, inject_seed_image
 
@@ -116,11 +148,6 @@ def run_single_angle(
 
     # Повторно вшить префикс: импортированные графы иногда оставляют viu_mocap.
     wf = inject_filename_prefix(wf, file_prefix)
-
-    client = _client(config)
-    ok, ping = client.ping()
-    if not ok:
-        return False, ping, []
 
     face_note = ""
     i2v_note = ""
@@ -267,6 +294,8 @@ def run_single_angle(
         note += f" [{i2v_note}]"
     if face_note:
         note += f" [{face_note}]"
+    if lora_note:
+        note += f" [{lora_note}]"
     if copy_notes:
         note += " [" + "; ".join(copy_notes[:3]) + "]"
     return True, note, saved
