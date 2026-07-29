@@ -460,6 +460,20 @@ def apply_lora_pick_decision(
     return msg + f"\nЗапускаю {mocap_take_count()} дублей ¾."
 
 
+def _preserve_chat_directed_action(session: LabSession) -> bool:
+    """Сцена из чата/GUI уже несёт EN action — не затирать каталогом."""
+    meta = session.meta or {}
+    if bool(meta.get("prompt_user_edited")) and bool(meta.get("auto_approved_shoot")):
+        reason = str(meta.get("shot_reason") or "").strip().lower()
+        if reason.startswith("chat:"):
+            return True
+        slug = str(meta.get("catalog_slug") or "").strip().lower()
+        if slug in ("chat_scene", "chat", "scene"):
+            return True
+    reason = str(meta.get("shot_reason") or "").strip().lower()
+    return reason.startswith("chat:")
+
+
 def step_generate_triple(config: Config, session: LabSession) -> StepResult:
     if session.status == "awaiting_prompt":
         return True, "Жду одобрение промпта в Telegram (ок / правки / стоп).", None
@@ -491,7 +505,14 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
 
     action = str(session.meta.get("approved_action") or session.meta.get("action") or "")
     catalog_slug = str(session.meta.get("catalog_slug") or "").strip()
-    if not catalog_slug:
+    preserve_chat = _preserve_chat_directed_action(session) and bool(action.strip())
+    if preserve_chat:
+        # Чат уже задал action; slug оставляем как есть (часто chat_scene).
+        if not catalog_slug:
+            session.meta["catalog_slug"] = "chat_scene"
+            catalog_slug = "chat_scene"
+            save_session(config, session)
+    elif not catalog_slug:
         from .comfy_director import invent_next_shot
 
         plan = invent_next_shot(config)
@@ -606,6 +627,23 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
     session.meta["clip_batch_id"] = str(results.get("slug") or "")
     session.meta["clip_candidate_ids"] = [c.id for c in clips]
     pick_msg = format_candidates_message(clips)
+
+    # Три дубля готовы — очередь/VRAM освободить. Процесс Comfy может остаться.
+    yield_note = ""
+    try:
+        from ..integrations.comfy.queue_manage import clear_comfy_queue
+
+        client = ComfyClient(base_url=str(url), timeout=8.0)
+        yield_note = clear_comfy_queue(
+            client, interrupt_running=False, free_memory=True
+        )
+        if yield_note:
+            append_journal(config, COMFY_TOPIC, f"### После тройки\n\n{yield_note}")
+            msg += "\n" + yield_note
+    except Exception as exc:
+        yield_note = f"после тройки: queue/VRAM не трогала ({exc})"
+        append_journal(config, COMFY_TOPIC, f"### После тройки\n\n{yield_note}")
+
     append_journal(config, COMFY_TOPIC, f"### Выбор дубля\n\n{pick_msg}")
     return True, msg + "\n\n" + pick_msg, None
 

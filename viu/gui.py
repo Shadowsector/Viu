@@ -2415,13 +2415,13 @@ class ViuGUI:
 
         chat_action = (action or "").strip()
         if chat_action and not auto:
-            from .lab.comfy_director import infer_slug_from_action
             from .lab.session import new_session, save_session
 
             existing = load_session(self.agent.config, COMFY_TOPIC)
             if existing is None:
                 existing = new_session(COMFY_TOPIC)
-            slug = infer_slug_from_action(chat_action) or "chat_scene"
+            # Не угадывать catalog slug — иначе sync затрёт EN-сцену idle/sit_down.
+            slug = "chat_scene"
             existing.status = "running"
             existing.step = 0
             existing.meta["shoot_intent"] = True
@@ -2430,6 +2430,7 @@ class ViuGUI:
             existing.meta["action"] = chat_action
             existing.meta["approved_action"] = chat_action
             existing.meta["catalog_slug"] = slug
+            existing.meta["shot_reason"] = "chat: directed scene"
             existing.meta["prompt_user_edited"] = True
             existing.meta.pop("lora_pick_done", None)
             existing.meta.pop("clip_batch_id", None)
