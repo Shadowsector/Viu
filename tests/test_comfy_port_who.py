@@ -46,3 +46,29 @@ def test_describe_port_listeners_with_pid(monkeypatch):
     assert "pid=4242" in text
     assert "это Comfy" in text
     assert "python_embeded" in text
+
+
+def test_already_running_summary_explains_empty_queue(monkeypatch, tmp_path):
+    from viu.config import Config
+    from viu.integrations.comfy.client import ComfyClient
+
+    cfg = Config(root=tmp_path / "Viu", data_dir=tmp_path / ".viu")
+    (tmp_path / ".viu").mkdir(parents=True)
+    monkeypatch.setattr(comfy_process, "_pids_on_port", lambda port: [])
+    monkeypatch.setattr(comfy_process, "open_comfy_browser", lambda cfg: "")
+    monkeypatch.setattr(
+        "viu.integrations.comfy.face_refs.face_swap_status_line",
+        lambda cfg, client=None: "face_swap: OK",
+    )
+    client = ComfyClient(base_url="http://127.0.0.1:8188", timeout=1.0)
+    text = comfy_process._already_running_summary(
+        cfg,
+        client,
+        ping_msg="ComfyUI OK http://127.0.0.1:8188 (running=0, pending=0)",
+        port=8188,
+        torch_line="torch=2.x CUDA=yes",
+    )
+    assert "running=0" in text
+    assert "Снять" in text or "очередь" in text.lower()
+    assert "8188" in text
+    assert "face_swap" in text

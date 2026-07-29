@@ -782,6 +782,52 @@ def _launch_and_wait_comfy(
     return ok_w, wait_msg, parts
 
 
+def _already_running_summary(
+    config: Config,
+    client: ComfyClient,
+    *,
+    ping_msg: str,
+    port: int,
+    torch_line: str = "",
+) -> str:
+    """Понятный ответ: API жив ≠ пустая очередь / нет desktop-окна."""
+    from .face_refs import face_swap_status_line
+
+    parts: List[str] = [
+        ping_msg,
+    ]
+    if torch_line:
+        parts.append(torch_line)
+    parts.append(describe_port_listeners(port))
+    parts.append(
+        "Это и есть запущенный Comfy: отдельного ComfyUI.exe часто нет — "
+        "смотри pid/python выше. Пустая очередь (running=0) нормальна, "
+        "пока не нажмёшь «Снять» на панели / MoCap."
+    )
+    browser_note = open_comfy_browser(config)
+    if browser_note:
+        parts.append(browser_note)
+    else:
+        url = str(getattr(config, "comfy_url", None) or f"http://127.0.0.1:{port}")
+        parts.append(f"UI в браузере: {url} (Студия → «Открыть ComfyUI»).")
+    try:
+        from ...lab.comfy_pipeline import COMFY_TOPIC
+        from ...lab.session import load_session
+
+        sess = load_session(config, COMFY_TOPIC)
+        if sess is not None and sess.status == "awaiting_prompt":
+            parts.append(
+                "Lab ждёт панель: Telegram → «Снять» (или снова MoCap) — "
+                "тогда появятся jobs в очереди."
+            )
+        elif sess is not None and sess.status == "awaiting_lora_pick":
+            parts.append("Lab ждёт LoRA на панели, потом «Снять».")
+    except Exception:
+        pass
+    parts.append(face_swap_status_line(config, client=client))
+    return "\n".join(parts)
+
+
 def ensure_comfy_running(
     config: Config,
     *,
@@ -876,15 +922,16 @@ def ensure_comfy_running(
                     parts_up.append(browser_note)
                 return True, "\n".join(parts_up)
             return False, "\n".join(parts_up)
-        return True, (
-            f"{msg}\ntorch={ver0} CUDA=yes\n{describe_port_listeners(port)}"
+        return True, _already_running_summary(
+            config,
+            client,
+            ping_msg=msg,
+            port=port,
+            torch_line=f"torch={ver0} CUDA=yes",
         )
     if ok:
-        from .face_refs import face_swap_status_line
-
-        return True, (
-            f"{msg}\n{describe_port_listeners(port)}\n"
-            f"{face_swap_status_line(config, client=client)}"
+        return True, _already_running_summary(
+            config, client, ping_msg=msg, port=port
         )
 
     install_note = ""
