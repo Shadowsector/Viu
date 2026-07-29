@@ -159,6 +159,83 @@ def inject_seed(workflow: Dict[str, Any], seed: int) -> Dict[str, Any]:
     return wf
 
 
+def inject_unet_name(workflow: Dict[str, Any], unet_name: str) -> Dict[str, Any]:
+    name = (unet_name or "").strip()
+    if not name:
+        return workflow
+    wf = json.loads(json.dumps(workflow))
+    for _nid, node in wf.items():
+        if not isinstance(node, dict):
+            continue
+        if node.get("class_type") != "UNETLoader":
+            continue
+        node.setdefault("inputs", {})["unet_name"] = name
+        return wf
+    return wf
+
+
+def inject_sampler_settings(
+    workflow: Dict[str, Any],
+    *,
+    steps: int | None = None,
+    cfg: float | None = None,
+    sampler_name: str | None = None,
+    scheduler: str | None = None,
+) -> Dict[str, Any]:
+    wf = json.loads(json.dumps(workflow))
+    for _nid, node in wf.items():
+        if not isinstance(node, dict):
+            continue
+        if node.get("class_type") not in ("KSampler", "KSamplerAdvanced"):
+            continue
+        inputs = node.setdefault("inputs", {})
+        if steps is not None:
+            inputs["steps"] = int(steps)
+        if cfg is not None:
+            inputs["cfg"] = float(cfg)
+        if sampler_name:
+            inputs["sampler_name"] = sampler_name
+        if scheduler:
+            inputs["scheduler"] = scheduler
+        return wf
+    return wf
+
+
+def prepare_show_workflow(
+    workflow: Dict[str, Any],
+    *,
+    filename_prefix: str = "",
+    unet_name: str = "",
+) -> Dict[str, Any]:
+    """Шоу-дубль: широкий кадр, мало steps, euler — не MoCap vertical."""
+    from .show_profile import (
+        SHOW_CFG,
+        SHOW_FPS,
+        SHOW_HEIGHT,
+        SHOW_LENGTH,
+        SHOW_SAMPLER,
+        SHOW_SCHEDULER,
+        SHOW_STEPS,
+        SHOW_WIDTH,
+    )
+
+    wf = inject_vertical_frame(
+        workflow, width=SHOW_WIDTH, height=SHOW_HEIGHT, length=SHOW_LENGTH
+    )
+    wf = inject_sampler_settings(
+        wf,
+        steps=SHOW_STEPS,
+        cfg=SHOW_CFG,
+        sampler_name=SHOW_SAMPLER,
+        scheduler=SHOW_SCHEDULER,
+    )
+    if unet_name:
+        wf = inject_unet_name(wf, unet_name)
+    prefix = (filename_prefix or "").strip() or "viu_show"
+    wf = ensure_mp4_output(wf, fps=SHOW_FPS, filename_prefix=prefix)
+    return inject_filename_prefix(wf, prefix)
+
+
 def inject_seed_image(workflow: Dict[str, Any], image_name: str) -> Dict[str, Any]:
     """Подставить эталон позы в LoadImage I2V (не трогать Viu FaceRef)."""
     name = (image_name or "").strip()

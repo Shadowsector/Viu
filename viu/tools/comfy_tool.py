@@ -495,9 +495,56 @@ class ComfyMocapTool(Tool):
             "run_all": "1",
             "reset": args.get("reset", "1"),
             "action": action,
+            "render_profile": "mocap",
             **plan_meta,
         }
         return LabStartTool().run(payload, ctx)
+
+
+class ComfyShowTool(Tool):
+    name = "comfy_show"
+    description = (
+        "Шоу-дубль: 1 красивый клип (SmoothMix если есть, иначе Wan cinematic). "
+        "Не MoCap-ref для Cascadeur. action= поза/сцена; style= realism|anime."
+    )
+    parameters = {
+        "action": "действие / поза (EN или RU) — пусто = standing relaxed",
+        "style": "realism (по умолчанию) или anime",
+        "reset": "1 = новая сессия",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.prompts import clean_action_for_wan
+        from ..integrations.comfy.show_profile import (
+            find_show_unet,
+            show_style_from_meta,
+        )
+        from .lab_tool import LabStartTool
+
+        action = str(args.get("action") or "").strip()
+        if not action or action.lower() in ("auto", "сам", "сама"):
+            action = "young woman standing relaxed, full body, soft pose"
+        action = clean_action_for_wan(action)
+        style_raw = str(args.get("style") or "realism").strip().lower()
+        style = show_style_from_meta({"show_style": style_raw})
+        unet, note = find_show_unet(ctx.config)
+        payload = {
+            "topic": "comfy",
+            "run_all": "1",
+            "reset": args.get("reset", "1"),
+            "shoot": "1",
+            "action": action,
+            "catalog_slug": "show",
+            "shot_reason": "chat: show double",
+            "render_profile": "show",
+            "show_style": style,
+        }
+        result = LabStartTool().run(payload, ctx)
+        head = (
+            f"Шоу-дубль ({style}): {note}. "
+            + ("SmoothMix ✓. " if unet else "Без SmoothMix — cinematic Wan. ")
+        )
+        return ToolResult(result.ok, head + (result.message or ""))
 
 
 class ComfyTripleTool(Tool):
