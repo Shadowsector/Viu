@@ -80,9 +80,9 @@ class CreatureCatalogShowTool(Tool):
     name = "creature_catalog_show"
     description = (
         "Показать каталог существ / классы роста / сокеты девушек. "
-        "mode=summary|pending|classes|sockets|all"
+        "mode=summary|pending|classes|sockets|all|bipeds"
     )
-    parameters = {"mode": "summary | pending | classes | sockets | all"}
+    parameters = {"mode": "summary | pending | classes | sockets | all | bipeds"}
 
     def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
         mode = str(args.get("mode") or "summary").strip().lower()
@@ -99,6 +99,10 @@ class CreatureCatalogShowTool(Tool):
         if mode == "pending":
             lines = [e.render_line() + f"  id={e.id}" for e in store.pending()]
             return ToolResult(True, "\n".join(lines) or "Очередь пуста.")
+        if mode in ("bipeds", "biped"):
+            from ..creature_catalog.biped_canon import build_queue_items, format_biped_list
+
+            return ToolResult(True, format_biped_list(build_queue_items(store)))
         if mode == "all":
             lines = [e.render_line() + f"  id={e.id}" for e in store.all()]
             return ToolResult(
@@ -106,6 +110,30 @@ class CreatureCatalogShowTool(Tool):
                 store.summary_text() + "\n\n" + ("\n".join(lines) or "(пусто)"),
             )
         return ToolResult(True, store.summary_text() + f"\nСокеты: {sock_path}")
+
+
+class CreatureBipedCanonTool(Tool):
+    name = "creature_biped_canon"
+    description = (
+        "Пачка biped → канон Humanoid (AccuRIG). "
+        "action=list|queue|ingest|guide. "
+        "girls=1 — только vagina/futa / girl-имена. "
+        "AccuRIG Вью не запускает: queue кладёт FBX в Lab/Creatures/BipedCanonQueue."
+    )
+    parameters = {
+        "action": "list | queue | ingest | guide",
+        "girls": "1 = только девки (genital/имя)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..creature_catalog.biped_canon import run_biped_canon_action
+
+        action = str(args.get("action") or "list").strip()
+        girls = str(args.get("girls") or "").lower() in ("1", "true", "yes", "devki")
+        ok, msg = run_biped_canon_action(
+            ctx.config, action=action, girls_only=girls
+        )
+        return ToolResult(ok, msg)
 
 
 class CreatureCatalogSetSizeTool(Tool):
@@ -435,6 +463,7 @@ class CreatureCatalogMergeTool(Tool):
 __all__ = [
     "CreatureCatalogScanTool",
     "CreatureCatalogShowTool",
+    "CreatureBipedCanonTool",
     "CreatureCatalogSetSizeTool",
     "CreatureCatalogAutoSizeTool",
     "CreatureDescribeTool",

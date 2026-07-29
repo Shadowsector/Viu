@@ -79,6 +79,39 @@ Comfy остаётся: дыры графа, рефы, шоу-дубли, FaceRe
 
 ---
 
+## Хвосты и jiggle
+
+**В Humanoid-слоты не кладём.** AccuRIG даёт тело; хвост/грудь/попа — secondary.
+
+| Что | Как |
+|-----|-----|
+| Хвост, уши (кости) | После AccuRIG в Blender: цепочка `Tail_*` / `Ear_*` под Hips/Spine, **вне** Humanoid map. Веса — Transfer со старого рига или авто на хвост. |
+| Jiggle (грудь, попа, мягкие ткани) | Unity: spring bones / Dynamic Bone / MagicaCloth на доп. костях. **Не** печь в walk/idle. |
+| Shape keys (morph уши/хвост) | `preserve_morphs=True` — не bake в prep. |
+| MoCap / Comfy | Хвост не снимаем MoCap’ом — физика в рантайме. |
+
+Порядок: **тело на канон → потом хвост/jiggle**, не наоборот.
+
+---
+
+## Пачка biped через Вью
+
+AccuRIG Вью **не запускает** (внешний GUI). Очередь:
+
+```text
+creature_biped_canon action=list          # все locomotion=biped
+creature_biped_canon action=queue         # → Lab/Creatures/BipedCanonQueue/
+# AccuRIG вручную → сохрани <slug>_canon.fbx в ту же папку
+creature_biped_canon action=ingest        # → Processed/<slug>/<slug>_ready.fbx
+```
+
+Чат: «бипеды канон» / «очередь biped» / «ingest biped».  
+Только девки: `girls=1` или «девки канон».
+
+Если в очереди `.blend` — сначала студия → эталон FBX, потом queue ещё раз.
+
+---
+
 ## Инструменты (рабочие)
 
 | Шаг | Инструмент |
