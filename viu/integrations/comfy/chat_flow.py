@@ -427,8 +427,16 @@ def _shoot_confirm_message(text: str) -> str:
     wish = extract_scene_wish(text)
     if wish and len(wish) >= 6:
         preview = wish if len(wish) <= 120 else wish[:117] + "…"
-        return f"Ок — делаю из рефа: {preview}\nПришлю, когда будет готово."
-    return "Ок — делаю из рефа, как сказал. Пришлю, когда будет готово."
+        return (
+            f"Ок — сцена: {preview}\n"
+            "В Telegram: ок / правки / промпт comfy, потом lora: …\n"
+            "Клип пришлю, когда будет готово."
+        )
+    return (
+        "Ок — готовлю кадр из рефа.\n"
+        "В Telegram: ок / правки / промпт comfy, потом lora: …\n"
+        "Клип пришлю, когда будет готово."
+    )
 
 
 def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:

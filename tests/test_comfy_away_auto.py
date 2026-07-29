@@ -1,10 +1,15 @@
-"""Away auto-approve for Comfy lab."""
+"""Away: Comfy ждёт промпт/LoRA в Telegram, не авто-одобряет."""
 
 from pathlib import Path
 from unittest.mock import patch
 
 from viu.config import Config
-from viu.lab.comfy_pipeline import COMFY_TOPIC, step_draft_prompt, step_request_approval
+from viu.lab.comfy_pipeline import (
+    COMFY_TOPIC,
+    step_draft_prompt,
+    step_request_approval,
+    step_request_lora_pick,
+)
 from viu.lab.session import load_session, new_session, save_session
 from viu.presence import MODE_AWAY, set_presence
 
@@ -23,24 +28,61 @@ def _cfg(tmp_path: Path, monkeypatch) -> Config:
     )
 
 
-def test_away_auto_approves_comfy(tmp_path, monkeypatch):
+def test_away_waits_for_prompt_in_telegram(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     set_presence(cfg, MODE_AWAY)
     session = new_session(COMFY_TOPIC)
     session.steps_total = 8
     session.step = 3
     session.meta["action"] = "walking forward at a calm pace"
+    session.meta["shoot_intent"] = True
     session.status = "running"
     save_session(cfg, session)
 
     ok, msg, _ = step_draft_prompt(cfg, session)
     assert ok
-    with patch("viu.lab.comfy_pipeline.send_prompt_for_approval") as send:
+    with patch(
+        "viu.lab.comfy_pipeline.send_prompt_for_approval",
+        return_value=(True, "Промпт ушёл в Telegram — жду ок / правки / стоп."),
+    ) as send:
         ok2, msg2, _ = step_request_approval(cfg, session)
     assert ok2
-    send.assert_not_called()
+    send.assert_called_once()
     loaded = load_session(cfg, COMFY_TOPIC)
     assert loaded is not None
-    assert loaded.meta.get("approved") is True
-    assert loaded.status == "running"
-    assert "сама одобрила" in msg2.lower() or "away" in msg2.lower() or "Нет дома" in msg2
+    assert loaded.status == "awaiting_prompt"
+    assert loaded.meta.get("approved") is False
+    assert "телеграм" in msg2.lower() or "жду" in msg2.lower()
+
+
+def test_away_asks_lora_via_telegram(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, monkeypatch)
+    set_presence(cfg, MODE_AWAY)
+    session = new_session(COMFY_TOPIC)
+    session.status = "running"
+    session.step = 4
+    session.meta["approved"] = True
+    session.meta["action"] = "idle stand"
+    session.meta["lora_last_pick"] = [1]
+    save_session(cfg, session)
+
+    fake_entries = [type("E", (), {"index": 1, "file": "x.safetensors"})()]
+
+    with patch(
+        "viu.integrations.comfy.lora.scan_loras",
+        return_value=fake_entries,
+    ), patch(
+        "viu.integrations.comfy.lora.format_lora_pick_message",
+        return_value="lora list",
+    ), patch(
+        "viu.integrations.comfy.lora.format_lora_pick_telegram",
+        return_value=["1. x.safetensors"],
+    ):
+        ok, msg, _ = step_request_lora_pick(cfg, session)
+
+    assert ok
+    loaded = load_session(cfg, COMFY_TOPIC)
+    assert loaded is not None
+    assert loaded.status == "awaiting_lora_pick"
+    assert not loaded.meta.get("lora_pick_done")
+    assert "lora" in msg.lower()
