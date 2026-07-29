@@ -1,6 +1,7 @@
 # Направление работ сейчас (канон для Вью и Дена)
 
-Обновлено: 2026-07-17. Читай вместе с `COMFY_CASCADEUR_PIPELINE.md`, `CREATURE_PIPELINE.md`, `INTERACTION_PIPELINE.md`, `SHANYA_ANIMATIONS.md`.
+Обновлено: 2026-07-29. Читай вместе с `ANIMATION_CANON.md`, `COMFY_CASCADEUR_PIPELINE.md`,
+`CREATURE_PIPELINE.md`, `INTERACTION_PIPELINE.md`, `SHANYA_ANIMATIONS.md`.
 
 ## Цель пайплайна анимаций
 
@@ -9,16 +10,19 @@
 - **Переходы** (`sit_down`, `stand_up`, `lie_down`, `get_up`) — one-shot, не loop.
 - **Циклы** (`idle`, `sit_idle`, `sleep_idle`, `walk`, `run`) — **обязательно loopable**
   (первый и последний кадр стыкуются; иначе клип бессмысленен для Animator).
-- Comfy снимает **дыру графа** (`catalog_slug` + `enters_from`/`exits_to`), не «Idle Stand» от скуки.
+- Клипы **сначала** на канон-риге (Mixamo / ActorCore / Blender / Control Pose).
+  **Cascadeur = полировка**, не обязательный Video MoCap (см. `ANIMATION_CANON.md`).
+- Comfy — дыры графа, рефы, шоу; не единственный источник скелета.
 - Пока есть дыры wave 1 кроме `idle` — **не снимать idle**.
 
 ## Куда класть файлы
 
 | Что | Куда |
 |-----|------|
-| Кандидаты MoCap (копия из Comfy) | `U:\Anabarra\Library\Lab\Refs\` |
+| Кандидаты Comfy / рефы | `U:\Anabarra\Library\Lab\Refs\` |
 | Одобренные | `Lab\Refs\kept\` + seed PNG в `seeds\` |
 | Сырой вывод ComfyUI | `U:\Viu\ComfyUI\output\` — **промежуточный**; Вью копирует в Refs |
+| Канон-тела (чистый FBX) | `Lab\Models\CascadeurReady\` |
 | Готовые FBX | `U:\Anabarra\Animations\` |
 
 Native Comfy всегда пишет в свой `output/` — Вью **обязана** скопировать в Lab/Refs и работать оттуда.
@@ -33,13 +37,15 @@ Native Comfy всегда пишет в свой `output/` — Вью **обяз
 
 ## Очередь работ (приоритет)
 
-1. Comfy → **Refs** + граф без idle-спама + looped idle/walk  
-2. Влить Cascadeur MoCap (kept → Reference → export)  
-3. Morph-инвентарь существ (без bake)  
-4. Сокеты Шани в Unity **или** Animator по графу wave 1  
-5. I2V-очередь; NSFW Comfy-очередь  
-6. Хвост/щупальца — secondary physics, не MoCap-first (Шняк — Blender/procedural)
-7. **Совместные анимации** — `INTERACTION_PIPELINE.md`, пилот `shanya_wolf_approach`
+1. **Канон biped** (AccuRIG/Mixamo → Unity Humanoid) + wave 1 клипы из библиотеки  
+2. (Опц.) лёгкая правка лиц героев **до** финального бинда (`ANIMATION_CANON.md`)  
+3. Comfy → Refs / граф / шоу — по дырам, без ставки на Cascadeur MoCap  
+4. Cascadeur — полировка клипов, которые уже играют на каноне  
+5. Quad-шаблон + Control Pose (волк; пилот interaction)  
+6. Morph-инвентарь существ (без bake)  
+7. Сокеты Шани / Animator по графу wave 1  
+8. Хвост/щупальца — secondary physics  
+9. Совместные анимации — `INTERACTION_PIPELINE.md`, пилот `shanya_wolf_approach`
 
 ## Как Вью общается
 
