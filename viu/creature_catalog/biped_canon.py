@@ -188,33 +188,27 @@ def format_biped_list(items: List[BipedQueueItem]) -> str:
 
 
 def _accurig_readme() -> str:
-    return f"""Biped → канон Humanoid (AccuRIG), пачкой
-========================================
+    return f"""Перериг biped — простыми словами
+===============================
 
-1) Для каждого *.fbx в этой папке:
-   - Открой AccuRIG 2 (бесплатно, Reallusion)
-   - Rig Body → проверь маркеры суставов (A/T-pose)
-   - Export FBX, Target = Unity (или Blender)
-   - Сохрани как:  <slug>_canon.fbx   (slug = имя файла без суффикса)
+Полная памятка: docs/BIPED_RERIG_SIMPLE.md
 
-2) Хвосты / грудь / jiggle — НЕ в Humanoid:
-   - AccuRIG обычно оставляет только тело. Хвост/уши/jiggle-кости
-     после бинда верни в Blender: цепочка Tail_* под Hips/Spine
-     (вне слотов Humanoid). Веса хвоста — Transfer со старого рига
-     или авто на хвост-меш.
-   - В Unity: spring bones / Dynamic Bone / MagicaCloth на Tail_*,
-     Breast_* — secondary physics. В walk/idle jiggle НЕ печём.
+1) Открой AccuRIG 2 (бесплатная программа Reallusion — не Вью).
+2) Для каждого .fbx в ЭТОЙ папке:
+   - Rig Body, проверь позу (руки в стороны или A-pose)
+   - Export FBX, цель Unity
+   - Имя файла:  ИМЯ_МОДЕЛИ_canon.fbx
+     пример: goblin_girl.fbx → goblin_girl_canon.fbx
+   - Сохрани СЮДА ЖЕ
+3) В чате Вью напиши:  ingest biped
 
-3) Morphs (уши/хвост shape keys): preserve — не bake в prep.
+Хвост / грудь-jiggle: после перерига, отдельные кости + физика в Unity.
+Не часть «человеческого» скелета.
 
-4) После AccuRIG:
-   В чате Вью:  creature_biped_canon action=ingest
-   (подхватит *_canon.fbx → Processed/<slug>/<slug>_ready.fbx)
+Органы (penis): всем biped, в покое scale кости ≈ 0 (спрятан в теле).
+В каталоге: creature_biped_canon action=mark_genital
 
-5) Проверка: rig_check blend_file=… или FBX в Blender → Unity Humanoid Apply.
-
-Канон: docs/ANIMATION_CANON.md
-Очередь создана: {time.strftime("%Y-%m-%d %H:%M")}
+Создано: {time.strftime("%Y-%m-%d %H:%M")}
 """
 
 
@@ -354,6 +348,52 @@ def guide_text() -> str:
     )
 
 
+def mark_biped_genital(
+    store: CreatureCatalogStore,
+    *,
+    girls_only: bool = False,
+) -> Tuple[int, str]:
+    """Всем biped: penis (или futa если уже vagina), genital_rig=pending, flaccid.
+
+    Меш не трогаем — только каталог. Прикрутка prefab + scale-hide — в студии.
+    """
+    n = 0
+    lines: List[str] = []
+    for e in list_bipeds(store, girls_only=girls_only):
+        old_g = (e.genital_profile or "none").strip().lower() or "none"
+        if old_g in ("vagina", "futa"):
+            new_g = "futa"
+        elif old_g == "penis":
+            new_g = "penis"
+        else:
+            new_g = "penis"
+        e.genital_profile = new_g
+        e.nsfw_capable = True
+        e.flaccid_default = True
+        if (e.genital_rig or "").strip().lower() in ("", "none"):
+            e.genital_rig = "pending"
+        note = (
+            "[genital] hidden penis (scale~0 на кости); "
+            f"profile={new_g}; rig={e.genital_rig}"
+        )
+        if note.split(";")[0] not in (e.notes or ""):
+            e.notes = ((e.notes or "").rstrip() + "\n" + note).strip()
+        if "hidden_penis" not in (e.tags or []):
+            e.tags = list(e.tags or []) + ["hidden_penis"]
+        n += 1
+        lines.append(f"  {e.slug}: {old_g} → {new_g}, genital_rig={e.genital_rig}")
+    if n:
+        store.save()
+    head = (
+        f"Помечено biped: {n}.\n"
+        "В каталоге: penis/futa, flaccid_default, genital_rig=pending.\n"
+        "Дальше в Blender/Wardrobe: прикрутить эталон penis к тазу, "
+        "покой = scale кости ≈ 0; показ = scale вверх.\n"
+        "См. docs/BIPED_RERIG_SIMPLE.md\n"
+    )
+    return n, head + "\n".join(lines[:50])
+
+
 def run_biped_canon_action(
     config: Config,
     *,
@@ -362,7 +402,12 @@ def run_biped_canon_action(
 ) -> Tuple[bool, str]:
     store = CreatureCatalogStore(creature_catalog_path(config)).load()
     act = (action or "list").strip().lower()
-    if act in ("guide", "help", "how"):
+    if act in ("guide", "help", "how", "lamer", "просто"):
+        from pathlib import Path as _P
+
+        simple = _P(__file__).resolve().parents[2] / "docs" / "BIPED_RERIG_SIMPLE.md"
+        if simple.is_file():
+            return True, simple.read_text(encoding="utf-8")
         return True, guide_text()
     if act in ("list", "show", "bipeds"):
         items = build_queue_items(store, girls_only=girls_only)
@@ -375,4 +420,10 @@ def run_biped_canon_action(
     if act in ("ingest", "import", "land"):
         n, msg = ingest_canon_fbx(config, store)
         return n > 0, msg
-    return False, f"Неизвестное action={action}. list | queue | ingest | guide"
+    if act in ("mark_genital", "genital", "organs", "penis_all"):
+        n, msg = mark_biped_genital(store, girls_only=girls_only)
+        return n > 0, msg
+    return (
+        False,
+        f"Неизвестное action={action}. list | queue | ingest | mark_genital | guide",
+    )

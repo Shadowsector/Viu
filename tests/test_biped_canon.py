@@ -117,11 +117,30 @@ def test_format_list_mentions_tail(tmp_path):
     assert "хвост" in text.lower() or "tail" in text.lower()
 
 
+def test_mark_genital(tmp_path):
+    from viu.creature_catalog.biped_canon import mark_biped_genital
+
+    cfg, store = _store_with_bipeds(tmp_path)
+    n, msg = mark_biped_genital(store)
+    assert n == 2
+    assert "futa" in msg or "penis" in msg
+    store2 = CreatureCatalogStore(creature_catalog_path(cfg)).load()
+    g = next(e for e in store2.all() if e.slug == "goblin_girl")
+    o = next(e for e in store2.all() if e.slug == "orc_dude")
+    assert g.genital_profile == "futa"
+    assert o.genital_profile == "penis"
+    assert g.genital_rig == "pending"
+    assert g.flaccid_default is True
+    assert "hidden_penis" in g.tags
+
+
 def test_tool_guide_and_alias(tmp_path):
     reg = build_default_registry()
     assert "creature_biped_canon" in reg.names()
     parsed = parse_direct_tool_command("бипеды канон", reg)
     assert parsed == ("creature_biped_canon", {"action": "list"})
+    parsed2 = parse_direct_tool_command("органы biped", reg)
+    assert parsed2 == ("creature_biped_canon", {"action": "mark_genital"})
     ok, msg = run_biped_canon_action(_cfg(tmp_path), action="guide")
     assert ok
-    assert "AccuRIG" in msg
+    assert "ламера" in msg.lower() or "AccuRIG" in msg or "очередь" in msg.lower()

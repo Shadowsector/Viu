@@ -116,12 +116,13 @@ class CreatureBipedCanonTool(Tool):
     name = "creature_biped_canon"
     description = (
         "Пачка biped → канон Humanoid (AccuRIG). "
-        "action=list|queue|ingest|guide. "
+        "action=list|queue|ingest|mark_genital|guide. "
+        "mark_genital — всем biped penis/futa + pending (спрятан scale~0). "
         "girls=1 — только vagina/futa / girl-имена. "
-        "AccuRIG Вью не запускает: queue кладёт FBX в Lab/Creatures/BipedCanonQueue."
+        "Простая инструкция: docs/BIPED_RERIG_SIMPLE.md или action=guide."
     )
     parameters = {
-        "action": "list | queue | ingest | guide",
+        "action": "list | queue | ingest | mark_genital | guide",
         "girls": "1 = только девки (genital/имя)",
     }
 
