@@ -444,12 +444,12 @@ def _shoot_confirm_message(text: str) -> str:
         preview = wish if len(wish) <= 120 else wish[:117] + "…"
         return (
             f"Ок — сцена: {preview}\n"
-            "В Telegram: ок / правки / промпт comfy, потом lora: …\n"
+            "Поднимаю Comfy. В Telegram — черновик и LoRA (можно сменить).\n"
             "Клип пришлю, когда будет готово."
         )
     return (
         "Ок — готовлю кадр из рефа.\n"
-        "В Telegram: ок / правки / промпт comfy, потом lora: …\n"
+        "Поднимаю Comfy. В Telegram — черновик и LoRA (можно сменить).\n"
         "Клип пришлю, когда будет готово."
     )
 
