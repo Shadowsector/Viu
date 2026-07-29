@@ -540,7 +540,11 @@ class ViuGUI:
         header.pack(anchor="w", padx=10, pady=(10, 2))
         ttk.Label(
             frame,
-            text="Сейчас главное — «Тело Шани». Comfy/Cascadeur на паузе (docs/NOW.md).",
+            text=(
+                "Сейчас: «Тело Шани» + блок «Девушки — риг и шоу». "
+                "Наведи на кнопку — длинная подсказка. "
+                "Comfy MoCap / Cascadeur lab на паузе."
+            ),
             wraplength=240,
             justify="left",
             font=("Segoe UI", 8),
@@ -740,7 +744,14 @@ class ViuGUI:
             tw = tk.Toplevel(widget)
             tw.wm_overrideredirect(True)
             tw.wm_geometry(f"+{widget.winfo_rootx() + 20}+{widget.winfo_rooty() + 24}")
-            lbl = ttk.Label(tw, text=text, padding=6, relief="solid")
+            lbl = ttk.Label(
+                tw,
+                text=text,
+                padding=8,
+                relief="solid",
+                wraplength=320,
+                justify="left",
+            )
             lbl.pack()
             tip["win"] = tw
 
@@ -1030,6 +1041,12 @@ class ViuGUI:
             return
         if action.tool == "__creature_catalog__":
             self._open_creature_catalog()
+            return
+        if action.tool == "__biped_canon_hub__":
+            self._open_biped_canon_hub()
+            return
+        if action.tool == "__open_biped_queue__":
+            self._open_biped_queue_folder()
             return
         if action.tool == "__characters_vision__":
             self._open_characters_vision()
@@ -1410,6 +1427,104 @@ class ViuGUI:
             tag="sys",
         )
         self.root.after(0, lambda: open_reference_review(self.root, cfg))
+
+    def _open_biped_queue_folder(self) -> None:
+        """Проводник на Lab/Creatures/BipedCanonQueue."""
+        from .creature_catalog.biped_canon import biped_canon_queue_dir
+        from .places import _open_path
+
+        folder = biped_canon_queue_dir(self.agent.config)
+        ok, msg = _open_path(folder)
+        if ok:
+            self._append(
+                "система",
+                f"Папка AccuRIG-очереди:\n{folder}\n"
+                "Сохраняй экспорт как slug_canon.fbx сюда, потом «Забрать канон».",
+                tag="sys",
+            )
+        else:
+            self._append("система", f"Не открыла папку: {msg}", tag="sys")
+
+    def _open_biped_canon_hub(self) -> None:
+        """Окно для ламера: шаги перерига / NSFW / шоу."""
+        win = tk.Toplevel(self.root)
+        win.title("Девушки — риг, органы, шоу")
+        win.geometry("520x640")
+        win.transient(self.root)
+
+        head = ttk.Label(
+            win,
+            text="Простыми словами",
+            font=("Segoe UI", 12, "bold"),
+        )
+        head.pack(anchor="w", padx=12, pady=(12, 4))
+
+        intro = (
+            "Цель: у всех девок один скелет (как у Unity), общие анимации, "
+            "органы спрятаны (scale≈0), 6 мишеней для NSFW, "
+            "и отдельно — красивый шоу-клип SmoothMix (не MoCap).\n\n"
+            "Порядок: 1 список → 2 органы в каталог → 3 папка → "
+            "4 AccuRIG руками → 5 забрать канон → 6 мишени. "
+            "Шоу — когда захочешь красивый дубль."
+        )
+        ttk.Label(win, text=intro, wraplength=480, justify="left").pack(
+            anchor="w", padx=12, pady=(0, 8)
+        )
+
+        canvas = tk.Canvas(win, highlightthickness=0)
+        scroll = ttk.Scrollbar(win, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas)
+        inner.bind(
+            "<Configure>",
+            lambda _e: canvas.configure(scrollregion=canvas.bbox("all")),
+        )
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=(0, 12))
+        scroll.pack(side="right", fill="y", pady=(0, 12), padx=(0, 8))
+
+        from .gui_actions import GUI_ACTIONS
+
+        hub_ids = (
+            "biped_list_girls",
+            "biped_mark_genital",
+            "biped_queue_girls",
+            "biped_open_queue",
+            "biped_ingest",
+            "biped_sockets",
+            "biped_guide",
+            "show_double",
+            "show_double_anime",
+        )
+        by_id = {a.action_id: a for a in GUI_ACTIONS}
+        for aid in hub_ids:
+            action = by_id.get(aid)
+            if action is None:
+                continue
+            row = ttk.Frame(inner)
+            row.pack(fill="x", pady=6, padx=4)
+            btn = ttk.Button(
+                row,
+                text=action.label,
+                command=lambda a=action, w=win: (
+                    w.destroy(),
+                    self._on_action(a),
+                ),
+            )
+            btn.pack(fill="x")
+            if action.hint:
+                ttk.Label(
+                    row,
+                    text=action.hint,
+                    wraplength=460,
+                    justify="left",
+                    font=("Segoe UI", 8),
+                    foreground="#666666",
+                ).pack(anchor="w", pady=(2, 0))
+
+        ttk.Button(win, text="Закрыть", command=win.destroy).pack(
+            side="bottom", pady=8
+        )
 
     def _open_creature_catalog(self) -> None:
         """Скан Inbox → авто по именам → окно кнопок размеров."""
