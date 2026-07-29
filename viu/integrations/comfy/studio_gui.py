@@ -23,6 +23,7 @@ class ComfyStudioCallbacks:
     on_pick_clips: Callable[[], None]
     on_open_browser: Callable[[], None]
     on_shot_queue: Optional[Callable[[], None]] = None
+    on_comfy_diag: Optional[Callable[[], None]] = None
 
 
 def _strip_md_bold(text: str) -> str:
@@ -258,6 +259,10 @@ def open_comfy_studio(
     ttk.Button(btn_row, text="Поднять ComfyUI", command=callbacks.on_ensure_comfy).pack(
         side="left", padx=(8, 0)
     )
+    if callbacks.on_comfy_diag is not None:
+        ttk.Button(btn_row, text="Диагностика", command=callbacks.on_comfy_diag).pack(
+            side="left", padx=(8, 0)
+        )
     ttk.Button(btn_row, text="MoCap: снять клип", command=callbacks.on_mocap_shoot).pack(
         side="left", padx=(8, 0)
     )

@@ -191,6 +191,39 @@ class ComfyEnsureTool(Tool):
         return ToolResult(ok, msg)
 
 
+class ComfyDiagTool(Tool):
+    name = "comfy_diag"
+    description = (
+        "Жёсткая диагностика Comfy: pid/CPU/RAM на :8188, скорость UI/object_info, "
+        "живой ли /prompt, хвост лога, вердикт. Когда «OK» но генерации нет / окно пустое."
+    )
+    parameters = {
+        "sample": "секунд замера CPU процесса (по умолчанию 1.2)",
+        "no_probe": "1 — не слать тестовый /prompt",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.comfy.comfy_diag import format_comfy_diag
+
+        try:
+            sample = float(args.get("sample") or 1.2)
+        except (TypeError, ValueError):
+            sample = 1.2
+        no_probe = str(args.get("no_probe") or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        report = format_comfy_diag(
+            ctx.config,
+            sample_sec=max(0.0, min(sample, 5.0)),
+            probe_prompt=not no_probe,
+        )
+        dead = "ВЕРДИКТ: МЁРТВ" in report
+        return ToolResult(not dead, report)
+
+
 class ComfyReactorFixTool(Tool):
     name = "comfy_reactor_fix"
     description = (
