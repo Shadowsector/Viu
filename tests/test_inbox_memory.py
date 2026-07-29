@@ -62,7 +62,61 @@ def test_extract_remember_payload() -> None:
     assert extract_remember_payload("запомни: я не писал промпты для Wan") == (
         "я не писал промпты для Wan"
     )
+    assert extract_remember_payload("запомни, что Inbox не должен пустеть") == (
+        "Inbox не должен пустеть"
+    )
     assert extract_remember_payload("привет") is None
+
+
+def test_remember_with_conversation_context(tmp_path: Path, monkeypatch) -> None:
+    from viu.config import Config
+    from viu.viu_memory import (
+        remember_needs_context,
+        resolve_remember_payload,
+    )
+
+    monkeypatch.setenv("VIU_ROOT", str(tmp_path / "Viu"))
+    root = tmp_path / "Viu"
+    root.mkdir()
+    cfg = Config(root=root, data_dir=root / ".viu").ensure_dirs()
+
+    assert remember_needs_context("этот квест")
+    assert remember_needs_context("это")
+    assert not remember_needs_context(
+        "Inbox не должен пустеть при zip-апдейте никогда"
+    )
+
+    history = [
+        {"role": "user", "content": "Квест: найти домового в сарае до заката."},
+        {
+            "role": "assistant",
+            "content": "Ок, квест «Домовой в сарае»: найти его до заката, награда — ключ.",
+        },
+        {"role": "user", "content": "И Оля боится туда идти одна."},
+        {
+            "role": "assistant",
+            "content": "Запомнила: Оля не идёт в сарай без поддержки.",
+        },
+    ]
+    payload = resolve_remember_payload(
+        cfg,
+        "запомни этот квест",
+        history=history,
+        assistant_text="Хорошо, держу квест про домового в памяти.",
+    )
+    assert payload is not None
+    assert "домового" in payload.lower() or "сарай" in payload.lower()
+    assert "запомни" not in payload.lower()
+
+    process_reflect_exchange(
+        cfg,
+        "запомни этот квест",
+        "Хорошо, держу квест про домового в памяти.",
+        history=history,
+    )
+    text = read_viu_memory(cfg)
+    assert "домового" in text.lower() or "сарай" in text.lower()
+    assert _SECTION_EXPLICIT in text
 
 
 def test_viu_memory_explicit_and_summary(tmp_path: Path, monkeypatch) -> None:

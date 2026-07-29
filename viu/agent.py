@@ -948,7 +948,11 @@ class Agent:
                     from .viu_memory import process_reflect_exchange
 
                     process_reflect_exchange(
-                        self.config, user_text, full, source="chat"
+                        self.config,
+                        user_text,
+                        full,
+                        source="chat",
+                        history=hist,
                     )
                 except OSError:
                     pass
@@ -1282,7 +1286,11 @@ class Agent:
                 from .viu_memory import process_reflect_exchange
 
                 process_reflect_exchange(
-                    self.config, user_text, full, source="chat"
+                    self.config,
+                    user_text,
+                    full,
+                    source="chat",
+                    history=hist,
                 )
             except OSError:
                 pass
