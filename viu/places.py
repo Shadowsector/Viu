@@ -161,6 +161,7 @@ def all_places() -> List[Place]:
         creatures_lineup_dir,
         creatures_processed_dir,
     )
+    from .creature_catalog.biped_canon import biped_canon_queue_dir
     from .inbox_layout import (
         inbox_animations_dir,
         inbox_ais_assets_dir,
@@ -341,6 +342,14 @@ def all_places() -> List[Place]:
             "Выходы",
             "Обработанные модели существ.",
             creatures_processed_dir,
+        ),
+        Place(
+            "biped_canon_queue",
+            "Очередь AccuRIG (biped)",
+            "folder",
+            "Выходы",
+            "Папка для перерига девок: сюда queue, отсюда *_canon.fbx → ingest.",
+            biped_canon_queue_dir,
         ),
         # --- Редакторы / данные ---
         Place(

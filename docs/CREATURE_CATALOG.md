@@ -35,6 +35,17 @@
 
 ---
 
+## Biped перериг + спрятанный penis (просто)
+
+Памятка для Дена: **[`BIPED_RERIG_SIMPLE.md`](./BIPED_RERIG_SIMPLE.md)**.
+
+Кратко: `бипеды канон` → `очередь biped` → AccuRIG вручную → `ingest biped`.  
+Всем biped органы: `органы biped` / `creature_biped_canon action=mark_genital`  
+(в каталоге futa/penis + pending; прикрутка — кнопки в Studio / панель Viu;  
+покой = scale кости ≈ 0).
+
+---
+
 ## Технически про линейку
 
 - Дедуп имён (`.blend` предпочтительнее `.fbx`).

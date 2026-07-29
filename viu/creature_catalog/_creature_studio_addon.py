@@ -2,10 +2,10 @@
 bl_info = {
     "name": "Viu Creature Studio",
     "author": "Viu",
-    "version": (0, 3, 6),
+    "version": (0, 3, 7),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Viu",
-    "description": "Разметка, рост vs Шаня, скрины, эталон FBX",
+    "description": "Разметка, рост vs Шаня, NSFW-кости, эталон FBX",
     "category": "Animation",
 }
 
@@ -662,6 +662,122 @@ class VIU_OT_StudioApplyMarkup(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def _creature_armature():
+    root, objs = _resolve_creature()
+    if root is None:
+        return None, "Нет VIU_CREATURE_ROOT — перезагрузи существо"
+    pool = S.gather_under_root(root)
+    shanya = _STATE.get("shanya_root") or bpy.data.objects.get("VIU_SHANYA_ROOT")
+    if shanya is not None:
+        ban = set(S.gather_under_root(shanya))
+        pool = [o for o in pool if o not in ban]
+    arm = S._pick_armature(pool)
+    if arm is None:
+        return None, "Нет арматуры у существа"
+    return arm, ""
+
+
+def _mark_genital_attached(entry: dict, note: str = "") -> None:
+    if not entry:
+        return
+    extra = {"genital_rig": "attached"}
+    if note:
+        extra["nsfw_attach_note"] = note[:240]
+    S.write_feedback_file(_feedback_path(), entry, **extra)
+
+
+class VIU_OT_StudioPlaceSockets(bpy.types.Operator):
+    bl_idname = "viu.studio_place_sockets"
+    bl_label = "Поставить 6 мишеней"
+    bl_description = (
+        "Empty socket_oral / vaginal / anal / hand_l / hand_r / cleavage "
+        "на костях. Потом подвинь шарики если криво."
+    )
+
+    def execute(self, context):
+        entry = _current_entry()
+        arm, err = _creature_armature()
+        if arm is None:
+            self.report({"ERROR"}, err)
+            return {"CANCELLED"}
+        ok, msg, _ = S.ensure_girl_aim_sockets(arm)
+        if not ok:
+            self.report({"ERROR"}, msg)
+            return {"CANCELLED"}
+        _mark_genital_attached(entry, msg)
+        self.report({"INFO"}, msg)
+        return {"FINISHED"}
+
+
+class VIU_OT_StudioAttachPenis(bpy.types.Operator):
+    bl_idname = "viu.studio_attach_penis"
+    bl_label = "Прикрутить penis (спрятан)"
+    bl_description = (
+        "Кости Penis_01..03 на Hips. В покое scale≈0 (не прозрачность). "
+        "Подвинь цепочку в Pose/Edit если надо."
+    )
+
+    def execute(self, context):
+        entry = _current_entry()
+        arm, err = _creature_armature()
+        if arm is None:
+            self.report({"ERROR"}, err)
+            return {"CANCELLED"}
+        ok, msg = S.ensure_penis_bone_chain(arm, hide=True)
+        if not ok:
+            self.report({"ERROR"}, msg)
+            return {"CANCELLED"}
+        _mark_genital_attached(entry, msg)
+        self.report({"INFO"}, msg)
+        return {"FINISHED"}
+
+
+class VIU_OT_StudioVaginalHelpers(bpy.types.Operator):
+    bl_idname = "viu.studio_vaginal_helpers"
+    bl_label = "Кости вагины (деформ)"
+    bl_description = (
+        "Vagina_L / Vagina_R у таза — мнут меш. Это не мишени aim "
+        "(мишени — кнопка «6 мишеней»)."
+    )
+
+    def execute(self, context):
+        entry = _current_entry()
+        arm, err = _creature_armature()
+        if arm is None:
+            self.report({"ERROR"}, err)
+            return {"CANCELLED"}
+        ok, msg = S.ensure_vaginal_helper_bones(arm)
+        if not ok:
+            self.report({"ERROR"}, msg)
+            return {"CANCELLED"}
+        _mark_genital_attached(entry, msg)
+        self.report({"INFO"}, msg)
+        return {"FINISHED"}
+
+
+class VIU_OT_StudioNsfwAll(bpy.types.Operator):
+    bl_idname = "viu.studio_nsfw_all"
+    bl_label = "Всё NSFW сразу"
+    bl_description = (
+        "6 мишеней + penis (scale≈0) + Vagina_L/R. "
+        "Потом поправь расположение глазами — Вью ставит грубо."
+    )
+
+    def execute(self, context):
+        entry = _current_entry()
+        arm, err = _creature_armature()
+        if arm is None:
+            self.report({"ERROR"}, err)
+            return {"CANCELLED"}
+        ok, msg = S.ensure_nsfw_attach_all(arm, hide_penis=True)
+        if not ok:
+            self.report({"ERROR"}, msg)
+            return {"CANCELLED"}
+        _mark_genital_attached(entry, msg)
+        self.report({"INFO"}, msg[:250])
+        return {"FINISHED"}
+
+
 class VIU_OT_StudioApplyHeight(bpy.types.Operator):
     bl_idname = "viu.studio_apply_height"
     bl_label = "Применить рост"
@@ -1015,6 +1131,15 @@ class VIU_PT_CreatureStudio(bpy.types.Panel):
         layout.label(text="(мимик/язык, щуп., лапы). Не всем biped")
         layout.operator("viu.studio_apply_markup", icon="CHECKMARK")
         layout.separator()
+        layout.label(text="1б. NSFW кости (Вью ставит, ты подкрутишь)", icon="BONE_DATA")
+        layout.label(text="После AccuRIG / канон-скелета:")
+        layout.operator("viu.studio_nsfw_all", icon="COMMUNITY")
+        row_n = layout.row(align=True)
+        row_n.operator("viu.studio_place_sockets", icon="EMPTY_AXIS")
+        row_n.operator("viu.studio_attach_penis", icon="BONE_DATA")
+        layout.operator("viu.studio_vaginal_helpers", icon="MOD_SIMPLEDEFORM")
+        layout.label(text="Покой penis = scale≈0; мишени = шарики Empty")
+        layout.separator()
         layout.label(text="2. Рост (сравнить с Шаней слева)", icon="ARROW_LEFTRIGHT")
         layout.operator("viu.studio_hide_ik", icon="HIDE_ON")
         layout.operator("viu.studio_show_body", icon="HIDE_OFF")
@@ -1078,6 +1203,10 @@ _CLASSES = (
     VIU_OT_StudioShowBody,
     VIU_OT_StudioBurstingHead,
     VIU_OT_StudioApplyMarkup,
+    VIU_OT_StudioPlaceSockets,
+    VIU_OT_StudioAttachPenis,
+    VIU_OT_StudioVaginalHelpers,
+    VIU_OT_StudioNsfwAll,
     VIU_OT_StudioApplyHeight,
     VIU_OT_StudioScreenshot,
     VIU_OT_StudioSaveFbx,

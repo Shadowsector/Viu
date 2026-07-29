@@ -41,6 +41,7 @@ class GuiAction:
 ACTION_GROUPS: List[str] = [
     "Каждый день",
     "Тело Шани",
+    "Девушки — риг и шоу",
     "Unity — тест на столе",
     "Blender — существа",
     "Blender — сцены и домик",
@@ -102,6 +103,137 @@ GUI_ACTIONS: List[GuiAction] = [
         tool="machine_bind",
         tool_args={"action": "status"},
         hint="Личная установка. После смены материнки: viu machine rebind.",
+    ),
+    # --- Девушки: канон-риг, NSFW, шоу SmoothMix ---
+    GuiAction(
+        "biped_hub",
+        "❓ Как переригать / органы / шоу",
+        "Девушки — риг и шоу",
+        tool="__biped_canon_hub__",
+        hint=(
+            "Откроет окошко с простыми шагами для ламера.\n"
+            "Там же все кнопки: список девок → органы → папка AccuRIG → "
+            "забрать канон → шоу SmoothMix.\n"
+            "Наведи на любую кнопку ниже — подсказка длинная."
+        ),
+    ),
+    GuiAction(
+        "biped_list_girls",
+        "1. Список девок (biped)",
+        "Девушки — риг и шоу",
+        tool="creature_biped_canon",
+        tool_args={"action": "list", "girls": "1"},
+        hint=(
+            "Покажет, кого Вью считает «девками» на двух ногах "
+            "(vagina/futa или имя girl/woman/…).\n"
+            "FBX✓ = можно сразу в AccuRIG.\n"
+            "BLEND→FBX = сначала студия «эталон FBX», потом снова очередь.\n"
+            "Все biped без фильтра девок: в чате «бипеды канон»."
+        ),
+    ),
+    GuiAction(
+        "biped_mark_genital",
+        "2. Органы NSFW в каталог",
+        "Девушки — риг и шоу",
+        tool="creature_biped_canon",
+        tool_args={"action": "mark_genital", "girls": "1"},
+        hint=(
+            "Только запись в каталоге (ещё не 3D):\n"
+            "• девки → futa (вагина + penis)\n"
+            "• genital_rig=pending — «надо прикрутить»\n"
+            "• прячем scale кости ≈ 0, показ — scale вверх\n"
+            "Прикрутка НЕ руками: Студия существ → панель Viu →\n"
+            "«Всё NSFW сразу» (мишени + penis + вагина).\n"
+            "Потом подвинь Empty/кости глазами и сохрани FBX.\n"
+            "Все biped: в чате «органы biped»."
+        ),
+    ),
+    GuiAction(
+        "biped_queue_girls",
+        "3. Собрать папку для AccuRIG",
+        "Девушки — риг и шоу",
+        tool="creature_biped_canon",
+        tool_args={"action": "queue", "girls": "1"},
+        hint=(
+            "Скопирует модели девок в:\n"
+            "Lab\\Creatures\\BipedCanonQueue\\\n"
+            "Там README. Дальше — кнопка «Открыть папку AccuRIG».\n"
+            "AccuRIG — отдельная бесплатная программа (Reallusion), "
+            "Вью её сама не запускает.\n"
+            "Экспорт из AccuRIG сохраняй как имя_canon.fbx в ту же папку."
+        ),
+    ),
+    GuiAction(
+        "biped_open_queue",
+        "4. Открыть папку AccuRIG",
+        "Девушки — риг и шоу",
+        tool="__open_biped_queue__",
+        hint=(
+            "Откроет проводник на BipedCanonQueue.\n"
+            "1) Поставь AccuRIG 2\n"
+            "2) Открой каждый .fbx → Rig → Export Unity\n"
+            "3) Сохрани рядом как slug_canon.fbx\n"
+            "4) Жми «Забрать канон из AccuRIG»"
+        ),
+    ),
+    GuiAction(
+        "biped_ingest",
+        "5. Забрать канон из AccuRIG",
+        "Девушки — риг и шоу",
+        tool="creature_biped_canon",
+        tool_args={"action": "ingest"},
+        hint=(
+            "Ищет *_canon.fbx в папке очереди и кладёт в\n"
+            "Processed\\<slug>\\<slug>_ready.fbx + пометка в каталоге.\n"
+            "Потом в Unity: Rig = Humanoid → Apply.\n"
+            "Хвост/jiggle — отдельные кости после тела, не Humanoid."
+        ),
+    ),
+    GuiAction(
+        "biped_sockets",
+        "6. Шесть мишеней NSFW",
+        "Девушки — риг и шоу",
+        tool="creature_catalog_show",
+        tool_args={"mode": "sockets"},
+        hint=(
+            "Покажет 6 точек прицеливания (не «вагинальные кости»):\n"
+            "рот · вагина · анус · левая ладонь · правая · меж грудей.\n"
+            "Ставятся в Blender Studio кнопкой «Поставить 6 мишеней» "
+            "(или «Всё NSFW сразу»).\n"
+            "Unity penetrator целится в активный Empty.\n"
+            "Большой penis: пресеты S/M/L + кламп. Bulge живота — morph 0…1."
+        ),
+    ),
+    GuiAction(
+        "biped_guide",
+        "Памятка текстом",
+        "Девушки — риг и шоу",
+        tool="creature_biped_canon",
+        tool_args={"action": "guide"},
+        hint="Печатает docs/BIPED_RERIG_SIMPLE.md в чат — читай по шагам.",
+    ),
+    GuiAction(
+        "show_double",
+        "Шоу-дубль SmoothMix",
+        "Девушки — риг и шоу",
+        tool="comfy_show",
+        tool_args={"style": "realism"},
+        hint=(
+            "Один красивый клип (не MoCap×5 для Cascadeur).\n"
+            "Если SmoothMix лежит в ComfyUI\\models\\diffusion_models\\ — "
+            "подхватит; иначе cinematic на Wan.\n"
+            "Дальше панель Telegram: Промпт / LoRA → «Снять».\n"
+            "Поза по умолчанию — standing relaxed; другую скажи в чате "
+            "«шоу дубль: …»."
+        ),
+    ),
+    GuiAction(
+        "show_double_anime",
+        "Шоу-дубль аниме",
+        "Девушки — риг и шоу",
+        tool="comfy_show",
+        tool_args={"style": "anime"},
+        hint="То же шоу, стиль anime / SmoothMix anime, если модель есть.",
     ),
     # --- Unity: тестовая сцена (оверлей) ---
     GuiAction(

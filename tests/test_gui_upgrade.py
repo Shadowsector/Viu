@@ -25,12 +25,23 @@ def test_gui_actions_grouped():
     assert grouped["ComfyUI — видео"] == []
     assert grouped["Cascadeur — анимации"] == []
     # Но в полном списке кнопки остаются (код не удалён)
-    assert len(GUI_ACTIONS) <= 40
+    assert len(GUI_ACTIONS) <= 55
     ids = {a.action_id for a in GUI_ACTIONS}
     assert "next_step" in ids
     assert "body_pipeline" in ids
     assert "lab_comfy" in ids
     assert "lab_cascadeur" in ids
+    assert "biped_hub" in ids
+    assert "show_double" in ids
+    assert "Девушки — риг и шоу" in ACTION_GROUPS
+    assert ACTION_GROUPS.index("Девушки — риг и шоу") < ACTION_GROUPS.index(
+        "ComfyUI — видео"
+    )
+    girls = actions_by_group(include_paused=False)["Девушки — риг и шоу"]
+    assert len(girls) >= 8
+    assert any(a.action_id == "show_double" and a.tool == "comfy_show" for a in girls)
+    assert any(a.action_id == "biped_mark_genital" for a in girls)
+    assert all(len(a.hint) > 40 for a in girls if a.action_id != "biped_guide")
     assert any(a.action_id == "next_step" and a.tool == "__next_step__" for a in GUI_ACTIONS)
     assert any(a.action_id == "unity_overlay" and a.tool == "unity_overlay" for a in GUI_ACTIONS)
     assert any(a.tool == "__update_viu__" for a in GUI_ACTIONS)

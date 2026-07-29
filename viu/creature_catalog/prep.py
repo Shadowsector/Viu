@@ -26,12 +26,14 @@ from .store import CreatureCatalogStore
 ADDON_NAME = "viu_creature_prep.py"
 BOOTSTRAP_NAME = "viu_creature_prep_bootstrap.py"
 SHARED_NAME = "viu_creature_blender_shared.py"
+NSFW_NAME = "viu_nsfw_attach.py"
 SESSION_NAME = "prep_session.json"
 FEEDBACK_NAME = "prep_feedback.json"
 
 _ADDON_BODY = Path(__file__).resolve().parent / "_creature_prep_addon.py"
 _BOOTSTRAP_BODY = Path(__file__).resolve().parent / "_creature_prep_bootstrap.py"
 _SHARED_BODY = Path(__file__).resolve().parent / "_creature_blender_shared.py"
+_NSFW_BODY = Path(__file__).resolve().parent / "nsfw_attach.py"
 
 
 def _install_prep_files(out_dir: Path) -> Tuple[Path, Path]:
@@ -39,10 +41,12 @@ def _install_prep_files(out_dir: Path) -> Tuple[Path, Path]:
     addon = out_dir / ADDON_NAME
     bootstrap = out_dir / BOOTSTRAP_NAME
     shared = out_dir / SHARED_NAME
+    nsfw = out_dir / NSFW_NAME
     for src, dst in (
         (_ADDON_BODY, addon),
         (_BOOTSTRAP_BODY, bootstrap),
         (_SHARED_BODY, shared),
+        (_NSFW_BODY, nsfw),
     ):
         if not src.is_file():
             raise FileNotFoundError(f"Нет файла prep: {src}")
