@@ -23,6 +23,10 @@ _PREFIX_RE = re.compile(
     r"(?is)^\s*a\s+fit\s+girl\s+with\s+a\s+big\s+fake\s+breast\s+and\s+perfect\s+body\s+is\s*"
 )
 _LEADING_IS_RE = re.compile(r"(?i)^\s*is\s+")
+# Старые шоу/MoCap дефолты — не тащить «young woman» после PREFIX.
+_OLD_SUBJECT_RE = re.compile(
+    r"(?is)^\s*(?:a\s+|an\s+)?(?:simple\s+|tanned\s+|nude\s+)*young\s+woman\s*,?\s*"
+)
 _CYR_TOKEN_RE = re.compile(r"[А-Яа-яЁё]+")
 _MULTI_COMMA_RE = re.compile(r",\s*,+")
 
@@ -39,6 +43,7 @@ def clean_process_for_wan(process: str) -> str:
         return "posing in soft light"
     if _PREFIX_RE.match(a):
         a = _PREFIX_RE.sub("", a).strip()
+    a = _OLD_SUBJECT_RE.sub("", a).strip()
     a = _LEADING_IS_RE.sub("", a).strip()
     a = _CYR_TOKEN_RE.sub("", a)
     a = _MULTI_COMMA_RE.sub(", ", a)

@@ -523,7 +523,7 @@ class ComfyShowTool(Tool):
 
         action = str(args.get("action") or "").strip()
         if not action or action.lower() in ("auto", "сам", "сама"):
-            action = "young woman standing relaxed, full body, soft pose"
+            action = "standing relaxed in soft light, cinematic atmosphere"
         action = clean_action_for_wan(action)
         style_raw = str(args.get("style") or "realism").strip().lower()
         style = show_style_from_meta({"show_style": style_raw})

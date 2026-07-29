@@ -35,6 +35,19 @@ def test_clean_strips_leading_is_and_cyrillic():
     assert "сцена" not in clean
 
 
+def test_clean_strips_old_young_woman_subject():
+    clean = clean_process_for_wan(
+        "young woman standing relaxed, full body, soft pose"
+    )
+    assert "young woman" not in clean.lower()
+    assert "standing relaxed" in clean
+    pos = mocap_prompt(
+        "young woman standing relaxed, full body, soft pose", None
+    )
+    assert pos.startswith(SUBJECT_PREFIX)
+    assert "young woman" not in pos.lower()
+
+
 def test_process_from_positive():
     pos = f"{SUBJECT_PREFIX} dancing slowly in a dim club"
     assert process_from_positive(pos) == "dancing slowly in a dim club"

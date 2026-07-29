@@ -2571,7 +2571,7 @@ class ViuGUI:
             from .lab.session import new_session, save_session
 
             if not chat_action:
-                chat_action = "young woman standing relaxed, full body, soft pose"
+                chat_action = "standing relaxed in soft light, cinematic atmosphere"
             chat_action = clean_action_for_wan(chat_action)
             existing = load_session(self.agent.config, COMFY_TOPIC)
             if existing is None:

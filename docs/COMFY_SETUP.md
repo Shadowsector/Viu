@@ -130,6 +130,16 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 В чате: **«шоу дубль»** / **«хочу шоу-дубль»** / `comfy_show`  
 Аниме: **«шоу аниме»** / `comfy_show style=anime`
 
+Промпт — **тот же канон**, что у MoCap (не `young woman` / длинный negative):
+
+```text
+positive: a fit girl with a big fake breast and perfect body is [процесс + антураж]
+          + smoothmixrealism|smoothmixanime + cinematic style bits
+negative: Tongue out, wet hair
+```
+
+Отдельного блока Action нет. Черновик в чате показывает формулу до съёмки.
+
 1. Положи **SmoothMix Wan 2.2** (`.safetensors` / `.gguf`) в  
    `U:\Viu\ComfyUI\models\diffusion_models\`  
    (имя с `smoothmix` — Вью подхватит сама).
