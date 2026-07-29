@@ -29,6 +29,52 @@ def test_registry_has_comfy_diag():
     assert build_default_registry().get("comfy_diag") is not None
 
 
+def test_diag_skips_probe_when_queue_busy(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, monkeypatch)
+    probed = {"n": 0}
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            self.timeout = 12.0
+            self.base_url = "http://127.0.0.1:8188"
+
+        def ping(self):
+            return True, "ComfyUI OK (running=1, pending=0)"
+
+        def get_queue(self):
+            return {"queue_running": [1], "queue_pending": []}
+
+        def _get(self, path):
+            if path == "/object_info":
+                return {"KSampler": {}}
+            if path == "/system_stats":
+                return {"devices": [{"name": "cuda:0"}], "system": {}}
+            return {}
+
+    def boom(*a, **k):
+        probed["n"] += 1
+        return True, "should not run", 1.0
+
+    monkeypatch.setattr(diag, "ComfyClient", FakeClient)
+    monkeypatch.setattr(diag, "sample_listeners", lambda port, sample_sec=1.2: [])
+    monkeypatch.setattr(
+        diag,
+        "_timed_get",
+        lambda base, path, timeout=8.0: TimedHttp(
+            path=path, ok=True, ms=5, bytes_n=100, detail="HTTP 200"
+        ),
+    )
+    monkeypatch.setattr(diag, "probe_prompt_executor", boom)
+    monkeypatch.setattr(diag, "_log_tail_analysis", lambda cfg, max_lines=40: ("ok", ["log_started"]))
+    monkeypatch.setattr(diag, "_lab_line", lambda cfg: "Lab running")
+    monkeypatch.setattr(diag, "describe_port_listeners", lambda port: ":8188 ok")
+
+    rep = run_comfy_diag(cfg, sample_sec=0.0, probe_prompt=True)
+    assert probed["n"] == 0
+    assert "пропуск" in "\n".join(rep.lines).lower() or "busy" in "\n".join(rep.lines).lower()
+    assert "executor_alive" in "\n".join(rep.lines) or "СЧИТАЕТ" in rep.verdict or "queue_running" in str(rep)
+
+
 def test_verdict_lora_mismatch():
     v, actions = _verdict(
         ["lora_name_mismatch", "got_prompt_recent", "comfy_idle_cpu", "executor_alive"],

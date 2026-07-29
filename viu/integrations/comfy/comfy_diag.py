@@ -361,6 +361,19 @@ def run_comfy_diag(
     ok_ping, ping_msg = client.ping()
     ping_ms = (time.perf_counter() - t0) * 1000.0
     L.append(f"1) API /queue: {'OK' if ok_ping else 'FAIL'} за {ping_ms:.0f}ms — {ping_msg}")
+    queue_running = 0
+    queue_pending = 0
+    if ok_ping:
+        try:
+            q = client.get_queue()
+            queue_running = len(q.get("queue_running") or [])
+            queue_pending = len(q.get("queue_pending") or [])
+        except Exception:
+            pass
+        if queue_running > 0:
+            flags.append("queue_running")
+        if queue_pending > 0:
+            flags.append("queue_pending")
     if not ok_ping:
         flags.append("api_dead")
     elif ping_ms > 5000:
@@ -436,13 +449,21 @@ def run_comfy_diag(
 
     L.append("")
     L.append("4) Executor /prompt (битый граф — должен сразу отвергнуть):")
-    if ok_ping and probe_prompt:
+    # Не слать тестовый /prompt, пока Comfy уже считает — засоряет лог и pending.
+    skip_probe = (not probe_prompt) or queue_running > 0 or queue_pending > 0
+    if ok_ping and not skip_probe:
         alive, detail, _ms = probe_prompt_executor(client, timeout=min(8.0, http_timeout))
         L.append(f"  {'OK' if alive else 'FAIL'} — {detail}")
         if alive:
             flags.append("executor_alive")
         else:
             flags.append("executor_dead")
+    elif ok_ping and skip_probe and (queue_running > 0 or queue_pending > 0):
+        L.append(
+            f"  пропуск — очередь busy (running={queue_running}, pending={queue_pending}); "
+            "executor считаем живым"
+        )
+        flags.append("executor_alive")
     else:
         L.append("  пропуск")
 
@@ -575,10 +596,10 @@ def _verdict(flags: List[str], *, ok_ping: bool) -> Tuple[str, List[str]]:
             ],
         )
 
-    if "comfy_busy_cpu" in f or "got_prompt_recent" in f:
+    if "comfy_busy_cpu" in f or "got_prompt_recent" in f or "queue_running" in f:
         return (
-            "СЧИТАЕТ — CPU/лог показывают работу",
-            ["Жди клипы; Студия / лог got prompt", "Не жми interrupt зря"],
+            "СЧИТАЕТ — CPU/лог/очередь показывают работу",
+            ["Жди клипы; Студия / лог progress %", "Не жми interrupt зря"],
         )
 
     if ok_ping:
