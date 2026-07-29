@@ -122,12 +122,80 @@ def test_chat_make_photo_sexy_pose(tmp_path, monkeypatch):
 
 
 def test_look_quality_rejects_garble():
-    from viu.integrations.comfy.reference_vision import _look_quality_ok
+    from viu.integrations.comfy.reference_vision import (
+        _look_quality_ok,
+        format_look_from_fields,
+        sanitize_vision_hint,
+    )
 
     bad = "Она стоит на баскete в зале. If stands on basket toлько значит modelю."
     assert not _look_quality_ok(bad)
     good = "Стоя на площадке в зале, я в лёгком платье, мягкий свет падает на лицо."
     assert _look_quality_ok(good)
+    llava_meta = (
+        "Я вижу девушку в позе, но не могу показать ее первый лиц. "
+        "Однако будут минуты от прироdesnogo света, я могу обservarь и упоминать такие elementy:\n"
+        "1. Я observuju deвушку в поze\n"
+        "2. Я могу показать предметы"
+    )
+    assert not _look_quality_ok(llava_meta)
+    formatted = format_look_from_fields(
+        {
+            "КТО": "девушка-суккуб с рогами",
+            "ОДЕЖДА": "тёмное бельё",
+            "ПОЗА": "лежит в кресле",
+            "ДЕЙСТВИЕ": "смотрит в камеру",
+            "ВОЛОСЫ_ЛИЦО": "тёмные волосы, томный взгляд",
+            "ФОН": "тусклая комната",
+        }
+    )
+    assert "суккуб" in formatted.lower()
+    assert "бельё" in formatted.lower()
+    assert _look_quality_ok(formatted)
+    assert "перепиш" not in sanitize_vision_hint(
+        "Суккуб - это обычно девушка. Перепиши сцену и расскажи впечатления."
+    ).lower() or "впечатлен" not in sanitize_vision_hint(
+        "Суккуб - это обычно девушка. Перепиши сцену и расскажи впечатления от суккуба."
+    ).lower()
+
+
+def test_succubus_caption_does_not_assign_viu(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
+    monkeypatch.setenv("VIU_LIBRARY_ROOT", str(tmp_path / "Library"))
+    _mock_look(monkeypatch, "На кадре девушка в тёмном белье, лежит расслабленно.")
+    cfg = Config(
+        root=tmp_path,
+        data_dir=tmp_path / ".viu",
+        library_root=str(tmp_path / "Library"),
+    ).ensure_dirs()
+    from viu.integrations.comfy.chat_flow import set_pending_character
+
+    set_pending_character(cfg, "viu", note="это ты")
+    img = _png(tmp_path / "succ.png")
+    out = try_handle_comfy_chat(
+        cfg,
+        f"[tg_photo:{img}]\nСуккуб - это обычно девушка.\n"
+        "Перепиши сцену и расскажи впечатления от суккуба-девушки.",
+    )
+    assert out.handled
+    low = out.message.lower()
+    assert "запомнила тебя" not in low
+    assert "ок — запомнила" not in low
+    store = load_character_refs(cfg)
+    assert not store["viu"].path
+    assert "девушк" in low or "кадр" in low
+    # Можно предложить «это ты», но не привязывать автоматом.
+    assert "суккуб" not in low or "девушк" in low
+
+
+def test_explicit_eto_ty_still_assigns(tmp_path, monkeypatch):
+    _mock_look(monkeypatch)
+    cfg = _cfg(tmp_path)
+    img = _png(tmp_path / "me.png")
+    out = try_handle_comfy_chat(cfg, f"[tg_photo:{img}]\nэто ты")
+    assert out.handled
+    assert load_character_refs(cfg)["viu"].path
+    assert "запомнила" in out.message.lower() or "Вью" in out.message
 
 
 def test_parse_tg_photo_payload():

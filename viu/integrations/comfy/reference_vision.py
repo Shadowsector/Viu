@@ -17,13 +17,19 @@ from .vision_review import extract_middle_frame
 _IMAGE_EXT = frozenset({".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"})
 _VIDEO_EXT = frozenset({".mp4", ".webm", ".mov", ".mkv", ".avi"})
 
-_REFERENCE_PROMPT = """Это референс для генерации MoCap-анимации персонажа (табакси Шаня / humanoid).
+_REFERENCE_PROMPT = """Это референс для генерации (MoCap / Comfy).
 {hint}
 
 Ответь СТРОГО в формате (без markdown):
-EN_POSE: <одна строка English: pose, action, camera angle, framing — для t2v/i2v>
+КТО: <кто на кадре — 3–10 слов по-русски>
+ОДЕЖДА: <что надето / голое, цвета>
+ПОЗА: <поза тела>
+ДЕЙСТВИЕ: <что делает>
+ВОЛОСЫ_ЛИЦО: <волосы, лицо>
+ФОН: <место, свет>
+EN_POSE: <одна строка English: pose, action, camera, framing — для t2v/i2v>
 EN_LOOK: <outfit, body, lighting, background — English tags>
-RU: <2–4 предложения по-русски: что на кадре, настроение, для чего референс>
+RU: <2–3 предложения по-русски: кто, во что одет, что делает>
 TAGS: <через запятую: pose, camera, outfit, …>
 
 Если кадр пустой/чёрный/без фигуры — напиши VERDICT: EMPTY и кратко почему."""
@@ -59,6 +65,7 @@ class ReferenceDescription:
 
 def _parse_reference(text: str) -> Tuple[str, str, str, List[str], str]:
     en_pose, en_look, ru, tags, verdict = "", "", "", [], ""
+    who = clothes = pose = action = hair = bg = ""
     for line in (text or "").splitlines():
         s = line.strip()
         if not s:
@@ -75,6 +82,22 @@ def _parse_reference(text: str) -> Tuple[str, str, str, List[str], str]:
             tags = [t.strip() for t in re.split(r"[,;|/]+", bits) if t.strip()]
         elif low.startswith("verdict:"):
             verdict = s.split(":", 1)[1].strip().upper().split()[0]
+        elif low.startswith("кто:"):
+            who = s.split(":", 1)[1].strip()
+        elif low.startswith("одежда:"):
+            clothes = s.split(":", 1)[1].strip()
+        elif low.startswith("поза:"):
+            pose = s.split(":", 1)[1].strip()
+        elif low.startswith("действие:"):
+            action = s.split(":", 1)[1].strip()
+        elif low.startswith("волосы_лицо:") or low.startswith("волосы/лицо:"):
+            hair = s.split(":", 1)[1].strip()
+        elif low.startswith("фон:"):
+            bg = s.split(":", 1)[1].strip()
+    if not ru:
+        bits = [b for b in (who, clothes, pose, action, hair, bg) if b]
+        if bits:
+            ru = " ".join(bits)
     if not verdict and "empty" in (text or "").lower():
         verdict = "EMPTY"
     return en_pose, en_look, ru, tags, verdict
@@ -205,18 +228,137 @@ def format_reference_report(desc: ReferenceDescription) -> str:
     return "\n".join(lines)
 
 
-_LOOK_SELF_PROMPT = """Ден прислал фото и говорит, что это ты — девушка Вью.
+_LOOK_SELF_PROMPT = """Ден прислал фото. Это референс внешности девушки Вью (ты).
 {hint}
 
-Посмотри на картинку и ответь коротко по-русски от первого лица (я, мне, у меня).
-2–4 живых предложения: поза, фигура, одежда, лицо, волосы, фон, свет.
-Только русский. Без английских слов, без списков, без служебных пометок."""
+Смотри ТОЛЬКО на картинку. Ответь СТРОГО по-русски в формате (каждая метка с новой строки):
+КТО: я / девушка Вью — кратко кто на кадре
+ОДЕЖДА: что надето (или без одежды), цвета, детали
+ПОЗА: стоит / сидит / лежит / …, руки, ноги, ракурс
+ДЕЙСТВИЕ: что делает сейчас одной фразой
+ВОЛОСЫ_ЛИЦО: волосы, лицо, выражение
+ФОН: место и свет
 
-_LOOK_OTHER_PROMPT = """Ден прислал фото в чат.
+Только факты с фото. Запрещено: английские слова, списки 1.2.3, «я могу/не могу», инструкции, выдумки."""
+
+_LOOK_OTHER_PROMPT = """Ден прислал фото-референс.
 {hint}
 
-Посмотри и ответь коротко по-русски: кто на кадре, поза, одежда, фон, свет, настроение.
-2–4 предложения. Только русский. Без английских слов, без списков."""
+Смотри ТОЛЬКО на картинку. Ответь СТРОГО по-русски в формате (каждая метка с новой строки):
+КТО: кто изображён (девушка/парень/существо/несколько) — 3–8 слов
+ОДЕЖДА: что надето (или без), цвета, стиль
+ПОЗА: стоит / сидит / лежит / …, руки, ноги, ракурс
+ДЕЙСТВИЕ: что делает сейчас одной фразой
+ВОЛОСЫ_ЛИЦО: волосы, лицо, выражение
+ФОН: место и свет
+
+Только факты с фото. Запрещено: английские слова, списки 1.2.3, «я могу/не могу», инструкции, выдумки."""
+
+_LOOK_RETRY_PROMPT = """Ещё раз по картинке. Только русский. Формат:
+КТО: …
+ОДЕЖДА: …
+ПОЗА: …
+ДЕЙСТВИЕ: …
+ВОЛОСЫ_ЛИЦО: …
+ФОН: …
+Без английского, без нумерации, без «могу/не могу»."""
+
+_LOOK_FIELDS = ("КТО", "ОДЕЖДА", "ПОЗА", "ДЕЙСТВИЕ", "ВОЛОСЫ_ЛИЦО", "ФОН")
+
+
+def sanitize_vision_hint(hint: str) -> str:
+    """Не тащить в VL литературщину («перепиши», «впечатления») — только якорь."""
+    h = (hint or "").strip()
+    h = re.sub(r"(?i)\[tg_photo:[^\]]+\]", "", h).strip()
+    if not h:
+        return ""
+    # Убрать просьбы переписать/оценить — они сбивают слабый VL в мета-бред.
+    h = re.sub(
+        r"(?i)(?:перепиш\w*|перескаж\w*|расскажи\s+впечатлен\w*|"
+        r"впечатлен\w*\s+от|что\s+думаешь\s+о|оцени|дай\s+оценк\w*)"
+        r"[^.!?\n]*[.!?]?",
+        " ",
+        h,
+    )
+    h = " ".join(h.split()).strip(" .,;:—-")
+    if len(h) > 120:
+        h = h[:117] + "…"
+    # Если после чистки осталась одна литературщина — лучше без hint.
+    if re.search(r"(?i)^(?:суккуб|сцена|перепиш|впечатлен)", h) and len(h) < 40:
+        return ""
+    return h
+
+
+def _parse_look_fields(text: str) -> dict[str, str]:
+    out: dict[str, str] = {k: "" for k in _LOOK_FIELDS}
+    body = (text or "").strip()
+    if not body:
+        return out
+    aliases = {
+        "КТО": ("КТО",),
+        "ОДЕЖДА": ("ОДЕЖДА",),
+        "ПОЗА": ("ПОЗА",),
+        "ДЕЙСТВИЕ": ("ДЕЙСТВИЕ",),
+        "ВОЛОСЫ_ЛИЦО": ("ВОЛОСЫ_ЛИЦО", "ВОЛОСЫ/ЛИЦО", "ВОЛОСЫ", "ЛИЦО"),
+        "ФОН": ("ФОН",),
+    }
+    for key, names in aliases.items():
+        for name in names:
+            m = re.search(
+                rf"(?im)^\s*{re.escape(name)}\s*[:\-–]\s*(.+)$",
+                body,
+            )
+            if m:
+                val = m.group(1).strip().strip("`\"'")
+                if val:
+                    if out[key]:
+                        out[key] = f"{out[key]}; {val}"
+                    else:
+                        out[key] = val
+                if key != "ВОЛОСЫ_ЛИЦО":
+                    break
+    return out
+
+
+def format_look_from_fields(fields: dict[str, str], *, as_self: bool = False) -> str:
+    """Собрать живой RU-абзац из структурированных полей."""
+    kto = (fields.get("КТО") or "").strip()
+    odezhda = (fields.get("ОДЕЖДА") or "").strip()
+    poza = (fields.get("ПОЗА") or "").strip()
+    deystvie = (fields.get("ДЕЙСТВИЕ") or "").strip()
+    volosy = (fields.get("ВОЛОСЫ_ЛИЦО") or "").strip()
+    fon = (fields.get("ФОН") or "").strip()
+    bits: list[str] = []
+    if as_self:
+        if kto:
+            bits.append(f"Это я: {kto}.")
+        else:
+            bits.append("Это я на кадре.")
+    elif kto:
+        bits.append(f"На кадре — {kto}.")
+    if odezhda:
+        bits.append(f"Одежда: {odezhda}.")
+    pose_bits = [p for p in (poza, deystvie) if p]
+    if pose_bits:
+        bits.append(" ".join(pose_bits) + ("" if pose_bits[-1].endswith(".") else "."))
+    if volosy:
+        bits.append(f"Волосы/лицо: {volosy}.")
+    if fon:
+        bits.append(f"Фон: {fon}.")
+    text = " ".join(bits).strip()
+    text = re.sub(r"\s{2,}", " ", text)
+    text = re.sub(r"\.\s*\.", ".", text)
+    return text
+
+
+def _mixed_script_token_count(text: str) -> int:
+    n = 0
+    for tok in re.findall(r"[A-Za-zА-Яа-яЁё]+", text or ""):
+        has_lat = bool(re.search(r"[A-Za-z]", tok))
+        has_cyr = bool(re.search(r"[А-Яа-яЁё]", tok))
+        if has_lat and has_cyr:
+            n += 1
+    return n
 
 
 def _strip_vision_model_prefix(text: str) -> str:
@@ -228,7 +370,7 @@ def _strip_vision_model_prefix(text: str) -> str:
 
 
 def _look_quality_ok(text: str) -> bool:
-    """Отсечь кашу EN/RU и эхо инструкций от слабых VL-моделей."""
+    """Отсечь кашу EN/RU, мета-«я могу», эхо инструкций от слабых VL."""
     body = (text or "").strip()
     if len(body) < 12:
         return False
@@ -236,16 +378,32 @@ def _look_quality_ok(text: str) -> bool:
     lat = len(re.findall(r"[A-Za-z]", body))
     if cyr < 20:
         return False
-    if lat > cyr * 0.45:
+    if lat > cyr * 0.28:
+        return False
+    if _mixed_script_token_count(body) >= 2:
         return False
     low = body.lower()
     if re.search(
-        r"(?i)не\s+могу\s+(?:продолж|выполн)|cannot\s+continue|i\s+cannot|"
-        r"если\s+ден\s+хвал|без\s+markdown|en_pose|as\s+an\s+ai",
+        r"(?i)не\s+могу\s+(?:продолж|выполн|показа|описа|разгля)|"
+        r"я\s+могу\s+(?:показа|обсер|observ|упоминан|расслыш)|"
+        r"cannot\s+continue|i\s+cannot|as\s+an\s+ai|"
+        r"если\s+ден\s+хвал|без\s+markdown|en_pose|"
+        r"\bobserv|elementy|deвуш|поze\b|peчат",
         low,
     ):
         return False
+    # Нумерованные «я могу…» списки — типичный бред llava.
+    if len(re.findall(r"(?m)^\s*\d+[.)]\s+", body)) >= 2:
+        return False
     return True
+
+
+def _fallback_look(*, as_self: bool, character_title: str) -> str:
+    if as_self:
+        return "Вижу себя на этом кадре — запомнила облик, но формулировку сейчас не вытянуть чисто."
+    if character_title:
+        return f"Вижу кадр с {character_title} — запомнила, детали позже уточню."
+    return "Вижу кадр — запомнила референс."
 
 
 def look_at_photo(
@@ -256,7 +414,7 @@ def look_at_photo(
     hint: str = "",
     character_title: str = "",
 ) -> Tuple[bool, str]:
-    """Живой взгляд на фото → короткое RU-описание (не технический MoCap-отчёт)."""
+    """Живой взгляд на фото → кто / одежда / поза / действие (не мета-бред VL)."""
     src = Path(path)
     if not src.is_file():
         return False, f"Не вижу файл: {src.name}"
@@ -269,34 +427,41 @@ def look_at_photo(
     if not ok_f:
         return False, err or "Не вытащить кадр."
 
-    hint_bits = []
-    h = (hint or "").strip()
-    # Не тащить в VL длинные служебные куски — только тёплый контекст Дена.
-    if h:
-        h = re.sub(r"(?i)\[tg_photo:[^\]]+\]", "", h).strip()
-        if len(h) > 180:
-            h = h[:177] + "…"
-        if h:
-            hint_bits.append(h)
+    hint_bits: list[str] = []
+    clean_hint = sanitize_vision_hint(hint)
+    if clean_hint:
+        hint_bits.append(clean_hint)
     if character_title and not as_self:
         hint_bits.append(f"На кадре, скорее всего, {character_title}.")
-    hint_block = "\n".join(hint_bits) if hint_bits else ""
+    hint_block = "\n".join(hint_bits) if hint_bits else "Опиши только то, что видно на фото."
 
-    prompt = (_LOOK_SELF_PROMPT if as_self else _LOOK_OTHER_PROMPT).format(
-        hint=hint_block or "Просто опиши, что видишь."
-    )
+    prompt = (_LOOK_SELF_PROMPT if as_self else _LOOK_OTHER_PROMPT).format(hint=hint_block)
     v_ok, v_text = ask_vision(frame_path, prompt=prompt, config=config)
     if not v_ok:
         return False, _strip_vision_model_prefix(v_text) or "Не разглядела."
-    text = _strip_vision_model_prefix(v_text)
+    raw = _strip_vision_model_prefix(v_text)
+    fields = _parse_look_fields(raw)
+    text = format_look_from_fields(fields, as_self=as_self) if any(fields.values()) else raw
+
+    if not _look_quality_ok(text) or sum(1 for v in fields.values() if v) < 2:
+        # Повтор со строгим коротким промптом.
+        v2_ok, v2_text = ask_vision(frame_path, prompt=_LOOK_RETRY_PROMPT, config=config)
+        if v2_ok:
+            raw2 = _strip_vision_model_prefix(v2_text)
+            fields2 = _parse_look_fields(raw2)
+            if sum(1 for v in fields2.values() if v) >= 2:
+                text2 = format_look_from_fields(fields2, as_self=as_self)
+                if _look_quality_ok(text2):
+                    text = text2
+                    raw = raw2
+                    fields = fields2
+            elif _look_quality_ok(raw2):
+                text = raw2
+                raw = raw2
+
     if not _look_quality_ok(text):
-        # Мягкий fallback — без каши и без отказов.
-        if as_self:
-            text = "Вижу себя на этом кадре — запомнила, как выгляжу."
-        elif character_title:
-            text = f"Вижу кадр с {character_title} — запомнила."
-        else:
-            text = "Вижу кадр — запомнила."
+        text = _fallback_look(as_self=as_self, character_title=character_title)
+
     if len(text) > 900:
         text = text[:897].rstrip() + "…"
     try:
@@ -308,6 +473,9 @@ def look_at_photo(
                     "path": str(src),
                     "as_self": as_self,
                     "hint": hint,
+                    "hint_sanitized": clean_hint,
+                    "fields": fields,
+                    "raw": raw[:4000],
                     "text": text,
                 },
                 ensure_ascii=False,
