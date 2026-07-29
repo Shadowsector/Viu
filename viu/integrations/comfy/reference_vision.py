@@ -205,19 +205,18 @@ def format_reference_report(desc: ReferenceDescription) -> str:
     return "\n".join(lines)
 
 
-_LOOK_SELF_PROMPT = """Ты — девушка Вью. Ден прислал фото и говорит, что это ты (или просит посмотреть на себя).
+_LOOK_SELF_PROMPT = """Ден прислал фото и говорит, что это ты — девушка Вью.
 {hint}
 
-Посмотри внимательно на картинку. Ответь ТОЛЬКО по-русски, от первого лица (я / мне / у меня), 2–5 живых предложений:
-что видишь на себе — лицо, волосы, одежда, поза, свет, фон, настроение кадра.
-Если Ден хвалит — мягко ответь на комплимент, но сначала опиши, что реально видишь.
-Без markdown, без списков, без EN_POSE/тегов, без «как ИИ»."""
+Посмотри на картинку и ответь коротко по-русски от первого лица (я, мне, у меня).
+2–4 живых предложения: поза, фигура, одежда, лицо, волосы, фон, свет.
+Только русский. Без английских слов, без списков, без служебных пометок."""
 
-_LOOK_OTHER_PROMPT = """Посмотри на это фото. Ден прислал его в чат.
+_LOOK_OTHER_PROMPT = """Ден прислал фото в чат.
 {hint}
 
-Ответь ТОЛЬКО по-русски, 2–5 живых предложений: кто или что на кадре, поза, одежда, фон, свет, настроение.
-Без markdown, без списков, без EN_POSE/тегов, без мета про модели."""
+Посмотри и ответь коротко по-русски: кто на кадре, поза, одежда, фон, свет, настроение.
+2–4 предложения. Только русский. Без английских слов, без списков."""
 
 
 def _strip_vision_model_prefix(text: str) -> str:
@@ -226,6 +225,27 @@ def _strip_vision_model_prefix(text: str) -> str:
     if body.startswith("[") and "]" in body[:80]:
         body = body.split("]", 1)[1].strip()
     return body
+
+
+def _look_quality_ok(text: str) -> bool:
+    """Отсечь кашу EN/RU и эхо инструкций от слабых VL-моделей."""
+    body = (text or "").strip()
+    if len(body) < 12:
+        return False
+    cyr = len(re.findall(r"[А-Яа-яЁё]", body))
+    lat = len(re.findall(r"[A-Za-z]", body))
+    if cyr < 20:
+        return False
+    if lat > cyr * 0.45:
+        return False
+    low = body.lower()
+    if re.search(
+        r"(?i)не\s+могу\s+(?:продолж|выполн)|cannot\s+continue|i\s+cannot|"
+        r"если\s+ден\s+хвал|без\s+markdown|en_pose|as\s+an\s+ai",
+        low,
+    ):
+        return False
+    return True
 
 
 def look_at_photo(
@@ -242,28 +262,43 @@ def look_at_photo(
         return False, f"Не вижу файл: {src.name}"
     if not pick_vision_model(config.base_url):
         return False, (
-            "Сейчас не могу разглядеть картинку глазами — нет vision-модели в Ollama. "
-            "Поставь llava или qwen2-vl, и я посмотрю."
+            "Сейчас не разглядеть — нет vision-модели в Ollama. "
+            "Поставь llava или qwen2-vl."
         )
     ok_f, frame_path, _kind, err = _resolve_frame(src, frame="middle", config=config)
     if not ok_f:
         return False, err or "Не вытащить кадр."
 
     hint_bits = []
-    if (hint or "").strip():
-        hint_bits.append(f"Слова Дена: {(hint or '').strip()[:300]}")
+    h = (hint or "").strip()
+    # Не тащить в VL длинные служебные куски — только тёплый контекст Дена.
+    if h:
+        h = re.sub(r"(?i)\[tg_photo:[^\]]+\]", "", h).strip()
+        if len(h) > 180:
+            h = h[:177] + "…"
+        if h:
+            hint_bits.append(h)
     if character_title and not as_self:
-        hint_bits.append(f"На рефе, скорее всего: {character_title}.")
-    hint_block = "\n".join(hint_bits) if hint_bits else "Просто опиши, что видишь."
+        hint_bits.append(f"На кадре, скорее всего, {character_title}.")
+    hint_block = "\n".join(hint_bits) if hint_bits else ""
 
-    prompt = (_LOOK_SELF_PROMPT if as_self else _LOOK_OTHER_PROMPT).format(hint=hint_block)
+    prompt = (_LOOK_SELF_PROMPT if as_self else _LOOK_OTHER_PROMPT).format(
+        hint=hint_block or "Просто опиши, что видишь."
+    )
     v_ok, v_text = ask_vision(frame_path, prompt=prompt, config=config)
     if not v_ok:
         return False, _strip_vision_model_prefix(v_text) or "Не разглядела."
     text = _strip_vision_model_prefix(v_text)
-    if len(text) > 1200:
-        text = text[:1197].rstrip() + "…"
-    # сохранить лёгкий след
+    if not _look_quality_ok(text):
+        # Мягкий fallback — без каши и без отказов.
+        if as_self:
+            text = "Вижу себя на этом кадре — запомнила, как выгляжу."
+        elif character_title:
+            text = f"Вижу кадр с {character_title} — запомнила."
+        else:
+            text = "Вижу кадр — запомнила."
+    if len(text) > 900:
+        text = text[:897].rstrip() + "…"
     try:
         out = comfy_refs_dir(config) / "vision_refs" / f"{src.stem}_look.json"
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -292,17 +327,16 @@ def build_scene_action_en(
     user_text: str = "",
     look_ru: str = "",
 ) -> str:
-    """EN/сцена для lab/Comfy: главное — описание Дена, реф только якорь лица/стиля."""
+    """Сцена для lab/Comfy: описание Дена — ядро; реф — якорь внешности."""
     wish = extract_scene_wish(user_text)
     look = (look_ru or "").strip()[:280]
     base_look = (
         f", matching the reference look ({look})"
         if look
-        else ", matching the reference face and style"
+        else ", matching the reference face, body and style"
     )
     k = (kind or "scene").strip().lower()
 
-    # Буквальное «селфи» без другой сцены — крупный план; иначе сцена Дена важнее.
     if k in ("selfie", "селфи") and (
         not wish or re.fullmatch(r"(?i)селфи|selfie|сво[её]\s+селфи", wish or "")
     ):
@@ -322,19 +356,27 @@ def build_scene_action_en(
     if not wish:
         return "young woman in the described scene, medium shot, natural motion" + base_look
 
-    # Описание Дена — ядро кадра (может быть по-русски; Wan/lab подхватят).
     return f"{wish}, medium shot, natural motion{base_look}"
 
 
 def extract_scene_wish(text: str) -> str:
-    """Вытащить описание сцены из фразы «сними себя в …» / «сцена: …»."""
+    """Вытащить описание сцены из фразы Дена."""
     s = (text or "").strip()
     s = re.sub(r"(?i)^\[tg_photo:[^\]]+\]\s*", "", s)
     s = re.sub(r"(?i)(?:вот,?\s*)?это\s+ты[!.…]?\s*", "", s)
     s = re.sub(
         r"(?i)^\s*(?:пожалуйста[,.]?\s*)?"
-        r"(?:сними|снять|снимай|сделай|создай|сгенер(?:ируй)?)\s+"
-        r"(?:себя|тебя|мне|из\s+(?:этого\s+)?референса(?:\s+сво[её])?|сво[её])?\s*",
+        r"(?:сними|снять|снимай|сделай|создай|сгенер(?:ируй)?|нарисуй|нарисовать|"
+        r"сфотка(?:й|ть)|сфотографируй)\s+"
+        r"(?:себя|тебя|мне|фото(?:графию)?|картинк\w*|рисунок|из\s+(?:этого\s+)?референса"
+        r"(?:\s+сво[её])?|сво[её])?\s*"
+        r"(?:как\s+)?",
+        "",
+        s,
+    )
+    s = re.sub(
+        r"(?i)^\s*(?:нужен|нужна|нужно)\s+(?:рисунок|фото|клип|видео|картинк\w*)\s*"
+        r"(?:в\s+(?:комфи|comfy(?:\s*ui)?)\s*)?[:=\-–,]?\s*",
         "",
         s,
     )

@@ -13,6 +13,7 @@ from typing import List, Optional, Tuple
 from ...config import Config
 from .character_refs import (
     assign_character_ref,
+    character_image_path,
     format_character_refs_status,
     resolve_character_id,
 )
@@ -65,12 +66,15 @@ _FANTASY_RE = re.compile(
     r"фэнтезийном\s+пейзаж)"
 )
 
-# Ден говорит, ЧТО снимать — описание сцены, не обязательно слово «селфи».
+# Ден говорит, ЧТО сделать из рефа / в Комфи.
 _DIRECTED_SHOOT_RE = re.compile(
     r"(?i)(?:"
-    r"(?:сними|снять|снимай|сделай|создай|сгенер(?:ируй)?)\s+"
-    r"(?:себя|тебя|из\s+(?:этого\s+)?реф|клип|видео|сцен)|"
-    r"(?:сними|снять|снимай|сделай)\s+(?:в|на|у|под|возле|среди)\b|"
+    r"(?:сними|снять|снимай|сделай|создай|сгенер(?:ируй)?|нарисуй|нарисовать|"
+    r"сфотка(?:й|ть)|сфотографируй)\s+"
+    r"(?:себя|тебя|из\s+(?:этого\s+)?реф|клип|видео|сцен|фото|картинк|рисунок)|"
+    r"(?:сними|снять|снимай|сделай|нарисуй)\s+(?:в|на|у|под|возле|среди)\b|"
+    r"(?:сделай|создай)\s+фото|"
+    r"(?:нужен|нужна|нужно)\s+(?:рисунок|фото|клип|видео|картинк)|"
     r"(?:сцена|снимай|снять|кадр)\s*[:=\-–]|"
     r"хочу\s+(?:чтобы\s+)?ты\s+(?:была|сняла|снялась|стояла|шла|сидела|лежала)|"
     r"из\s+(?:этого\s+)?референса|"
@@ -97,9 +101,12 @@ _STATUS_RE = re.compile(
 )
 
 _LAB_SHORT_RE = re.compile(
-    r"^\s*(?:ок|ok|да|yes|approve|нет|no|стоп|stop|отмена|"
-    r"lora\s*:|лора\s*:|лучший\s*:|правк)",
-    re.IGNORECASE,
+    r"(?is)^\s*(?:"
+    r"(?:ок|ok|да|yes|approve|нет|no|стоп|stop|отмена)\s*[.!…]?\s*$|"
+    r"(?:lora|лора)\s*:|"
+    r"лучший\s*:|"
+    r"правк"
+    r")",
 )
 
 _TITLES = {"viu": "Вью", "shanya": "Шаня", "minotaur": "Минотавр"}
@@ -136,17 +143,53 @@ def set_pending_ref(
     *,
     caption: str = "",
     look_text: str = "",
+    pending_character: str = "",
 ) -> None:
     prev = _read_pending(config)
     payload = {
         "path": str(Path(path).resolve()),
         "caption": (caption or "").strip()[:500],
         "look_text": (look_text or prev.get("look_text") or "")[:1500],
+        "pending_character": (
+            (pending_character or prev.get("pending_character") or "").strip().lower()
+        ),
         "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     dest = _pending_path(config)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def set_pending_character(config: Config, character: str, *, note: str = "") -> None:
+    """«Это ты» пришло текстом до фото — ждать картинку."""
+    prev = _read_pending(config)
+    payload = {
+        "path": str(prev.get("path") or ""),
+        "caption": note.strip()[:500],
+        "look_text": str(prev.get("look_text") or ""),
+        "pending_character": (character or "").strip().lower(),
+        "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+    dest = _pending_path(config)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def get_pending_character(config: Config) -> Optional[str]:
+    cid = str(_read_pending(config).get("pending_character") or "").strip().lower()
+    return cid if cid in ("viu", "shanya", "minotaur") else None
+
+
+def clear_pending_character(config: Config) -> None:
+    raw = _read_pending(config)
+    if not raw:
+        return
+    raw["pending_character"] = ""
+    dest = _pending_path(config)
+    try:
+        dest.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass
 
 
 def get_pending_ref(config: Config) -> Optional[Path]:
@@ -210,38 +253,48 @@ def _wants_lora(text: str) -> bool:
 
 
 def _wants_directed_shoot(text: str, config: Config) -> bool:
-    """Ден описал сцену / сказал снимать — не путать с ролевой фантазией без рефа."""
+    """Ден описал сцену / сказал сделать фото-рисунок из рефа."""
     t = text or ""
     if _wants_selfie(t) or _wants_fantasy(t):
         return True
     if looks_like_comfy_job_request(t):
         return True
-    has_ref = get_pending_ref(config) is not None
+    has_ref = get_pending_ref(config) is not None or character_image_path(config, "viu") is not None
     if _DIRECTED_SHOOT_RE.search(t):
         if has_ref:
             return True
         if mentions_comfy(t):
             return True
-        if re.search(r"(?i)\bсебя\b|референс|(?:сцена|снимай|снять|кадр)\s*[:=\-–]", t):
+        if re.search(
+            r"(?i)\bсебя\b|референс|(?:сцена|снимай|снять|кадр)\s*[:=\-–]|"
+            r"нарисуй|рисунок|сделай\s+фото",
+            t,
+        ):
             return True
-    # После рефа можно просто описать кадр: «в лесу на закате, ветер в волосах»
     if has_ref and len(t.strip()) >= 18:
         if _LOOK_RE.search(t) or _ASSIGN_RE.search(t) or _LORA_RE.search(t):
             return False
         if re.search(
-            r"(?i)^(?:в|на|у|под|возле|среди|сто[ия]шь|ид[её]шь|сидишь|лежишь)\b",
+            r"(?i)^(?:в|на|у|под|возле|среди|сто[ия]шь|ид[её]шь|сидишь|лежишь|"
+            r"ты\s+просто)\b",
             t.strip(),
         ):
             return True
-    if not _VIDEO_RE.search(t):
+    if not _VIDEO_RE.search(t) and not re.search(
+        r"(?i)нарисуй|рисунок|сделай\s+фото|сфотка", t
+    ):
         return False
     if mentions_comfy(t) or has_ref or re.search(r"(?i)референс|из\s+реф", t):
         return True
     return False
 
 
-def _wants_video(text: str, config: Config) -> bool:
-    return _wants_directed_shoot(text, config)
+def _resolve_work_image(config: Config, photo: Optional[Path], pending: Optional[Path]) -> Optional[Path]:
+    if photo is not None and photo.is_file():
+        return photo
+    if pending is not None and pending.is_file():
+        return pending
+    return character_image_path(config, "viu")
 
 
 def _look(
@@ -278,7 +331,6 @@ def _analyze_ref(config: Config, image: Path, *, hint: str = "") -> str:
 def _process_ref(
     config: Config, image: Path, *, character: Optional[str] = None
 ) -> Tuple[str, Optional[Path]]:
-    """Скопировать в Lab/Refs/processed и при нужде в FaceRefs."""
     out_dir = comfy_refs_dir(config) / "processed"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
@@ -286,9 +338,9 @@ def _process_ref(
     try:
         shutil.copy2(image, dest)
     except OSError as exc:
-        return f"Не скопировать обработанный кадр: {exc}", None
+        return f"Не скопировать кадр: {exc}", None
 
-    bits = [f"Готово — обработанный кадр лежит у меня: {dest.name}"]
+    bits = [f"Кадр для съёмки готов: {dest.name}"]
     if character:
         ok, msg = assign_character_ref(config, character, dest)
         bits.append(msg if ok else f"(привязка: {msg})")
@@ -297,12 +349,9 @@ def _process_ref(
             from .face_refs import stage_face_for_comfy
 
             ok_f, msg_f, _name = stage_face_for_comfy(config, dest)
-            if ok_f:
-                bits.append("Лицо подставила для съёмки.")
-            else:
-                bits.append(msg_f)
+            bits.append("Лицо подставила." if ok_f else msg_f)
         except Exception as exc:  # noqa: BLE001
-            bits.append(f"FaceRefs: {exc}")
+            bits.append(str(exc))
     return "\n".join(bits), dest
 
 
@@ -326,16 +375,13 @@ def _lora_list_message(config: Config) -> str:
 
     entries = scan_loras(config)
     if not entries:
-        return (
-            "LoRA на диске не вижу (ComfyUI/models/loras).\n"
-            "Кинь файлы туда — скажу номера, что подгрузить."
-        )
+        return "LoRA на диске не вижу. Кинь файлы в ComfyUI/models/loras — скажу номера."
     try:
         return format_lora_pick_message(entries)
     except Exception:
-        lines = ["Какие LoRA подгрузить? Напиши: лора: 1 или лора: 1,3 или лора: none"]
+        lines = ["Какие LoRA? Напиши: лора: 1 или лора: none"]
         for e in entries[:40]:
-            lines.append(f"{e.index}. {e.file}" + (f" [{e.subfolder}]" if e.subfolder else ""))
+            lines.append(f"{e.index}. {e.file}")
         return "\n".join(lines)
 
 
@@ -351,7 +397,7 @@ def _arm_lora_pick(config: Config) -> str:
         session.status = "awaiting_lora_pick"
         session.meta["lora_pick_offered"] = True
         save_session(config, session)
-        return msg + "\nЖду номер — подхвачу в текущую съёмку."
+        return msg + "\nЖду номер — подхвачу в съёмку."
     return msg
 
 
@@ -362,14 +408,19 @@ def _maybe_look_and_store(
     body: str,
     cid: Optional[str],
 ) -> str:
-    """Взгляд на фото глазами Вью → живое RU-описание."""
     as_self = cid == "viu"
     if cid in ("shanya", "minotaur"):
         as_self = False
     elif cid is None and re.search(r"(?i)\b(?:ты|тебя|вью|себя)\b", body or ""):
         as_self = True
     text = _look(config, image, as_self=as_self, hint=body, character=cid)
-    set_pending_ref(config, image, caption=body, look_text=text)
+    set_pending_ref(
+        config,
+        image,
+        caption=body,
+        look_text=text,
+        pending_character=cid or get_pending_character(config) or "",
+    )
     return text
 
 
@@ -377,14 +428,14 @@ def _shoot_confirm_message(text: str) -> str:
     from .reference_vision import extract_scene_wish
 
     wish = extract_scene_wish(text)
-    if wish and len(wish) >= 8:
+    if wish and len(wish) >= 6:
         preview = wish if len(wish) <= 120 else wish[:117] + "…"
-        return f"Ок — снимаю: {preview}\nКлип пришлю, когда будет."
-    return "Ок — снимаю, как сказал. Клип пришлю, когда будет."
+        return f"Ок — делаю из рефа: {preview}\nПришлю, когда будет готово."
+    return "Ок — делаю из рефа, как сказал. Пришлю, когда будет готово."
 
 
 def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
-    """NL-вход: посмотреть фото, рефы, LoRA, съёмка по описанию сцены."""
+    """NL: посмотреть фото, запомнить целиком, сделать кадр по описанию."""
     raw = (text or "").strip()
     if not raw:
         return ChatFlowOutcome(False)
@@ -394,35 +445,58 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
 
     photo, caption = parse_tg_photo_payload(raw)
     body = caption if photo is not None else raw
-    if photo is not None and photo.is_file():
-        set_pending_ref(config, photo, caption=caption)
+    new_photo = photo is not None and photo.is_file()
+    if new_photo:
+        set_pending_ref(
+            config,
+            photo,
+            caption=caption,
+            pending_character=get_pending_character(config) or "",
+        )
 
     pending = get_pending_ref(config)
-    image = photo if (photo is not None and photo.is_file()) else pending
-    new_photo = photo is not None and photo.is_file()
+    fresh = (photo if new_photo else None) or pending
+    # Сохранённый реф — только для «сделай/нарисуй», не для голого «это ты».
+    image = fresh
+    if image is None and body and _wants_directed_shoot(body, config):
+        image = character_image_path(config, "viu")
 
     if _STATUS_RE.search(body) and not new_photo:
         return ChatFlowOutcome(True, format_character_refs_status(config))
 
     cid = _resolve_assign_character(body) if body else None
-    directed = _wants_directed_shoot(body, config) if body else False
+    if not cid and new_photo:
+        cid = get_pending_character(config)
+    if cid and new_photo:
+        clear_pending_character(config)
 
-    # --- Есть картинка + действие/подпись ---
+    directed = bool(body) and _wants_directed_shoot(body, config)
+
+    # Текст «это ты / посмотри» без нового фото — ждать картинку (не reflect).
+    if not new_photo and fresh is None and not directed:
+        if cid or _wants_look(body):
+            if cid:
+                set_pending_character(config, cid, note=body)
+                who = _TITLES.get(cid, "тебя")
+                return ChatFlowOutcome(
+                    True,
+                    f"Кидай фото — посмотрю и запомню {who.lower()} целиком.",
+                )
+            return ChatFlowOutcome(True, "Кидай фото — посмотрю.")
+
+    # --- Есть картинка (новая / pending / сохранённый реф для съёмки) ---
     if image is not None and image.is_file() and (new_photo or body):
         bits: List[str] = []
         media: List[Tuple[str, str]] = []
         look_text = ""
 
-        # Всегда смотрим новое фото; на текст «посмотри» — тоже.
         if new_photo or _wants_look(body) or _wants_analyze(body) or cid:
-            look_text = _maybe_look_and_store(
-                config, image, body=body, cid=cid
-            )
+            look_text = _maybe_look_and_store(config, image, body=body, cid=cid)
             if look_text:
                 bits.append(look_text)
 
         if cid:
-            ok, msg = assign_character_ref(config, cid, image, notes=body[:200])
+            _ok, msg = assign_character_ref(config, cid, image, notes=body[:200])
             bits.append(msg)
 
         if _wants_analyze(body) and not new_photo:
@@ -434,7 +508,11 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
                 image,
                 character=cid or ("viu" if directed else None),
             )
-            bits.append(pmsg)
+            # Не дублировать «запомнила», если уже assign выше
+            if not cid:
+                bits.append(pmsg)
+            elif pout is not None:
+                bits.append(f"Кадр для съёмки готов: {pout.name}")
             if pout is not None:
                 media.append(("photo", str(pout)))
 
@@ -453,8 +531,7 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
         if new_photo and not cid and not (
             directed or _wants_lora(body) or _wants_process(body)
         ):
-            if not any("шаня" in b.lower() or "минотавр" in b.lower() or "запомню" in b.lower() for b in bits):
-                bits.append("Если это я, Шаня или минотавр — скажи, запомню.")
+            bits.append("Если это я — скажи «это ты», запомню целиком.")
 
         if bits:
             return ChatFlowOutcome(
@@ -465,12 +542,11 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
                 media_to_send=media,
             )
 
-    # Текст без нового фото, но есть pending
     if image is not None and image.is_file():
         if cid:
             look = _look(config, image, as_self=cid == "viu", hint=body, character=cid)
             set_pending_ref(config, image, caption=body, look_text=look)
-            ok, msg = assign_character_ref(config, cid, image, notes=body[:200])
+            _ok, msg = assign_character_ref(config, cid, image, notes=body[:200])
             return ChatFlowOutcome(True, f"{look}\n\n{msg}" if look else msg)
 
         if _wants_look(body) or _wants_analyze(body):
@@ -511,12 +587,12 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
             shoot_action=action,
         )
 
-    if mentions_comfy(body) and not looks_like_comfy_job_request(body):
+    # Comfy без явной сцены — коротко, по-человечески
+    if mentions_comfy(body):
         return ChatFlowOutcome(
             True,
-            "Могу в чате: посмотреть фото и описать, запомнить «это я / Шаня / минотавр», "
-            "снять сцену как скажешь (по рефу), LoRA, видео — и прислать тебе.\n"
-            "Кинь фото или опиши кадр.",
+            "Скажи кадр своими словами — например «нарисуй себя в кресле» "
+            "или кинь реф и «это ты». Я сделаю из рефа и пришлю.",
         )
 
     return ChatFlowOutcome(False)
