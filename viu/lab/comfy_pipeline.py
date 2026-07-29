@@ -184,14 +184,32 @@ def step_models(config: Config, session: LabSession) -> StepResult:
 
 def step_draft_prompt(config: Config, session: LabSession) -> StepResult:
     from ..integrations.comfy.prompts import clean_action_for_wan, draft_bundle
+    from ..integrations.comfy.show_profile import (
+        draft_show_bundle,
+        find_show_unet,
+        is_show_profile,
+        show_style_from_meta,
+    )
 
     action = str(session.meta.get("action") or "").strip() or read_action_from_task(config)
     action = clean_action_for_wan(action)
     session.meta["action"] = action
-    draft = draft_bundle(action)
+    if is_show_profile(session.meta):
+        unet, unet_note = find_show_unet(config)
+        style = show_style_from_meta(session.meta)
+        draft = draft_show_bundle(
+            action,
+            style=style,
+            unet_note=unet_note,
+            has_smoothmix=bool(unet),
+        )
+        label = f"шоу ({style})"
+    else:
+        draft = draft_bundle(action)
+        label = "MoCap"
     session.meta["draft"] = draft
-    append_journal(config, COMFY_TOPIC, f"### Черновик промпта\n\n{draft}")
-    return True, f"Черновик готов для «{action[:80]}».", None
+    append_journal(config, COMFY_TOPIC, f"### Черновик промпта ({label})\n\n{draft}")
+    return True, f"Черновик {label} готов для «{action[:80]}».", None
 
 
 def _is_directed_shoot(session: LabSession) -> bool:
@@ -484,7 +502,12 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
                 f"ComfyUI недоступен ({url}): {ping_msg}\n{run_msg}\n\n"
                 "⏸ Lab на паузе. Запусти Comfy (или comfy_ensure), потом снова Lab."
             )
-            tag = f"### {mocap_take_count()} дублей ¾\n\n"
+            from ..integrations.comfy.show_profile import is_show_profile, show_take_count
+
+            if is_show_profile(session.meta):
+                tag = f"### Шоу-дубль ×{show_take_count()}\n\n"
+            else:
+                tag = f"### {mocap_take_count()} дублей ¾\n\n"
             append_journal(config, COMFY_TOPIC, tag + msg)
             return False, msg, None
 
@@ -539,29 +562,32 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
     seed_image_name = ""
     from ..integrations.comfy.seed_library import activate_for_slug
     from ..integrations.comfy.seed_pose import resolve_active_seed, stage_seed_for_comfy
+    from ..integrations.comfy.show_profile import is_show_profile, show_take_count
 
-    # Привязка библиотеки эталонов к slug (если глобальный seed ещё не выбран вручную).
-    _path0, _n0, seed_already = resolve_active_seed(config)
-    if not seed_already and slug:
-        bind_msg = activate_for_slug(config, slug)
-        if bind_msg:
-            append_journal(config, COMFY_TOPIC, "### Эталон I2V\n\n" + bind_msg)
+    # Шоу-дубль — чистый T2V, без I2V эталона.
+    if not is_show_profile(session.meta):
+        # Привязка библиотеки эталонов к slug (если глобальный seed ещё не выбран вручную).
+        _path0, _n0, seed_already = resolve_active_seed(config)
+        if not seed_already and slug:
+            bind_msg = activate_for_slug(config, slug)
+            if bind_msg:
+                append_journal(config, COMFY_TOPIC, "### Эталон I2V\n\n" + bind_msg)
 
-    seed_path, seed_comfy, seed_on = resolve_active_seed(config)
-    if seed_on and seed_path is not None:
-        ok_s, _msg_s, staged = stage_seed_for_comfy(config, seed_path)
-        if ok_s:
-            seed_image_name = staged or seed_comfy
-            session.meta["i2v_seed_enabled"] = True
-            session.meta["i2v_seed_path"] = str(seed_path)
-            session.meta["i2v_seed_comfy"] = seed_image_name
-            # Подмешать «натуральное тело» в positive, если эталон ещё HS2.
-            hint = str(session.meta.get("i2v_seed_natural_hint") or "").strip()
-            if hint and pos_ov and hint.lower() not in pos_ov.lower():
-                pos_ov = f"{pos_ov}, {hint}"
-            elif hint and not pos_ov:
-                session.meta["i2v_seed_natural_hint"] = hint
-            save_session(config, session)
+        seed_path, seed_comfy, seed_on = resolve_active_seed(config)
+        if seed_on and seed_path is not None:
+            ok_s, _msg_s, staged = stage_seed_for_comfy(config, seed_path)
+            if ok_s:
+                seed_image_name = staged or seed_comfy
+                session.meta["i2v_seed_enabled"] = True
+                session.meta["i2v_seed_path"] = str(seed_path)
+                session.meta["i2v_seed_comfy"] = seed_image_name
+                # Подмешать «натуральное тело» в positive, если эталон ещё HS2.
+                hint = str(session.meta.get("i2v_seed_natural_hint") or "").strip()
+                if hint and pos_ov and hint.lower() not in pos_ov.lower():
+                    pos_ov = f"{pos_ov}, {hint}"
+                elif hint and not pos_ov:
+                    session.meta["i2v_seed_natural_hint"] = hint
+                save_session(config, session)
     ok, msg, results = run_triple_angles(
         config,
         action=action,
@@ -582,7 +608,10 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
     session.meta["triple"] = results
     for path in results.get("files") or []:
         session.append_artifact(path)
-    tag = f"### {mocap_take_count()} дублей ¾\n\n"
+    if is_show_profile(session.meta):
+        tag = f"### Шоу-дубль ×{show_take_count()}\n\n"
+    else:
+        tag = f"### {mocap_take_count()} дублей ¾\n\n"
     append_journal(config, COMFY_TOPIC, tag + msg)
     if not ok:
         # Connection refused / все дубли FAIL — не маскировать под успех

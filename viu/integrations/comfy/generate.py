@@ -52,9 +52,36 @@ def run_single_angle(
     prompt_override: str = "",
     negative_override: str = "",
     seed_image_name: str = "",
+    render_profile: str = "mocap",
+    show_style: str = "realism",
 ) -> Tuple[bool, str, List[str]]:
-    prompt = mocap_prompt(action, angle, positive_override=prompt_override)
-    negative = mocap_negative(negative_override=negative_override)
+    from .show_profile import (
+        PROFILE_SHOW,
+        find_show_unet,
+        normalize_profile,
+        show_negative,
+        show_positive,
+    )
+
+    show = normalize_profile(render_profile) == PROFILE_SHOW
+    unet_name = ""
+    unet_note = ""
+    if show:
+        unet_name, unet_note = find_show_unet(config)
+        if (prompt_override or "").strip():
+            prompt = prompt_override.strip()
+        else:
+            prompt = show_positive(
+                action, style=show_style, has_smoothmix=bool(unet_name)
+            )
+        negative = (
+            negative_override.strip()
+            if (negative_override or "").strip()
+            else show_negative(style=show_style)
+        )
+    else:
+        prompt = mocap_prompt(action, angle, positive_override=prompt_override)
+        negative = mocap_negative(negative_override=negative_override)
     from .lora import append_trigger_words, ensure_lora_files
 
     loras = list(lora_specs or [])
@@ -66,6 +93,8 @@ def run_single_angle(
     from .naming import comfy_filename_prefix, display_video_stem, normalize_slug_for_name
 
     base_slug = normalize_slug_for_name(catalog_slug or slug)
+    if show and base_slug in ("", "mocap", "chat_scene"):
+        base_slug = "show"
     display_stem = display_video_stem(
         catalog_slug=base_slug,
         enters_from=enters_from,
@@ -74,8 +103,10 @@ def run_single_angle(
         seq=seq,
     )
     file_prefix = comfy_filename_prefix(display_stem)
-    # Не отдавать в Comfy дефолтный viu_mocap_* — только Girl_<анимация>_take_*.
-    if file_prefix == "viu_mocap" or not file_prefix.lower().startswith("girl"):
+    if show:
+        if "show" not in file_prefix.lower() and not file_prefix.lower().startswith("girl"):
+            file_prefix = f"viu_show_{base_slug}_{angle.id}"
+    elif file_prefix == "viu_mocap" or not file_prefix.lower().startswith("girl"):
         file_prefix = comfy_filename_prefix(
             display_video_stem(
                 catalog_slug=base_slug or "mocap",
@@ -86,8 +117,10 @@ def run_single_angle(
             )
         )
 
-    use_i2v = bool((seed_image_name or "").strip())
+    use_i2v = bool((seed_image_name or "").strip()) and not show
     wf_name = workflow_name or choose_workflow_name(config, has_seed_image=use_i2v)
+    if show:
+        wf_name = "t2v"
     try:
         wf = load_workflow(config, wf_name)
     except (FileNotFoundError, ValueError, OSError) as exc:
@@ -143,7 +176,14 @@ def run_single_angle(
             end_name = str(sess.meta.get("i2v_end_seed_comfy") or "").strip()
         if end_name:
             wf = inject_end_seed_image(wf, end_name)
-    wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
+    if show:
+        from .workflows import prepare_show_workflow
+
+        wf = prepare_show_workflow(
+            wf, filename_prefix=file_prefix, unet_name=unet_name or ""
+        )
+    else:
+        wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
     from .workflows import inject_filename_prefix
 
     # Повторно вшить префикс: импортированные графы иногда оставляют viu_mocap.
@@ -155,6 +195,8 @@ def run_single_angle(
         i2v_note = f"I2V seed={seed_image_name.strip()}"
     elif use_i2v and wf_name != "i2v":
         i2v_note = "эталон есть, но I2V не готов — T2V"
+    if show and unet_note:
+        i2v_note = ((i2v_note + "; ") if i2v_note else "") + f"шоу: {unet_note}"
 
     from .face_refs import (
         face_swap_enabled,
@@ -315,13 +357,25 @@ def run_triple_angles(
     negative_override: str = "",
     seed_image_name: str = "",
 ) -> Tuple[bool, str, Dict[str, Any]]:
-    """Пять дублей ¾ подряд (разный seed + вариация действия)."""
+    """Пять дублей ¾ (MoCap) или 1 шоу-дубль."""
     from .naming import next_kept_seq, normalize_slug_for_name
     from .queue_manage import prepare_queue_for_slug
     from .seed_pose import resolve_active_seed, stage_seed_for_comfy
+    from .show_profile import (
+        is_show_profile,
+        show_angles,
+        show_style_from_meta,
+        show_take_count,
+    )
+    from ...lab.comfy_pipeline import COMFY_TOPIC
+    from ...lab.session import load_session
 
-    angles = default_angles()
-    base_slug = normalize_slug_for_name(catalog_slug or slug or "mocap")
+    sess = load_session(config, COMFY_TOPIC)
+    meta = sess.meta if sess is not None and isinstance(sess.meta, dict) else {}
+    show = is_show_profile(meta)
+    style = show_style_from_meta(meta)
+    angles = show_angles() if show else default_angles()
+    base_slug = normalize_slug_for_name(catalog_slug or slug or ("show" if show else "mocap"))
     client = _client(config)
     queue_note = prepare_queue_for_slug(client, base_slug)
     stamp = time.strftime("%Y%m%d_%H%M%S")
@@ -330,7 +384,7 @@ def run_triple_angles(
 
     seed_name = (seed_image_name or "").strip()
     seed_path, seed_comfy, seed_on = resolve_active_seed(config)
-    if not seed_name and seed_on and seed_path is not None:
+    if not show and not seed_name and seed_on and seed_path is not None:
         ok_s, _msg_s, staged = stage_seed_for_comfy(config, seed_path)
         if ok_s:
             seed_name = staged or seed_comfy
@@ -344,11 +398,19 @@ def run_triple_angles(
         "seq": seq,
         "angles": {},
         "files": [],
-        "mode": "three_quarter_takes",
-        "i2v_seed": seed_name,
+        "mode": "show_double" if show else "three_quarter_takes",
+        "render_profile": "show" if show else "mocap",
+        "i2v_seed": seed_name if not show else "",
     }
-    lines: List[str] = [f"Comfy ×{len(angles)} дубля (¾) — «{action[:80]}»"]
-    if seed_name:
+    n = show_take_count() if show else len(angles)
+    lines: List[str] = [
+        f"Comfy ×{n} "
+        + ("шоу-дубль" if show else "дубля (¾)")
+        + f" — «{action[:80]}»"
+    ]
+    if show:
+        lines.append(f"Профиль: ШОУ ({style})")
+    if seed_name and not show:
         lines.append(f"Эталон I2V: {seed_name}")
     if queue_note:
         lines.insert(0, queue_note)
@@ -369,7 +431,9 @@ def run_triple_angles(
             lora_specs=lora_specs,
             prompt_override=prompt_override,
             negative_override=negative_override,
-            seed_image_name=seed_name,
+            seed_image_name="" if show else seed_name,
+            render_profile="show" if show else "mocap",
+            show_style=style,
         )
         results["angles"][angle.id] = {
             "ok": ok,

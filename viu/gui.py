@@ -899,8 +899,15 @@ class ViuGUI:
                     self._telegram.notify_photo(path, caption="")
             if out.start_shoot and not self._tool_busy:
                 action = str(getattr(out, "shoot_action", "") or "")
+                profile = str(getattr(out, "render_profile", "") or "")
+                style = str(getattr(out, "show_style", "") or "realism")
                 self.root.after(
-                    0, lambda a=action: self._lab_comfy_action(action=a or None)
+                    0,
+                    lambda a=action, p=profile, s=style: self._lab_comfy_action(
+                        action=a or None,
+                        render_profile=p,
+                        show_style=s,
+                    ),
                 )
             return True
         except Exception:  # noqa: BLE001
@@ -2400,10 +2407,18 @@ class ViuGUI:
             args["reset"] = "1"
         self._run_tool("lab_start", args, label="Лаборатория: Cascadeur", echo_user=True)
 
-    def _lab_comfy_action(self, *, auto: bool = False, action: str | None = None) -> None:
+    def _lab_comfy_action(
+        self,
+        *,
+        auto: bool = False,
+        action: str | None = None,
+        render_profile: str = "",
+        show_style: str = "realism",
+    ) -> None:
         """Вью сама выбирает кадр (каталог/граф). Без диалога idle stand.
 
         action= — явная сцена из чата (описание Дена), без invent.
+        render_profile=show — шоу-дубль (SmoothMix / cinematic), не MoCap×5.
         """
         from .lab.comfy_director import invent_next_shot
         from .lab.comfy_pipeline import COMFY_TOPIC
@@ -2411,6 +2426,60 @@ class ViuGUI:
         from .presence import is_away
 
         chat_action = (action or "").strip()
+        profile = (render_profile or "").strip().lower()
+        if profile in ("show", "шоу", "smoothmix", "beauty"):
+            from .integrations.comfy.prompts import clean_action_for_wan
+            from .integrations.comfy.show_profile import (
+                arm_show_profile,
+                find_show_unet,
+            )
+            from .lab.session import new_session, save_session
+
+            if not chat_action:
+                chat_action = "young woman standing relaxed, full body, soft pose"
+            chat_action = clean_action_for_wan(chat_action)
+            existing = load_session(self.agent.config, COMFY_TOPIC)
+            if existing is None:
+                existing = new_session(COMFY_TOPIC)
+            existing.status = "running"
+            existing.step = 0
+            arm_show_profile(
+                existing.meta,
+                style=show_style or "realism",
+                action=chat_action,
+            )
+            existing.meta["catalog_slug"] = "show"
+            existing.meta.pop("lora_pick_done", None)
+            existing.meta.pop("clip_batch_id", None)
+            existing.meta.pop("clip_candidate_ids", None)
+            save_session(self.agent.config, existing)
+            unet, note = find_show_unet(self.agent.config)
+            self._append(
+                "Вью",
+                f"Шоу-дубль ({show_style or 'realism'}) — {chat_action[:100]}.\n"
+                f"{note}\n"
+                + ("SmoothMix подхвачу. " if unet else "Пока без SmoothMix — cinematic Wan. ")
+                + "Панель в Telegram: Промпт / LoRA, потом «Снять».",
+                tag="viu",
+            )
+            self._run_tool(
+                "lab_start",
+                {
+                    "topic": COMFY_TOPIC,
+                    "run_all": "1",
+                    "reset": "1",
+                    "shoot": "1",
+                    "action": chat_action,
+                    "catalog_slug": "show",
+                    "shot_reason": "chat: show double",
+                    "render_profile": "show",
+                    "show_style": show_style or "realism",
+                },
+                label="Шоу-дубль",
+                echo_user=True,
+            )
+            return
+
         if chat_action and not auto:
             from .lab.session import new_session, save_session
 
@@ -2429,6 +2498,8 @@ class ViuGUI:
             existing.meta["catalog_slug"] = slug
             existing.meta["shot_reason"] = "chat: directed scene"
             existing.meta["prompt_user_edited"] = True
+            existing.meta["render_profile"] = "mocap"
+            existing.meta.pop("show_style", None)
             existing.meta.pop("lora_pick_done", None)
             existing.meta.pop("clip_batch_id", None)
             existing.meta.pop("clip_candidate_ids", None)
@@ -2449,6 +2520,7 @@ class ViuGUI:
                     "action": chat_action,
                     "catalog_slug": slug,
                     "shot_reason": "chat: directed scene",
+                    "render_profile": "mocap",
                 },
                 label="MoCap: сцена из чата",
                 echo_user=True,

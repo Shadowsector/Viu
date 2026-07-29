@@ -40,6 +40,13 @@ def comfy_pipeline_status_brief(config: Config) -> str:
     )
     slug = str(session.meta.get("catalog_slug") or "").strip()
     slug_bit = f" · {slug}" if slug else ""
+    try:
+        from .show_profile import is_show_profile
+
+        if is_show_profile(session.meta):
+            slug_bit = " · ШОУ" + slug_bit
+    except Exception:
+        pass
     focus_bit = f" · фокус {focus_mode_label(config)}"
     st = session.status
     if st == "awaiting_prompt":
@@ -78,6 +85,15 @@ def comfy_pipeline_status(config: Config) -> str:
         from .seed_pose import i2v_status_line
 
         lines.append(i2v_status_line(config))
+    except Exception:
+        pass
+
+    try:
+        from .show_profile import status_line as show_status_line
+
+        sess0 = load_session(config, COMFY_TOPIC)
+        meta0 = sess0.meta if sess0 is not None else None
+        lines.append(show_status_line(config, meta0))
     except Exception:
         pass
 
@@ -126,7 +142,16 @@ def comfy_pipeline_status(config: Config) -> str:
             elif session.status == "awaiting_lora_pick":
                 lines.append("  LoRA: жду выбор (comfy_lora_list)")
         if session.status == "running" and session.step == 5:
-            lines.append(f"  → **сейчас генерирует** {mocap_take_count()} дублей (¾) в ComfyUI")
+            from .show_profile import is_show_profile, show_take_count
+
+            if is_show_profile(session.meta):
+                lines.append(
+                    f"  → **сейчас генерирует** шоу-дубль ×{show_take_count()}"
+                )
+            else:
+                lines.append(
+                    f"  → **сейчас генерирует** {mocap_take_count()} дублей (¾) в ComfyUI"
+                )
         elif session.status == "awaiting_prompt":
             lines.append("  → панель съёмки: Telegram «Снять» / Промпт / LoRA")
         elif session.status == "awaiting_lora_pick":
