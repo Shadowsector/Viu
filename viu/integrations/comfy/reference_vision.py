@@ -203,3 +203,123 @@ def format_reference_report(desc: ReferenceDescription) -> str:
         lines.append("--- raw ---")
         lines.append(desc.raw[:2000])
     return "\n".join(lines)
+
+
+_LOOK_SELF_PROMPT = """Ты — девушка Вью. Ден прислал фото и говорит, что это ты (или просит посмотреть на себя).
+{hint}
+
+Посмотри внимательно на картинку. Ответь ТОЛЬКО по-русски, от первого лица (я / мне / у меня), 2–5 живых предложений:
+что видишь на себе — лицо, волосы, одежда, поза, свет, фон, настроение кадра.
+Если Ден хвалит — мягко ответь на комплимент, но сначала опиши, что реально видишь.
+Без markdown, без списков, без EN_POSE/тегов, без «как ИИ»."""
+
+_LOOK_OTHER_PROMPT = """Посмотри на это фото. Ден прислал его в чат.
+{hint}
+
+Ответь ТОЛЬКО по-русски, 2–5 живых предложений: кто или что на кадре, поза, одежда, фон, свет, настроение.
+Без markdown, без списков, без EN_POSE/тегов, без мета про модели."""
+
+
+def _strip_vision_model_prefix(text: str) -> str:
+    """ask_vision иногда префиксирует [model]\\n — убрать для чата."""
+    body = (text or "").strip()
+    if body.startswith("[") and "]" in body[:80]:
+        body = body.split("]", 1)[1].strip()
+    return body
+
+
+def look_at_photo(
+    config: Config,
+    path: str | Path,
+    *,
+    as_self: bool = False,
+    hint: str = "",
+    character_title: str = "",
+) -> Tuple[bool, str]:
+    """Живой взгляд на фото → короткое RU-описание (не технический MoCap-отчёт)."""
+    src = Path(path)
+    if not src.is_file():
+        return False, f"Не вижу файл: {src.name}"
+    if not pick_vision_model(config.base_url):
+        return False, (
+            "Сейчас не могу разглядеть картинку глазами — нет vision-модели в Ollama. "
+            "Поставь llava или qwen2-vl, и я посмотрю."
+        )
+    ok_f, frame_path, _kind, err = _resolve_frame(src, frame="middle", config=config)
+    if not ok_f:
+        return False, err or "Не вытащить кадр."
+
+    hint_bits = []
+    if (hint or "").strip():
+        hint_bits.append(f"Слова Дена: {(hint or '').strip()[:300]}")
+    if character_title and not as_self:
+        hint_bits.append(f"На рефе, скорее всего: {character_title}.")
+    hint_block = "\n".join(hint_bits) if hint_bits else "Просто опиши, что видишь."
+
+    prompt = (_LOOK_SELF_PROMPT if as_self else _LOOK_OTHER_PROMPT).format(hint=hint_block)
+    v_ok, v_text = ask_vision(frame_path, prompt=prompt, config=config)
+    if not v_ok:
+        return False, _strip_vision_model_prefix(v_text) or "Не разглядела."
+    text = _strip_vision_model_prefix(v_text)
+    if len(text) > 1200:
+        text = text[:1197].rstrip() + "…"
+    # сохранить лёгкий след
+    try:
+        out = comfy_refs_dir(config) / "vision_refs" / f"{src.stem}_look.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(
+            json.dumps(
+                {
+                    "path": str(src),
+                    "as_self": as_self,
+                    "hint": hint,
+                    "text": text,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+    return True, text
+
+
+def build_scene_action_en(
+    *,
+    kind: str,
+    user_text: str = "",
+    look_ru: str = "",
+) -> str:
+    """Короткий EN action для lab/Comfy из желания Дена + взгляда на реф."""
+    wish = (user_text or "").strip()
+    look = (look_ru or "").strip()[:280]
+    base_look = f" matching the reference look ({look})" if look else " matching the reference face and style"
+    k = (kind or "").strip().lower()
+    if k in ("selfie", "селфи"):
+        return (
+            "young woman taking a selfie, looking at camera, close-up phone angle, "
+            "soft natural light, gentle expression, upper body"
+            + base_look
+        )
+    if k in ("fantasy", "фентези", "пейзаж"):
+        scene = "fantasy landscape, magical atmosphere, dramatic sky"
+        if re.search(r"(?i)лес|forest", wish):
+            scene = "magical fantasy forest, soft mist, glowing light"
+        elif re.search(r"(?i)замок|castle", wish):
+            scene = "fantasy castle overlook, dramatic clouds"
+        elif re.search(r"(?i)горы|mountain", wish):
+            scene = "fantasy mountain vista, epic sky"
+        elif re.search(r"(?i)океан|море|beach|берег", wish):
+            scene = "fantasy coastal landscape, glowing horizon"
+        return (
+            f"young woman standing in {scene}, full or medium shot, cinematic lighting"
+            + base_look
+        )
+    # общий «сними себя …»
+    return (
+        "young woman in the described scene, medium shot, natural motion"
+        + base_look
+        + (f"; scene from user: {wish[:200]}" if wish else "")
+    )
