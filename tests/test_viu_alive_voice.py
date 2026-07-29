@@ -13,7 +13,7 @@ def test_nu_kak_ty_is_chat_not_full_work_notes():
     assert not _needs_full_work_notes("ну как ты?")
     assert not _needs_full_work_notes("как дела")
     assert _needs_full_work_notes("следующий шаг")
-    assert _needs_full_work_notes("дырка в графе анимаций")
+    assert _needs_full_work_notes("проверь animation_catalog")
 
 
 def test_build_reflect_notes_chat_is_brief(tmp_path, monkeypatch):
