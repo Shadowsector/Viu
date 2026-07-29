@@ -56,9 +56,59 @@ def test_assign_character_ref(tmp_path):
     img = _png(tmp_path / "face.png")
     ok, msg = assign_character_ref(cfg, "viu", img)
     assert ok
-    assert "Вью" in msg
+    assert "целиком" in msg.lower() or "Вью" in msg
     store = load_character_refs(cfg)
     assert Path(store["viu"].path).is_file()
+    assert Path(store["viu"].body_path).is_file()
+
+
+def test_chat_assign_text_before_photo(tmp_path, monkeypatch):
+    from viu.integrations.comfy.chat_flow import get_pending_character
+
+    _mock_look(monkeypatch)
+    cfg = _cfg(tmp_path)
+    out1 = try_handle_comfy_chat(cfg, "это ты.\nПосмотри, какая ты красивая!")
+    assert out1.handled
+    assert "кидай фото" in out1.message.lower()
+    assert get_pending_character(cfg) == "viu"
+    img = _png(tmp_path / "later.png")
+    out2 = try_handle_comfy_chat(cfg, f"[tg_photo:{img}]")
+    assert out2.handled
+    assert load_character_refs(cfg)["viu"].path
+    assert "если это я" not in out2.message.lower()
+
+
+def test_chat_draw_in_comfy_armchair(tmp_path, monkeypatch):
+    _mock_look(monkeypatch)
+    cfg = _cfg(tmp_path)
+    img = _png(tmp_path / "me.png")
+    assign_character_ref(cfg, "viu", img)
+    out = try_handle_comfy_chat(cfg, "Ок, нарисуй себя в Комфи, как ты сидишь в кресле")
+    assert out.handled
+    assert out.start_shoot
+    assert "кресл" in out.shoot_action.lower()
+
+
+def test_chat_make_photo_sexy_pose(tmp_path, monkeypatch):
+    _mock_look(monkeypatch)
+    cfg = _cfg(tmp_path)
+    img = _png(tmp_path / "p.png")
+    out = try_handle_comfy_chat(
+        cfg, f"[tg_photo:{img}]\nЭто ты.\nСделай фото, как ты стоишь в секси позе"
+    )
+    assert out.handled
+    assert out.start_shoot
+    assert "секси" in out.shoot_action.lower() or "позе" in out.shoot_action.lower()
+    assert load_character_refs(cfg)["viu"].path
+
+
+def test_look_quality_rejects_garble():
+    from viu.integrations.comfy.reference_vision import _look_quality_ok
+
+    bad = "Она стоит на баскete в зале. If stands on basket toлько значит modelю."
+    assert not _look_quality_ok(bad)
+    good = "Стоя на площадке в зале, я в лёгком платье, мягкий свет падает на лицо."
+    assert _look_quality_ok(good)
 
 
 def test_parse_tg_photo_payload():
@@ -102,7 +152,7 @@ def test_chat_directed_scene_from_ref(tmp_path, monkeypatch):
     assert out.handled
     assert out.start_shoot
     assert "фентез" in out.shoot_action.lower() or "закат" in out.shoot_action.lower()
-    assert "снимаю" in out.message.lower()
+    assert "делаю из рефа" in out.message.lower() or "пришлю" in out.message.lower()
 
 
 def test_chat_scene_description_after_pending(tmp_path, monkeypatch):
@@ -186,11 +236,7 @@ def test_chat_comfy_hint_without_job(tmp_path):
     cfg = _cfg(tmp_path)
     out = try_handle_comfy_chat(cfg, "Комфи как тебе?")
     assert out.handled
-    assert (
-        "фото" in out.message.lower()
-        or "сцен" in out.message.lower()
-        or "реф" in out.message.lower()
-    )
+    assert "реф" in out.message.lower() or "кадр" in out.message.lower()
 
 
 def test_set_pending_ref(tmp_path):
