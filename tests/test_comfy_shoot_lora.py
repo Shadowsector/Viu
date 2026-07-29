@@ -1,4 +1,4 @@
-"""Shoot intent must not stall on LoRA pick with empty Comfy queue."""
+"""Shoot intent: всё равно ждём LoRA в Telegram; lab не стопорит зря на awaiting_prompt без ответа."""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -22,7 +22,7 @@ def _cfg(tmp_path: Path, monkeypatch) -> Config:
     )
 
 
-def test_shoot_intent_auto_picks_lora(tmp_path, monkeypatch):
+def test_shoot_intent_still_awaits_lora(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     session = new_session(COMFY_TOPIC)
     session.status = "running"
@@ -37,20 +37,23 @@ def test_shoot_intent_auto_picks_lora(tmp_path, monkeypatch):
         "viu.integrations.comfy.lora.scan_loras",
         return_value=fake_entries,
     ), patch(
-        "viu.integrations.comfy.lora.specs_from_indices",
-        return_value=[],
+        "viu.integrations.comfy.lora.format_lora_pick_message",
+        return_value="Выбери LoRA",
+    ), patch(
+        "viu.integrations.comfy.lora.format_lora_pick_telegram",
+        return_value=["1. x"],
     ):
         ok, msg, _ = step_request_lora_pick(cfg, session)
 
     assert ok
-    assert "очередь" in msg.lower() or "LoRA" in msg
     loaded = load_session(cfg, COMFY_TOPIC)
     assert loaded is not None
-    assert loaded.meta.get("lora_pick_done") is True
-    assert loaded.status != "awaiting_lora_pick"
+    assert loaded.status == "awaiting_lora_pick"
+    assert not loaded.meta.get("lora_pick_done")
+    assert "lora" in msg.lower() or "LoRA" in msg
 
 
-def test_shoot_intent_flag_also_auto_picks(tmp_path, monkeypatch):
+def test_shoot_intent_flag_also_awaits_lora(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     session = new_session(COMFY_TOPIC)
     session.status = "running"
@@ -63,36 +66,32 @@ def test_shoot_intent_flag_also_auto_picks(tmp_path, monkeypatch):
         "viu.integrations.comfy.lora.scan_loras",
         return_value=[type("E", (), {"index": 1, "file": "a.safetensors"})()],
     ), patch(
-        "viu.integrations.comfy.lora.specs_from_indices",
-        return_value=[],
+        "viu.integrations.comfy.lora.format_lora_pick_message",
+        return_value="list",
+    ), patch(
+        "viu.integrations.comfy.lora.format_lora_pick_telegram",
+        return_value=["1. a"],
     ):
         ok, msg, _ = step_request_lora_pick(cfg, session)
 
     assert ok
-    assert session.meta.get("lora_pick_done") is True
+    assert session.status == "awaiting_lora_pick"
+    assert not session.meta.get("lora_pick_done")
     assert "shoot_intent" not in session.meta
 
 
-def test_awaiting_prompt_with_shoot_does_not_early_return(tmp_path, monkeypatch):
-    """lab_start shoot=1 while awaiting_prompt must continue, not stop at Telegram wait."""
+def test_awaiting_prompt_with_shoot_still_waits(tmp_path, monkeypatch):
+    """lab_start shoot=1 при awaiting_prompt не авто-одобряет — ждём Telegram."""
     cfg = _cfg(tmp_path, monkeypatch)
     session = new_session(COMFY_TOPIC)
     session.status = "awaiting_prompt"
-    session.step = 4
+    session.step = 3
     session.meta["action"] = "sit on a bed"
     session.meta["wan_positive"] = "nude young woman sits on a bed"
     session.meta["prompt_user_edited"] = True
     save_session(cfg, session)
 
-    calls = {"n": 0}
-
-    def fake_run_until_done(config, sess):
-        calls["n"] += 1
-        sess.status = "running"
-        save_session(config, sess)
-        return True, "queued"
-
-    with patch("viu.lab.comfy_pipeline.run_until_done", fake_run_until_done), patch(
+    with patch("viu.lab.comfy_pipeline.run_until_done") as run_done, patch(
         "viu.lab.comfy_pipeline.ensure_task_file"
     ), patch("viu.lab.comfy_pipeline.run_one_step", return_value=(True, "ok")):
         ok, msg, loaded = run_lab_prepared(
@@ -105,7 +104,8 @@ def test_awaiting_prompt_with_shoot_does_not_early_return(tmp_path, monkeypatch)
         )
 
     assert ok
-    assert calls["n"] == 1
-    assert "queued" in msg
+    run_done.assert_not_called()
+    assert "жду" in msg.lower() or "telegram" in msg.lower() or "промпт" in msg.lower()
     assert loaded is not None
+    assert loaded.status == "awaiting_prompt"
     assert loaded.meta.get("shoot_intent") is True

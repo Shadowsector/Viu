@@ -229,20 +229,11 @@ def run_lab_prepared(
                     continue
                 session.meta[k] = v
         save_session(config, session)
-        # shoot_intent / away: не стопорить — run_until_done сам одобрит.
-        if (
-            mode == "continue"
-            and session.status == "awaiting_prompt"
-            and not session.meta.get("shoot_intent")
-        ):
-            try:
-                from ..presence import is_away
-
-                away_now = is_away(config)
-            except Exception:
-                away_now = False
-            if not away_now:
-                return True, prefix + "Жду одобрение Comfy-промпта в Telegram.", session
+        # Промпт / LoRA — всегда ждём Telegram (и дома, и away, и после shoot=1).
+        if mode == "continue" and session.status == "awaiting_prompt":
+            return True, prefix + "Жду одобрение Comfy-промпта в Telegram.", session
+        if mode == "continue" and session.status == "awaiting_lora_pick":
+            return True, prefix + "Жду выбор LoRA в Telegram (lora: 1 | none).", session
 
     if topic == "interaction":
         slug = ""

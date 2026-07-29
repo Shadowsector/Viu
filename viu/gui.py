@@ -938,6 +938,7 @@ class ViuGUI:
                 and session.status == "running"
                 and (
                     session.meta.get("approved")
+                    or session.meta.get("lora_pick_done")
                     or session.meta.get("clip_kept_id")
                     or session.meta.get("clip_rejected_all")
                 )
@@ -2306,13 +2307,8 @@ class ViuGUI:
             "awaiting_lora_pick",
             "awaiting_clip_pick",
         ):
-            if comfy.status == "awaiting_prompt" and auto:
-                # away: авто-одобрение уже в pipeline; просто шагнуть
-                self._run_tool(
-                    "lab_step",
-                    {"topic": COMFY_TOPIC, "run_all": "1"},
-                    label="Lab Comfy (auto)",
-                )
+            # Промпт и LoRA — только ответ Дена в Telegram, не auto-tick.
+            if comfy.status in ("awaiting_prompt", "awaiting_lora_pick"):
                 return
             if comfy.status == "awaiting_clip_pick" and auto:
                 from .integrations.comfy.angles import AWAY_AUTO_TAKE_ID
@@ -2426,7 +2422,7 @@ class ViuGUI:
             existing.step = 0
             existing.meta["shoot_intent"] = True
             existing.meta["auto_approved_shoot"] = True
-            existing.meta["approved"] = True
+            existing.meta["approved"] = False
             existing.meta["action"] = chat_action
             existing.meta["approved_action"] = chat_action
             existing.meta["catalog_slug"] = slug
@@ -2438,8 +2434,8 @@ class ViuGUI:
             save_session(self.agent.config, existing)
             self._append(
                 "Вью",
-                f"Снимаю сцену из чата — {chat_action[:120]}.\n"
-                "Клип пришлю, когда будет готов.",
+                f"Сцена из чата — {chat_action[:120]}.\n"
+                "Жду в Telegram: ок / правки / промпт comfy → потом LoRA → клип.",
                 tag="viu",
             )
             self._run_tool(

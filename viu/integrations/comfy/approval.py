@@ -76,9 +76,11 @@ def send_prompt_for_approval(config: Config, action: str, draft_text: str) -> Tu
         "🎬 Comfy → Cascadeur MoCap\n\n"
         f"{draft_text.strip()}\n\n"
         "Ответь:\n"
-        f"• ок — генерирую {mocap_take_count()} дублей ¾\n"
+        f"• ок — дальше выбор LoRA, потом {mocap_take_count()} дублей ¾\n"
         "• нет / другой кадр — предложу следующий по графу\n"
-        "• правки: sit_down — только slug или короткий EN (без moaning/sweat/jiggle)\n"
+        "• правки: sit_down — slug или короткий EN (без moaning/sweat/jiggle)\n"
+        "• промпт comfy — показать Wan POSITIVE/NEGATIVE и поправить\n"
+        "• промпт+: … или вставь блок --- POSITIVE --- / NEGATIVE / ДЕЙСТВИЕ\n"
         "• стоп — отменить этот промпт"
     )
     if not tg_settings.enabled(config):
