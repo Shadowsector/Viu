@@ -2435,7 +2435,7 @@ class ViuGUI:
             self._append(
                 "Вью",
                 f"Сцена из чата — {chat_action[:120]}.\n"
-                "Жду в Telegram: ок / правки / промпт comfy → потом LoRA → клип.",
+                "Поднимаю Comfy, черновик и LoRA уйдут в Telegram — снимаю сразу.",
                 tag="viu",
             )
             self._run_tool(
@@ -2514,6 +2514,19 @@ class ViuGUI:
             if action:
                 existing.meta["approved_action"] = action
                 existing.meta["action"] = action
+            # Не оставлять awaiting_* — иначе lab_start сразу «жду Telegram» и Comfy молчит.
+            if existing.status in (
+                "awaiting_prompt",
+                "awaiting_lora_pick",
+                "awaiting_rating",
+                "awaiting_clip_pick",
+                "completed",
+                "idle",
+                "paused",
+            ):
+                existing.status = "running"
+                if existing.step < 4:
+                    existing.step = 4
             existing.meta.pop("lora_pick_done", None)
             existing.meta.pop("clip_batch_id", None)
             existing.meta.pop("clip_candidate_ids", None)

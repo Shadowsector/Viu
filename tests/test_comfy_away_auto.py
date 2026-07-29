@@ -1,4 +1,4 @@
-"""Away: Comfy ждёт промпт/LoRA в Telegram, не авто-одобряет."""
+"""Away / shoot: TG уведомляет, съёмка не стопорит Comfy."""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -11,7 +11,7 @@ from viu.lab.comfy_pipeline import (
     step_request_lora_pick,
 )
 from viu.lab.session import load_session, new_session, save_session
-from viu.presence import MODE_AWAY, set_presence
+from viu.presence import MODE_AWAY, MODE_HOME, set_presence
 
 
 def _cfg(tmp_path: Path, monkeypatch) -> Config:
@@ -28,14 +28,13 @@ def _cfg(tmp_path: Path, monkeypatch) -> Config:
     )
 
 
-def test_away_waits_for_prompt_in_telegram(tmp_path, monkeypatch):
+def test_away_without_shoot_waits_for_prompt(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     set_presence(cfg, MODE_AWAY)
     session = new_session(COMFY_TOPIC)
     session.steps_total = 8
     session.step = 3
     session.meta["action"] = "walking forward at a calm pace"
-    session.meta["shoot_intent"] = True
     session.status = "running"
     save_session(cfg, session)
 
@@ -55,7 +54,32 @@ def test_away_waits_for_prompt_in_telegram(tmp_path, monkeypatch):
     assert "телеграм" in msg2.lower() or "жду" in msg2.lower()
 
 
-def test_away_asks_lora_via_telegram(tmp_path, monkeypatch):
+def test_shoot_intent_auto_approves_even_away(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, monkeypatch)
+    set_presence(cfg, MODE_AWAY)
+    session = new_session(COMFY_TOPIC)
+    session.step = 3
+    session.meta["action"] = "lounging in an armchair"
+    session.meta["shoot_intent"] = True
+    session.meta["shot_reason"] = "chat: directed scene"
+    session.status = "running"
+    save_session(cfg, session)
+
+    with patch(
+        "viu.lab.comfy_pipeline.send_prompt_for_approval",
+        return_value=(True, "sent"),
+    ) as send:
+        ok, msg, _ = step_request_approval(cfg, session)
+    assert ok
+    send.assert_called_once()
+    loaded = load_session(cfg, COMFY_TOPIC)
+    assert loaded is not None
+    assert loaded.status == "running"
+    assert loaded.meta.get("approved") is True
+    assert "иду дальше" in msg.lower() or "съёмка" in msg.lower()
+
+
+def test_away_without_shoot_asks_lora(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     set_presence(cfg, MODE_AWAY)
     session = new_session(COMFY_TOPIC)
@@ -85,4 +109,20 @@ def test_away_asks_lora_via_telegram(tmp_path, monkeypatch):
     assert loaded is not None
     assert loaded.status == "awaiting_lora_pick"
     assert not loaded.meta.get("lora_pick_done")
-    assert "lora" in msg.lower()
+
+
+def test_home_lab_still_awaits_prompt(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, monkeypatch)
+    set_presence(cfg, MODE_HOME)
+    session = new_session(COMFY_TOPIC)
+    session.step = 3
+    session.meta["action"] = "wave hello"
+    session.status = "running"
+    save_session(cfg, session)
+    with patch(
+        "viu.lab.comfy_pipeline.send_prompt_for_approval",
+        return_value=(True, "sent"),
+    ):
+        ok, msg, _ = step_request_approval(cfg, session)
+    assert ok
+    assert load_session(cfg, COMFY_TOPIC).status == "awaiting_prompt"

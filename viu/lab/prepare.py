@@ -229,11 +229,30 @@ def run_lab_prepared(
                     continue
                 session.meta[k] = v
         save_session(config, session)
-        # Промпт / LoRA — всегда ждём Telegram (и дома, и away, и после shoot=1).
+        # Ждём TG только если реально стоим на approve/lora без shoot.
+        # shoot_intent + approved → продолжаем (разблокировка «Comfy не стартует»).
         if mode == "continue" and session.status == "awaiting_prompt":
-            return True, prefix + "Жду одобрение Comfy-промпта в Telegram.", session
+            if session.meta.get("shoot_intent") or session.meta.get("approved"):
+                from .comfy_pipeline import apply_prompt_decision
+
+                action = str(session.meta.get("action") or action or "")
+                apply_prompt_decision(config, session, "approve", action)
+                session = load_session(config, topic) or session
+            else:
+                return True, prefix + "Жду одобрение Comfy-промпта в Telegram.", session
         if mode == "continue" and session.status == "awaiting_lora_pick":
-            return True, prefix + "Жду выбор LoRA в Telegram (lora: 1 | none).", session
+            if session.meta.get("shoot_intent") or session.meta.get("auto_approved_shoot"):
+                from .comfy_pipeline import apply_lora_pick_decision
+
+                last = [
+                    int(x)
+                    for x in (session.meta.get("lora_last_pick") or [])
+                    if str(x).isdigit()
+                ]
+                apply_lora_pick_decision(config, session, last)
+                session = load_session(config, topic) or session
+            else:
+                return True, prefix + "Жду выбор LoRA в Telegram (lora: 1 | none).", session
 
     if topic == "interaction":
         slug = ""
