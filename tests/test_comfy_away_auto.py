@@ -1,4 +1,4 @@
-"""Away / shoot: TG уведомляет, съёмка не стопорит Comfy."""
+"""Away invent — авто; directed shoot — живая панель до «Снять»."""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -28,33 +28,42 @@ def _cfg(tmp_path: Path, monkeypatch) -> Config:
     )
 
 
-def test_away_without_shoot_waits_for_prompt(tmp_path, monkeypatch):
+def test_away_without_shoot_auto_starts(tmp_path, monkeypatch):
+    """Тихий away invent — без панели, сразу approve+LoRA."""
     cfg = _cfg(tmp_path, monkeypatch)
     set_presence(cfg, MODE_AWAY)
     session = new_session(COMFY_TOPIC)
     session.steps_total = 8
     session.step = 3
     session.meta["action"] = "walking forward at a calm pace"
+    session.meta["lora_last_pick"] = [1]
     session.status = "running"
     save_session(cfg, session)
 
     ok, msg, _ = step_draft_prompt(cfg, session)
     assert ok
     with patch(
-        "viu.lab.comfy_pipeline.send_prompt_for_approval",
-        return_value=(True, "Промпт ушёл в Telegram — жду ок / правки / стоп."),
-    ) as send:
+        "viu.integrations.comfy.lora.scan_loras",
+        return_value=[type("E", (), {"index": 1, "file": "x.safetensors"})()],
+    ), patch(
+        "viu.integrations.comfy.lora.specs_from_indices",
+        return_value=[type("S", (), {"file": "x.safetensors", "strength": 0.8})()],
+    ), patch(
+        "viu.integrations.comfy.lora.spec_to_dict",
+        return_value={"file": "x.safetensors", "strength": 0.8},
+    ):
         ok2, msg2, _ = step_request_approval(cfg, session)
     assert ok2
-    send.assert_called_once()
     loaded = load_session(cfg, COMFY_TOPIC)
     assert loaded is not None
-    assert loaded.status == "awaiting_prompt"
-    assert loaded.meta.get("approved") is False
-    assert "телеграм" in msg2.lower() or "жду" in msg2.lower()
+    assert loaded.status == "running"
+    assert loaded.meta.get("approved") is True
+    assert loaded.meta.get("lora_pick_done") is True
+    assert "Снимаю" in msg2 or "очередь" in msg2.lower()
 
 
-def test_shoot_intent_auto_approves_even_away(tmp_path, monkeypatch):
+def test_shoot_intent_waits_for_panel_even_away(tmp_path, monkeypatch):
+    """Съёмка из чата/кнопки — панель живая, даже если Нет дома."""
     cfg = _cfg(tmp_path, monkeypatch)
     set_presence(cfg, MODE_AWAY)
     session = new_session(COMFY_TOPIC)
@@ -65,53 +74,34 @@ def test_shoot_intent_auto_approves_even_away(tmp_path, monkeypatch):
     session.status = "running"
     save_session(cfg, session)
 
-    with patch(
-        "viu.lab.comfy_pipeline.send_prompt_for_approval",
-        return_value=(True, "sent"),
-    ) as send:
-        ok, msg, _ = step_request_approval(cfg, session)
+    ok, msg, _ = step_request_approval(cfg, session)
     assert ok
-    send.assert_called_once()
     loaded = load_session(cfg, COMFY_TOPIC)
     assert loaded is not None
-    assert loaded.status == "running"
-    assert loaded.meta.get("approved") is True
-    assert "иду дальше" in msg.lower() or "съёмка" in msg.lower()
+    assert loaded.status == "awaiting_prompt"
+    assert loaded.meta.get("approved") is False
+    assert "панель" in msg.lower() or "жду" in msg.lower() or "снять" in msg.lower()
 
 
-def test_away_without_shoot_asks_lora(tmp_path, monkeypatch):
+def test_away_lora_step_noop_after_auto(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     set_presence(cfg, MODE_AWAY)
     session = new_session(COMFY_TOPIC)
     session.status = "running"
     session.step = 4
     session.meta["approved"] = True
+    session.meta["lora_pick_done"] = True
+    session.meta["selected_loras"] = [{"file": "x.safetensors", "strength": 0.8}]
     session.meta["action"] = "idle stand"
-    session.meta["lora_last_pick"] = [1]
     save_session(cfg, session)
 
-    fake_entries = [type("E", (), {"index": 1, "file": "x.safetensors"})()]
-
-    with patch(
-        "viu.integrations.comfy.lora.scan_loras",
-        return_value=fake_entries,
-    ), patch(
-        "viu.integrations.comfy.lora.format_lora_pick_message",
-        return_value="lora list",
-    ), patch(
-        "viu.integrations.comfy.lora.format_lora_pick_telegram",
-        return_value=["1. x.safetensors"],
-    ):
-        ok, msg, _ = step_request_lora_pick(cfg, session)
-
+    ok, msg, _ = step_request_lora_pick(cfg, session)
     assert ok
-    loaded = load_session(cfg, COMFY_TOPIC)
-    assert loaded is not None
-    assert loaded.status == "awaiting_lora_pick"
-    assert not loaded.meta.get("lora_pick_done")
+    assert "LoRA" in msg
+    assert session.status != "awaiting_lora_pick"
 
 
-def test_home_lab_still_awaits_prompt(tmp_path, monkeypatch):
+def test_home_lab_awaits_panel(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, monkeypatch)
     set_presence(cfg, MODE_HOME)
     session = new_session(COMFY_TOPIC)
@@ -120,9 +110,10 @@ def test_home_lab_still_awaits_prompt(tmp_path, monkeypatch):
     session.status = "running"
     save_session(cfg, session)
     with patch(
-        "viu.lab.comfy_pipeline.send_prompt_for_approval",
-        return_value=(True, "sent"),
+        "viu.integrations.comfy.comfy_panel.send_control_panel",
+        return_value=(True, "Панель в Telegram — жду «Снять»."),
     ):
         ok, msg, _ = step_request_approval(cfg, session)
     assert ok
     assert load_session(cfg, COMFY_TOPIC).status == "awaiting_prompt"
+    assert "панель" in msg.lower() or "жду" in msg.lower()

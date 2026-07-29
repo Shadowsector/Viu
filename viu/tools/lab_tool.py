@@ -174,28 +174,28 @@ class LabStartTool(Tool):
 
         if not reset and session and session.status == "awaiting_prompt":
             if str(args.get("shoot") or "").lower() in ("1", "true", "yes"):
+                from ..integrations.comfy.comfy_panel import apply_setup_and_start
+                from ..lab.comfy_pipeline import run_until_done
+
+                if action.strip():
+                    session.meta["action"] = action.strip()
+                    session.meta["approved_action"] = action.strip()
                 session.meta["shoot_intent"] = True
                 save_session(ctx.config, session)
-                ok, msg, session = run_lab_prepared(
-                    ctx.config,
-                    topic,
-                    force_reset=False,
-                    run_all=run_all,
-                    action=action,
-                    meta_extra={"shoot_intent": True},
+                start_msg = apply_setup_and_start(ctx.config, session)
+                ok, cont = run_until_done(ctx.config, session)
+                session = load_session(ctx.config, topic) or session
+                body = format_lab_progress(
+                    session, f"{start_msg}\n{cont}" if cont else start_msg
                 )
-                session = session or load_session(ctx.config, topic)
-                body = format_lab_progress(session, msg)
-                if run_all:
-                    body = "Lab: полный цикл (автономно).\n" + body
                 if ensure_prefix:
                     body = ensure_prefix + body
                 return ToolResult(ok, body)
             return ToolResult(
                 True,
                 ensure_prefix
-                + "Жду одобрение Comfy-промпта (ок / правки: … / стоп).\n"
-                "Или снова «MoCap: снять клип» — одобрю и запущу Comfy.",
+                + "Жду панель Comfy в Telegram: «Снять» / Промпт / LoRA / Стоп.\n"
+                "Или снова «MoCap: снять клип» — запущу генерацию.",
             )
 
         if not reset and topic == CASCADEUR_TOPIC:
@@ -268,7 +268,7 @@ class LabStepTool(Tool):
         if session.status == "awaiting_prompt":
             return ToolResult(
                 True,
-                "Жду одобрение Comfy-промпта в Telegram (ок / правки: … / стоп).",
+                "Жду панель съёмки в Telegram: «Снять» / Промпт / LoRA / Стоп.",
             )
         if session.status == "awaiting_rating":
             if _run_all_flag(args) or _verify_flag(args):
@@ -332,7 +332,7 @@ class LabStatusTool(Tool):
             lines.extend(f"  • {a}" for a in session.artifacts[-6:])
         if session.status == "awaiting_prompt":
             lines.append("")
-            lines.append("Жду Telegram: ок / правки: … / стоп")
+            lines.append("Жду Telegram: «Снять» / Промпт / LoRA / Стоп")
             draft = (session.meta or {}).get("draft")
             if draft:
                 lines.append(str(draft)[:800])

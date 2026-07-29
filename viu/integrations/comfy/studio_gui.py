@@ -36,10 +36,11 @@ def apply_lora_from_indices(config: Config, indices: List[int]) -> str:
         session = new_session(COMFY_TOPIC)
         save_session(config, session)
     scan_loras(config)
-    if session.status == "awaiting_lora_pick":
+    if session.status in ("awaiting_lora_pick", "awaiting_prompt"):
         return apply_lora_pick_decision(config, session, indices)
     specs = specs_from_indices(config, indices)
     session.meta["lora_last_pick"] = list(indices)
+    session.meta["setup_lora_indices"] = list(indices)
     session.meta["selected_loras"] = [spec_to_dict(s) for s in specs]
     save_session(config, session)
     if not specs:

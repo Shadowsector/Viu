@@ -2421,7 +2421,7 @@ class ViuGUI:
             existing.status = "running"
             existing.step = 0
             existing.meta["shoot_intent"] = True
-            existing.meta["auto_approved_shoot"] = True
+            existing.meta.pop("auto_approved_shoot", None)
             existing.meta["approved"] = False
             existing.meta["action"] = chat_action
             existing.meta["approved_action"] = chat_action
@@ -2435,7 +2435,7 @@ class ViuGUI:
             self._append(
                 "Вью",
                 f"Сцена из чата — {chat_action[:120]}.\n"
-                "Поднимаю Comfy, черновик и LoRA уйдут в Telegram — снимаю сразу.",
+                "Поднимаю Comfy → панель в Telegram: Промпт / LoRA, потом «Снять».",
                 tag="viu",
             )
             self._run_tool(
@@ -2509,15 +2509,31 @@ class ViuGUI:
                 existing.status = "running"
                 existing.step = 0
             existing.meta["shoot_intent"] = True
-            existing.meta["auto_approved_shoot"] = True
-            existing.meta["approved"] = True
+            # Уже на панели — GUI «Снять» = старт генерации.
+            if existing.status in ("awaiting_prompt", "awaiting_lora_pick"):
+                from .integrations.comfy.comfy_panel import apply_setup_and_start
+                from .lab.comfy_pipeline import run_until_done
+                from .lab.session import save_session as _save
+
+                if existing.status == "awaiting_lora_pick":
+                    existing.status = "awaiting_prompt"
+                if action:
+                    existing.meta["action"] = action
+                    existing.meta["approved_action"] = action
+                _save(self.agent.config, existing)
+                start_msg = apply_setup_and_start(self.agent.config, existing)
+                self._append("Вью", start_msg, tag="viu")
+                ok, cont = run_until_done(self.agent.config, existing)
+                if cont:
+                    self._append("Вью", cont[:800], tag="tool")
+                return
+            existing.meta.pop("auto_approved_shoot", None)
+            existing.meta["approved"] = False
             if action:
                 existing.meta["approved_action"] = action
                 existing.meta["action"] = action
-            # Не оставлять awaiting_* — иначе lab_start сразу «жду Telegram» и Comfy молчит.
+            # Не оставлять awaiting_* без панели — иначе lab молчит.
             if existing.status in (
-                "awaiting_prompt",
-                "awaiting_lora_pick",
                 "awaiting_rating",
                 "awaiting_clip_pick",
                 "completed",
@@ -2525,19 +2541,18 @@ class ViuGUI:
                 "paused",
             ):
                 existing.status = "running"
-                if existing.step < 4:
-                    existing.step = 4
+                if existing.step < 3:
+                    existing.step = 0
             existing.meta.pop("lora_pick_done", None)
             existing.meta.pop("clip_batch_id", None)
             existing.meta.pop("clip_candidate_ids", None)
             save_session(self.agent.config, existing)
             self._append(
                 "Вью",
-                f"Снимаю сохранённый кадр `{slug or '…'}`"
+                f"Кадр `{slug or '…'}`"
                 + (f" — {action[:80]}" if action else "")
                 + ".\n"
-                "Очередь через API → Студия Comfy / `.viu/logs/comfy_launch.log` "
-                "(браузерный canvas для съёмки не нужен).",
+                "Панель в Telegram: настрой Промпт/LoRA, жми «Снять».",
                 tag="viu",
             )
             start_args = {
@@ -2701,7 +2716,7 @@ class ViuGUI:
         self._comfy_prompt_prompt_open = True
         self._append(
             "Вью",
-            "Жду одобрение — открою «Промпт Wan → Comfy» (или напиши «покажи промпт»).",
+            "Жду панель — открою «Промпт Wan → Comfy» (или «промпт comfy» / кнопка в TG).",
             tag="viu",
         )
         try:

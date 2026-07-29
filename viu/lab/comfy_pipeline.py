@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple
 
 from ..config import Config
-from ..integrations.comfy.approval import send_prompt_for_approval
 from ..integrations.comfy.generate import run_triple_angles
 from ..integrations.comfy.model_pref import PREFERRED_FAMILY, probe_models
 from ..integrations.comfy.process import ensure_comfy_running
@@ -31,7 +30,7 @@ STEP_LABELS = [
     "Comfy online",
     "Модели Wan",
     "Черновик промпта",
-    "Одобрение Telegram",
+    "Панель съёмки",
     "Выбор LoRA",
     "5 дублей (¾)",
     "Выбор лучшего дубля",
@@ -193,7 +192,7 @@ def step_draft_prompt(config: Config, session: LabSession) -> StepResult:
 
 
 def _is_directed_shoot(session: LabSession) -> bool:
-    """Съёмка по кнопке/чату — не стопорить на ок/lora, иначе Comfy «не стартует»."""
+    """Съёмка по кнопке/чату — человеку нужна живая панель, не автопропуск."""
     meta = session.meta or {}
     if meta.get("shoot_intent") or meta.get("auto_approved_shoot"):
         return True
@@ -202,9 +201,15 @@ def _is_directed_shoot(session: LabSession) -> bool:
 
 
 def step_request_approval(config: Config, session: LabSession) -> StepResult:
+    """Панель съёмки в Telegram. Генерация только после «Снять»."""
+    from ..integrations.comfy.comfy_panel import apply_setup_and_start, send_control_panel
+    from ..integrations.telegram import settings as tg_settings
+
     action = str(session.meta.get("action") or read_action_from_task(config))
     draft = str(session.meta.get("draft") or draft_bundle(action))
-    directed = _is_directed_shoot(session)
+    session.meta["action"] = action
+    session.meta["draft"] = draft
+    session.meta.pop("lora_pick_done", None)
 
     try:
         from ..presence import is_away
@@ -213,62 +218,40 @@ def step_request_approval(config: Config, session: LabSession) -> StepResult:
     except Exception:
         away = False
 
-    session.meta.pop("lora_pick_done", None)
-    session.meta.pop("selected_loras", None)
-    session.meta["action"] = str(session.meta.get("action") or action)
+    directed = _is_directed_shoot(session)
+    tg_on = bool(tg_settings.enabled(config) and tg_settings.chat_id(config))
 
-    # Всегда шлём черновик в Telegram (правка: ок/правки/промпт+).
-    sent, msg = send_prompt_for_approval(config, action, draft)
-    session.meta["approval_sent"] = sent
-    try:
-        from .comfy_director import invent_shot_choices
+    # Тихий away-цикл без shoot: авто (LoRA прошлый + сразу дальше по pipeline).
+    if away and not directed:
+        session.meta["approved_action"] = action
+        session.meta["auto_approved_away"] = True
+        last = [int(x) for x in (session.meta.get("lora_last_pick") or []) if str(x).isdigit()]
+        session.meta["setup_lora_indices"] = last
+        msg = apply_setup_and_start(config, session, jump_to_generate=False)
+        append_journal(config, COMFY_TOPIC, f"### Away auto\n\n{msg}\n\n{draft}")
+        return True, msg, None
 
-        choices = invent_shot_choices(config, limit=4)
-        if choices and not directed:
-            alts = "\n".join(
-                f"  • {c.catalog_slug} — {c.title_ru or c.action[:60]}" for c in choices
-            )
-            msg = (
-                msg
-                + "\n\nПо графу ещё можно снять (скажи «правки: <slug>» или одобри текущее):\n"
-                + alts
-            )
-    except Exception:
-        pass
-
-    # Съёмка из чата / MoCap: Comfy уже поднят — не ждём «ок», иначе очередь пустая.
-    if directed:
-        session.meta["approved"] = True
-        session.meta["approved_action"] = str(session.meta.get("action") or action)
-        session.meta["auto_approved_shoot"] = True
-        if away:
-            session.meta["auto_approved_away"] = True
-        session.status = "running"
-        save_session(config, session)
-        who = "Съёмка" + (" (нет дома)" if away else "")
-        out = (
-            f"{who} — промпт в Telegram, сразу иду дальше («{action[:80]}»).\n"
-            f"Правки ещё успеешь: правки: … / промпт+: …\n"
-            f"Дальше LoRA → {mocap_take_count()} дублей ¾.\n"
-            + msg
-        )
-        append_journal(config, COMFY_TOPIC, f"### Авто-одобрение ({who})\n\n{out}\n\n{draft}")
-        return True, out, None
-
-    # Обычный lab / away-invent без shoot — ждём ответ в TG.
+    # Человек у пульта (чат / MoCap / home lab): всегда ждём панель.
     session.status = "awaiting_prompt"
     session.meta["approved"] = False
-    session.meta["approved_action"] = ""
-    if away:
-        session.meta["auto_approved_away"] = False
+    if "setup_lora_indices" not in session.meta:
+        # дефолт — прошлый выбор, пока Ден не нажмёт LoRA
+        pass
     save_session(config, session)
-    msg = (
-        msg
-        + "\n\nЧерновик Wan: «промпт comfy» / промпт+: … · GUI «Промпт Wan → Comfy»."
-    )
-    if away:
-        msg = "Нет дома у ПК — жду ответ в Telegram.\n" + msg
-    append_journal(config, COMFY_TOPIC, f"### Одобрение\n\n{msg}\n\n{draft}")
+
+    if tg_on:
+        sent, msg = send_control_panel(config, session)
+        session.meta["approval_sent"] = sent
+        save_session(config, session)
+    else:
+        msg = (
+            "Жду в чате Вью: ок (=снять) | стоп | lora: 1 | промпт comfy.\n"
+            f"Сцена: {action[:100]}"
+        )
+        session.meta["approval_sent"] = False
+        save_session(config, session)
+
+    append_journal(config, COMFY_TOPIC, f"### Панель съёмки\n\n{msg}\n\n{draft}")
     return True, msg, None
 
 
@@ -278,25 +261,26 @@ def apply_prompt_decision(
     decision: str,
     payload: str,
 ) -> str:
-    """После ответа Дена: approve/edit → running; reject → completed; redraft → новый кадр."""
+    """После ответа Дена: approve = «Снять» (сразу генерация); edit/reject/redraft."""
     if decision == "reject":
         session.status = "completed"
         session.pause_reason = "prompt_rejected"
         session.meta["approved"] = False
         save_session(config, session)
         append_journal(config, COMFY_TOPIC, "### Промпт отклонён\n\nСтоп по ответу Дена.")
-        return "Ок, Comfy-промпт отменила."
+        return "Ок, съёмку отменила."
 
     if decision == "redraft":
         return _redraft_comfy_prompt(config, session, note=payload)
 
-    action = payload.strip() if decision == "edit" else str(session.meta.get("action") or payload)
-    note_extra = ""
     if decision == "edit":
         from .comfy_director import action_for_slug
         from ..integrations.comfy.clip_review import normalize_catalog_slug
         from ..integrations.comfy.mocap_sanitize import extract_slug_token, sanitize_mocap_action
+        from ..integrations.comfy.comfy_panel import send_control_panel
 
+        action = payload.strip()
+        note_extra = ""
         raw_edit = action.strip()
         slug_tok = extract_slug_token(raw_edit)
         if slug_tok:
@@ -319,25 +303,30 @@ def apply_prompt_decision(
         session.meta.pop("wan_negative", None)
         session.meta["draft"] = draft_bundle(action)
         ensure_task_file(config, action=action)
+        session.status = "awaiting_prompt"
+        session.meta["approved"] = False
+        save_session(config, session)
+        sent, panel_msg = send_control_panel(config, session)
+        append_journal(
+            config,
+            COMFY_TOPIC,
+            f"### Правка сцены\n\n{action}\n\n{panel_msg}",
+        )
+        return (
+            (note_extra + "\n" if note_extra else "")
+            + f"Сцену обновила («{action[:80]}»).\n"
+            + panel_msg
+        )
 
-    session.meta["approved"] = True
-    session.meta["approved_action"] = action
-    session.meta.pop("lora_pick_done", None)
-    session.meta.pop("selected_loras", None)
-    session.status = "running"
-    if session.step < 4:
-        session.step = 4
-    save_session(config, session)
-    append_journal(
-        config,
-        COMFY_TOPIC,
-        f"### Промпт одобрен\n\naction: {action}\n\nДальше — выбор LoRA.",
-    )
-    return (
-        (note_extra + "\n" if note_extra else "")
-        + f"Промпт принят («{action[:80]}»).\n"
-        + f"Дальше выберем LoRA (или без) → {mocap_take_count()} дублей ¾."
-    )
+    # approve / «Снять» — сразу в генерацию с выбранной LoRA
+    from ..integrations.comfy.comfy_panel import apply_setup_and_start
+
+    if payload.strip() and payload.strip() != str(session.meta.get("action") or ""):
+        # approve с новым action из парсера
+        session.meta["action"] = payload.strip()
+    msg = apply_setup_and_start(config, session)
+    append_journal(config, COMFY_TOPIC, f"### Снять\n\n{msg}")
+    return msg
 
 
 def _redraft_comfy_prompt(config: Config, session: LabSession, *, note: str = "") -> str:
@@ -363,7 +352,9 @@ def _redraft_comfy_prompt(config: Config, session: LabSession, *, note: str = ""
     ensure_task_file(config, action=plan.action)
     save_session(config, session)
 
-    sent, send_msg = send_prompt_for_approval(config, plan.action, draft)
+    from ..integrations.comfy.comfy_panel import send_control_panel
+
+    sent, send_msg = send_control_panel(config, session)
     session.meta["approval_sent"] = sent
     save_session(config, session)
     title = plan.title_ru or plan.catalog_slug
@@ -376,100 +367,44 @@ def _redraft_comfy_prompt(config: Config, session: LabSession, *, note: str = ""
     append_journal(config, COMFY_TOPIC, journal)
     return (
         f"Поняла — не тот кадр ({prev_slug or 'предыдущий'}).\n"
-        f"Новый вариант: «{title}» (`{plan.catalog_slug}`).\n"
-        f"{send_msg}\n\n"
-        "Ответь: ок | нет / другой кадр | правки: sit_down | стоп"
+        f"Новый: «{title}» (`{plan.catalog_slug}`).\n"
+        f"{send_msg}"
     )
 
 
 def step_request_lora_pick(config: Config, session: LabSession) -> StepResult:
-    """Скан папки loras/ и спросить, какие подключить к этому пулу."""
-    from ..integrations.comfy.lora import (
-        format_lora_pick_message,
-        format_lora_pick_telegram,
-        scan_loras,
-        spec_to_dict,
-        specs_from_indices,
-    )
+    """После панели «Снять» LoRA уже выбрана — шаг обычно no-op.
 
+    Если сюда попали без lora_pick_done (старый путь) — шлём меню и ждём.
+    """
     if session.meta.get("lora_pick_done"):
         picked = session.meta.get("selected_loras") or []
-        return True, f"LoRA выбраны: {len(picked)} шт.", None
+        return True, f"LoRA готовы: {len(picked)} шт.", None
 
-    entries = scan_loras(config)
-    if not entries:
+    from ..integrations.comfy.comfy_panel import send_control_panel, send_lora_menu
+
+    entries_exist = True
+    try:
+        from ..integrations.comfy.lora import scan_loras
+
+        entries_exist = bool(scan_loras(config))
+    except Exception:
+        entries_exist = False
+
+    if not entries_exist:
         session.meta["selected_loras"] = []
         session.meta["lora_pick_done"] = True
-        return True, "LoRA на диске нет — генерирую чистый Wan.", None
+        session.meta["setup_lora_indices"] = []
+        return True, "LoRA на диске нет — чистый Wan.", None
 
-    directed = _is_directed_shoot(session)
-    last = [int(x) for x in (session.meta.get("lora_last_pick") or []) if str(x).isdigit()]
-    msg = format_lora_pick_message(entries)
-    hint = ""
-    if last:
-        hint = f"\nПрошлый выбор: {', '.join(str(i) for i in last)} — lora: … чтобы сменить."
-    try:
-        from ..presence import is_away
-
-        away = is_away(config)
-    except Exception:
-        away = False
-
-    # Всегда шлём список в Telegram (+ кнопки на последнем сообщении).
-    try:
-        from ..integrations.comfy.tg_buttons import lora_pick_keyboard
-        from ..integrations.telegram import settings as tg_settings
-        from ..integrations.telegram.client import TelegramClient
-
-        if tg_settings.enabled(config):
-            token = tg_settings.token(config)
-            chat_id = tg_settings.chat_id(config)
-            if token and chat_id:
-                client = TelegramClient(token)
-                parts = format_lora_pick_telegram(entries)
-                idxs = [e.index for e in entries[:12]]
-                kb = lora_pick_keyboard(indices=idxs, last=last or None)
-                for i, part in enumerate(parts):
-                    if directed:
-                        head = "🎛 Comfy: LoRA (ставлю прошлый/none — кнопкой можно сменить)"
-                    else:
-                        head = "🎛 Comfy: выбери LoRA"
-                    if len(parts) > 1:
-                        head += f" ({i + 1}/{len(parts)})"
-                    extra = hint if i == 0 else ""
-                    markup = kb if i == len(parts) - 1 else None
-                    client.send_message(
-                        chat_id,
-                        head + "\n\n" + part + extra,
-                        reply_markup=markup,
-                    )
-    except Exception:
-        pass
-
-    # Съёмка: не стопорить очередь — прошлый выбор или чистый Wan.
-    if directed:
-        specs = specs_from_indices(config, last) if last else []
-        session.meta["selected_loras"] = [spec_to_dict(s) for s in specs]
-        session.meta["lora_pick_done"] = True
-        session.meta.pop("shoot_intent", None)
-        session.status = "running"
-        save_session(config, session)
-        names = ", ".join(s.file for s in specs) if specs else "нет (чистый Wan)"
-        out = (
-            f"MoCap-съёмка — LoRA: {names}. Ставлю в очередь Comfy…\n"
-            f"(Список ушёл в Telegram — lora: 1 | none на следующий дубль.)"
-            f"{hint}"
-        )
-        append_journal(config, COMFY_TOPIC, f"### LoRA (auto shoot)\n\n{out}\n\n{msg}")
-        return True, out, None
-
-    session.meta.pop("shoot_intent", None)
-    session.status = "awaiting_lora_pick"
+    # Вернуть на панель — единый UX.
+    session.status = "awaiting_prompt"
+    session.meta["approved"] = False
     save_session(config, session)
-    if away:
-        hint = "\nНет дома у ПК — ответь в Telegram: lora: 1 | lora: 1,3 | lora: none." + hint
-    append_journal(config, COMFY_TOPIC, f"### Выбор LoRA\n\n{msg}{hint}")
-    return True, msg + hint, None
+    send_lora_menu(config, session)
+    sent, msg = send_control_panel(config, session)
+    append_journal(config, COMFY_TOPIC, f"### LoRA через панель\n\n{msg}")
+    return True, "Сначала панель: выбери LoRA, потом «Снять».\n" + msg, None
 
 
 def apply_lora_pick_decision(
@@ -477,6 +412,11 @@ def apply_lora_pick_decision(
     session: LabSession,
     indices: List[int],
 ) -> str:
+    """Выбор LoRA только запоминает setup — генерация после «Снять»."""
+    from ..integrations.comfy.comfy_panel import (
+        send_control_panel,
+        set_setup_lora_indices,
+    )
     from ..integrations.comfy.lora import (
         scan_loras,
         spec_to_dict,
@@ -485,20 +425,21 @@ def apply_lora_pick_decision(
 
     scan_loras(config)
     specs = specs_from_indices(config, indices)
+    set_setup_lora_indices(session, indices)
     session.meta["selected_loras"] = [spec_to_dict(s) for s in specs]
     session.meta["lora_last_pick"] = list(indices)
-    session.meta["lora_pick_done"] = True
-    session.status = "running"
-    if session.step < 5:
-        session.step = 5
+    session.meta.pop("lora_pick_done", None)
+    session.meta["approved"] = False
+    session.status = "awaiting_prompt"
     save_session(config, session)
     if not specs:
         msg = "Без LoRA — чистый Wan."
     else:
         names = ", ".join(f"{s.file}@{s.strength}" for s in specs)
         msg = f"LoRA: {names}."
-    append_journal(config, COMFY_TOPIC, f"### LoRA выбраны\n\n{msg}")
-    return msg + f"\nЗапускаю {mocap_take_count()} дублей ¾."
+    _ok, panel = send_control_panel(config, session)
+    append_journal(config, COMFY_TOPIC, f"### LoRA записаны\n\n{msg}")
+    return f"{msg}\nЖми «Снять», когда готово.\n{panel}"
 
 
 def _preserve_chat_directed_action(session: LabSession) -> bool:
@@ -694,6 +635,7 @@ def step_await_clip_pick(config: Config, session: LabSession) -> StepResult:
     if session.meta.get("clip_kept_id"):
         return True, f"Клип уже выбран: {session.meta.get('clip_kept_id')}.", None
     from ..integrations.comfy.clip_review import ComfyClipStore, clip_review_path, format_candidates_message
+    from ..integrations.comfy.tg_buttons import clip_pick_keyboard
 
     batch = str(session.meta.get("clip_batch_id") or "")
     store = ComfyClipStore(clip_review_path(config)).load()
@@ -726,6 +668,11 @@ def step_await_clip_pick(config: Config, session: LabSession) -> StepResult:
     session.status = "awaiting_clip_pick"
     save_session(config, session)
     msg = format_candidates_message(cands)
+    angles: List[str] = []
+    for c in cands:
+        a = str(getattr(c, "angle", "") or "").strip()
+        if a and a not in angles:
+            angles.append(a)
     try:
         from ..integrations.telegram import settings as tg_settings
         from ..integrations.telegram.client import TelegramClient
@@ -735,7 +682,9 @@ def step_await_clip_pick(config: Config, session: LabSession) -> StepResult:
             chat_id = tg_settings.chat_id(config)
             if token and chat_id:
                 TelegramClient(token).send_message(
-                    chat_id, "🎞 Comfy: выбери лучший клип\n\n" + msg[:1500]
+                    chat_id,
+                    "🎞 Comfy: выбери лучший клип\n\n" + msg[:1500],
+                    reply_markup=clip_pick_keyboard(angles),
                 )
     except Exception:
         pass
@@ -854,8 +803,8 @@ STEPS: list[Callable[[Config, LabSession], StepResult]] = [
 def run_one_step(config: Config, session: LabSession) -> Tuple[bool, str]:
     if session.status == "awaiting_prompt":
         return True, (
-            "Жду одобрение промпта (ок / правки: … / стоп). "
-            "Показать черновик: comfy_prompt или «промпт comfy»."
+            "Жду панель съёмки в Telegram: «Снять» / Промпт / LoRA / Стоп. "
+            "Полный промпт: «промпт comfy»."
         )
     if session.status == "awaiting_lora_pick":
         return True, (
@@ -960,29 +909,7 @@ def run_until_done(
 
     while steps_run < max_steps:
         session = load_session(config, COMFY_TOPIC) or session
-        # Застряли на TG, но это съёмка — дожать без «ок»/lora.
-        if session.status == "awaiting_prompt" and (
-            session.meta.get("shoot_intent")
-            or session.meta.get("auto_approved_shoot")
-            or session.meta.get("approved")
-        ):
-            action = str(session.meta.get("action") or "")
-            apply_prompt_decision(config, session, "approve", action)
-            lines.append("Съёмка — одобрила промпт, продолжаю.")
-            steps_run += 1
-            continue
-        if session.status == "awaiting_lora_pick" and (
-            session.meta.get("shoot_intent") or session.meta.get("auto_approved_shoot")
-        ):
-            last = [
-                int(x)
-                for x in (session.meta.get("lora_last_pick") or [])
-                if str(x).isdigit()
-            ]
-            apply_lora_pick_decision(config, session, last)
-            lines.append("Съёмка — LoRA авто, продолжаю.")
-            steps_run += 1
-            continue
+        # Панель / LoRA — только ответ Дена. Не авто-сжимать shoot.
         if session.status == "awaiting_clip_pick" and is_away(config):
             ok, msg = run_one_step(config, session)
             steps_run += 1
@@ -1007,7 +934,7 @@ def run_until_done(
             "completed",
         ):
             if session.status == "awaiting_prompt":
-                lines.append("Жду одобрение промпта в Telegram.")
+                lines.append("Жду панель в Telegram: «Снять» / Промпт / LoRA.")
             elif session.status == "awaiting_lora_pick":
                 lines.append("Жду выбор LoRA (lora: 1,2 / none).")
             elif session.status == "awaiting_clip_pick":
