@@ -1,13 +1,15 @@
-"""Фоновый Telegram-бот: шлёт вопросы/ошибки, принимает ответы Дена."""
+"""Фоновый Telegram-бот: шлёт вопросы/ошибки/медиа, принимает ответы Дена."""
 
 from __future__ import annotations
 
 import threading
 import time
+from pathlib import Path
 from typing import Callable, Optional
 
 from ...config import Config
-from .client import TelegramClient, TelegramError
+from ...inbox_layout import inbox_references_dir
+from .client import TelegramClient, TelegramError, extract_photo_file_id
 from . import settings
 
 
@@ -66,6 +68,18 @@ class TelegramNotifier:
                     self._offset = uid + 1
                 self._handle_update(upd)
 
+    def _download_photo(self, file_id: str) -> Path:
+        assert self._client is not None
+        info = self._client.get_file(file_id)
+        rel = str(info.get("file_path") or "").strip()
+        if not rel:
+            raise TelegramError("getFile вернул пустой file_path")
+        ext = Path(rel).suffix.lower() or ".jpg"
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        short = file_id[-10:].replace("/", "_")
+        dest = inbox_references_dir(self.config) / f"tg_{stamp}_{short}{ext}"
+        return self._client.download_file(rel, dest)
+
     def _handle_update(self, upd: dict) -> None:
         msg = upd.get("message") or upd.get("edited_message")
         if not isinstance(msg, dict):
@@ -76,8 +90,8 @@ class TelegramNotifier:
             return
         chat_id = int(chat_id)
         text = (msg.get("text") or "").strip()
-        if not text:
-            return
+        caption = (msg.get("caption") or "").strip()
+        file_id = extract_photo_file_id(msg)
 
         from_user = msg.get("from") or {}
         user_id = from_user.get("id")
@@ -102,6 +116,7 @@ class TelegramNotifier:
                         "Привет, Ден! Это Вью.\n"
                         f"Chat ID сохранён: {chat_id}\n"
                         "Пиши сюда — ответ попадёт в чат Вью на ПК.\n"
+                        "Можно кидать фото-рефы с подписью.\n"
                         "Команды: /status\n"
                         "Чужие аккаунты бот игнорирует.",
                     )
@@ -116,9 +131,27 @@ class TelegramNotifier:
             self._send_raw(chat_id, self._get_status())
             return
         if text.startswith("/start"):
-            self._send_raw(chat_id, "Вью на связи. Пиши текст — продолжим работу.")
+            self._send_raw(
+                chat_id,
+                "Вью на связи. Пиши текст или кидай фото — продолжим.",
+            )
             return
         if text.startswith("/"):
+            return
+
+        if file_id:
+            try:
+                path = self._download_photo(file_id)
+            except Exception as exc:  # noqa: BLE001
+                self._send_raw(chat_id, f"Не скачала фото: {exc}")
+                return
+            payload = f"[tg_photo:{path}]"
+            if caption:
+                payload = f"{payload}\n{caption}"
+            self._on_reply(payload)
+            return
+
+        if not text:
             return
 
         self._on_reply(text)
@@ -177,6 +210,30 @@ class TelegramNotifier:
 
     def notify_info(self, text: str) -> bool:
         return self.send(text)
+
+    def notify_photo(self, photo_path: str | Path, *, caption: str = "") -> bool:
+        if not self.enabled or self._client is None:
+            return False
+        chat_id = settings.chat_id(self.config)
+        if chat_id is None:
+            return False
+        try:
+            self._client.send_photo(chat_id, photo_path, caption=caption)
+            return True
+        except TelegramError:
+            return False
+
+    def notify_video(self, video_path: str | Path, *, caption: str = "") -> bool:
+        if not self.enabled or self._client is None:
+            return False
+        chat_id = settings.chat_id(self.config)
+        if chat_id is None:
+            return False
+        try:
+            self._client.send_video(chat_id, video_path, caption=caption)
+            return True
+        except TelegramError:
+            return False
 
     def test_connection(self) -> tuple[bool, str]:
         if not self.enabled:

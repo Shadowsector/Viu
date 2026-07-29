@@ -867,6 +867,42 @@ class ViuGUI:
         self._on_send()
         return "break"
 
+    def _maybe_handle_comfy_chat(
+        self, text: str, *, echo_user: bool = True, notify_telegram: bool = False
+    ) -> bool:
+        """NL Comfy: рефы / разбор / LoRA / видео — без имён тулов."""
+        try:
+            from .integrations.comfy.chat_flow import try_handle_comfy_chat
+
+            out = try_handle_comfy_chat(self.agent.config, text)
+            if not out.handled:
+                return False
+            if echo_user:
+                display = text
+                if text.startswith("[tg_photo:"):
+                    display = "(фото из Telegram)" + (
+                        "\n" + text.split("]", 1)[-1].strip()
+                        if "]" in text
+                        else ""
+                    )
+                self._append("ты", display)
+                self._record_llm_turn("user", text)
+            self._append("Вью", out.message, tag="tool")
+            if notify_telegram and self._telegram is not None and out.message:
+                self._telegram.notify_chat(out.message[:3500])
+            for kind, path in out.media_to_send:
+                if self._telegram is None:
+                    break
+                if kind == "video":
+                    self._telegram.notify_video(path, caption="Клип от Вью")
+                else:
+                    self._telegram.notify_photo(path, caption="")
+            if out.start_shoot and not self._tool_busy:
+                self.root.after(0, lambda: self._lab_comfy_action())
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
     def _maybe_handle_comfy_reply(
         self, text: str, *, echo_user: bool = True, notify_telegram: bool = False
     ) -> bool:
@@ -888,7 +924,12 @@ class ViuGUI:
             if notify_telegram and self._telegram is not None:
                 limit = 3800 if "--- POSITIVE" in msg else 1200
                 self._telegram.notify_chat(msg[:limit])
+            # После keep — прислать mp4 в Telegram, если есть.
             session = load_session(self.agent.config, COMFY_TOPIC)
+            if session and notify_telegram and self._telegram is not None:
+                kept = str(session.meta.get("clip_kept_path") or "").strip()
+                if kept and Path(kept).is_file():
+                    self._telegram.notify_video(kept, caption="Оставила этот клип")
             if (
                 session
                 and session.status == "running"
@@ -924,6 +965,8 @@ class ViuGUI:
         if self._try_direct_tool_command(text):
             return
         if self._maybe_handle_comfy_reply(text):
+            return
+        if self._maybe_handle_comfy_chat(text):
             return
         from .integrations.telegram.router import route_user_message
         from .modes import mode_log_label
@@ -1698,7 +1741,11 @@ class ViuGUI:
     def _handle_telegram_reply(self, text: str) -> None:
         from .integrations.telegram.router import route_telegram_message
 
-        self._append("ты", f"[Telegram] {text}")
+        display = text
+        if text.startswith("[tg_photo:"):
+            cap = text.split("]", 1)[-1].strip() if "]" in text else ""
+            display = "(фото)" + (f" {cap}" if cap else "")
+        self._append("ты", f"[Telegram] {display}")
         self._record_llm_turn("user", text)
 
         # Прямая команда tool — без Ollama (creature_catalog_scan и т.п.).
@@ -1760,6 +1807,15 @@ class ViuGUI:
 
         try:
             if self._maybe_handle_comfy_reply(
+                text, echo_user=False, notify_telegram=True
+            ):
+                self._telegram_waiting_reply = False
+                return
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            if self._maybe_handle_comfy_chat(
                 text, echo_user=False, notify_telegram=True
             ):
                 self._telegram_waiting_reply = False
