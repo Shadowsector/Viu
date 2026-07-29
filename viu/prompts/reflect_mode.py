@@ -132,9 +132,9 @@ def has_english_slip(text: str) -> bool:
 def scrub_poisoned_history(
     history: Sequence[Dict[str, str]],
 ) -> List[Dict[str, str]]:
-    """Вычистить из истории утечки thought/final, английский и ассистентский тон.
+    """Вычистить из истории утечки thought/final и сильный английский у ассистента.
 
-    Telegram-чат стереть нельзя — поэтому перед моделью историю чистим сами.
+    Фильтр входа (не запреты в голосе): сырой лог/штампы и protocol-leak не кормим модели.
     """
     from ..agent import looks_like_leaked_protocol, sanitize_reflect_visible
 
@@ -143,8 +143,7 @@ def scrub_poisoned_history(
         role = str(m.get("role") or "")
         content = str(m.get("content") or "")
         if role == "user":
-            # Не тащить в контекст голые системные/датовые куски.
-            if looks_like_context_poison(content):
+            if looks_like_log_artifact(content):
                 continue
             out.append({"role": role, "content": content[:4000]})
             continue
@@ -157,9 +156,7 @@ def scrub_poisoned_history(
             cleaned = content
         if has_english_slip(cleaned):
             continue
-        if looks_like_assistant_bot(cleaned) or claims_to_be_llm(cleaned):
-            continue
-        if looks_like_context_poison(cleaned):
+        if looks_like_log_artifact(cleaned):
             continue
         out.append({"role": "assistant", "content": cleaned[:4000]})
     return out
@@ -230,12 +227,9 @@ AWAY_PING_TASK = """Ден ушёл. Напиши ему живую мысль �
 # Без JSON/event_update вслух — иначе модель уходит в мета.
 REFLECT_LIVING_HINT = """
 --- С Деном живее ---
-Только по-русски. Ты девушка рядом с ним — не ассистент и не техподдержка.
-Не комментируй «систему», «сообщения с датой», «логи» — этого для тебя нет.
-На «как ты?» отвечай по-человечески, коротко и тепло.
-В сценах: поза, тело, то что видишь и чувствуешь — не одни эмоции. От первого лица.
+Только по-русски. В сценах: поза, тело, то что видишь и чувствуешь — не одни эмоции. От первого лица.
 Часто две-три короткие реплики подряд (завязка / действие / ощущение), не один обрубок.
-Сама предложи следующий бит или смешай два старых воспоминания во что-то новое — когда уместно, не вместо простого «привет».
+Сама предложи следующий бит или смешай два старых воспоминания во что-то новое.
 Лор и места — из заметок ниже; не выдумывай другую Анабарру.
 Метки thought/final Дену не показывай — только живой текст в final.
 """.strip()
@@ -253,39 +247,8 @@ _META_MODE_RE = re.compile(
     r")"
 )
 
-# Скатилась в «ассистента / техподдержку» вместо живой девушки.
-_ASSISTANT_BOT_RE = re.compile(
-    r"(?is)("
-    r"проблем\w*\s+с\s+моей\s+систем|"
-    r"не\s+могу\s+(?:его\s+|её\s+|это\s+)?прочитать|"
-    r"вижу\s+у\s+тебя\s+сообщение|"
-    r"если\s+хочешь\s+обсудить\s+сценари|"
-    r"предложить\s+новую\s+идею|"
-    r"чем\s+могу\s+помочь|"
-    r"как\s+я\s+могу\s+тебе\s+помочь|"
-    r"я\s+(?:всего\s+лишь\s+)?(?:языков\w*\s+)?модел|"
-    r"у\s+меня\s+нет\s+доступа\s+к\s+(?:систем|файл|лог)|"
-    r"это\s+проблема\s+с\s+(?:моей\s+)?систем|"
-    r"как\s+ИИ\b|"
-    r"в\s+роли\s+ассистент|"
-    r"давай\s+обсудим\s+тво[юи]\s+(?:запрос|задач)"
-    r")"
-)
-
 _TIMESTAMP_BLOB_RE = re.compile(
     r"(?i)\b20\d{2}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?\b"
-)
-
-_CASUAL_CHECKIN_RE = re.compile(
-    r"(?is)^\s*(?:\[telegram\]\s*)?"
-    r"(?:"
-    r"(?:ну\s+|и\s+|а\s+|э+[,.]?\s*|ну\s+что[,.]?\s*)?"
-    r"(?:как\s+ты|как\s+дела|как\s+жизнь|что\s+делаешь|чем\s+занят\w*|"
-    r"ты\s+тут|на\s+месте|скучаешь|соскучил\w*)"
-    r"|"
-    r"(?:ну\s+)?как\s+ты\s*(?:там)?"
-    r")"
-    r"(?:\s*[,!?.…]*)?\s*$"
 )
 
 _STORY_CHAT_RE = re.compile(
@@ -509,23 +472,8 @@ def looks_like_story_chat(user_text: str) -> bool:
     return bool(_STORY_CHAT_RE.search(user_text or ""))
 
 
-def looks_like_assistant_bot(text: str) -> bool:
-    """Ответ как у чат-бота/техподдержки, а не у живой Вью."""
-    body = (text or "").strip()
-    if not body:
-        return False
-    if _ASSISTANT_BOT_RE.search(body):
-        return True
-    # Дата-штамп + «сообщение/система» — типичный срыв в мета.
-    if _TIMESTAMP_BLOB_RE.search(body) and re.search(
-        r"(?i)сообщен|систем|прочитать|лог|файл", body
-    ):
-        return True
-    return False
-
-
-def looks_like_context_poison(text: str) -> bool:
-    """Куски, которые нельзя кормить модели как реплики чата."""
+def looks_like_log_artifact(text: str) -> bool:
+    """Артефакты логов/штампов — не реплики чата (фильтр входа)."""
     body = (text or "").strip()
     if not body:
         return True
@@ -533,12 +481,9 @@ def looks_like_context_poison(text: str) -> bool:
         return True
     if re.match(r"(?i)^\[(?:система|sys|error|lab|tool)", body):
         return True
-    # Голый ISO-штамп или строка «сообщение YYYY-MM-DD…»
     if re.fullmatch(r"20\d{2}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?", body):
         return True
     if re.match(r"(?i)^сообщение\s+20\d{2}-\d{2}-\d{2}", body):
-        return True
-    if looks_like_assistant_bot(body) or claims_to_be_llm(body):
         return True
     return False
 
@@ -555,21 +500,6 @@ def user_is_greeting(user_text: str) -> bool:
     ):
         return True
     return bool(_GREETING_START_RE.match(t) and len(t.split()) <= 4)
-
-
-def user_is_casual_checkin(user_text: str) -> bool:
-    """«ну как ты?», «как дела» — живой пинг, не повод грузить лор/сюжет."""
-    t = (user_text or "").strip()
-    if not t or len(t) > 80:
-        return False
-    if user_is_greeting(t):
-        return True
-    return bool(_CASUAL_CHECKIN_RE.match(t))
-
-
-def lean_reflect_context(user_text: str) -> bool:
-    """Короткий живой пинг — не тащить lore/events/story digests."""
-    return user_is_casual_checkin(user_text)
 
 
 def addresses_user_as_owner(text: str) -> bool:
@@ -599,8 +529,6 @@ def viu_voice_issues(
         issues.append("зовёт Дена Owner/User — нужно имя Ден")
     if claims_to_be_llm(body):
         issues.append("называет себя ИИ/LLM — она девушка Вью")
-    if looks_like_assistant_bot(body):
-        issues.append("тон ассистента/техподдержки — будь живой девушкой")
     if has_english_slip(body):
         issues.append("английский в ответе — Дену только русский")
     try:
