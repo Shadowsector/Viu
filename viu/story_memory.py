@@ -159,17 +159,34 @@ class StoryMemory:
             lines.append("### Недавние сюжетные реплики (помни и продолжай)")
             for b in recent:
                 who = "Ден" if b.role == "user" else "Вью"
-                lines.append(f"- **{who}:** {b.text[:900]}")
+                text = re.sub(
+                    r"\b20\d{2}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?\b",
+                    "",
+                    b.text,
+                )
+                text = re.sub(r"\s{2,}", " ", text).strip(" ,;—-")
+                if not text:
+                    continue
+                lines.append(f"- **{who}:** {text[:900]}")
         if extra:
             lines.append("### Похожее из более ранней памяти")
             for b in extra:
                 who = "Ден" if b.role == "user" else "Вью"
-                lines.append(f"- **{who}:** {b.text[:700]}")
-        if not lines:
+                text = re.sub(
+                    r"\b20\d{2}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?\b",
+                    "",
+                    b.text,
+                )
+                text = re.sub(r"\s{2,}", " ", text).strip(" ,;—-")
+                if not text:
+                    continue
+                lines.append(f"- **{who}:** {text[:700]}")
+        if not lines or all(l.startswith("###") for l in lines):
             return ""
         lines.append(
             "Опирайся на эти ходы: не предлагай с нуля то, что уже решили; "
-            "если Ден развивает сюжет — продолжай его нить."
+            "если Ден развивает сюжет — продолжай его нить. "
+            "Не комментируй «систему» и даты сообщений — ты просто с ним в чате."
         )
         return "\n".join(lines)
 

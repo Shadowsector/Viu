@@ -692,6 +692,8 @@ class Agent:
             addresses_user_as_owner,
             claims_to_be_llm,
             has_english_slip,
+            lean_reflect_context,
+            looks_like_assistant_bot,
             reflect_include_story_history,
             reflect_no_history,
             reflect_no_system,
@@ -767,6 +769,8 @@ class Agent:
             _attach(REFLECT_IMMERSION_ANCHOR)
             _attach(REFLECT_LIVING_HINT)
 
+            lean = lean_reflect_context(user_text)
+
             try:
                 life = format_reflect_life_block(self.config)
                 if life:
@@ -774,31 +778,30 @@ class Agent:
             except Exception:  # noqa: BLE001
                 pass
 
-            try:
-                from .lore_digest import format_lore_digest
+            if not lean:
+                try:
+                    from .lore_digest import format_lore_digest
 
-                lore = format_lore_digest(self.config)
-                if lore:
-                    _attach(lore)
-            except Exception:  # noqa: BLE001
-                pass
+                    lore = format_lore_digest(self.config)
+                    if lore:
+                        _attach(lore)
+                except Exception:  # noqa: BLE001
+                    pass
 
-            try:
-                from .event_memory import format_events_digest
+                try:
+                    from .event_memory import format_events_digest
 
-                ev = format_events_digest(self.config)
-                if ev:
-                    _attach(ev)
-            except Exception:  # noqa: BLE001
-                pass
+                    ev = format_events_digest(self.config)
+                    if ev:
+                        _attach(ev)
+                except Exception:  # noqa: BLE001
+                    pass
 
-            # Сюжетный RAG: писали всегда, а в bare не читали — поэтому «забывала».
-            try:
-                from .prompts.reflect_mode import user_is_greeting
-                from .story_memory import ensure_logs_ingested, get_story_memory
+                # Сюжетный RAG: писали всегда, а в bare не читали — поэтому «забывала».
+                try:
+                    from .story_memory import ensure_logs_ingested, get_story_memory
 
-                ensure_logs_ingested(self.config)
-                if not user_is_greeting(user_text):
+                    ensure_logs_ingested(self.config)
                     story_ctx = get_story_memory(self.config).format_context(
                         user_text, recent_n=6, search_n=4
                     )
@@ -807,58 +810,59 @@ class Agent:
                             "--- Сюжетная память (продолжай нить, не с нуля) ---\n"
                             + story_ctx
                         )
-            except Exception:  # noqa: BLE001
-                pass
+                except Exception:  # noqa: BLE001
+                    pass
 
             hint = list_delivery_hint(user_text)
             if hint:
                 _attach(hint)
-            try:
-                from .integrations.comfy.intent import (
-                    format_reflect_comfy_block,
-                    mentions_comfy,
-                )
-                from .integrations.comfy.prompt_edit import is_comfy_short_task
+            if not lean:
+                try:
+                    from .integrations.comfy.intent import (
+                        format_reflect_comfy_block,
+                        mentions_comfy,
+                    )
+                    from .integrations.comfy.prompt_edit import is_comfy_short_task
 
-                if mentions_comfy(user_text):
-                    comfy_block = format_reflect_comfy_block(self.config)
-                    if is_comfy_short_task(user_text):
-                        comfy_block += (
-                            "\nДен просит короткий EN-промпт / действие: "
-                            "1–3 предложения в final, без эмодзи и режиссёрского сценария. "
-                            "Полный Wan — «покажи промпт» / Промпт Wan → Comfy."
+                    if mentions_comfy(user_text):
+                        comfy_block = format_reflect_comfy_block(self.config)
+                        if is_comfy_short_task(user_text):
+                            comfy_block += (
+                                "\nДен просит короткий EN-промпт / действие: "
+                                "1–3 предложения в final, без эмодзи и режиссёрского сценария. "
+                                "Полный Wan — «покажи промпт» / Промпт Wan → Comfy."
+                            )
+                        _attach("\n\n" + comfy_block)
+                    elif is_comfy_short_task(user_text):
+                        _attach(
+                            "\n\n--- Comfy/Wan ---\n"
+                            "Ден просит короткий EN-промпт / действие для ComfyUI, "
+                            "не сценарий игры. В final: 1–3 предложения, без эмодзи, "
+                            "без **markdown**, без «режиссёрского» описания сцены. "
+                            "Если нужен полный Wan-блок — скажи открыть «Промпт Wan → Comfy» "
+                            "или напиши «покажи промпт»."
                         )
-                    _attach("\n\n" + comfy_block)
-                elif is_comfy_short_task(user_text):
-                    _attach(
-                        "\n\n--- Comfy/Wan ---\n"
-                        "Ден просит короткий EN-промпт / действие для ComfyUI, "
-                        "не сценарий игры. В final: 1–3 предложения, без эмодзи, "
-                        "без **markdown**, без «режиссёрского» описания сцены. "
-                        "Если нужен полный Wan-блок — скажи открыть «Промпт Wan → Comfy» "
-                        "или напиши «покажи промпт»."
-                    )
-            except Exception:  # noqa: BLE001
-                pass
-            try:
-                from .viu_memory import format_reflect_block
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    from .viu_memory import format_reflect_block
 
-                # Короткий digest (не весь файл). При NO_SYSTEM=1 — в user,
-                # иначе system отбрасывается и привычки/«запомни» не доходят.
-                mem = format_reflect_block(self.config)
-                if mem:
-                    _attach(mem)
-            except Exception:  # noqa: BLE001
-                pass
-            if needs_plot_file_context(user_text):
-                plot_notes = build_reflect_notes_plot(self.config)
-                if plot_notes:
-                    plot_ctx = True
-                    _attach(
-                        "--- Канон сюжета и квестов (читай, не выдумывай; "
-                        "не зачитывай markdown списком) ---\n"
-                        + plot_notes
-                    )
+                    # Короткий digest (не весь файл). При NO_SYSTEM=1 — в user,
+                    # иначе system отбрасывается и привычки/«запомни» не доходят.
+                    mem = format_reflect_block(self.config)
+                    if mem:
+                        _attach(mem)
+                except Exception:  # noqa: BLE001
+                    pass
+                if needs_plot_file_context(user_text):
+                    plot_notes = build_reflect_notes_plot(self.config)
+                    if plot_notes:
+                        plot_ctx = True
+                        _attach(
+                            "--- Канон сюжета и квестов (читай, не выдумывай; "
+                            "не зачитывай markdown списком) ---\n"
+                            + plot_notes
+                        )
             if extra_user_blocks:
                 user_msg = user_text + "\n\n" + "\n\n".join(extra_user_blocks)
 
@@ -866,22 +870,35 @@ class Agent:
         if not (reflect_no_system() and not heartbeat):
             messages.append({"role": "system", "content": system})
         hist = [] if reflect_no_history() else list(history or [])
+        lean_now = (not heartbeat) and lean_reflect_context(user_text)
         if (
             not reflect_no_history()
             and reflect_include_story_history()
             and not heartbeat
+            and not lean_now
             and len(hist) < 4
         ):
             try:
+                from .prompts.reflect_mode import scrub_poisoned_history
                 from .story_memory import get_story_memory
 
-                long_hist = get_story_memory(self.config).as_chat_history(limit=16)
+                long_hist = scrub_poisoned_history(
+                    get_story_memory(self.config).as_chat_history(limit=8)
+                )
                 if long_hist:
                     hist = long_hist
             except OSError:
                 pass
+        try:
+            from .prompts.reflect_mode import scrub_poisoned_history
+
+            hist = scrub_poisoned_history(hist)
+        except Exception:  # noqa: BLE001
+            pass
         if hist and not heartbeat:
-            messages.extend(hist[-16:])
+            # На короткий пинг — только последние реплики, без длинного хвоста.
+            hist = hist[-4:] if lean_now else hist[-16:]
+            messages.extend(hist)
         messages.append({"role": "user", "content": user_msg})
 
         # «запомни» — сразу на диск, до ответа модели (echo/abort не сожрут).
@@ -1143,6 +1160,22 @@ class Agent:
                         }
                     )
                     continue
+            if candidate and looks_like_assistant_bot(candidate):
+                self._log(f"REFLECT_ASSISTANT_BOT attempt={attempt}")
+                if attempt < 3:
+                    messages.append({"role": "assistant", "content": raw or ""})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Не ассистент и не техподдержка. Ты Вью — девушка рядом с Деном. "
+                                "Не говори про систему, логи и «сообщения с датой». "
+                                "Ответь ему по-человечески, тепло. "
+                                '{"final":"…"}'
+                            ),
+                        }
+                    )
+                    continue
             if candidate and has_english_slip(candidate):
                 self._log(f"REFLECT_EN_SLIP attempt={attempt}")
                 if attempt < 3:
@@ -1251,14 +1284,17 @@ class Agent:
 
         user_text = task.strip()
         notes = build_reflect_notes(self.config, user_text=user_text)
+        from .prompts.reflect_mode import lean_reflect_context
+
         greeting = user_is_greeting(user_text)
+        casual = lean_reflect_context(user_text)
         story = None
         try:
             from .story_memory import ensure_logs_ingested, get_story_memory
 
             ensure_logs_ingested(self.config)
             story = get_story_memory(self.config)
-            if not greeting:
+            if not casual:
                 story_ctx = story.format_context(user_text)
                 if story_ctx:
                     notes = (notes + "\n\n" + story_ctx).strip() if notes else story_ctx
@@ -1270,11 +1306,11 @@ class Agent:
             hist = []
         elif (
             reflect_include_story_history()
-            and not greeting
+            and not casual
             and len(hist) < 4
             and story is not None
         ):
-            long_hist = scrub_poisoned_history(story.as_chat_history(limit=16))
+            long_hist = scrub_poisoned_history(story.as_chat_history(limit=8))
             if long_hist:
                 hist = long_hist
 
@@ -1282,13 +1318,16 @@ class Agent:
         nsfw_q = asks_about_nsfw(user_text)
         bold_q = asks_about_boldness(user_text)
         scene_rp = is_roleplay_scene_prompt(user_text)
-        use_notes = bool(notes) and not greeting and not scene_rp
-        use_hist = bool(hist) and not greeting
+        use_notes = bool(notes) and not casual and not scene_rp
+        use_hist = bool(hist) and not casual
+        if use_hist and casual:
+            hist = hist[-4:]
 
         self._log(
             f"REFLECT filtered half={half} notes={int(use_notes)} hist={len(hist) if use_hist else 0}"
             f" no_hist={int(reflect_no_history())} filtered=1"
-            f"{' greeting' if greeting else ''}{' nsfw_q' if nsfw_q else ''}"
+            f"{' greeting' if greeting else ''}{' casual' if casual else ''}"
+            f"{' nsfw_q' if nsfw_q else ''}"
             f"{' bold_q' if bold_q else ''}{' scene_rp' if scene_rp else ''}: "
             f"{user_text[:120]}"
         )
