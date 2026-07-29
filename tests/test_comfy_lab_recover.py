@@ -83,3 +83,76 @@ def test_run_lab_prepared_calls_comfy_recover(tmp_path):
     assert rec.called
     assert "RECOVER" in msg
     assert ok is False
+
+
+def test_generate_preserves_chat_action_and_frees_queue(tmp_path):
+    cfg = _cfg(tmp_path)
+    s = new_session(COMFY_TOPIC)
+    s.status = "running"
+    s.step = 5
+    chat_action = (
+        "lounging sprawled in an armchair, leaning back, legs relaxed, full body, "
+        "matching the reference face, body and style"
+    )
+    s.meta.update(
+        {
+            "approved": True,
+            "action": chat_action,
+            "approved_action": chat_action,
+            "catalog_slug": "chat_scene",
+            "shot_reason": "chat: directed scene",
+            "prompt_user_edited": True,
+            "auto_approved_shoot": True,
+        }
+    )
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def ping(self):
+            return True, "ok"
+
+        def get_queue(self):
+            return {"queue_running": [], "queue_pending": []}
+
+        def clear_queue(self):
+            return None
+
+        def free_memory(self, **k):
+            return None
+
+        def interrupt(self):
+            return None
+
+    captured = {}
+
+    def fake_triple(config, **kwargs):
+        captured["action"] = kwargs.get("action")
+        return True, "ok triple", {"slug": "chat_scene", "files": []}
+
+    with patch("viu.integrations.comfy.client.ComfyClient", FakeClient):
+        with patch("viu.lab.comfy_pipeline.run_triple_angles", side_effect=fake_triple):
+            with patch(
+                "viu.integrations.comfy.clip_review.harvest_comfy_native_output",
+                return_value=(0, ""),
+            ):
+                with patch(
+                    "viu.integrations.comfy.clip_review.register_triple_batch",
+                    return_value=[],
+                ):
+                    with patch(
+                        "viu.integrations.comfy.clip_review.format_candidates_message",
+                        return_value="выбери дубль",
+                    ):
+                        with patch(
+                            "viu.integrations.comfy.queue_manage.clear_comfy_queue",
+                            return_value="Очередь Comfy: очередь уже пуста; free VRAM",
+                        ) as clear:
+                            ok, msg, _ = step_generate_triple(cfg, s)
+
+    assert ok is True
+    assert captured["action"] == chat_action
+    assert s.meta["approved_action"] == chat_action
+    assert clear.called
+    assert "free" in msg.lower() or "очередь" in msg.lower() or "дубль" in msg.lower()

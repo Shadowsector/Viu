@@ -326,10 +326,15 @@ def build_scene_action_en(
     kind: str = "scene",
     user_text: str = "",
     look_ru: str = "",
+    config: Config | None = None,
 ) -> str:
-    """Сцена для lab/Comfy: описание Дена — ядро; реф — якорь внешности."""
+    """Сцена для lab/Comfy: описание Дена → EN action; реф — якорь внешности."""
+    from .scene_en import scene_wish_to_en
+
     wish = extract_scene_wish(user_text)
     look = (look_ru or "").strip()[:280]
+    if look and re.search(r"[А-Яа-яЁё]", look):
+        look = look[:80]
     base_look = (
         f", matching the reference look ({look})"
         if look
@@ -353,24 +358,29 @@ def build_scene_action_en(
             + base_look
         )
 
-    if not wish:
-        return "young woman in the described scene, medium shot, natural motion" + base_look
-
-    return f"{wish}, medium shot, natural motion{base_look}"
+    en_core = (
+        scene_wish_to_en(wish, config=config)
+        if wish
+        else "young woman in the described scene, medium shot, natural motion"
+    )
+    return f"{en_core}{base_look}"
 
 
 def extract_scene_wish(text: str) -> str:
     """Вытащить описание сцены из фразы Дена."""
     s = (text or "").strip()
     s = re.sub(r"(?i)^\[tg_photo:[^\]]+\]\s*", "", s)
+    s = re.sub(r"(?i)^\s*ок[,!.…]?\s*", "", s)
     s = re.sub(r"(?i)(?:вот,?\s*)?это\s+ты[!.…]?\s*", "", s)
+    # «нарисуй себя, развалившуюся…» — запятая после себя ок
     s = re.sub(
         r"(?i)^\s*(?:пожалуйста[,.]?\s*)?"
         r"(?:сними|снять|снимай|сделай|создай|сгенер(?:ируй)?|нарисуй|нарисовать|"
         r"сфотка(?:й|ть)|сфотографируй)\s+"
         r"(?:себя|тебя|мне|фото(?:графию)?|картинк\w*|рисунок|из\s+(?:этого\s+)?референса"
         r"(?:\s+сво[её])?|сво[её])?\s*"
-        r"(?:как\s+)?",
+        r"[,:]?\s*"
+        r"(?:как\s+(?:ты\s+)?)?",
         "",
         s,
     )

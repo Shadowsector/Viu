@@ -359,7 +359,12 @@ def _shoot_action_for(config: Config, text: str, *, look_ru: str = "") -> str:
     from .reference_vision import build_scene_action_en
 
     look = look_ru or get_pending_look(config)
-    return build_scene_action_en(kind=_scene_kind(text), user_text=text, look_ru=look)
+    return build_scene_action_en(
+        kind=_scene_kind(text),
+        user_text=text,
+        look_ru=look,
+        config=config,
+    )
 
 
 def _lora_list_message(config: Config) -> str:

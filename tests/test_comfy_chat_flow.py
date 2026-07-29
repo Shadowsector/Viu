@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from viu.config import Config
@@ -86,7 +87,24 @@ def test_chat_draw_in_comfy_armchair(tmp_path, monkeypatch):
     out = try_handle_comfy_chat(cfg, "Ок, нарисуй себя в Комфи, как ты сидишь в кресле")
     assert out.handled
     assert out.start_shoot
-    assert "кресл" in out.shoot_action.lower()
+    assert "armchair" in out.shoot_action.lower() or "chair" in out.shoot_action.lower()
+    assert not re.search(r"[А-Яа-яЁё]", out.shoot_action.split("matching")[0])
+
+
+def test_chat_sprawled_in_armchair_en(tmp_path, monkeypatch):
+    _mock_look(monkeypatch)
+    cfg = _cfg(tmp_path)
+    img = _png(tmp_path / "me.png")
+    assign_character_ref(cfg, "viu", img)
+    out = try_handle_comfy_chat(cfg, "нарисуй себя, развалившуюся в кресле")
+    assert out.handled
+    assert out.start_shoot
+    low = out.shoot_action.lower()
+    assert "armchair" in low or "lounge" in low or "sprawl" in low
+    assert "развал" not in low
+    from viu.integrations.comfy.reference_vision import extract_scene_wish
+
+    assert "кресл" in extract_scene_wish("нарисуй себя, развалившуюся в кресле")
 
 
 def test_chat_make_photo_sexy_pose(tmp_path, monkeypatch):
@@ -98,7 +116,8 @@ def test_chat_make_photo_sexy_pose(tmp_path, monkeypatch):
     )
     assert out.handled
     assert out.start_shoot
-    assert "секси" in out.shoot_action.lower() or "позе" in out.shoot_action.lower()
+    low = out.shoot_action.lower()
+    assert "pose" in low or "confident" in low or "hip" in low
     assert load_character_refs(cfg)["viu"].path
 
 
@@ -151,7 +170,8 @@ def test_chat_directed_scene_from_ref(tmp_path, monkeypatch):
     )
     assert out.handled
     assert out.start_shoot
-    assert "фентез" in out.shoot_action.lower() or "закат" in out.shoot_action.lower()
+    low = out.shoot_action.lower()
+    assert "fantasy" in low or "sunset" in low
     assert "делаю из рефа" in out.message.lower() or "пришлю" in out.message.lower()
 
 
@@ -165,7 +185,8 @@ def test_chat_scene_description_after_pending(tmp_path, monkeypatch):
     )
     assert out.handled
     assert out.start_shoot
-    assert "окн" in out.shoot_action.lower() or "волос" in out.shoot_action.lower()
+    low = out.shoot_action.lower()
+    assert "window" in low or "hair" in low
 
 
 def test_chat_fantasy_landscape(tmp_path, monkeypatch):
@@ -176,22 +197,35 @@ def test_chat_fantasy_landscape(tmp_path, monkeypatch):
     out = try_handle_comfy_chat(cfg, "сними себя в фентезийном пейзаже")
     assert out.handled
     assert out.start_shoot
-    assert "фентез" in out.shoot_action.lower() or "fantasy" in out.shoot_action.lower()
+    assert "fantasy" in out.shoot_action.lower()
 
 
 def test_build_scene_action_en():
     from viu.integrations.comfy.reference_vision import extract_scene_wish
+    from viu.integrations.comfy.scene_en import has_cyrillic
 
     a = build_scene_action_en(
         kind="scene",
         user_text="сними себя в лесу на закате",
         look_ru="рыжие волосы",
     )
-    assert "лес" in a.lower() or "закат" in a.lower()
+    assert "sunset" in a.lower() or "forest" in a.lower()
     assert "рыжие" in a.lower()
+    core = a.split("matching")[0]
+    assert not has_cyrillic(core)
     assert extract_scene_wish("сними себя в лесу") == "в лесу"
+    assert "armchair" in extract_scene_wish(
+        "нарисуй себя, развалившуюся в кресле"
+    ) or "кресл" in extract_scene_wish("нарисуй себя, развалившуюся в кресле")
     b = build_scene_action_en(kind="selfie", user_text="селфи", look_ru="я")
     assert "selfie" in b.lower()
+    sprawl = build_scene_action_en(
+        kind="scene",
+        user_text="нарисуй себя, развалившуюся в кресле",
+        look_ru="",
+    )
+    assert "armchair" in sprawl.lower()
+    assert not has_cyrillic(sprawl.split("matching")[0])
 
 
 def test_chat_assign_shanya_and_minotaur(tmp_path, monkeypatch):
