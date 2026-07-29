@@ -31,5 +31,5 @@ def test_brief_awaiting_prompt(tmp_path, monkeypatch):
     session.meta = {"catalog_slug": "sit_down", "action": "sitting down"}
     save_session(cfg, session)
     line = comfy_pipeline_status_brief(cfg)
-    assert "жду промпт" in line
+    assert "жду" in line and ("Снять" in line or "панель" in line.lower() or "промпт" in line)
     assert "sit_down" in line

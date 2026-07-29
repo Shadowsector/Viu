@@ -43,7 +43,7 @@ def comfy_pipeline_status_brief(config: Config) -> str:
     focus_bit = f" · фокус {focus_mode_label(config)}"
     st = session.status
     if st == "awaiting_prompt":
-        hint = "жду промпт"
+        hint = "жду «Снять»"
     elif st == "awaiting_lora_pick":
         hint = "жду LoRA"
     elif st == "awaiting_clip_pick":
@@ -128,9 +128,9 @@ def comfy_pipeline_status(config: Config) -> str:
         if session.status == "running" and session.step == 5:
             lines.append(f"  → **сейчас генерирует** {mocap_take_count()} дублей (¾) в ComfyUI")
         elif session.status == "awaiting_prompt":
-            lines.append("  → ждёт одобрение промпта (Telegram / чат: ок)")
+            lines.append("  → панель съёмки: Telegram «Снять» / Промпт / LoRA")
         elif session.status == "awaiting_lora_pick":
-            lines.append("  → ждёт выбор LoRA (lora: 1,2 / none)")
+            lines.append("  → ждёт LoRA (кнопка на панели или lora: 1)")
         elif session.status == "awaiting_clip_pick":
             lines.append(
                 "  → ждёт оценку видео: «Оценить видео» / Студия "

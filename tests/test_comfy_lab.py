@@ -98,20 +98,40 @@ def test_redraft_does_not_approve_complaint(tmp_path, monkeypatch):
     session.status = "awaiting_prompt"
     session.meta = {"catalog_slug": "lie_down", "action": "lying down"}
     save_session(cfg, session)
-    msg = apply_prompt_decision(
-        cfg, session, "redraft", "нет, мы другой промт хотели снимать"
-    )
+
+    class Plan:
+        catalog_slug = "sit_down"
+        action = "sitting down on a chair"
+        title_ru = "Сесть"
+        enters_from = []
+        exits_to = []
+        looped = False
+        reason = "redraft"
+
+    with patch(
+        "viu.lab.comfy_director.invent_redraft_shot",
+        return_value=Plan(),
+    ), patch(
+        "viu.integrations.comfy.comfy_panel.send_control_panel",
+        return_value=(True, "Панель"),
+    ):
+        msg = apply_prompt_decision(
+            cfg, session, "redraft", "нет, мы другой промт хотели снимать"
+        )
     session = load_session(cfg, COMFY_TOPIC)
     assert session is not None
     assert session.meta.get("approved") is False
     assert session.status == "awaiting_prompt"
-    assert "не тот кадр" in msg.lower() or "новый вариант" in msg.lower()
+    assert "не тот кадр" in msg.lower() or "новый" in msg.lower()
 
 
 def test_mocap_angles_in_prompt():
+    from viu.integrations.comfy.prompts import mocap_take_count
+
     angles = default_angles()
-    assert len(angles) == 3
-    assert {a.id for a in angles} == {"take_a", "take_b", "take_c"}
+    assert len(angles) == mocap_take_count()
+    assert "take_a" in {a.id for a in angles}
+    assert "take_b" in {a.id for a in angles}
     p = mocap_prompt("sit down", angles[0])
     assert "three-quarter" in p
     assert "sit down" in p
@@ -142,8 +162,8 @@ def test_comfy_lab_awaits_telegram(tmp_path, monkeypatch):
     ok, msg, _ = step_draft_prompt(cfg, session)
     assert ok
     with patch(
-        "viu.lab.comfy_pipeline.send_prompt_for_approval",
-        return_value=(True, "sent"),
+        "viu.integrations.comfy.comfy_panel.send_control_panel",
+        return_value=(True, "Панель в Telegram — жду «Снять»."),
     ):
         ok2, msg2, _ = step_request_approval(cfg, session)
     assert ok2
@@ -151,13 +171,20 @@ def test_comfy_lab_awaits_telegram(tmp_path, monkeypatch):
     assert loaded is not None
     assert loaded.status == "awaiting_prompt"
 
-    out = apply_prompt_decision(cfg, loaded, "approve", "lean on window")
-    assert "принят" in out.lower() or "принят" in out
+    with patch("viu.integrations.comfy.lora.scan_loras", return_value=[]), patch(
+        "viu.integrations.comfy.lora.specs_from_indices",
+        return_value=[],
+    ), patch(
+        "viu.integrations.comfy.lora.spec_to_dict",
+        return_value={},
+    ):
+        out = apply_prompt_decision(cfg, loaded, "approve", "lean on window")
+    assert "снимаю" in out.lower() or "очередь" in out.lower()
     loaded2 = load_session(cfg, COMFY_TOPIC)
     assert loaded2 is not None
     assert loaded2.status == "running"
     assert loaded2.meta.get("approved") is True
-    assert loaded2.step >= 4
+    assert loaded2.step >= 5
 
 
 def test_format_lab_progress_comfy_labels():

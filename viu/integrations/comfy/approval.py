@@ -71,31 +71,36 @@ def _is_redraft_request(text: str) -> bool:
 
 
 def send_prompt_for_approval(config: Config, action: str, draft_text: str) -> Tuple[bool, str]:
-    """Отправить Дена в Telegram текст на одобрение (с кнопками)."""
-    from .tg_buttons import prompt_approval_keyboard
+    """Отправить Дена в Telegram панель съёмки (Снять / Промпт / LoRA)."""
+    from .tg_buttons import control_panel_keyboard
 
-    # Коротко: детали в черновике, действия — кнопками.
     draft = (draft_text or "").strip()
-    if len(draft) > 2800:
-        draft = draft[:2797] + "…"
+    if len(draft) > 2200:
+        draft = draft[:2197] + "…"
+    scene = (action or "").strip()
+    if len(scene) > 160:
+        scene = scene[:157] + "…"
     body = (
-        "🎬 Comfy MoCap\n\n"
+        "🎬 Comfy — панель съёмки\n\n"
+        f"Сцена: {scene or '—'}\n"
+        f"Дублей: {mocap_take_count()} × ¾\n\n"
         f"{draft}\n\n"
-        f"Дублей ¾: {mocap_take_count()}. Жми кнопку или напиши правки: sit_down"
+        "① Промпт / LoRA — настрой\n"
+        "② «Снять» — только тогда очередь"
     )
     if not tg_settings.enabled(config):
-        return False, "Telegram выключен — одобри в чате Вью: ок / стоп / правки: …"
+        return False, "Telegram выключен — в чате: ок (=снять) / стоп / lora: …"
     token = tg_settings.token(config)
     chat_id = tg_settings.chat_id(config)
     if not token or chat_id is None:
-        return False, "Telegram не привязан — одобри в чате Вью."
+        return False, "Telegram не привязан — в чате: ок / стоп."
     try:
         TelegramClient(token).send_message(
             chat_id,
             body,
-            reply_markup=prompt_approval_keyboard(),
+            reply_markup=control_panel_keyboard(),
         )
-        return True, "Промпт ушёл в Telegram — кнопки: Снимать / Промпт / Другой / Стоп."
+        return True, "Панель в Telegram — жду «Снять»."
     except TelegramError as exc:
         return False, f"Telegram ошибка: {exc}"
 
@@ -132,23 +137,58 @@ def try_handle_comfy_telegram(
     *,
     for_telegram: bool = False,
 ) -> Tuple[bool, str]:
-    """Если lab/comfy ждёт промпт, выбор клипа или сцены — обработать ответ."""
+    """Панель съёмки / клип / сцена — ответ Дена из Telegram или чата."""
     from .prompt_edit import try_handle_comfy_prompt_chat
 
-    handled, out = try_handle_comfy_prompt_chat(config, text, for_telegram=for_telegram)
-    if handled:
-        return True, out
+    raw = (text or "").strip()
 
+    # Сначала спецкоманды панели (до prompt_edit, чтобы «промпт comfy» из кнопки ок).
     from ...lab.comfy_pipeline import (
         COMFY_TOPIC,
         apply_clip_pick_decision,
-        apply_lora_pick_decision,
         apply_prompt_decision,
     )
-    from ...lab.session import load_session
+    from ...lab.session import load_session, save_session
     from .clip_review import parse_clip_pick_reply
+    from .comfy_panel import (
+        send_control_panel,
+        send_lora_menu,
+        set_setup_lora_indices,
+    )
     from .lora import load_index, parse_lora_pick_reply
     from .scene_choice import apply_scene_choice, is_paused_for_scene_choice, parse_scene_choice_reply
+
+    session = load_session(config, COMFY_TOPIC)
+
+    if session is not None and session.status == "awaiting_prompt":
+        low = raw.lower()
+        if low in ("lora: меню", "лора: меню", "lora menu"):
+            ok, msg = send_lora_menu(config, session)
+            return True, msg
+        if low in ("панель comfy", "панель", "comfy panel"):
+            _ok, msg = send_control_panel(config, session)
+            return True, msg
+        # LoRA с панели: только запомнить выбор, не стартовать
+        entries = load_index(config)
+        max_idx = max((e.index for e in entries), default=0)
+        indices = parse_lora_pick_reply(raw, max_index=max_idx)
+        if indices is not None and (
+            low.startswith("lora:") or low.startswith("лора:") or re.match(r"^\s*\d", raw)
+        ):
+            set_setup_lora_indices(session, indices)
+            save_session(config, session)
+            _ok, panel = send_control_panel(config, session)
+            label = "без LoRA" if not indices else "№ " + ",".join(str(i) for i in indices)
+            return True, f"LoRA: {label}. Жми «Снять», когда готово.\n{panel}"
+
+    handled, out = try_handle_comfy_prompt_chat(config, text, for_telegram=for_telegram)
+    if handled:
+        # После показа/правки Wan — вернуть панель, если ещё ждём
+        session = load_session(config, COMFY_TOPIC)
+        if session is not None and session.status == "awaiting_prompt":
+            _ok, panel = send_control_panel(config, session)
+            return True, out + "\n\n" + panel
+        return True, out
 
     if is_paused_for_scene_choice(config):
         decision, payload = parse_scene_choice_reply(text)
@@ -165,7 +205,7 @@ def try_handle_comfy_telegram(
         if parsed is None:
             return True, (
                 "Не поняла выбор клипа.\n"
-                "Напиши: лучший: front | лучший: side 5 | отклонить все"
+                "Напиши: лучший: take_b | или жми кнопку под сообщением."
             )
         decision, payload = parsed
         return True, apply_clip_pick_decision(config, session, decision, payload)
@@ -175,11 +215,13 @@ def try_handle_comfy_telegram(
         max_idx = max((e.index for e in entries), default=0)
         indices = parse_lora_pick_reply(text, max_index=max_idx)
         if indices is None:
-            return True, (
-                "Не поняла выбор LoRA.\n"
-                "Напиши: lora: 1 | lora: 1,3 | lora: all | lora: none"
-            )
-        return True, apply_lora_pick_decision(config, session, indices)
+            return True, "Не поняла LoRA. Жми номер на панели или: lora: 1 | lora: none"
+        # Перевести в единую панель
+        set_setup_lora_indices(session, indices)
+        session.status = "awaiting_prompt"
+        save_session(config, session)
+        _ok, panel = send_control_panel(config, session)
+        return True, f"LoRA записала. Жми «Снять».\n{panel}"
 
     if session.status != "awaiting_prompt":
         return False, ""
@@ -187,7 +229,7 @@ def try_handle_comfy_telegram(
     decision, payload = parse_approval_reply(text, current_action=action)
     if decision == "unknown":
         return True, (
-            "Не поняла ответ по Comfy-промпту.\n"
-            "Напиши: ок | нет / другой кадр | правки: sit_down | стоп"
+            "Жми кнопки панели: Снять / Промпт / LoRA / Стоп.\n"
+            "Или: ок | стоп | правки: sit_down | lora: 1"
         )
     return True, apply_prompt_decision(config, session, decision, payload)
