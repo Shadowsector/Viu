@@ -289,14 +289,6 @@ def _wants_directed_shoot(text: str, config: Config) -> bool:
     return False
 
 
-def _resolve_work_image(config: Config, photo: Optional[Path], pending: Optional[Path]) -> Optional[Path]:
-    if photo is not None and photo.is_file():
-        return photo
-    if pending is not None and pending.is_file():
-        return pending
-    return character_image_path(config, "viu")
-
-
 def _look(
     config: Config,
     image: Path,
