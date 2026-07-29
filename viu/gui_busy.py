@@ -9,6 +9,7 @@ from __future__ import annotations
 TOOLS_ALLOWED_DURING_LAB = frozenset(
     {
         "comfy_status",
+        "comfy_diag",  # как раз когда генерация «висит» — смотреть pid/очередь/лог
         "lab_status",
         "comfy_lora_list",
         "comfy_ensure",  # поднять :8188, пока lab ждёт Comfy

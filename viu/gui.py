@@ -1919,8 +1919,9 @@ class ViuGUI:
             if not can_start_tool(tool_busy=self._tool_busy, tool_name=name):
                 msg = (
                     f"Уже крутится lab/Comfy — «{title}» подождёт.\n"
-                    "Статус в любой момент: **comfy_status** или **lab_status topic=comfy**.\n"
-                    "ComfyUI: http://127.0.0.1:8188 (если пусто — comfy_ensure)"
+                    "Сейчас можно: **comfy_diag** / **comfy_status** / "
+                    "**lab_status topic=comfy**.\n"
+                    "ComfyUI: http://127.0.0.1:8188"
                 )
                 self._append("система", msg, tag="sys")
                 if notify_telegram and self._telegram is not None:
