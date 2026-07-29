@@ -1600,8 +1600,262 @@ def _apply_scale_selected(objs: Sequence) -> None:
     bpy.context.view_layer.update()
 
 
-def _duplicate_for_export(arm, meshes: Sequence) -> Tuple[object, List, List]:
-    """Copy arm+meshes with world matrices (includes wrap-root scale). Live scene untouched."""
+def _load_nsfw_attach():
+    """Пакет Viu или копия viu_nsfw_attach.py рядом с shared в Lab."""
+    try:
+        from viu.creature_catalog import nsfw_attach as mod  # type: ignore
+
+        return mod
+    except ImportError:
+        pass
+    path = Path(__file__).resolve().parent / "viu_nsfw_attach.py"
+    if path.is_file():
+        import importlib.util
+        import sys
+
+        name = "viu_nsfw_attach"
+        if name in sys.modules:
+            return sys.modules[name]
+        spec = importlib.util.spec_from_file_location(name, str(path))
+        if spec is None or spec.loader is None:
+            return None
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+        return mod
+    return None
+
+
+def _nsfw():
+    mod = _load_nsfw_attach()
+    if mod is None:
+        raise RuntimeError(
+            "Нет nsfw_attach / viu_nsfw_attach.py — переоткрой Студию из Вью"
+        )
+    return mod
+
+
+def collect_aim_socket_empties(objects: Sequence) -> List:
+    """Empty с именами socket_* из набора существа."""
+    out = []
+    for o in objects or []:
+        if o is None or getattr(o, "type", "") != "EMPTY":
+            continue
+        name = str(getattr(o, "name", "") or "")
+        if name.startswith("socket_") or name.startswith("Socket_"):
+            out.append(o)
+    return out
+
+
+def ensure_girl_aim_sockets(arm_obj) -> Tuple[bool, str, List[str]]:
+    """Создать/обновить 6 aim Empty, parent_type=BONE. Возврат: ok, msg, created_ids."""
+    NSFW = _nsfw()
+    if arm_obj is None or getattr(arm_obj, "type", "") != "ARMATURE":
+        return False, "Нужна арматура существа", []
+    try:
+        if bpy.context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+    except RuntimeError:
+        pass
+
+    bone_names = [b.name for b in arm_obj.data.bones]
+    created: List[str] = []
+    missing: List[str] = []
+    colls = list(arm_obj.users_collection) or [bpy.context.collection]
+
+    for spec in NSFW.SOCKET_SPECS:
+        sid = str(spec["id"])
+        aliases = tuple(spec.get("aliases") or ())
+        prefer = tuple(spec.get("prefer") or ())
+        bone = NSFW.match_bone_name(bone_names, aliases, prefer=prefer)
+        if not bone:
+            missing.append(sid)
+            continue
+        empty = bpy.data.objects.get(sid)
+        if empty is None or empty.type != "EMPTY":
+            empty = bpy.data.objects.new(sid, None)
+            for c in colls:
+                try:
+                    c.objects.link(empty)
+                except RuntimeError:
+                    pass
+            created.append(sid)
+        empty.empty_display_type = "SPHERE"
+        empty.empty_display_size = float(spec.get("size") or 0.025)
+        empty.parent = arm_obj
+        empty.parent_type = "BONE"
+        empty.parent_bone = bone
+        off = spec.get("offset") or (0.0, 0.0, 0.0)
+        empty.location = (float(off[0]), float(off[1]), float(off[2]))
+        empty.rotation_euler = (0.0, 0.0, 0.0)
+        empty.scale = (1.0, 1.0, 1.0)
+        empty.show_in_front = True
+        empty["viu_aim_socket"] = sid
+
+    bpy.context.view_layer.update()
+    if missing and not created and len(missing) == len(NSFW.SOCKET_SPECS):
+        return False, f"Не нашли кости для сокетов: {', '.join(missing)}", created
+    msg = f"Сокеты: {len(NSFW.SOCKET_SPECS) - len(missing)}/{len(NSFW.SOCKET_SPECS)}"
+    if created:
+        msg += f", новые: {', '.join(created)}"
+    if missing:
+        msg += f"; нет кости для: {', '.join(missing)}"
+    msg += ". Подвинь Empty если надо."
+    return True, msg, created
+
+
+def ensure_penis_bone_chain(arm_obj, *, hide: bool = True) -> Tuple[bool, str]:
+    """Цепочка Penis_01..03 под Hips; покой — pose scale ≈ 0."""
+    NSFW = _nsfw()
+    if arm_obj is None or getattr(arm_obj, "type", "") != "ARMATURE":
+        return False, "Нужна арматура существа"
+    bone_names = [b.name for b in arm_obj.data.bones]
+    hips = NSFW.match_bone_name(bone_names, NSFW.HIPS_ALIASES)
+    if not hips:
+        return False, "Нет кости Hips/Pelvis — сначала канон AccuRIG"
+
+    view_layer = bpy.context.view_layer
+    try:
+        if bpy.context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+    except RuntimeError:
+        pass
+    view_layer.objects.active = arm_obj
+    arm_obj.select_set(True)
+
+    try:
+        bpy.ops.object.mode_set(mode="EDIT")
+    except RuntimeError as exc:
+        return False, f"Не войти в Edit Mode: {exc}"
+
+    try:
+        ebones = arm_obj.data.edit_bones
+        parent = ebones.get(hips)
+        if parent is None:
+            return False, f"Edit bone {hips} пропал"
+
+        # Вперёд персонажа в пространстве арматуры (−Y типичен для Unity FBX).
+        try:
+            inv = arm_obj.matrix_world.inverted().to_3x3()
+            fwd = inv @ Vector((0.0, -1.0, 0.0))
+        except Exception:
+            fwd = Vector((0.0, -1.0, 0.0))
+        if fwd.length < 1e-6:
+            fwd = Vector((0.0, -1.0, 0.0))
+        else:
+            fwd.normalize()
+        down = Vector((0.0, 0.0, -1.0))
+        start = parent.head + fwd * 0.03 + down * 0.02
+        seg = 0.045
+        names = list(NSFW.PENIS_BONE_NAMES)
+        for i, name in enumerate(names):
+            b = ebones.get(name)
+            if b is None:
+                b = ebones.new(name)
+            if i == 0:
+                b.parent = parent
+                b.use_connect = False
+            else:
+                b.parent = ebones.get(names[i - 1])
+                b.use_connect = True
+            b.head = start + fwd * (seg * i)
+            b.tail = start + fwd * (seg * (i + 1))
+            b.use_deform = True
+    finally:
+        try:
+            bpy.ops.object.mode_set(mode="OBJECT")
+        except RuntimeError:
+            pass
+
+    scale = float(NSFW.PENIS_HIDE_SCALE) if hide else 1.0
+    for name in NSFW.PENIS_BONE_NAMES:
+        pb = arm_obj.pose.bones.get(name)
+        if pb is None:
+            continue
+        pb.scale = (scale, scale, scale)
+        pb["viu_penis"] = 1
+        pb["viu_flaccid_hide"] = 1 if hide else 0
+
+    arm_obj["viu_penis_rig"] = "attached"
+    bpy.context.view_layer.update()
+    hide_note = "спрятан scale≈0" if hide else "scale=1 (виден)"
+    return True, f"Penis_01..03 на {hips}, {hide_note}. Подвинь кости если надо."
+
+
+def ensure_vaginal_helper_bones(arm_obj) -> Tuple[bool, str]:
+    """Две короткие deform-кости у таза (не Humanoid, не aim-сокеты)."""
+    NSFW = _nsfw()
+    if arm_obj is None or getattr(arm_obj, "type", "") != "ARMATURE":
+        return False, "Нужна арматура существа"
+    bone_names = [b.name for b in arm_obj.data.bones]
+    hips = NSFW.match_bone_name(bone_names, NSFW.HIPS_ALIASES)
+    if not hips:
+        return False, "Нет кости Hips/Pelvis"
+
+    view_layer = bpy.context.view_layer
+    try:
+        if bpy.context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+    except RuntimeError:
+        pass
+    view_layer.objects.active = arm_obj
+    try:
+        bpy.ops.object.mode_set(mode="EDIT")
+    except RuntimeError as exc:
+        return False, f"Не войти в Edit Mode: {exc}"
+
+    try:
+        ebones = arm_obj.data.edit_bones
+        parent = ebones.get(hips)
+        if parent is None:
+            return False, f"Edit bone {hips} пропал"
+        try:
+            inv = arm_obj.matrix_world.inverted().to_3x3()
+            fwd = inv @ Vector((0.0, -1.0, 0.0))
+        except Exception:
+            fwd = Vector((0.0, -1.0, 0.0))
+        if fwd.length > 1e-6:
+            fwd.normalize()
+        side = Vector((1.0, 0.0, 0.0))
+        base = parent.head + fwd * 0.05 + Vector((0.0, 0.0, -0.03))
+        for name, sx in zip(NSFW.VAGINA_HELPER_NAMES, (-1.0, 1.0)):
+            b = ebones.get(name)
+            if b is None:
+                b = ebones.new(name)
+            b.parent = parent
+            b.use_connect = False
+            head = base + side * (0.015 * sx)
+            b.head = head
+            b.tail = head + fwd * 0.025
+            b.use_deform = True
+    finally:
+        try:
+            bpy.ops.object.mode_set(mode="OBJECT")
+        except RuntimeError:
+            pass
+
+    arm_obj["viu_vagina_helpers"] = "attached"
+    bpy.context.view_layer.update()
+    return True, "Vagina_L / Vagina_R у таза (деформ). Сокеты — отдельно."
+
+
+def ensure_nsfw_attach_all(arm_obj, *, hide_penis: bool = True) -> Tuple[bool, str]:
+    """Мишени + penis + вагинальные хелперы одним заходом."""
+    parts: List[str] = []
+    ok_s, msg_s, _ = ensure_girl_aim_sockets(arm_obj)
+    parts.append(msg_s)
+    ok_p, msg_p = ensure_penis_bone_chain(arm_obj, hide=hide_penis)
+    parts.append(msg_p)
+    ok_v, msg_v = ensure_vaginal_helper_bones(arm_obj)
+    parts.append(msg_v)
+    ok = ok_s or ok_p or ok_v
+    return ok, " | ".join(parts)
+
+
+def _duplicate_for_export(
+    arm, meshes: Sequence, empties: Sequence = ()
+) -> Tuple[object, List, List]:
+    """Copy arm+meshes(+socket empties). Live scene untouched."""
     deps = bpy.context.evaluated_depsgraph_get()
     coll = bpy.context.scene.collection
     dups: List = []
@@ -1628,6 +1882,38 @@ def _duplicate_for_export(arm, meshes: Sequence) -> Tuple[object, List, List]:
         md.matrix_world = mw
         dups.append(md)
         mesh_dups.append(md)
+    for empty in empties or []:
+        if empty is None or getattr(empty, "type", "") != "EMPTY":
+            continue
+        ed = empty.copy()
+        coll.objects.link(ed)
+        if (
+            getattr(empty, "parent", None) == arm
+            and getattr(empty, "parent_type", "") == "BONE"
+            and getattr(empty, "parent_bone", "")
+        ):
+            ed.parent = arm_dup
+            ed.parent_type = "BONE"
+            ed.parent_bone = empty.parent_bone
+            try:
+                ed.matrix_parent_inverse = empty.matrix_parent_inverse.copy()
+            except (AttributeError, TypeError):
+                pass
+            ed.location = empty.location.copy()
+            ed.rotation_euler = empty.rotation_euler.copy()
+            ed.scale = empty.scale.copy()
+        else:
+            ed.parent = None
+            ed.matrix_world = empty.evaluated_get(deps).matrix_world.copy()
+            mw = ed.matrix_world.copy()
+            ed.parent = arm_dup
+            ed.matrix_world = mw
+        try:
+            ed.empty_display_type = empty.empty_display_type
+            ed.empty_display_size = empty.empty_display_size
+        except (AttributeError, TypeError):
+            pass
+        dups.append(ed)
     bpy.context.view_layer.update()
     return arm_dup, mesh_dups, dups
 
@@ -1670,9 +1956,11 @@ def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str, d
     ]
     if not meshes:
         return False, "Нет skinned mesh у существа для FBX", {}
+    sockets = collect_aim_socket_empties(list(allowed))
 
     root = bpy.data.objects.get("VIU_CREATURE_ROOT")
     tlog = collect_transform_log(root, list(allowed))
+    tlog["aim_sockets"] = [o.name for o in sockets]
 
     tex_n, tex_imgs = 0, 0
     try:
@@ -1683,7 +1971,7 @@ def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str, d
     dups: List = []
     selected: List[str] = []
     try:
-        arm_dup, mesh_dups, dups = _duplicate_for_export(arm, meshes)
+        arm_dup, mesh_dups, dups = _duplicate_for_export(arm, meshes, sockets)
         _apply_scale_selected([arm_dup, *mesh_dups])
         # After apply, arm+mesh should both be scale 1 at the visual size.
         tlog["export_dup_arm_scale"] = [float(x) for x in arm_dup.scale]
@@ -1717,7 +2005,7 @@ def export_creature_fbx(filepath: Path, objects: Sequence) -> Tuple[bool, str, d
             kwargs = dict(
                 filepath=str(filepath),
                 use_selection=True,
-                object_types={"ARMATURE", "MESH"},
+                object_types={"ARMATURE", "MESH", "EMPTY"},
                 use_mesh_modifiers=True,
                 use_armature_deform_only=True,
                 bake_anim=False,

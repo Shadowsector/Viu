@@ -138,12 +138,13 @@ GUI_ACTIONS: List[GuiAction] = [
         tool="creature_biped_canon",
         tool_args={"action": "mark_genital", "girls": "1"},
         hint=(
-            "Только запись в каталоге (ещё не 3D-меш):\n"
+            "Только запись в каталоге (ещё не 3D):\n"
             "• девки → futa (вагина + penis)\n"
             "• genital_rig=pending — «надо прикрутить»\n"
             "• прячем scale кости ≈ 0, показ — scale вверх\n"
-            "После AccuRIG в Blender/Wardrobe привяжешь эталон penis к тазу "
-            "и 6 мишеней (рот, вагина, анус, 2 руки, грудь).\n"
+            "Прикрутка НЕ руками: Студия существ → панель Viu →\n"
+            "«Всё NSFW сразу» (мишени + penis + вагина).\n"
+            "Потом подвинь Empty/кости глазами и сохрани FBX.\n"
             "Все biped: в чате «органы biped»."
         ),
     ),
@@ -197,7 +198,9 @@ GUI_ACTIONS: List[GuiAction] = [
         hint=(
             "Покажет 6 точек прицеливания (не «вагинальные кости»):\n"
             "рот · вагина · анус · левая ладонь · правая · меж грудей.\n"
-            "В Blender — Empty на кости; Unity penetrator целится в активный.\n"
+            "Ставятся в Blender Studio кнопкой «Поставить 6 мишеней» "
+            "(или «Всё NSFW сразу»).\n"
+            "Unity penetrator целится в активный Empty.\n"
             "Большой penis: пресеты S/M/L + кламп. Bulge живота — morph 0…1."
         ),
     ),

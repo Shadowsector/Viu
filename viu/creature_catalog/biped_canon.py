@@ -387,8 +387,8 @@ def mark_biped_genital(
     head = (
         f"Помечено biped: {n}.\n"
         "В каталоге: penis/futa, flaccid_default, genital_rig=pending.\n"
-        "Дальше в Blender/Wardrobe: прикрутить эталон penis к тазу, "
-        "покой = scale кости ≈ 0; показ = scale вверх.\n"
+        "Дальше: Студия существ → панель Viu → «Всё NSFW сразу» "
+        "(мишени + penis scale≈0 + вагина). Подвинь глазами, сохрани FBX.\n"
         "См. docs/BIPED_RERIG_SIMPLE.md\n"
     )
     return n, head + "\n".join(lines[:50])

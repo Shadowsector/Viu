@@ -448,6 +448,7 @@ def test_creature_studio_session_and_sync(tmp_path, monkeypatch):
     assert data["queue"][0]["path"] == str(prep)
     assert (session.parent / "viu_creature_studio.py").is_file()
     assert (session.parent / "viu_creature_blender_shared.py").is_file()
+    assert (session.parent / "viu_nsfw_attach.py").is_file()
 
     fb = session.parent / "studio_feedback.json"
     assert "studio_problem" in data["queue"][0]
