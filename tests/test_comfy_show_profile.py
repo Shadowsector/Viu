@@ -36,26 +36,38 @@ def test_normalize_show_aliases():
 
 
 def test_show_positive_cinematic_no_white_bg():
+    from viu.integrations.comfy.prompts import SUBJECT_PREFIX
+
     pos = show_positive("standing by a window", style="realism", has_smoothmix=True)
+    assert pos.startswith(SUBJECT_PREFIX)
     assert "smoothmixrealism" in pos
-    assert "cinematic" in pos.lower()
-    assert "white background" not in pos.lower()
     assert "standing by a window" in pos
+    assert "white background" not in pos.lower()
+    assert "young woman" not in pos.lower()
+    assert "Действие" not in pos
 
 
 def test_show_positive_anime_trigger():
+    from viu.integrations.comfy.prompts import SUBJECT_PREFIX
+
     pos = show_positive("walking", style="anime", has_smoothmix=True)
+    assert pos.startswith(SUBJECT_PREFIX)
     assert "smoothmixanime" in pos
     assert "anime" in pos.lower()
     neg = show_negative(style="anime")
-    assert "photorealistic" in neg
+    assert neg == "Tongue out, wet hair"
+    assert "photorealistic" not in neg
 
 
 def test_draft_bundle_mentions_one_take():
+    from viu.integrations.comfy.prompts import SUBJECT_PREFIX
+
     draft = draft_show_bundle("pose", style="realism", unet_note="test.safetensors")
     assert "ШОУ" in draft or "шоу" in draft.lower()
     assert "Дублей: 1" in draft
-    assert "pose" in draft
+    assert SUBJECT_PREFIX in draft
+    assert "Действие:" not in draft
+    assert "Tongue out, wet hair" in draft
 
 
 def test_find_show_unet_discovers_smoothmix(tmp_path, monkeypatch):
