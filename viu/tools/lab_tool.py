@@ -219,6 +219,23 @@ class LabStartTool(Tool):
                 meta_extra["looped"] = False
             if str(args.get("shoot") or "").lower() in ("1", "true", "yes"):
                 meta_extra["shoot_intent"] = True
+            profile = str(args.get("render_profile") or "").strip().lower()
+            if profile:
+                from ..integrations.comfy.show_profile import (
+                    PROFILE_SHOW,
+                    arm_show_profile,
+                    clear_show_profile,
+                    normalize_profile,
+                )
+
+                if normalize_profile(profile) == PROFILE_SHOW:
+                    arm_show_profile(
+                        meta_extra,
+                        style=str(args.get("show_style") or "realism"),
+                        action=str(args.get("action") or action or ""),
+                    )
+                else:
+                    clear_show_profile(meta_extra)
             wan_pos = str(args.get("_wan_positive") or "").strip()
             wan_neg = str(args.get("_wan_negative") or "").strip()
             if wan_pos:

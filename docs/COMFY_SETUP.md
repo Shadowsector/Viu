@@ -123,6 +123,22 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 запуск теперь с `--listen 127.0.0.1` и CORS. Либо открой `http://localhost:8188`.
 Для MoCap UI не обязателен — Вью ходит в API сама.
 
+### Шоу-дубль (SmoothMix / cinematic)
+
+Отдельный профиль — **1 красивый клип**, не MoCap-ref для Cascadeur.
+
+В чате: **«шоу дубль»** / **«хочу шоу-дубль»** / `comfy_show`  
+Аниме: **«шоу аниме»** / `comfy_show style=anime`
+
+1. Положи **SmoothMix Wan 2.2** (`.safetensors` / `.gguf`) в  
+   `U:\Viu\ComfyUI\models\diffusion_models\`  
+   (имя с `smoothmix` — Вью подхватит сама).
+2. Или задай явно: `VIU_COMFY_SHOW_UNET=имя_файла.safetensors` в `.env`.
+3. Если модели нет — шоу всё равно идёт на **Wan 2.1** с cinematic-промптом  
+   (896×576, 49 кадров, euler/simple, steps=8).
+
+MoCap снова: обычная съёмка / `comfy_mocap` (профиль сбрасывается).
+
 ### Подмена лица (ReActor)
 
 Чтобы Wan не рисовал случайные лица:

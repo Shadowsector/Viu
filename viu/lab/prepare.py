@@ -148,6 +148,8 @@ def _prepare_lab_session_inner(
                 "selected_loras",
                 "shoot_intent",
                 "auto_approved_shoot",
+                "render_profile",
+                "show_style",
             ):
                 val = (session.meta or {}).get(key)
                 if val is None or val == "" or val == []:

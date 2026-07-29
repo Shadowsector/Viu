@@ -9,6 +9,7 @@ from ...lab.session import LabSession, save_session
 from ..telegram import settings as tg_settings
 from ..telegram.client import TelegramClient, TelegramError
 from .prompts import mocap_take_count
+from .show_profile import is_show_profile, show_style_from_meta, show_take_count
 from .tg_buttons import control_panel_keyboard, lora_pick_keyboard
 
 
@@ -41,11 +42,15 @@ def format_control_panel(session: LabSession) -> str:
     slug = str(session.meta.get("catalog_slug") or "").strip()
     wan = str(session.meta.get("wan_positive") or "").strip()
     draft = str(session.meta.get("draft") or "").strip()
+    show = is_show_profile(session.meta)
+    title = "🎬 Comfy — шоу-дубль" if show else "🎬 Comfy — панель съёмки"
     lines = [
-        "🎬 Comfy — панель съёмки",
+        title,
         "",
         f"Сцена: {action}",
     ]
+    if show:
+        lines.append(f"Профиль: ШОУ ({show_style_from_meta(session.meta)})")
     if slug:
         lines.append(f"Slug: `{slug}`")
     lines.append(f"LoRA: {_lora_summary(session)}")
@@ -56,10 +61,15 @@ def format_control_panel(session: LabSession) -> str:
         if len(snippet) > 220:
             snippet = snippet[:217] + "…"
         lines.extend(["", f"Промпт: {snippet}"])
+    takes = (
+        f"Дублей: {show_take_count()} × шоу (не MoCap)"
+        if show
+        else f"Дублей: {mocap_take_count()} × ¾"
+    )
     lines.extend(
         [
             "",
-            f"Дублей: {mocap_take_count()} × ¾",
+            takes,
             "",
             "① LoRA / Промпт — настрой",
             "② «Снять» — только тогда очередь Comfy",

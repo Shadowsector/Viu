@@ -82,6 +82,15 @@ _RU_ALIASES: Dict[str, Tuple[str, Dict[str, Any]]] = {
     "comfy queue clear": ("comfy_queue_clear", {"force": "1"}),
     "почини reactor": ("comfy_reactor_fix", {}),
     "comfy reactor fix": ("comfy_reactor_fix", {}),
+    "шоу дубль": ("comfy_show", {}),
+    "шоу-дубль": ("comfy_show", {}),
+    "хочу шоу дубль": ("comfy_show", {}),
+    "хочу шоу-дубль": ("comfy_show", {}),
+    "smoothmix": ("comfy_show", {}),
+    "comfy show": ("comfy_show", {}),
+    "comfy_show": ("comfy_show", {}),
+    "шоу аниме": ("comfy_show", {"style": "anime"}),
+    "шоу realism": ("comfy_show", {"style": "realism"}),
 }
 
 

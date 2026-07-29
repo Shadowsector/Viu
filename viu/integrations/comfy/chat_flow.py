@@ -118,6 +118,8 @@ class ChatFlowOutcome:
     message: str = ""
     start_shoot: bool = False
     shoot_action: str = ""
+    render_profile: str = ""  # "" | "show" | "mocap"
+    show_style: str = "realism"
     media_to_send: List[Tuple[str, str]] = field(default_factory=list)
     # ("photo"|"video", path)
 
@@ -454,6 +456,38 @@ def _shoot_confirm_message(text: str) -> str:
     )
 
 
+_SHOW_DOUBLE_RE = re.compile(
+    r"(?i)(?:"
+    r"шоу[\s\-]?дубл|"
+    r"хочу\s+шоу|"
+    r"\bsmoothmix\b|"
+    r"beauty\s+double|"
+    r"шоу[\s\-]?клип|"
+    r"красив(?:ый|ый)\s+(?:клип|дубл)"
+    r")"
+)
+
+_SHOW_ANIME_RE = re.compile(r"(?i)\b(?:anime|аниме)\b")
+
+
+def _parse_show_request(text: str) -> Optional[Tuple[str, str]]:
+    """Если это запрос шоу-дубля → (style, action_hint). Иначе None."""
+    t = (text or "").strip()
+    if not t or not _SHOW_DOUBLE_RE.search(t):
+        return None
+    style = "anime" if _SHOW_ANIME_RE.search(t) else "realism"
+    # Убрать маркеры профиля, оставить сцену если есть
+    rest = _SHOW_DOUBLE_RE.sub(" ", t)
+    rest = _SHOW_ANIME_RE.sub(" ", rest)
+    rest = re.sub(
+        r"(?i)^\s*(?:хочу|сделай|сними|нарисуй|пожалуйста|плиз)[,:\s]*",
+        "",
+        rest,
+    )
+    rest = re.sub(r"\s+", " ", rest).strip(" .,!—-")
+    return style, rest
+
+
 def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
     """NL: посмотреть фото, запомнить целиком, сделать кадр по описанию."""
     raw = (text or "").strip()
@@ -462,6 +496,37 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
 
     if _LAB_SHORT_RE.match(raw) and not _TG_PHOTO_RE.match(raw):
         return ChatFlowOutcome(False)
+
+    # Шоу-дубль раньше directed MoCap — «хочу шоу-дубль» без сцены.
+    show_req = _parse_show_request(raw)
+    if show_req is not None and not _TG_PHOTO_RE.match(raw):
+        from .prompts import clean_action_for_wan
+        from .show_profile import find_show_unet
+
+        style, hint = show_req
+        if hint and len(hint) >= 6:
+            action = clean_action_for_wan(hint)
+            if not action or len(action) < 4:
+                action = clean_action_for_wan(_shoot_action_for(config, hint))
+        else:
+            action = ""
+        if not action:
+            action = "young woman standing relaxed, full body, soft pose"
+        unet, note = find_show_unet(config)
+        msg = (
+            f"Шоу-дубль ({style}) — один красивый клип, не MoCap×5.\n"
+            f"{note}\n"
+            + ("SmoothMix подхвачу. " if unet else "Пока cinematic на Wan 2.1. ")
+            + "Панель в Telegram: Промпт / LoRA, потом «Снять»."
+        )
+        return ChatFlowOutcome(
+            True,
+            msg,
+            start_shoot=True,
+            shoot_action=action,
+            render_profile="show",
+            show_style=style,
+        )
 
     photo, caption = parse_tg_photo_payload(raw)
     body = caption if photo is not None else raw
