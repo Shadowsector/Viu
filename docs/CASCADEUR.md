@@ -45,3 +45,22 @@ U:\Cascadeur\App\Cascadeur\resources\scripts\python\commands\
 6. Вью: **Обновить аниматор** (Unity закрыт)
 
 Авто-запуск Cascadeur из Вью — **лаборатория** (см. [VIU_LAB.md](./VIU_LAB.md)): окно на 3-м мониторе, скрины, journal, оценки.
+
+## Клип из Blender → Cascadeur
+
+Вью может сделать **простой** клип в Blender и сразу отправить в Cascadeur на полировку:
+
+| Инструмент | Что делает |
+|------------|------------|
+| `blender_make_anim` | Action на арматуре: `idle`, `wave`, `nod`, `look_left`, `look_right`, `stretch` |
+| `blender_export_cascadeur_anim` | FBX с `bake_anim` (без WGT) |
+| `blender_anim_to_cascadeur` | make → export → Inbox + LabImport `mode=animation` |
+
+Пример в work-чате:
+
+```text
+blender_anim_to_cascadeur blend_file=U:\Anabarra\…\Shanya.blend preset=wave
+```
+
+Артефакты: `Library/Lab/Anims/BlenderOut/`, `Library/Lab/Anims/CascadeurReady/`.  
+Это **не** финальная анимация — грубый ключ; физика и позы — в Cascadeur.

@@ -4,11 +4,14 @@ from .affordance_tool import AffordanceMatchTool, AffordanceShowTool
 from .ask_tool import AskUserTool
 from .base import AgentContext, Tool, ToolRegistry, ToolResult
 from .blender_tool import (
+    BlenderAnimToCascadeurTool,
     BlenderCommandTool,
+    BlenderExportCascadeurAnimTool,
     BlenderExportCascadeurBatchTool,
     BlenderExportCascadeurTool,
     BlenderExportShanyaTool,
     BlenderInfoTool,
+    BlenderMakeAnimTool,
     BlenderScanTool,
     BlenderScreenshotTool,
 )
@@ -264,6 +267,9 @@ def build_default_registry() -> ToolRegistry:
         BlenderScanTool(),
         BlenderExportCascadeurTool(),
         BlenderExportCascadeurBatchTool(),
+        BlenderExportCascadeurAnimTool(),
+        BlenderMakeAnimTool(),
+        BlenderAnimToCascadeurTool(),
         BlenderExportShanyaTool(),
         BlenderScreenshotTool(),
         RigStandardTool(),

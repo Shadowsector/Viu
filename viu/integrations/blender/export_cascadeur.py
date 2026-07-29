@@ -258,6 +258,7 @@ try:
         "deform_bones": deform_bones,
         "non_deform_bones": non_deform,
         "armature": active_arm.name,
+        "bake_anim": False,
     }})
 except Exception as exc:
     emit({{
@@ -267,6 +268,21 @@ except Exception as exc:
     }})
     raise SystemExit(2)
 '''
+
+# Тот же отбор mesh/armature, но bake_anim=True (клип для Cascadeur).
+CASCADUR_ANIM_EXPORT_SCRIPT = CASCADUR_EXPORT_SCRIPT.replace(
+    "bake_anim=False,",
+    "bake_anim=True,\n"
+    "        bake_anim_use_all_bones=True,\n"
+    "        bake_anim_use_nla_strips=False,\n"
+    "        bake_anim_use_all_actions=False,\n"
+    "        bake_anim_force_startend_keying=True,",
+    1,
+).replace(
+    '"bake_anim": False,',
+    '"bake_anim": True,',
+    1,
+)
 
 
 def export_cascadeur_fbx(
@@ -288,6 +304,46 @@ def export_cascadeur_fbx(
 
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as f:
         f.write(CASCADUR_EXPORT_SCRIPT)
+        script_path = f.name
+
+    try:
+        cmd = build_export_command(blender_exe, str(blend), script_path, str(out))
+        proc = runner(cmd, capture_output=True, text=True, timeout=timeout)
+        combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        if proc.returncode != 0 and _MARK_BEGIN not in (proc.stdout or ""):
+            tail = combined.strip()[-2000:]
+            raise RuntimeError(f"Blender завершился с кодом {proc.returncode}.\n{tail}")
+        meta = parse_export_output(proc.stdout or combined)
+        if not out.is_file():
+            raise RuntimeError(f"FBX не создан: {out}\n{combined.strip()[-1500:]}")
+        return out, meta
+    finally:
+        try:
+            Path(script_path).unlink()
+        except OSError:
+            pass
+
+
+def export_cascadeur_anim_fbx(
+    blend_file: str,
+    output_fbx: str | None = None,
+    blender_exe: str = "blender",
+    timeout: float = 300.0,
+    runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+) -> Tuple[Path, Dict[str, Any]]:
+    """Экспорт персонажа + baked animation (для полировки в Cascadeur)."""
+    blend = Path(blend_file).resolve()
+    if not blend.is_file():
+        raise FileNotFoundError(f"Blend не найден: {blend_file}")
+
+    if output_fbx:
+        out = Path(output_fbx).resolve()
+    else:
+        out = blend.with_name(f"{blend.stem}_anim.fbx")
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as f:
+        f.write(CASCADUR_ANIM_EXPORT_SCRIPT)
         script_path = f.name
 
     try:
