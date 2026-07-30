@@ -447,15 +447,29 @@ def recommend_loras(
     *,
     limit: int = 2,
     exclude_nsfw_cinema: bool = True,
+    shoot_mode: str = "",
 ) -> List[LoraIndexEntry]:
     """Подобрать LoRA по тегам/имени под сцену (без ручного «lora: N»).
 
     Скорит пересечение query_tags с tags файла и токенами имени.
     Для MoCap/шоу отсекает явный beauty/cinema мусор, если exclude_nsfw_cinema.
+    shoot_mode=t2i/i2i — уроки Дена: не брать i2v/video LoRA на still.
     """
     entries = load_index(config, rescan_if_missing=True)
     if not entries:
         return []
+    try:
+        from .teach_store import (
+            boost_lora_score_by_lessons,
+            filter_lora_entries_by_lessons,
+        )
+
+        entries = filter_lora_entries_by_lessons(
+            config, entries, shoot_mode=shoot_mode
+        )
+        _boost = boost_lora_score_by_lessons
+    except Exception:  # noqa: BLE001
+        _boost = None
     q = {t.lower().strip() for t in (query_tags or []) if t and len(t.strip()) >= 2}
     if not q:
         return []
@@ -468,24 +482,36 @@ def recommend_loras(
         "facefix",
         "portrait",
     }
+    mode = (shoot_mode or "").strip().lower()
+    still = mode in ("t2i", "i2i")
     scored: List[tuple[int, LoraIndexEntry]] = []
     for e in entries:
         hay = set(t.lower() for t in (e.tags or []))
         hay.update(_tags_from_filename(e.file))
         if e.subfolder:
             hay.update(_tags_from_filename(e.subfolder.replace("/", "_")))
+        name_l = e.file.lower()
+        # Still: не рекомендовать явный video/i2v даже без уроков на диске.
+        if still and any(x in name_l for x in ("i2v", "t2v", "video")):
+            continue
         if exclude_nsfw_cinema and hay & ban and not (hay & {"wan", "pose", "motion", "anime"}):
-            # слабый штраф через пропуск высоких очков — просто минус
             overlap = len(q & hay)
             if overlap == 0:
                 continue
             score = overlap - 1
         else:
             score = len(q & hay)
-        # лёгкий бонус за wan/video в имени
-        name_l = e.file.lower()
         if "wan" in name_l or "motion" in name_l:
-            score += 1
+            # motion бонус только для video-режимов
+            if still and "motion" in name_l and "wan" not in name_l:
+                score -= 1
+            else:
+                score += 1
+        if _boost is not None:
+            try:
+                score = _boost(config, e, score, shoot_mode=shoot_mode)
+            except Exception:  # noqa: BLE001
+                pass
         if score > 0:
             scored.append((score, e))
     scored.sort(key=lambda x: (-x[0], -x[1].mtime, x[1].index))
@@ -507,9 +533,11 @@ def apply_recommended_loras_to_session(
     query_tags: List[str],
     *,
     limit: int = 2,
+    shoot_mode: str = "",
 ) -> Tuple[List[str], List[int]]:
     """Записать выбранные LoRA в session.meta. Возвращает (имена, индексы)."""
-    picks = recommend_loras(config, query_tags, limit=limit)
+    mode = shoot_mode or str(session_meta.get("shoot_mode") or "")
+    picks = recommend_loras(config, query_tags, limit=limit, shoot_mode=mode)
     indices = [e.index for e in picks]
     specs = [e.to_spec() for e in picks]
     session_meta["lora_last_pick"] = list(indices)
