@@ -219,6 +219,12 @@ class LabStartTool(Tool):
                 meta_extra["looped"] = False
             if str(args.get("shoot") or "").lower() in ("1", "true", "yes"):
                 meta_extra["shoot_intent"] = True
+            if str(args.get("from_shoot_panel") or "").lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                meta_extra["from_shoot_panel"] = True
             profile = str(args.get("render_profile") or "").strip().lower()
             if profile:
                 from ..integrations.comfy.show_profile import (

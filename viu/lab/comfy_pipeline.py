@@ -222,7 +222,11 @@ def _is_directed_shoot(session: LabSession) -> bool:
 
 
 def step_request_approval(config: Config, session: LabSession) -> StepResult:
-    """Панель съёмки в Telegram. Генерация только после «Снять»."""
+    """Панель съёмки в Telegram. Генерация только после «Снять».
+
+    Исключение: съёмка из GUI «СЪЁМКА ВИДЕО» (from_shoot_panel) —
+    промпт уже согласован в панели → сразу генерация, без «План MoCap».
+    """
     from ..integrations.comfy.comfy_panel import apply_setup_and_start, send_control_panel
     from ..integrations.telegram import settings as tg_settings
 
@@ -231,6 +235,13 @@ def step_request_approval(config: Config, session: LabSession) -> StepResult:
     session.meta["action"] = action
     session.meta["draft"] = draft
     session.meta.pop("lora_pick_done", None)
+
+    # Панель «Съёмка» уже сохранила промпт и нажала «Снять».
+    if session.meta.pop("from_shoot_panel", None):
+        session.meta["approved_action"] = action
+        msg = apply_setup_and_start(config, session, jump_to_generate=True)
+        append_journal(config, COMFY_TOPIC, f"### Съёмка из панели\n\n{msg}\n\n{draft}")
+        return True, msg, None
 
     try:
         from ..presence import is_away

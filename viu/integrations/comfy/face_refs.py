@@ -1,7 +1,12 @@
-"""Лица для MoCap: папка Lab/FaceRefs → ReActor в Comfy."""
+"""Лица для MoCap: папка Lab/FaceRefs → ReActor в Comfy.
+
+Подпапки = группы персонажей: FaceRefs/Ru/, FaceRefs/Oli/, …
+В панели «Съёмка» выбираешь группу/фото — ★ видно, generate подхватит.
+"""
 
 from __future__ import annotations
 
+import json
 import os
 import random
 import shutil
@@ -21,20 +26,23 @@ _PREFERRED_NAMES = (
     "face.jpg",
 )
 _COMFY_INPUT_NAME = "viu_face_ref.png"
+_FACE_STATE = "comfy_face_ref.json"
 _README = """Lab/FaceRefs — эталонные лица для MoCap (ReActor)
 
-Положи сюда PNG/JPG с одним чётким лицом (фронт или ¾).
-Вью копирует выбранное фото в Comfy перед генерацией.
+Положи PNG/JPG с одним чётким лицом (фронт или ¾).
+
+Группы персонажей — подпапки:
+  FaceRefs/Ru/….png
+  FaceRefs/Oli/….png
+В панели «Съёмка» выбираешь группу/файл — ★ ← ВЫБРАН.
 
 Приоритет выбора:
-  1) VIU_COMFY_FACE_REF=полный/относительный путь
+  1) выбор в панели Съёмка / VIU_COMFY_FACE_REF
   2) default.png / shanya.png (если есть)
-  3) случайный файл из этой папки
+  3) случайный файл
 
 Выключить подмену: VIU_COMFY_FACE_SWAP=0
-
 После первой установки: comfy_install.bat reactor=1
-Пересборка не нужна — только положи фото и снимай.
 """
 
 
@@ -54,20 +62,145 @@ def ensure_face_refs_dir(config: Config) -> Path:
     return d
 
 
+def _face_state_path(config: Config) -> Path:
+    return Path(config.data_dir) / _FACE_STATE
+
+
+def load_face_state(config: Config) -> dict:
+    path = _face_state_path(config)
+    if not path.is_file():
+        return {"path": "", "group": ""}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"path": "", "group": ""}
+    if not isinstance(data, dict):
+        return {"path": "", "group": ""}
+    return {
+        "path": str(data.get("path") or ""),
+        "group": str(data.get("group") or ""),
+    }
+
+
+def save_face_state(config: Config, *, path: str = "", group: str = "") -> None:
+    config.ensure_dirs()
+    p = _face_state_path(config)
+    tmp = p.with_suffix(".json.tmp")
+    payload = {"path": str(path or ""), "group": str(group or "")}
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(p)
+
+
 def list_face_refs(config: Config) -> List[Path]:
+    """Плоский список всех лиц (корень + подпапки)."""
+    return [p for _g, p in list_face_ref_entries(config)]
+
+
+def list_face_ref_entries(config: Config) -> List[Tuple[str, Path]]:
+    """[(метка «Ru/face.png», path), …] — корень и подпапки-группы."""
     d = ensure_face_refs_dir(config)
-    out: List[Path] = []
+    out: List[Tuple[str, Path]] = []
     try:
         for p in sorted(d.iterdir()):
             if p.is_file() and p.suffix.lower() in _FACE_EXTS:
-                out.append(p)
+                out.append((p.name, p.resolve()))
+            elif p.is_dir() and not p.name.startswith("."):
+                group = p.name
+                for f in sorted(p.iterdir()):
+                    if f.is_file() and f.suffix.lower() in _FACE_EXTS:
+                        out.append((f"{group}/{f.name}", f.resolve()))
     except OSError:
         pass
     return out
 
 
+def list_face_groups(config: Config) -> List[str]:
+    """Имена подпапок (Ru, Oli, …) + '' для корня если там есть файлы."""
+    d = ensure_face_refs_dir(config)
+    groups: List[str] = []
+    try:
+        root_has = any(
+            p.is_file() and p.suffix.lower() in _FACE_EXTS for p in d.iterdir()
+        )
+        if root_has:
+            groups.append("")
+        for p in sorted(d.iterdir()):
+            if p.is_dir() and not p.name.startswith("."):
+                if any(
+                    f.is_file() and f.suffix.lower() in _FACE_EXTS for f in p.iterdir()
+                ):
+                    groups.append(p.name)
+    except OSError:
+        pass
+    return groups
+
+
+def set_active_face_ref(config: Config, face_path: Path | str) -> Tuple[bool, str]:
+    """Запомнить лицо для следующей съёмки (ReActor)."""
+    p = Path(face_path)
+    if not p.is_file():
+        return False, f"Нет файла лица: {p}"
+    if p.suffix.lower() not in _FACE_EXTS:
+        return False, "Нужен PNG/JPG/WebP"
+    group = ""
+    root = ensure_face_refs_dir(config)
+    try:
+        rel = p.resolve().relative_to(root.resolve())
+        if len(rel.parts) >= 2:
+            group = rel.parts[0]
+    except ValueError:
+        group = ""
+    save_face_state(config, path=str(p.resolve()), group=group)
+
+    from ...lab.comfy_pipeline import COMFY_TOPIC
+    from ...lab.session import load_session, new_session, save_session
+
+    session = load_session(config, COMFY_TOPIC) or new_session(COMFY_TOPIC)
+    session.meta["reactor_face_ref"] = str(p.resolve())
+    session.meta["reactor_face_group"] = group
+    save_session(config, session)
+    label = f"{group}/{p.name}" if group else p.name
+    return True, f"ReActor лицо: {label}\nСкопирую в Comfy на следующей съёмке."
+
+
+def clear_active_face_ref(config: Config) -> str:
+    save_face_state(config, path="", group="")
+    from ...lab.comfy_pipeline import COMFY_TOPIC
+    from ...lab.session import load_session, save_session
+
+    session = load_session(config, COMFY_TOPIC)
+    if session is not None:
+        session.meta.pop("reactor_face_ref", None)
+        session.meta.pop("reactor_face_group", None)
+        save_session(config, session)
+    return "Выбор лица сброшен — снова default / случайный из FaceRefs."
+
+
+def resolve_active_face_ref(config: Config) -> Optional[Path]:
+    from ...lab.comfy_pipeline import COMFY_TOPIC
+    from ...lab.session import load_session
+
+    session = load_session(config, COMFY_TOPIC)
+    if session is not None:
+        raw = str(session.meta.get("reactor_face_ref") or "").strip()
+        if raw:
+            p = Path(raw)
+            if p.is_file():
+                return p.resolve()
+    st = load_face_state(config)
+    if st.get("path"):
+        p = Path(str(st["path"]))
+        if p.is_file():
+            return p.resolve()
+    return None
+
+
 def pick_face_ref(config: Config, *, seed: str = "") -> Optional[Path]:
     """Выбрать эталон лица. seed — для стабильного random на batch."""
+    active = resolve_active_face_ref(config)
+    if active is not None:
+        return active
+
     env = (os.environ.get("VIU_COMFY_FACE_REF") or "").strip()
     if env:
         p = Path(env).expanduser()
@@ -91,6 +224,19 @@ def pick_face_ref(config: Config, *, seed: str = "") -> Optional[Path]:
         return candidates[0]
     rng = random.Random(seed or None)
     return rng.choice(candidates)
+
+
+def face_list_labels(config: Config) -> List[str]:
+    """Подписи для Listbox: ★ у активного."""
+    active = resolve_active_face_ref(config)
+    active_res = active.resolve() if active is not None else None
+    out: List[str] = []
+    for label, path in list_face_ref_entries(config):
+        if active_res is not None and path.resolve() == active_res:
+            out.append(f"★ {label}  ← ВЫБРАН")
+        else:
+            out.append(f"  {label}")
+    return out
 
 
 def stage_face_for_comfy(config: Config, face_path: Path) -> Tuple[bool, str, str]:
@@ -173,7 +319,8 @@ def face_swap_status_line(config: Config, *, client=None) -> str:
 
 
 def face_refs_status(config: Config, *, client=None) -> str:
-    from .reactor_diag import probe_reactor_deps, probe_reactor_import, reactor_errors_in_launch_log
+    from .reactor_diag import probe_reactor_deps, reactor_errors_in_launch_log
+
     d = ensure_face_refs_dir(config)
     refs = list_face_refs(config)
     env_ref = (os.environ.get("VIU_COMFY_FACE_REF") or "").strip()
