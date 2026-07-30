@@ -912,8 +912,26 @@ class ViuGUI:
                 action = str(getattr(out, "shoot_action", "") or "")
                 profile = str(getattr(out, "render_profile", "") or "")
                 style = str(getattr(out, "show_style", "") or "realism")
+                auto_fire = bool(getattr(out, "auto_fire", False))
+                wan_pos = str(getattr(out, "wan_positive", "") or "")
+                wan_neg = str(getattr(out, "wan_negative", "") or "")
+                lora_idx = list(getattr(out, "lora_indices", None) or [])
+                # Directed invent: промпт+LoRA готовы — снимаем без панели.
+                if auto_fire:
+                    self.root.after(
+                        0,
+                        lambda a=action, p=profile, s=style, wp=wan_pos, wn=wan_neg, li=lora_idx: self._lab_comfy_action(
+                            action=a or None,
+                            render_profile=p,
+                            show_style=s,
+                            auto_fire=True,
+                            wan_positive=wp,
+                            wan_negative=wn,
+                            lora_indices=li,
+                        ),
+                    )
                 # Шоу — в панель съёмки, не в lab→План MoCap.
-                if profile in ("show", "шоу", "smoothmix", "beauty"):
+                elif profile in ("show", "шоу", "smoothmix", "beauty"):
                     from .integrations.comfy.prompts import clean_action_for_wan
                     from .integrations.comfy.show_profile import arm_show_profile
                     from .lab.comfy_pipeline import COMFY_TOPIC
@@ -2600,11 +2618,16 @@ class ViuGUI:
         action: str | None = None,
         render_profile: str = "",
         show_style: str = "realism",
+        auto_fire: bool = False,
+        wan_positive: str = "",
+        wan_negative: str = "",
+        lora_indices: list | None = None,
     ) -> None:
         """Вью сама выбирает кадр (каталог/граф). Без диалога idle stand.
 
         action= — явная сцена из чата (описание Дена), без invent.
         render_profile=show — шоу-дубль (SmoothMix / cinematic), не MoCap×5.
+        auto_fire= — промпт+LoRA уже собраны в чате → сразу генерация (from_shoot_panel).
         """
         from .lab.comfy_director import invent_next_shot
         from .lab.comfy_pipeline import COMFY_TOPIC
@@ -2613,6 +2636,89 @@ class ViuGUI:
 
         chat_action = (action or "").strip()
         profile = (render_profile or "").strip().lower()
+        if auto_fire and chat_action:
+            from .lab.session import new_session, save_session
+            from .integrations.comfy.lora import (
+                spec_to_dict,
+                specs_from_indices,
+            )
+
+            existing = load_session(self.agent.config, COMFY_TOPIC)
+            if existing is None:
+                existing = new_session(COMFY_TOPIC)
+            existing.status = "running"
+            existing.step = 0
+            existing.meta["shoot_intent"] = True
+            existing.meta["from_shoot_panel"] = True
+            existing.meta["auto_invent_shoot"] = True
+            existing.meta.pop("auto_approved_shoot", None)
+            existing.meta["approved"] = False
+            existing.meta["action"] = chat_action
+            existing.meta["approved_action"] = chat_action
+            existing.meta["catalog_slug"] = (
+                "show" if profile in ("show", "шоу", "smoothmix", "beauty") else "chat_scene"
+            )
+            existing.meta["shot_reason"] = "chat: invent auto"
+            existing.meta["prompt_user_edited"] = True
+            if profile in ("show", "шоу", "smoothmix", "beauty"):
+                from .integrations.comfy.show_profile import arm_show_profile
+
+                arm_show_profile(
+                    existing.meta,
+                    style=show_style or "realism",
+                    action=chat_action,
+                    keep_prompts=True,
+                )
+                existing.meta["render_profile"] = "show"
+            else:
+                existing.meta["render_profile"] = "mocap"
+                existing.meta.pop("show_style", None)
+            if wan_positive.strip():
+                existing.meta["wan_positive"] = wan_positive.strip()
+            if wan_negative.strip():
+                existing.meta["wan_negative"] = wan_negative.strip()
+            idxs = [int(x) for x in (lora_indices or [])]
+            existing.meta["setup_lora_indices"] = idxs
+            existing.meta["lora_last_pick"] = idxs
+            try:
+                specs = specs_from_indices(self.agent.config, idxs) if idxs else []
+                existing.meta["selected_loras"] = [spec_to_dict(s) for s in specs]
+            except Exception:  # noqa: BLE001
+                existing.meta["selected_loras"] = []
+            existing.meta.pop("lora_pick_done", None)
+            existing.meta.pop("clip_batch_id", None)
+            existing.meta.pop("clip_candidate_ids", None)
+            save_session(self.agent.config, existing)
+            self._append(
+                "Вью",
+                f"Снимаю сама — {chat_action[:120]}.\n"
+                "Болтаем дальше; когда будет готово — пришлю.",
+                tag="viu",
+            )
+            start_args = {
+                "topic": COMFY_TOPIC,
+                "run_all": "1",
+                "reset": "0",
+                "shoot": "1",
+                "action": chat_action,
+                "catalog_slug": existing.meta["catalog_slug"],
+                "shot_reason": "chat: invent auto",
+                "from_shoot_panel": "1",
+                "render_profile": existing.meta.get("render_profile") or "mocap",
+                "show_style": show_style or "realism",
+            }
+            if wan_positive.strip():
+                start_args["_wan_positive"] = wan_positive.strip()
+            if wan_negative.strip():
+                start_args["_wan_negative"] = wan_negative.strip()
+            self._run_tool(
+                "lab_start",
+                start_args,
+                label="Съёмка: invent из чата",
+                echo_user=True,
+            )
+            return
+
         if profile in ("show", "шоу", "smoothmix", "beauty"):
             from .integrations.comfy.prompts import clean_action_for_wan
             from .integrations.comfy.show_profile import (

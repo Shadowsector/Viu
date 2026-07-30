@@ -71,13 +71,16 @@ _DIRECTED_SHOOT_RE = re.compile(
     r"(?i)(?:"
     r"(?:сними|снять|снимай|сделай|создай|сгенер(?:ируй)?|нарисуй|нарисовать|"
     r"сфотка(?:й|ть)|сфотографируй)\s+"
-    r"(?:себя|тебя|из\s+(?:этого\s+)?реф|клип|видео|сцен|фото|картинк|рисунок)|"
+    r"(?:себя|тебя|из\s+(?:этого\s+)?реф|клип|видео|сцен|фото|картинк|рисунок|"
+    r"эту\s+девушк|девушк|её|ее)|"
     r"(?:сними|снять|снимай|сделай|нарисуй)\s+(?:в|на|у|под|возле|среди)\b|"
     r"(?:сделай|создай)\s+фото|"
     r"(?:нужен|нужна|нужно)\s+(?:рисунок|фото|клип|видео|картинк)|"
     r"(?:сцена|снимай|снять|кадр)\s*[:=\-–]|"
     r"хочу\s+(?:чтобы\s+)?ты\s+(?:была|сняла|снялась|стояла|шла|сидела|лежала)|"
     r"из\s+(?:этого\s+)?референса|"
+    r"из\s+аниме|анимешн|реалист|надень|одень|переодень|"
+    r"эту\s+девушк|"
     r"\bселфи\b|\bselfie\b"
     r")"
 )
@@ -121,6 +124,11 @@ class ChatFlowOutcome:
     render_profile: str = ""  # "" | "show" | "mocap"
     show_style: str = "realism"
     media_to_send: List[Tuple[str, str]] = field(default_factory=list)
+    # Авто-пакет: промпт + LoRA уже собраны — GUI/lab не спрашивают панель.
+    auto_fire: bool = False
+    wan_positive: str = ""
+    wan_negative: str = ""
+    lora_indices: List[int] = field(default_factory=list)
     # ("photo"|"video", path)
 
 
@@ -456,6 +464,36 @@ def _shoot_confirm_message(text: str) -> str:
     )
 
 
+def _invent_directed_package(
+    config: Config, text: str, *, look_ru: str = ""
+) -> Tuple[str, str, str, str, List[int], List[str], str]:
+    """Промпт + LoRA для directed shoot без панели.
+
+    Returns:
+        (process/action, positive, negative, show_style, lora_indices, lora_names, brief)
+    """
+    from .lora import apply_recommended_loras_to_session
+    from .prompt_invent import format_invent_brief, invent_prompt_package
+
+    pkg = invent_prompt_package(
+        config, text or "", look_ru=look_ru or get_pending_look(config)
+    )
+    scratch: dict = {}
+    names, indices = apply_recommended_loras_to_session(
+        config, scratch, pkg.lora_query_tags, limit=2
+    )
+    brief = format_invent_brief(pkg, lora_names=names or None)
+    return (
+        pkg.process,
+        pkg.positive,
+        pkg.negative,
+        pkg.show_style,
+        list(indices),
+        list(names),
+        brief,
+    )
+
+
 _SHOW_DOUBLE_RE = re.compile(
     r"(?i)(?:"
     r"шоу[\s\-]?дубл|"
@@ -610,12 +648,30 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
 
         start = False
         shoot_action = ""
+        auto_fire = False
+        wan_pos = ""
+        wan_neg = ""
+        lora_idx: List[int] = []
+        show_style = "realism"
+        render_profile = ""
         if directed:
             start = True
-            shoot_action = _shoot_action_for(
+            (
+                shoot_action,
+                wan_pos,
+                wan_neg,
+                show_style,
+                lora_idx,
+                _lora_names,
+                invent_brief,
+            ) = _invent_directed_package(
                 config, body, look_ru=look_text or get_pending_look(config)
             )
-            bits.append(_shoot_confirm_message(body))
+            auto_fire = True
+            # Аниме-правка — шоу-профиль; остальное MoCap с готовым Wan.
+            if show_style == "anime":
+                render_profile = "show"
+            bits.append(invent_brief)
 
         if _wants_lora(body):
             bits.append(_arm_lora_pick(config))
@@ -631,7 +687,13 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
                 "\n\n".join(bits),
                 start_shoot=start,
                 shoot_action=shoot_action,
+                render_profile=render_profile,
+                show_style=show_style,
                 media_to_send=media,
+                auto_fire=auto_fire,
+                wan_positive=wan_pos,
+                wan_negative=wan_neg,
+                lora_indices=lora_idx,
             )
 
     if image is not None and image.is_file():
@@ -659,32 +721,61 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
 
         if directed:
             _process_ref(config, image, character="viu")
-            action = _shoot_action_for(config, body)
+            (
+                action,
+                wan_pos,
+                wan_neg,
+                show_style,
+                lora_idx,
+                _names,
+                brief,
+            ) = _invent_directed_package(config, body)
             return ChatFlowOutcome(
                 True,
-                _shoot_confirm_message(body),
+                brief,
                 start_shoot=True,
                 shoot_action=action,
+                render_profile="show" if show_style == "anime" else "",
+                show_style=show_style,
+                auto_fire=True,
+                wan_positive=wan_pos,
+                wan_negative=wan_neg,
+                lora_indices=lora_idx,
             )
 
     if _wants_lora(body):
         return ChatFlowOutcome(True, _arm_lora_pick(config))
 
     if directed:
-        action = _shoot_action_for(config, body)
+        (
+            action,
+            wan_pos,
+            wan_neg,
+            show_style,
+            lora_idx,
+            _names,
+            brief,
+        ) = _invent_directed_package(config, body)
         return ChatFlowOutcome(
             True,
-            _shoot_confirm_message(body),
+            brief,
             start_shoot=True,
             shoot_action=action,
+            render_profile="show" if show_style == "anime" else "",
+            show_style=show_style,
+            auto_fire=True,
+            wan_positive=wan_pos,
+            wan_negative=wan_neg,
+            lora_indices=lora_idx,
         )
 
     # Comfy без явной сцены — коротко, по-человечески
     if mentions_comfy(body):
         return ChatFlowOutcome(
             True,
-            "Скажи кадр своими словами — например «нарисуй себя в кресле» "
-            "или кинь реф и «это ты». Я сделаю из рефа и пришлю.",
+            "Кинь фото и скажи что сделать — «сидящей в кресле», "
+            "«из аниме — реалистичной», «надень платье». "
+            "Сама напишу промпт, подберу LoRA и пришлю результат.",
         )
 
     return ChatFlowOutcome(False)

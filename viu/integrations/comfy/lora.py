@@ -441,6 +441,84 @@ def specs_from_indices(config: Config, indices: List[int]) -> List[LoraSpec]:
     return specs
 
 
+def recommend_loras(
+    config: Config,
+    query_tags: List[str],
+    *,
+    limit: int = 2,
+    exclude_nsfw_cinema: bool = True,
+) -> List[LoraIndexEntry]:
+    """Подобрать LoRA по тегам/имени под сцену (без ручного «lora: N»).
+
+    Скорит пересечение query_tags с tags файла и токенами имени.
+    Для MoCap/шоу отсекает явный beauty/cinema мусор, если exclude_nsfw_cinema.
+    """
+    entries = load_index(config, rescan_if_missing=True)
+    if not entries:
+        return []
+    q = {t.lower().strip() for t in (query_tags or []) if t and len(t.strip()) >= 2}
+    if not q:
+        return []
+
+    ban = {
+        "beauty",
+        "cinematic",
+        "closeup",
+        "close-up",
+        "facefix",
+        "portrait",
+    }
+    scored: List[tuple[int, LoraIndexEntry]] = []
+    for e in entries:
+        hay = set(t.lower() for t in (e.tags or []))
+        hay.update(_tags_from_filename(e.file))
+        if e.subfolder:
+            hay.update(_tags_from_filename(e.subfolder.replace("/", "_")))
+        if exclude_nsfw_cinema and hay & ban and not (hay & {"wan", "pose", "motion", "anime"}):
+            # слабый штраф через пропуск высоких очков — просто минус
+            overlap = len(q & hay)
+            if overlap == 0:
+                continue
+            score = overlap - 1
+        else:
+            score = len(q & hay)
+        # лёгкий бонус за wan/video в имени
+        name_l = e.file.lower()
+        if "wan" in name_l or "motion" in name_l:
+            score += 1
+        if score > 0:
+            scored.append((score, e))
+    scored.sort(key=lambda x: (-x[0], -x[1].mtime, x[1].index))
+    out: List[LoraIndexEntry] = []
+    seen = set()
+    for _s, e in scored:
+        if e.file in seen:
+            continue
+        seen.add(e.file)
+        out.append(e)
+        if len(out) >= max(1, int(limit)):
+            break
+    return out
+
+
+def apply_recommended_loras_to_session(
+    config: Config,
+    session_meta: dict,
+    query_tags: List[str],
+    *,
+    limit: int = 2,
+) -> Tuple[List[str], List[int]]:
+    """Записать выбранные LoRA в session.meta. Возвращает (имена, индексы)."""
+    picks = recommend_loras(config, query_tags, limit=limit)
+    indices = [e.index for e in picks]
+    specs = [e.to_spec() for e in picks]
+    session_meta["lora_last_pick"] = list(indices)
+    session_meta["setup_lora_indices"] = list(indices)
+    session_meta["selected_loras"] = [spec_to_dict(s) for s in specs]
+    names = [e.file for e in picks]
+    return names, indices
+
+
 def spec_to_dict(spec: LoraSpec) -> Dict[str, Any]:
     return {
         "file": spec.file,
