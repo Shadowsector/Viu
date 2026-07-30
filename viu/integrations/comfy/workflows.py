@@ -206,6 +206,7 @@ def prepare_show_workflow(
     *,
     filename_prefix: str = "",
     unet_name: str = "",
+    length: int | None = None,
 ) -> Dict[str, Any]:
     """Шоу-дубль: широкий кадр, мало steps, euler — не MoCap vertical."""
     from .show_profile import (
@@ -219,8 +220,9 @@ def prepare_show_workflow(
         SHOW_WIDTH,
     )
 
+    frames = SHOW_LENGTH if length is None else int(length)
     wf = inject_vertical_frame(
-        workflow, width=SHOW_WIDTH, height=SHOW_HEIGHT, length=SHOW_LENGTH
+        workflow, width=SHOW_WIDTH, height=SHOW_HEIGHT, length=frames
     )
     wf = inject_sampler_settings(
         wf,
@@ -597,14 +599,19 @@ def prepare_mocap_workflow(
     *,
     action: str = "",
     filename_prefix: str = "",
+    length: int | None = None,
+    unet_name: str = "",
 ) -> Dict[str, Any]:
     """Кадр/длина по действию (стоя≠лёжа) + mp4 — поверх любого t2v на диске."""
     from .framing import frame_spec_for_action
 
     spec = frame_spec_for_action(action)
+    frames = spec.length if length is None else int(length)
     wf = inject_vertical_frame(
-        workflow, width=spec.width, height=spec.height, length=spec.length
+        workflow, width=spec.width, height=spec.height, length=frames
     )
+    if unet_name:
+        wf = inject_unet_name(wf, unet_name)
     prefix = (filename_prefix or "").strip() or "viu_mocap"
     wf = ensure_mp4_output(wf, fps=spec.fps, filename_prefix=prefix)
     return inject_filename_prefix(wf, prefix)

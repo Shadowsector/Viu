@@ -216,24 +216,35 @@ GUI_ACTIONS: List[GuiAction] = [
         "show_double",
         "Шоу-дубль SmoothMix",
         "Девушки — риг и шоу",
-        tool="comfy_show",
-        tool_args={"style": "realism"},
+        tool="__comfy_shoot__",
+        tool_args={"profile": "show", "style": "realism"},
         hint=(
-            "Один красивый клип (не MoCap×5 для Cascadeur).\n"
-            "Если SmoothMix лежит в ComfyUI\\models\\diffusion_models\\ — "
-            "подхватит; иначе cinematic на Wan.\n"
-            "Дальше панель Telegram: Промпт / LoRA → «Снять».\n"
-            "Поза по умолчанию — standing relaxed; другую скажи в чате "
-            "«шоу дубль: …»."
+            "Открывает панель «Съёмка»: цель Шоу, промпт Wan-канон, "
+            "длина / чекпоинт / LoRA → «Снять».\n"
+            "Не уходит сразу в старое окно MoCap."
         ),
     ),
     GuiAction(
         "show_double_anime",
         "Шоу-дубль аниме",
         "Девушки — риг и шоу",
-        tool="comfy_show",
-        tool_args={"style": "anime"},
-        hint="То же шоу, стиль anime / SmoothMix anime, если модель есть.",
+        tool="__comfy_shoot__",
+        tool_args={"profile": "show", "style": "anime"},
+        hint=(
+            "То же шоу, стиль anime. Панель съёмки с готовым anime-промптом "
+            "(smoothmixanime), не MoCap-формула."
+        ),
+    ),
+    GuiAction(
+        "comfy_shoot_panel",
+        "Съёмка видео (панель)",
+        "Девушки — риг и шоу",
+        tool="__comfy_shoot__",
+        tool_args={},
+        hint=(
+            "Единая панель: MoCap/Шоу · T2V/I2V/T2I/I2I · длина · "
+            "чекпоинт · эталон ★ · LoRA · промпт · Новый клип / Снять."
+        ),
     ),
     # --- Unity: тестовая сцена (оверлей) ---
     GuiAction(

@@ -182,6 +182,7 @@ def arm_show_profile(
     *,
     style: str = "realism",
     action: str = "",
+    keep_prompts: bool = False,
 ) -> dict:
     """Пометить session.meta под шоу-съёмку."""
     session_meta["render_profile"] = PROFILE_SHOW
@@ -192,9 +193,10 @@ def arm_show_profile(
     if action.strip():
         session_meta["action"] = action.strip()
         session_meta["approved_action"] = action.strip()
-    # не тащить stale mocap wan_positive
-    session_meta.pop("wan_positive", None)
-    session_meta.pop("wan_negative", None)
+    # Не затирать ручной Wan-промпт из панели съёмки.
+    if not keep_prompts and not session_meta.get("prompt_user_edited"):
+        session_meta.pop("wan_positive", None)
+        session_meta.pop("wan_negative", None)
     return session_meta
 
 

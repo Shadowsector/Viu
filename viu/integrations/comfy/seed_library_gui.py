@@ -40,10 +40,11 @@ def open_seed_library(
     ttk.Label(
         body,
         text=(
-            "Скрин из HS2 → Inbox/references → «Из Inbox (HS2)». "
-            "«Доработать» снимет описание позы и пометит под натуральное тело; "
-            "потом «Принять доработанный». "
-            "Привяжи start/end к slug анимации — съёмка подхватит сама."
+            "Скрин из HS2 → Inbox/references → «Из Inbox (HS2)».\n"
+            "«Доработать (описание позы)» — vision-заметки (не жмёт Comfy сам).\n"
+            "Потом сам дорисуй PNG → «Принять PNG доработки…».\n"
+            "«★ Сделать start сейчас» — эталон станет активным; в панели Съёмка "
+            "увидишь ★ ← ВЫБРАН."
         ),
         wraplength=940,
     ).pack(anchor="w", pady=(0, 8))
@@ -244,16 +245,18 @@ def open_seed_library(
         side="left", padx=6
     )
 
-    ttk.Button(act_row, text="Доработать", command=on_refine).pack(side="left")
-    ttk.Button(act_row, text="Принять доработанный…", command=on_accept_refined).pack(
-        side="left", padx=6
-    )
-    ttk.Button(act_row, text="Сделать start сейчас", command=lambda: on_activate("start")).pack(
-        side="left", padx=6
-    )
-    ttk.Button(act_row, text="Сделать end сейчас", command=lambda: on_activate("end")).pack(
+    ttk.Button(act_row, text="Доработать (описание позы)", command=on_refine).pack(
         side="left"
     )
+    ttk.Button(
+        act_row, text="Принять PNG доработки…", command=on_accept_refined
+    ).pack(side="left", padx=6)
+    ttk.Button(
+        act_row, text="★ Сделать start сейчас", command=lambda: on_activate("start")
+    ).pack(side="left", padx=6)
+    ttk.Button(
+        act_row, text="Сделать end сейчас", command=lambda: on_activate("end")
+    ).pack(side="left")
 
     bottom = ttk.Frame(body)
     bottom.pack(fill="x", pady=(8, 0))
