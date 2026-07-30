@@ -220,3 +220,40 @@ def test_master_draft_requires_blocking(tmp_path):
     ok, msg = run_interaction_master_draft(cfg, wish)
     assert not ok
     assert "blocking" in msg.lower()
+
+
+def test_build_socket_sync_job(tmp_path):
+    from viu.interaction_catalog import build_socket_sync_job, run_interaction_assembly
+
+    cfg = _cfg(tmp_path)
+    InteractionCatalogStore(interaction_catalog_path(cfg)).load().save()
+    wish = InteractionWish.from_dict(DEFAULT_INTERACTIONS[0].to_dict())
+    ok, msg, job_path = build_socket_sync_job(cfg, wish)
+    assert ok, msg
+    assert job_path.is_file()
+    job = json.loads(job_path.read_text(encoding="utf-8"))
+    assert job["mode"] == "socket_sync"
+    assert job["interaction_slug"] == "shanya_wolf_approach"
+    assert job["active_socket"] == "socket_hand_r"
+    assert len(job["actors"]) == 2
+    assert job["sync_markers"]
+    assert all(a["clip_missing"] for a in job["actors"])
+
+    ok2, msg2 = run_interaction_assembly(cfg, wish)
+    assert ok2, msg2
+    store = InteractionCatalogStore(interaction_catalog_path(cfg)).load()
+    w = store.get_by_slug("shanya_wolf_approach")
+    assert w is not None
+    assert w.assembly_blend
+    assert "assembly.blend" in w.assembly_blend
+
+
+def test_assembly_require_clips_fails(tmp_path):
+    from viu.interaction_catalog import run_interaction_assembly
+
+    cfg = _cfg(tmp_path)
+    InteractionCatalogStore(interaction_catalog_path(cfg)).load().save()
+    wish = InteractionWish.from_dict(DEFAULT_INTERACTIONS[0].to_dict())
+    ok, msg = run_interaction_assembly(cfg, wish, require_clips=True)
+    assert not ok
+    assert "mocap" in msg.lower()

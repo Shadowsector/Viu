@@ -32,6 +32,12 @@ SHOT_GRAPHS: Tuple[ShotGraph, ...] = (
         "стул / край: сесть → сидеть → встать",
     ),
     ShotGraph(
+        "floor",
+        "Пол / колени",
+        ("kneel", "all_fours"),
+        "колени → четвереньки; Blender holds kneel/all_fours",
+    ),
+    ShotGraph(
         "climb",
         "Залезть",
         ("climb_up",),

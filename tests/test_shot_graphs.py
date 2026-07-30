@@ -20,6 +20,8 @@ def test_graph_for_sleep_and_climb():
     assert graph_for_slug("sleep_idle").id == "sleep"
     assert graph_for_slug("lie_down").title_ru == "Лечь спать"
     assert graph_for_slug("climb_up").id == "climb"
+    assert graph_for_slug("kneel").id == "floor"
+    assert graph_for_slug("all_fours").id == "floor"
     assert graph_for_slug("unknown_slug").id == "other"
 
 
