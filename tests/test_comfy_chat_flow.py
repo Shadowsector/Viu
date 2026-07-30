@@ -309,6 +309,40 @@ def test_creative_fantasy_creatures_not_auto_png(tmp_path, monkeypatch):
     assert out_draw.handled and out_draw.start_shoot
 
 
+def test_body_canon_not_comfy_look(tmp_path, monkeypatch):
+    """«Нет хвоста… обычная красивая» — reflect, даже если висит pending-фото."""
+    calls = {"n": 0}
+
+    def fake_look(*_a, **_k):
+        calls["n"] += 1
+        return True, "should not run"
+
+    monkeypatch.setattr(
+        "viu.integrations.comfy.reference_vision.look_at_photo",
+        fake_look,
+    )
+    cfg = _cfg(tmp_path)
+    img = _png(tmp_path / "pending.png")
+    set_pending_ref(cfg, img, caption="", look_text="старый кадр")
+    assign_character_ref(cfg, "viu", img)
+
+    text = (
+        "У тебя нет ни хвоста, ни мужских органов. "
+        "Ты обычная девушка, только красивая и озабоченная."
+    )
+    out = try_handle_comfy_chat(cfg, text)
+    assert not out.handled
+    assert not out.start_shoot
+    assert calls["n"] == 0
+    # Pending не сжигали — кадр ещё может пригодиться для съёмки.
+    assert get_pending_ref(cfg) is not None
+
+    # Явный look по фото — по-прежнему Comfy.
+    out_look = try_handle_comfy_chat(cfg, "посмотри, какая ты на этом фото")
+    assert out_look.handled
+    assert calls["n"] >= 1
+
+
 def test_scene_at_window_still_shoots(tmp_path, monkeypatch):
     _mock_look(monkeypatch)
     cfg = _cfg(tmp_path)
