@@ -115,16 +115,18 @@ def show_positive(
     style: str = "realism",
     has_smoothmix: bool = False,
 ) -> str:
-    """Красивый positive — не white-bg MoCap."""
-    pose = (action or "").strip() or "young woman standing relaxed, full body"
-    # не тащить mocap-boilerplate если action уже из chat
-    pose = re.sub(
-        r"(?i),?\s*matching the reference look\s*\([^)]*\)",
-        "",
-        pose,
-    )
-    pose = re.sub(r"[А-Яа-яЁё]+", "", pose)
-    pose = re.sub(r",\s*,+", ", ", pose).strip(" ,")
+    """Шоу-дубль: тот же канон PREFIX + процесс/антураж (+ стиль SmoothMix)."""
+    from .prompts import SUBJECT_PREFIX, clean_process_for_wan
+
+    process = clean_process_for_wan(action)
+    # Если в action уже полный канон — не дублировать PREFIX.
+    raw = (action or "").strip()
+    if raw.lower().startswith("a fit girl with a big fake breast"):
+        base = re.sub(r"[А-Яа-яЁё]+", "", raw)
+        base = re.sub(r",\s*,+", ", ", base).strip(" ,")
+    else:
+        base = f"{SUBJECT_PREFIX} {process}"
+
     if style == "anime":
         style_bits = "anime style, stylized, vibrant colors"
         if has_smoothmix:
@@ -132,36 +134,20 @@ def show_positive(
     else:
         style_bits = "realistic style, detailed skin, soft cinematic lighting"
         if has_smoothmix:
-            # v3: smoothmixrealism сильный — дополняем Realistic Style
             style_bits = f"smoothmixrealism, {style_bits}"
-    parts = [
-        "young woman",
-        pose,
-        style_bits,
-        "cinematic composition, shallow depth of field, high detail",
-        "three-quarter view, full body in frame",
-    ]
-    # unique preserve order
-    seen: set[str] = set()
-    out: List[str] = []
-    for p in parts:
-        k = p.strip().lower()
-        if not k or k in seen:
-            continue
-        seen.add(k)
-        out.append(p.strip())
-    return ", ".join(out)
+
+    # Стиль — часть антуража после процесса; без «young woman» и без Action.
+    if style_bits.lower() not in base.lower():
+        base = f"{base}, {style_bits}"
+    return base
 
 
 def show_negative(*, style: str = "realism") -> str:
-    base = (
-        "low quality, blurry, watermark, text, logo, "
-        "extra limbs, deformed hands, cropped head, "
-        "static frame, slideshow, worst quality"
-    )
-    if style == "anime":
-        return base + ", photorealistic, uncanny"
-    return base + ", flat anime cel shading, plastic doll"
+    """Канон Дена: только Tongue out, wet hair (стиль не раздувает negative)."""
+    del style
+    from .prompts import mocap_negative
+
+    return mocap_negative()
 
 
 def draft_show_bundle(
@@ -171,6 +157,8 @@ def draft_show_bundle(
     unet_note: str = "",
     has_smoothmix: bool = False,
 ) -> str:
+    from .prompts import SUBJECT_PREFIX
+
     pos = show_positive(action, style=style, has_smoothmix=has_smoothmix)
     neg = show_negative(style=style)
     model_line = unet_note or "Wan 2.1 (SmoothMix не найден — cinematic fallback)"
@@ -180,9 +168,10 @@ def draft_show_bundle(
         f"Кадр: {SHOW_WIDTH}×{SHOW_HEIGHT}, {SHOW_LENGTH} кадров, "
         f"steps={SHOW_STEPS} {SHOW_SAMPLER}/{SHOW_SCHEDULER} cfg={SHOW_CFG}\n"
         f"Дублей: {show_take_count()} (не MoCap×5)\n\n"
-        f"Действие: {action}\n\n"
         f"Промпт (шоу):\n{pos}\n\n"
         f"Negative:\n{neg}\n\n"
+        f"Формула: «{SUBJECT_PREFIX} …» + процесс/антураж. "
+        f"Отдельного Action нет.\n"
         "Это не ref для Cascadeur — красивый клип. "
         "MoCap снова: «mocap» / без слова шоу."
     )
@@ -193,6 +182,7 @@ def arm_show_profile(
     *,
     style: str = "realism",
     action: str = "",
+    keep_prompts: bool = False,
 ) -> dict:
     """Пометить session.meta под шоу-съёмку."""
     session_meta["render_profile"] = PROFILE_SHOW
@@ -203,9 +193,10 @@ def arm_show_profile(
     if action.strip():
         session_meta["action"] = action.strip()
         session_meta["approved_action"] = action.strip()
-    # не тащить stale mocap wan_positive
-    session_meta.pop("wan_positive", None)
-    session_meta.pop("wan_negative", None)
+    # Не затирать ручной Wan-промпт из панели съёмки.
+    if not keep_prompts and not session_meta.get("prompt_user_edited"):
+        session_meta.pop("wan_positive", None)
+        session_meta.pop("wan_negative", None)
     return session_meta
 
 

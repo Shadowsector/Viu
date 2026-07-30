@@ -511,7 +511,7 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
         else:
             action = ""
         if not action:
-            action = "young woman standing relaxed, full body, soft pose"
+            action = "standing relaxed in soft light, cinematic atmosphere"
         unet, note = find_show_unet(config)
         msg = (
             f"Шоу-дубль ({style}) — один красивый клип, не MoCap×5.\n"
