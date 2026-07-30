@@ -2,14 +2,18 @@
 
 **Канон:** [`ANIMATION_CANON.md`](./ANIMATION_CANON.md) · для ламера [`BIPED_RERIG_SIMPLE.md`](./BIPED_RERIG_SIMPLE.md)
 
+## Живая Вью: сочинение + self-improve
+
+Ночью тихо копит **зёрна** (жизнь/квесты) из памяти чатов → утром может вплести в разговор.  
+Чат: `сочини квест: …` · `что думала ночью` · `хорошо` / `в канон`.  
+Архитектура: [`notes/LIVING_VIU.md`](./notes/LIVING_VIU.md) (не раздуваем reflect-голос).
+
 ## Telegram: фото → Вью сама
 
 Фото + пожелание → промпт + LoRA → **PNG** в Telegram.
 
-**Учим в чате (self-improve):**  
-«учим промпт: сидящей в кресле» (можно с фото) → Вью показывает Positive/Negative/LoRA **без генерации**.  
-Ты: «хорошо» / «Anime в negative» / «на фото без i2v LoRA» → урок в `.viu/comfy_teach_lessons.json`, дальше invent это учитывает.  
-«какие уроки по промпт» — статус.
+**Учим промпт (Comfy):**  
+«учим промпт: сидящей в кресле» → Positive/Negative/LoRA без генерации → «хорошо» / правки → `.viu/comfy_teach_lessons.json`.
 
 Ветка: **`cursor/viu-agent-core-65c2`** («Обновить Вью»).
 

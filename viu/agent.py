@@ -751,6 +751,14 @@ class Agent:
             except Exception:  # noqa: BLE001
                 pass
             try:
+                from .self_compose import format_compose_digest
+
+                grains = format_compose_digest(self.config, max_chars=500)
+                if grains:
+                    system += "\n\n" + grains
+            except Exception:  # noqa: BLE001
+                pass
+            try:
                 life = format_reflect_life_block(self.config, max_chars=1200)
                 if life:
                     system += "\n\n" + life
@@ -812,6 +820,15 @@ class Agent:
                 ev = format_events_digest(self.config)
                 if ev:
                     _attach(ev)
+            except Exception:  # noqa: BLE001
+                pass
+
+            try:
+                from .self_compose import format_compose_digest
+
+                grains = format_compose_digest(self.config, max_chars=700)
+                if grains:
+                    _attach(grains)
             except Exception:  # noqa: BLE001
                 pass
 
