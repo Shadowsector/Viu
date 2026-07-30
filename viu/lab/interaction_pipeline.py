@@ -203,18 +203,16 @@ def step_animate_actors(config: Config, session: LabSession) -> StepResult:
 
 
 def step_assembly(config: Config, session: LabSession) -> StepResult:
+    from ..interaction_catalog.assembly import run_interaction_assembly
+
     wish = load_wish(config, str(session.meta.get("catalog_slug", "")))
     if wish is None:
         return False, "Нет wish.", None
-    paths = _scene_paths(config, wish)
-    blend = paths["assembly"] / "assembly.blend"
-    msg = (
-        f"MVP: Blender assembly — scaffold.\n"
-        f"Цель: {blend} + exports/*.fbx с общим frame_start.\n"
-        f"Constraints на sync_markers: "
-        f"{', '.join(m.event for m in wish.sync_markers)}"
-    )
-    append_journal(config, INTERACTION_TOPIC, "assembly: scaffold")
+    ok, msg = run_interaction_assembly(config, wish, require_clips=False)
+    if not ok:
+        append_journal(config, INTERACTION_TOPIC, f"assembly fail: {msg[:200]}")
+        return False, msg, None
+    append_journal(config, INTERACTION_TOPIC, "assembly: socket_sync job")
     return True, msg, None
 
 

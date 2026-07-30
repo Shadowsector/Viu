@@ -269,6 +269,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
             "walk_back",
             "run",
             "sit_down",
+            "kneel",
+            "all_fours",
             "lie_down",
             "wave",
             "yawn",
@@ -366,7 +368,7 @@ DEFAULT_WISHES: List[AnimationWish] = [
         ["Stand Up", "Getting Up"],
         wave=1,
         animator_state="StandUp",
-        enters_from=["sit_idle"],
+        enters_from=["sit_idle", "kneel"],
         exits_to=["idle"],
     ),
     _w(
@@ -379,7 +381,7 @@ DEFAULT_WISHES: List[AnimationWish] = [
         ["Lying Down", "Lay Down"],
         wave=1,
         animator_state="LieDown",
-        enters_from=["idle"],
+        enters_from=["idle", "all_fours"],
         exits_to=["sleep_idle"],
     ),
     _w(
@@ -393,7 +395,7 @@ DEFAULT_WISHES: List[AnimationWish] = [
         wave=2,
         animator_state="Kneel",
         enters_from=["idle", "sit_idle"],
-        exits_to=["idle", "all_fours", "sit_idle"],
+        exits_to=["idle", "all_fours", "sit_idle", "stand_up"],
     ),
     _w(
         "all_fours",
@@ -419,8 +421,8 @@ DEFAULT_WISHES: List[AnimationWish] = [
         ["Sitting Idle", "Sitting"],
         wave=1,
         animator_state="Sit",
-        enters_from=["sit_down"],
-        exits_to=["stand_up"],
+        enters_from=["sit_down", "kneel"],
+        exits_to=["stand_up", "kneel"],
     ),
     _w(
         "sleep_idle",

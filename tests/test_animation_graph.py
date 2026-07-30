@@ -26,6 +26,18 @@ def test_sit_chain():
     assert "idle" in by_slug["stand_up"].exits_to
 
 
+def test_floor_pose_chain():
+    by_slug = {w.slug: w for w in DEFAULT_WISHES}
+    assert "kneel" in by_slug["idle"].exits_to
+    assert "all_fours" in by_slug["idle"].exits_to
+    assert "kneel" in by_slug["sit_idle"].exits_to
+    assert "all_fours" in by_slug["kneel"].exits_to
+    assert "kneel" in by_slug["all_fours"].enters_from
+    assert "all_fours" in by_slug["lie_down"].enters_from
+    assert "stand_up" in by_slug["kneel"].exits_to
+    assert "kneel" in by_slug["stand_up"].enters_from
+
+
 def test_merge_fills_empty_graph(tmp_path: Path):
     path = tmp_path / "animation_catalog.json"
     store = AnimationCatalogStore(path).load()

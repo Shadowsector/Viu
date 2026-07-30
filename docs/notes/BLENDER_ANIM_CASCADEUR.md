@@ -8,7 +8,8 @@
 - Cascadeur: только полировка (физика, контакты).
 - Unity: Export → `U:\Anabarra\Animations` → «Обновить аниматор».
 
-Двое+ персонажей — **не** dual-mocap: клип Шани + клип партнёра + сокеты/IK.
+Двое+ персонажей — **не** dual-mocap: клип Шани + клип партнёра + сокеты/IK
+(`interaction_catalog.assembly` → `assembly_job.json`).
 
 ## Инструменты
 
@@ -20,9 +21,15 @@
 | `blender_export_cascadeur_anim` | Export FBX с `bake_anim=True` |
 | `blender_anim_to_cascadeur` | Всё сразу + pending LabImport (`mode=animation`) |
 
-### Holds (библиотека поз)
+### Holds (библиотека поз) → каталог
 
-`stand`, `sit`, `kneel`, `all_fours`, `lie`
+| Blender hold | Каталог (Animator) |
+|--------------|--------------------|
+| `stand` | `idle` |
+| `sit` | `sit_idle` (+ переход `sit_down`) |
+| `kneel` | `kneel` |
+| `all_fours` | `all_fours` |
+| `lie` | `sleep_idle` (+ переход `lie_down`) |
 
 ### Motion
 
@@ -36,6 +43,7 @@
 Library/Lab/Anims/BlenderOut/       ← .blend с клипом
 Library/Lab/Anims/CascadeurReady/   ← *_anim.fbx
 Library/Cascadeur/Inbox/            ← копия для импорта
+Library/Lab/Interactions/<slug>/assembly/assembly_job.json  ← socket sync plan
 ```
 
 Риг Шани: `Lab/Models/CascadeurReady/*Shanya*.blend` (или `blend_file=` явно).
@@ -45,6 +53,10 @@ Library/Cascadeur/Inbox/            ← копия для импорта
 1. старт `stand` → финиш `sit`, 12 кадров  
 2. `blender_blend_to character=shanya to_pose=sit from_pose=stand frames=12`  
 3. export FBX → (опц.) Cascadeur polish → каталог (`sit_down` / `sit_idle`)
+
+Пол / колени: `idle` → `kneel` → `all_fours` (граф в `animation_catalog`).
+
+Партнёр: отдельные клипы + `active_socket` + `SyncMarker` — см. `INTERACTION_PIPELINE.md` § фаза 5.
 
 ## Ручной импорт в Cascadeur
 

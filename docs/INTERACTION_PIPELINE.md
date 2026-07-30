@@ -131,6 +131,11 @@ flowchart TB
 
 Все риги в одной сцене, constraints на маркеры, общий `frame_start`.
 
+**Не dual-mocap:** каждый актёр — свой FBX; стыковка через `active_socket` (girl sockets) + `SyncMarker`.
+
+Scaffold в коде: `viu/interaction_catalog/assembly.py` → `assembly/assembly_job.json`
+(`build_socket_sync_job` / lab step «Blender assembly»). Полные constraints в Blender — следующий слой.
+
 Выход: `assembly/assembly.blend` + `exports/<slug>_<role>.fbx`
 
 Cascadeur — **доводка одного актёра**, не сборка толпы.
@@ -185,7 +190,7 @@ lab_run_all topic=interaction
 | 3 | Одобрение (Telegram/GUI) | ⏳ |
 | 4 | Per-actor isolated ref | ⏳ |
 | 5 | MoCap / Control Pose | ⏳ |
-| 6 | Blender assembly | ⏳ |
+| 6 | Blender assembly | ✅ `assembly_job.json` (socket sync stub) |
 | 7 | Verify + отчёт | ⏳ |
 
 VRAM: как у solo — Comfy и Cascadeur **не параллельно** (`VIU_LAB_VRAM_GB`).
@@ -261,6 +266,7 @@ Control Pose **не дублирует** пайплайн — меняется �
 |--------|------|
 | `creature_catalog` | рост, `photo_front`, appearance для промптов |
 | `animation_catalog` | solo prerequisite (`idle`, `walk`…) |
+| `interaction_catalog/assembly.py` | socket sync job (клипы + active_socket) |
 | `comfy_pipeline` | шаблон lab steps, Telegram approve |
 | `cascadeur_pipeline` | FBX import, vision verify |
 | `creature_catalog/lineup.py` | база для blocking-сцены |
