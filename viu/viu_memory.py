@@ -512,6 +512,79 @@ def looks_like_remember_request(user_text: str) -> bool:
     return extract_remember_payload(user_text) is not None
 
 
+# Meta/tool notes — в VIU_MEMORY ok, в event_memory (сюжетные биты) — нет.
+_META_OR_TOOL_NOTE_RE = re.compile(
+    r"(?i)(?:"
+    r"\bcomfy\b|\bкомфи\b|\blora\b|\bлор[ауы]?\b|"
+    r"промпт|wan\b|mocap|cascadeur|\bunity\b|blender|"
+    r"сделаешь\s+(?:её|ее|это|их|сцен)|"
+    r"потом\s+(?:сдела|сним|нарису|сгенер)|"
+    r"запусти\s+(?:comfy|комфи|lab)|"
+    r"\blab\b|пайплайн|pipeline|кнопк|панел\w*"
+    r")"
+)
+
+_SCENE_SUBSTANCE_RE = re.compile(
+    r"(?i)(?:"
+    r"\bя\s+|\bмы\s+|шаня|шанька|\bвью\b|\bден\b|"
+    r"прижал|поцел|обнял|лёжа|лежал|сидел|сто[ия]л|"
+    r"в\s+сарае|у\s+окна|в\s+лесу|на\s+траве|у\s+костра|"
+    r"квест\s+[«\"]?\w{3,}|сюжет\s+\w{3,}|награда|цель\s*:"
+    r")"
+)
+
+
+def looks_like_meta_or_tool_note(text: str) -> bool:
+    """«потом сделаешь в Комфи» — задача, не сюжетный бит."""
+    return bool(_META_OR_TOOL_NOTE_RE.search(text or ""))
+
+
+def should_mirror_remember_to_events(user_text: str, payload: str) -> bool:
+    """Дублировать «запомни» в event_memory только если это живой сюжетный бит.
+
+    «запомни эту сцену, потом сделаешь в Комфи» → только VIU_MEMORY.
+    «запомни квест: домовой в сарае» → event_memory тоже.
+    """
+    blob = f"{user_text or ''}\n{payload or ''}"
+    if not blob.strip():
+        return False
+    if looks_like_meta_or_tool_note(blob):
+        return False
+    what = (payload or "").strip()
+    if len(what) < 24:
+        return False
+    # Явный квест / событие с содержанием
+    if re.search(r"(?i)(?:запомни|сохрани).{0,48}квест", user_text or ""):
+        return True
+    if re.search(r"(?i)\bквест\b", blob) and (
+        _SCENE_SUBSTANCE_RE.search(what) or len(what) >= 48
+    ):
+        return True
+    if re.search(r"(?i)событие|сюжетн", blob) and len(what) >= 40:
+        return True
+    # Голое «сцену» недостаточно — нужна прожитая сцена, не мета-указание
+    if re.search(r"(?i)сцен", blob):
+        return bool(_SCENE_SUBSTANCE_RE.search(what)) and len(what) >= 48
+    return False
+
+
+def _event_title_from_remember(payload: str) -> str:
+    m = re.search(
+        r"(?i)(?:квест|событие|сюжет|сцена)\s*[«\":]?\s*(.{4,60})",
+        payload or "",
+    )
+    if m:
+        title = m.group(1).strip(" .,—-«»\"'")[:60]
+        if title and not looks_like_meta_or_tool_note(title):
+            return title
+    # Первая осмысленная фраза
+    bit = re.sub(r"\s+", " ", (payload or "").strip())
+    bit = re.sub(r"(?i)^из\s+разговора\s*\([^)]*\)\s*:\s*", "", bit).strip()
+    if len(bit) >= 12:
+        return bit[:56].rstrip(".,;:") + ("…" if len(bit) > 56 else "")
+    return "Сюжетный бит"
+
+
 def record_explicit_memory(
     config: Config,
     user_text: str,
@@ -536,21 +609,15 @@ def record_explicit_memory(
         line,
         tags=["explicit", "remember", source],
     )
-    # Если речь про событие/квест — продублировать короткий бит в event_memory
-    if re.search(r"(?i)квест|событие|сюжет|сцен", user_text + " " + payload):
+    # Сюжетные биты — в event_memory; задачи «сделай в Комфи» — только explicit.
+    if should_mirror_remember_to_events(user_text, payload):
         try:
             from .event_memory import get_event_memory
 
-            title = "Запись из чата"
-            m = re.search(
-                r"(?i)(?:квест|событие|сюжет|сцена)\s*[«\":]?\s*(.{4,60})",
-                payload,
-            )
-            if m:
-                title = m.group(1).strip(" .,—-")[:60] or title
             get_event_memory(config).add(
-                title=title,
+                title=_event_title_from_remember(payload),
                 what=payload[:500],
+                who="Ден (запомни)",
                 tags=["explicit", "remember"],
                 source=source,
             )
