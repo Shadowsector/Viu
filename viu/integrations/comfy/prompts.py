@@ -1,99 +1,95 @@
-"""Промпты под Cascadeur MoCap: коротко, статичная камера, nude ref, белый фон."""
+"""Промпты Wan/Comfy: фиксированное начало + процесс/антураж, короткий negative.
+
+Канон Дена:
+  positive = "a fit girl with a big fake breast and perfect body is …"
+           + описание процесса и антуража (подставляет Вью)
+  negative = "Tongue out, wet hair"
+Отдельного блока «Действие» / Action в промпте нет.
+"""
 
 from __future__ import annotations
 
 import re
 
 from .angles import CameraAngle, mocap_take_count
-from .face_refs import face_swap_enabled
 from .framing import frame_spec_for_action
-from ...lore.shanya import SHANYA_MOCAP_VISUAL
 
-# Короткий negative — Wan и так не любит длинные списки.
-_NEGATIVE = (
-    "multiple people, text, watermark, blur, camera motion, zoom, "
-    "cropped limbs, busy background, clothed, tiny figure, "
-    "moaning, sweat, jiggle, facial expression, emotional face, "
-    "pleasure, erotic acting, cinematic drama"
-)
+# Стандартное начало — не менять без Дена.
+SUBJECT_PREFIX = "a fit girl with a big fake breast and perfect body is"
 
-# База MoCap: не лицо/эмоции, а поза и силуэт для трекинга.
-_BASE = (
-    "full body head to toe, nude, white background, static locked camera, "
-    "even lighting, clear limbs, mocap reference"
-)
+_NEGATIVE = "Tongue out, wet hair"
 
-_CYR_PAREN_RE = re.compile(r"\([^)]*[А-Яа-яЁё][^)]*\)")
-_MATCH_LOOK_RE = re.compile(
-    r",?\s*matching the reference look\s*\([^)]*\)", re.IGNORECASE
+_PREFIX_RE = re.compile(
+    r"(?is)^\s*a\s+fit\s+girl\s+with\s+a\s+big\s+fake\s+breast\s+and\s+perfect\s+body\s+is\s*"
 )
-_MATCH_FACE_RE = re.compile(
-    r",?\s*matching the reference (?:look|face)(?:, body and style)?",
-    re.IGNORECASE,
+_LEADING_IS_RE = re.compile(r"(?i)^\s*is\s+")
+# Старые шоу/MoCap дефолты — не тащить «young woman» после PREFIX.
+_OLD_SUBJECT_RE = re.compile(
+    r"(?is)^\s*(?:a\s+|an\s+)?(?:simple\s+|tanned\s+|nude\s+)*young\s+woman\s*,?\s*"
 )
-_MEDIUM_SHOT_RE = re.compile(r",?\s*medium shot\b", re.IGNORECASE)
-_UPPER_BODY_RE = re.compile(r",?\s*upper body\b", re.IGNORECASE)
 _CYR_TOKEN_RE = re.compile(r"[А-Яа-яЁё]+")
 _MULTI_COMMA_RE = re.compile(r",\s*,+")
-_DESCRIBED_POSE_RE = re.compile(
-    r"(?i)\byoung woman in the described (?:pose|scene)\b,?\s*"
-)
 
 
 def mocap_subject_line() -> str:
-    """С ReActor — человеческий силуэт (лицо из FaceRefs); иначе табакси из лора."""
-    if face_swap_enabled():
-        # nude один раз — в _BASE
-        return "young woman"
-    return SHANYA_MOCAP_VISUAL
+    """Совместимость: канон — SUBJECT_PREFIX без хвостового is-хвоста."""
+    return SUBJECT_PREFIX.rsplit(" is", 1)[0]
 
 
-def clean_action_for_wan(action: str) -> str:
-    """Убрать RU/look-хвосты и конфликты кадра из action перед сборкой positive."""
-    a = (action or "").strip()
+def clean_process_for_wan(process: str) -> str:
+    """Описание процесса/антуража после «… body is» — без RU и без второго «is»."""
+    a = (process or "").strip()
     if not a:
-        return "idle stand"
-    a = _CYR_PAREN_RE.sub("", a)
-    a = _MATCH_LOOK_RE.sub("", a)
-    a = _MATCH_FACE_RE.sub("", a)
-    a = _DESCRIBED_POSE_RE.sub("", a)
-    if _CYR_TOKEN_RE.search(a):
-        a = _CYR_TOKEN_RE.sub("", a)
-    # full body vs medium/upper — оставляем full body (MoCap)
-    if re.search(r"(?i)\bfull body\b", a) or True:
-        # MoCap всегда full body — medium/upper только мешают
-        a = _MEDIUM_SHOT_RE.sub("", a)
-        if not re.search(r"(?i)\bselfie\b", a):
-            a = _UPPER_BODY_RE.sub("", a)
+        return "posing in soft light"
+    if _PREFIX_RE.match(a):
+        a = _PREFIX_RE.sub("", a).strip()
+    a = _OLD_SUBJECT_RE.sub("", a).strip()
+    a = _LEADING_IS_RE.sub("", a).strip()
+    a = _CYR_TOKEN_RE.sub("", a)
     a = _MULTI_COMMA_RE.sub(", ", a)
     a = re.sub(r"\s{2,}", " ", a).strip(" ,.;")
-    return a or "idle stand"
+    return a or "posing in soft light"
 
 
-def _framing_tail(action: str) -> str:
-    """Один хвост кадра — без «standing or seated», если поза уже в action."""
-    spec = frame_spec_for_action(action)
-    low = (action or "").lower()
-    if spec.orientation == "horizontal":
-        return "horizontal framing"
-    # vertical
-    if any(
-        k in low
-        for k in (
-            "sit",
-            "seat",
-            "armchair",
-            "sofa",
-            "couch",
-            "loung",
-            "kneel",
-            "squat",
-        )
-    ):
-        return "vertical framing"
-    if any(k in low for k in ("stand", "standing", "walk", "pose")):
-        return "vertical framing"
-    return "vertical framing"
+# Старое имя — вызовы в chat_flow / gui.
+def clean_action_for_wan(action: str) -> str:
+    return clean_process_for_wan(action)
+
+
+def process_from_positive(positive: str) -> str:
+    """Вытащить хвост после канон-начала (для session.meta без UI «Действие»)."""
+    raw = (positive or "").strip()
+    if not raw:
+        return ""
+    m = _PREFIX_RE.match(raw)
+    if m:
+        return raw[m.end() :].strip(" ,.;")
+    return raw
+
+
+def build_wan_positive(
+    process: str,
+    angle: CameraAngle | None = None,
+    *,
+    positive_override: str = "",
+) -> str:
+    """Собрать positive: PREFIX + процесс/антураж (+ угол как антураж камеры)."""
+    if (positive_override or "").strip():
+        base = positive_override.strip()
+        # Если правка без канон-начала — дописать.
+        if not _PREFIX_RE.match(base) and not base.lower().startswith(
+            "a fit girl with a big fake breast"
+        ):
+            base = f"{SUBJECT_PREFIX} {clean_process_for_wan(base)}"
+        return base
+    body = clean_process_for_wan(process)
+    base = f"{SUBJECT_PREFIX} {body}"
+    if angle is not None and (angle.prompt_en or "").strip():
+        # Камера — часть антуража, не отдельное «Action».
+        cam = angle.prompt_en.strip()
+        if cam.lower() not in base.lower():
+            base = f"{base}, {cam}"
+    return base
 
 
 def mocap_prompt(
@@ -102,24 +98,10 @@ def mocap_prompt(
     *,
     positive_override: str = "",
 ) -> str:
-    if (positive_override or "").strip():
-        base = positive_override.strip()
-    else:
-        action = clean_action_for_wan(action)
-        parts = [mocap_subject_line(), _BASE, action, _framing_tail(action)]
-        # уникальные куски, порядок сохранить
-        seen: set[str] = set()
-        uniq: list[str] = []
-        for p in parts:
-            key = p.strip().lower()
-            if not key or key in seen:
-                continue
-            seen.add(key)
-            uniq.append(p.strip())
-        base = ", ".join(uniq)
-    if angle is not None:
-        return f"{base}, {angle.prompt_en}"
-    return base
+    """Positive для Wan (имя mocap_prompt — историческое)."""
+    return build_wan_positive(
+        action, angle, positive_override=positive_override
+    )
 
 
 def mocap_negative(*, negative_override: str = "") -> str:
@@ -129,22 +111,21 @@ def mocap_negative(*, negative_override: str = "") -> str:
 
 
 def diversify_action(action: str, take_index: int) -> str:
-    """Три дубля — разный seed; промпт не раздуваем."""
+    """Дубли — разный seed; процесс не раздуваем."""
     del take_index
-    return clean_action_for_wan(action)
+    return clean_process_for_wan(action)
 
 
 def draft_bundle(action: str) -> str:
-    """Текст для Telegram: короткий промпт + кадр."""
-    action_e = clean_action_for_wan(action)
-    base = mocap_prompt(action_e, None)
-    spec = frame_spec_for_action(action_e)
+    """Текст для Telegram/GUI: только Positive + Negative, без «Действие»."""
+    process = clean_process_for_wan(action)
+    base = mocap_prompt(process, None)
+    spec = frame_spec_for_action(process)
     n = mocap_take_count()
     return (
-        f"Действие: {action_e}\n\n"
-        f"Промпт (MoCap ref, {n} дублей ¾, разный seed):\n{base}\n\n"
-        f"Кадр: {spec.summary_ru()}. Камера статична — **только поза и переход**, без лица/эмоций.\n"
-        f"Внешность — FaceRefs/ReActor, не текст look в Wan.\n"
-        f"Не добавляй: moaning, sweat, jiggle, pleasure — это не MoCap.\n"
+        f"Промпт (Wan, {n} дублей ¾, разный seed):\n{base}\n\n"
+        f"Кадр: {spec.summary_ru()}.\n"
+        f"Формула: «{SUBJECT_PREFIX} …» + процесс и антураж. "
+        f"Отдельного Action в промпте нет.\n"
         f"Negative:\n{mocap_negative()}"
     )

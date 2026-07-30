@@ -43,18 +43,19 @@ def test_shanya_seed_does_not_overwrite_user_edit(tmp_path, monkeypatch):
 
 
 def test_mocap_prompt_tabaxi(monkeypatch):
+    """Канон Дена: fit girl prefix — не tabaxi в Wan-тексте."""
     monkeypatch.setenv("VIU_COMFY_FACE_SWAP", "0")
     p = mocap_prompt("idle stand", None)
-    assert "tabaxi" in p.lower()
-    assert "white" in p.lower()
-    assert "static" in p.lower()
-    assert len(p) < 240
+    assert "a fit girl with a big fake breast and perfect body is" in p.lower()
+    assert "tabaxi" not in p.lower()
+    assert "idle stand" in p.lower() or "idle" in p.lower()
 
 
 def test_mocap_prompt_human_with_face_swap(monkeypatch):
     monkeypatch.setenv("VIU_COMFY_FACE_SWAP", "1")
     p = mocap_prompt("lie down on back", None)
-    assert "young woman" in p.lower()
+    assert "a fit girl with a big fake breast and perfect body is" in p.lower()
+    assert "lie down on back" in p.lower()
     assert "tabaxi" not in p.lower()
 
 
