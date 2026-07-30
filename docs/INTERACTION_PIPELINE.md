@@ -133,10 +133,14 @@ flowchart TB
 
 **Не dual-mocap:** каждый актёр — свой FBX; стыковка через `active_socket` (girl sockets) + `SyncMarker`.
 
-Scaffold в коде: `viu/interaction_catalog/assembly.py` → `assembly/assembly_job.json`
-(`build_socket_sync_job` / lab step «Blender assembly»). Полные constraints в Blender — следующий слой.
+Код:
+- `assembly.py` → `assembly/assembly_job.json` + `viu_interaction_assembly.py`
+- Blender headless: импорт клипов, общая timeline, timeline markers, Empty `active_socket` на target
+- Lab step «Blender assembly» требует `actors/<role>/mocap.fbx`
 
-Выход: `assembly/assembly.blend` + `exports/<slug>_<role>.fbx`
+Constraints source→socket и экспорт per-role FBX — следующий слой.
+
+Выход: `assembly/assembly.blend` (+ позже `exports/<slug>_<role>.fbx`)
 
 Cascadeur — **доводка одного актёра**, не сборка толпы.
 
@@ -190,7 +194,7 @@ lab_run_all topic=interaction
 | 3 | Одобрение (Telegram/GUI) | ⏳ |
 | 4 | Per-actor isolated ref | ⏳ |
 | 5 | MoCap / Control Pose | ⏳ |
-| 6 | Blender assembly | ✅ `assembly_job.json` (socket sync stub) |
+| 6 | Blender assembly | ✅ сцена: клипы + markers + socket Empty |
 | 7 | Verify + отчёт | ⏳ |
 
 VRAM: как у solo — Comfy и Cascadeur **не параллельно** (`VIU_LAB_VRAM_GB`).

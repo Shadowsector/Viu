@@ -235,11 +235,14 @@ def test_build_socket_sync_job(tmp_path):
     assert job["mode"] == "socket_sync"
     assert job["interaction_slug"] == "shanya_wolf_approach"
     assert job["active_socket"] == "socket_hand_r"
+    assert job["socket_owner_role"] == "target"
     assert len(job["actors"]) == 2
     assert job["sync_markers"]
     assert all(a["clip_missing"] for a in job["actors"])
+    assert (job_path.parent / "viu_interaction_assembly.py").is_file()
+    assert (job_path.parent / "viu_nsfw_attach.py").is_file()
 
-    ok2, msg2 = run_interaction_assembly(cfg, wish)
+    ok2, msg2 = run_interaction_assembly(cfg, wish, require_clips=False, run_blender=False)
     assert ok2, msg2
     store = InteractionCatalogStore(interaction_catalog_path(cfg)).load()
     w = store.get_by_slug("shanya_wolf_approach")
@@ -257,3 +260,45 @@ def test_assembly_require_clips_fails(tmp_path):
     ok, msg = run_interaction_assembly(cfg, wish, require_clips=True)
     assert not ok
     assert "mocap" in msg.lower()
+
+
+def test_run_assembly_mock_blender(tmp_path, monkeypatch):
+    from subprocess import CompletedProcess
+
+    from viu.interaction_catalog import run_interaction_assembly
+    from viu.interaction_catalog.paths import actor_dir
+
+    cfg = _cfg(tmp_path)
+    InteractionCatalogStore(interaction_catalog_path(cfg)).load().save()
+    wish = InteractionWish.from_dict(DEFAULT_INTERACTIONS[0].to_dict())
+    for a in wish.actors:
+        mocap = actor_dir(cfg, wish.slug, a.role) / "mocap.fbx"
+        mocap.write_bytes(b"FAKEFBX")
+
+    def fake_runner(cmd, **kwargs):
+        job_path = Path(cmd[-1])
+        job = json.loads(job_path.read_text(encoding="utf-8"))
+        blend = Path(job["assembly_blend"])
+        blend.parent.mkdir(parents=True, exist_ok=True)
+        blend.write_bytes(b"FAKEBLEND")
+        out = (
+            'VIU_ASSEMBLY_ACTOR {"role":"target"}\n'
+            'VIU_ASSEMBLY_SOCKET {"socket":"socket_hand_r","status":"created"}\n'
+            'VIU_ASSEMBLY_OK {"blend":"x"}\n'
+        )
+        return CompletedProcess(cmd, 0, stdout=out, stderr="")
+
+    monkeypatch.setattr(
+        "viu.integrations.blender.exe.resolve_blender_exe",
+        lambda c: Path("/fake/blender"),
+    )
+
+    ok, msg = run_interaction_assembly(
+        cfg, wish, require_clips=True, run_blender=True, runner=fake_runner
+    )
+    assert ok, msg
+    store = InteractionCatalogStore(interaction_catalog_path(cfg)).load()
+    w = store.get_by_slug("shanya_wolf_approach")
+    assert w is not None
+    assert w.status == "assembled"
+    assert Path(w.assembly_blend).is_file()

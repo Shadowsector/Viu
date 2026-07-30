@@ -208,11 +208,13 @@ def step_assembly(config: Config, session: LabSession) -> StepResult:
     wish = load_wish(config, str(session.meta.get("catalog_slug", "")))
     if wish is None:
         return False, "Нет wish.", None
-    ok, msg = run_interaction_assembly(config, wish, require_clips=False)
+    ok, msg = run_interaction_assembly(
+        config, wish, require_clips=True, run_blender=True, open_result=False
+    )
     if not ok:
         append_journal(config, INTERACTION_TOPIC, f"assembly fail: {msg[:200]}")
         return False, msg, None
-    append_journal(config, INTERACTION_TOPIC, "assembly: socket_sync job")
+    append_journal(config, INTERACTION_TOPIC, "assembly: blender scene")
     return True, msg, None
 
 
