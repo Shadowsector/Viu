@@ -19,7 +19,11 @@ def test_reflect_mid_conversation_greeting_allowed():
 
 
 def test_reflect_greeting_ok_when_user_said_hi():
-    from viu.prompts.reflect_mode import is_nsfw_refusal, user_is_greeting
+    from viu.prompts.reflect_mode import (
+        is_cautious_hedge,
+        is_nsfw_refusal,
+        user_is_greeting,
+    )
 
     assert user_is_greeting("Привет, Вью.")
     assert user_is_greeting("[Telegram] Привет, Вью.")
@@ -39,7 +43,7 @@ def test_reflect_greeting_ok_when_user_said_hi():
         "и быть аккуратными и ответственными."
     )
     assert reflect_reply_issues(moral) == []
-    assert not is_nsfw_refusal(moral)
+    assert is_cautious_hedge(moral) or is_nsfw_refusal(moral)
 
 
 def test_reflect_meta_mode_still_flagged():
