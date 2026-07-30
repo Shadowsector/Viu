@@ -91,6 +91,36 @@ _LORA_RE = re.compile(
     r"^\s*(?:лор[ауы]?|lora)\s*$"
 )
 
+# «У тебя есть документы… почитай» ≠ сцена «у окна». Reflect, не Comfy.
+_LORE_OR_READ_RE = re.compile(
+    r"(?i)(?:"
+    r"документ\w*|файл\w*\s+про|почитай|прочитай|перечитай|ознаком\w*|"
+    r"расскажи\s+про|что\s+(?:ты\s+)?знаешь\s+про|"
+    r"канон\w*|лор(?:е|а)?\b|vision\.md|lore_digest|"
+    r"про\s+(?:шан\w*|мир|подруг|анабарр|вью\s+и)"
+    r")"
+)
+
+_EXPLICIT_SHOOT_RE = re.compile(
+    r"(?i)(?:"
+    r"нарисуй|сними|снять|снимай|сфотка|сфотографир|"
+    r"сделай\s+(?:фото|картинк|клип|видео)|"
+    r"сгенер|создай\s+(?:фото|клип)|"
+    r"\bcomfy\b|\bкомфи\b"
+    r")"
+)
+
+# Сцена с рефом: «у окна», «в кресле» — но не «У тебя есть…».
+_SCENE_AT_RE = re.compile(
+    r"(?i)^(?:"
+    r"(?:сто[ия]шь|ид[её]шь|сидишь|лежишь|ты\s+просто)\b|"
+    r"(?:в|на|у|под|возле|среди)\s+"
+    r"(?!тебя\b|тебе\b|вас\b|вам\b|нас\b|нам\b|меня\b|мне\b|"
+    r"неё\b|нее\b|ней\b|него\b|них\b|ним\b|"
+    r"есть\b|был\b|будет\b)"
+    r")"
+)
+
 _VIDEO_RE = re.compile(
     r"(?i)(?:сделай|сними|создай|сгенер|запусти).{0,40}(?:видео|клип|ролик)|"
     r"(?:видео|клип).{0,40}(?:comfy|комфи)|"
@@ -279,9 +309,25 @@ def _wants_lora(text: str) -> bool:
     return bool(_LORA_RE.search(text or ""))
 
 
-def _wants_directed_shoot(text: str, config: Config) -> bool:
-    """Ден описал сцену / сказал сделать фото-рисунок из рефа."""
+def _looks_like_lore_or_read(text: str) -> bool:
+    """Почитать канон/мир/подруг — через reflect, не автосъёмка."""
     t = text or ""
+    if not _LORE_OR_READ_RE.search(t):
+        return False
+    if _EXPLICIT_SHOOT_RE.search(t):
+        return False
+    return True
+
+
+def _wants_directed_shoot(text: str, config: Config) -> bool:
+    """Ден описал сцену / сказал сделать фото-рисунок из рефа.
+
+    Неясные просьбы («почитай документы», «ознакомься с миром») сюда не входят —
+    их забирает reflect (сознание), а не триггер Comfy.
+    """
+    t = text or ""
+    if _looks_like_lore_or_read(t):
+        return False
     if _wants_selfie(t) or _wants_fantasy(t):
         return True
     if looks_like_comfy_job_request(t):
@@ -301,11 +347,8 @@ def _wants_directed_shoot(text: str, config: Config) -> bool:
     if has_ref and len(t.strip()) >= 18:
         if _LOOK_RE.search(t) or _ASSIGN_RE.search(t) or _LORA_RE.search(t):
             return False
-        if re.search(
-            r"(?i)^(?:в|на|у|под|возле|среди|сто[ия]шь|ид[её]шь|сидишь|лежишь|"
-            r"ты\s+просто)\b",
-            t.strip(),
-        ):
+        # Только явная поза/место («у окна»), не «У тебя есть…».
+        if _SCENE_AT_RE.search(t.strip()):
             return True
     if not _VIDEO_RE.search(t) and not re.search(
         r"(?i)нарисуй|рисунок|сделай\s+фото|сфотка", t

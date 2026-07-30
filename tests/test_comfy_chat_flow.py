@@ -260,6 +260,37 @@ def test_chat_scene_description_after_pending(tmp_path, monkeypatch):
     assert "window" in low or "hair" in low
 
 
+def test_lore_read_does_not_auto_shoot(tmp_path, monkeypatch):
+    """«Почитай документы про Шаню» → reflect, не invent+PNG."""
+    _mock_look(monkeypatch)
+    cfg = _cfg(tmp_path)
+    img = _png(tmp_path / "body.png")
+    assign_character_ref(cfg, "viu", img)
+    for text in (
+        "У тебя есть документы про Шаню, этот мир и её подруг, почитай",
+        "У тебя есть документы про Шаню, этот мир и её подруг, так что можешь ознакомиться",
+        "ознакомься с каноном Шаньки и подруг",
+    ):
+        out = try_handle_comfy_chat(cfg, text)
+        assert not out.handled, text
+        assert not out.auto_fire, text
+        assert not out.start_shoot, text
+
+    # Явная съёмка всё ещё работает.
+    out_ok = try_handle_comfy_chat(cfg, "нарисуй эту девушку у окна")
+    assert out_ok.handled and out_ok.auto_fire
+
+
+def test_scene_at_window_still_shoots(tmp_path, monkeypatch):
+    _mock_look(monkeypatch)
+    cfg = _cfg(tmp_path)
+    img = _png(tmp_path / "w.png")
+    set_pending_ref(cfg, img, caption="", look_text="светлые волосы")
+    out = try_handle_comfy_chat(cfg, "у окна в мягком свете, поправляешь волосы")
+    assert out.handled
+    assert out.start_shoot
+
+
 def test_chat_fantasy_landscape(tmp_path, monkeypatch):
     _mock_look(monkeypatch)
     cfg = _cfg(tmp_path)
