@@ -154,8 +154,8 @@ def describe_mode(mode: str) -> str:
     return {
         MODE_T2V: "T2V — текст → видео (без эталона)",
         MODE_I2V: "I2V — эталон → видео",
-        MODE_T2I: "T2I — текст → картинка (граф позже; пока черновик)",
-        MODE_I2I: "I2I — эталон → картинка (граф позже; пока черновик)",
+        MODE_T2I: "T2I — текст → картинка (PNG)",
+        MODE_I2I: "I2I — эталон → картинка (PNG)",
     }.get(m, m)
 
 
@@ -166,16 +166,16 @@ def resolve_workflow_for_shoot(
     has_seed: bool,
     is_show: bool,
 ) -> Tuple[str, str]:
-    """Вернуть (workflow_name, note). Картиночные режимы пока падают на video-граф."""
+    """Вернуть (workflow_name, note). T2I/I2I — still-графы; video — как раньше."""
     from .model_pref import choose_workflow_name
 
     mode = shoot_mode_from_meta(meta)
-    if mode_is_image(mode):
-        # Пока нет отдельных t2i/i2i графов — честно говорим и снимаем video.
-        note = f"{describe_mode(mode)} → временно как video"
-        if mode == MODE_I2I and has_seed:
-            return choose_workflow_name(config, has_seed_image=True), note
-        return "t2v", note
+    if mode == MODE_T2I:
+        return "t2i", describe_mode(mode)
+    if mode == MODE_I2I:
+        if not has_seed:
+            return "t2i", "I2I без эталона → T2I"
+        return "i2i", describe_mode(mode)
 
     if mode == MODE_T2V:
         return "t2v", describe_mode(mode)

@@ -623,7 +623,13 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
     session.meta["triple"] = results
     for path in results.get("files") or []:
         session.append_artifact(path)
-    if is_show_profile(session.meta):
+
+    from ..integrations.comfy.shoot_settings import mode_is_image, shoot_mode_from_meta
+
+    still = bool(results.get("still")) or mode_is_image(shoot_mode_from_meta(session.meta))
+    if still:
+        tag = "### Still PNG\n\n"
+    elif is_show_profile(session.meta):
         tag = f"### Шоу-дубль ×{show_take_count()}\n\n"
     else:
         tag = f"### {mocap_take_count()} дублей ¾\n\n"
@@ -639,6 +645,45 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
                 "потом Lab (будет RECOVER, не 20 слепых повторов)."
             )
         return False, msg, None
+
+    # Still: сразу PNG в Telegram, без выбора дублей.
+    if still:
+        from pathlib import Path
+
+        from ..integrations.comfy.chat_flow import send_media_to_telegram
+
+        sent = 0
+        for path in results.get("files") or []:
+            p = Path(str(path))
+            if not p.is_file():
+                continue
+            if p.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+                continue
+            if send_media_to_telegram(config, "photo", p, caption="Кадр от Вью"):
+                sent += 1
+        session.meta["clip_kept_id"] = "still_auto"
+        session.meta["still_sent"] = sent
+        session.meta["clip_batch_id"] = str(results.get("slug") or "")
+        session.meta["clip_candidate_ids"] = []
+        save_session(config, session)
+        try:
+            from ..integrations.comfy.queue_manage import clear_comfy_queue
+
+            client = ComfyClient(base_url=str(url), timeout=8.0)
+            yield_note = clear_comfy_queue(
+                client, interrupt_running=False, free_memory=True
+            )
+            if yield_note:
+                msg += "\n" + yield_note
+        except Exception as exc:
+            msg += f"\nпосле still: queue/VRAM ({exc})"
+        pick_msg = (
+            f"Прислала {sent} PNG в Telegram."
+            if sent
+            else "PNG готов в Lab/Refs (Telegram не отправился — проверь токен/чат)."
+        )
+        append_journal(config, COMFY_TOPIC, f"### Still → TG\n\n{pick_msg}")
+        return True, msg + "\n\n" + pick_msg, None
 
     from ..integrations.comfy.clip_review import (
         format_candidates_message,

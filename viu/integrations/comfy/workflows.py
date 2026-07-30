@@ -638,11 +638,99 @@ def _template_rev(path: Path) -> int:
         return 0
 
 
+def ensure_png_output(
+    workflow: Dict[str, Any],
+    *,
+    filename_prefix: str = "viu_still",
+) -> Dict[str, Any]:
+    """Убрать video-сейверы; SaveImage с VAEDecode (или уже есть SaveImage)."""
+    wf = json.loads(json.dumps(workflow))
+    prefix = (filename_prefix or "").strip() or "viu_still"
+
+    # Уже SaveImage — только префикс и length=1 на latent/i2v.
+    for node in wf.values():
+        if not isinstance(node, dict):
+            continue
+        ct = node.get("class_type")
+        if ct in ("EmptyHunyuanLatentVideo", "WanImageToVideo", "EmptyLatentImage"):
+            inputs = node.setdefault("inputs", {})
+            if "length" in inputs:
+                inputs["length"] = 1
+        if ct == "SaveImage":
+            node.setdefault("inputs", {})["filename_prefix"] = prefix
+
+    has_save = any(
+        isinstance(n, dict) and n.get("class_type") == "SaveImage" for n in wf.values()
+    )
+    if has_save:
+        # Выкинуть CreateVideo/SaveVideo чтобы не плодить mp4.
+        drop = [
+            nid
+            for nid, n in wf.items()
+            if isinstance(n, dict)
+            and n.get("class_type") in ("CreateVideo", "SaveVideo", "VHS_VideoCombine")
+        ]
+        for nid in drop:
+            wf.pop(nid, None)
+        return wf
+
+    # Найти VAEDecode
+    decode_id = None
+    for nid, node in wf.items():
+        if isinstance(node, dict) and node.get("class_type") == "VAEDecode":
+            decode_id = nid
+            break
+    if decode_id is None:
+        return wf
+
+    # Убрать video-сейверы
+    drop = [
+        nid
+        for nid, n in wf.items()
+        if isinstance(n, dict)
+        and n.get("class_type")
+        in ("CreateVideo", "SaveVideo", "VHS_VideoCombine", "SaveAnimatedWEBP", "SaveWEBM")
+    ]
+    for nid in drop:
+        wf.pop(nid, None)
+
+    save_id = _next_node_id(wf, 920)
+    wf[save_id] = {
+        "class_type": "SaveImage",
+        "inputs": {"images": [decode_id, 0], "filename_prefix": prefix},
+        "_meta": {"title": "SaveImage"},
+    }
+    return wf
+
+
+def prepare_still_workflow(
+    workflow: Dict[str, Any],
+    *,
+    action: str = "",
+    filename_prefix: str = "",
+    unet_name: str = "",
+    width: int | None = None,
+    height: int | None = None,
+) -> Dict[str, Any]:
+    """Still: length=1 + SaveImage. Кадр по действию (стоя≠лёжа)."""
+    from .framing import frame_spec_for_action
+
+    spec = frame_spec_for_action(action)
+    w = int(width) if width else spec.width
+    h = int(height) if height else spec.height
+    wf = inject_vertical_frame(workflow, width=w, height=h, length=1)
+    if unet_name:
+        wf = inject_unet_name(wf, unet_name)
+    prefix = (filename_prefix or "").strip() or "viu_still"
+    wf = ensure_png_output(wf, filename_prefix=prefix)
+    return inject_filename_prefix(wf, prefix)
+
+
 def ensure_workflow_templates(config, *, overwrite_stubs: bool = False) -> list[Path]:
-    """Скопировать шаблоны t2v/i2v/default; обновить если rev шаблона новее."""
+    """Скопировать шаблоны t2v/i2v/t2i/i2i/default; обновить если rev шаблона новее."""
     dest = comfy_workflows_dir(config)
     written: list[Path] = []
-    for name in ("t2v.json", "i2v.json", "default.json"):
+    for name in ("t2v.json", "i2v.json", "t2i.json", "i2i.json", "default.json"):
         target = dest / name
         src = _TEMPLATES / name
         if not src.is_file():
@@ -667,8 +755,9 @@ def write_install_readme(config) -> Path:
     path.write_text(
         "Workflows для Вью (API Format).\n"
         "\n"
-        "t2v.json / i2v.json / default.json — Wan 2.1 "
-        "(официальные примеры, UI→API конвертит Вью).\n"
+        "t2v.json / i2v.json — Wan 2.1 video.\n"
+        "t2i.json / i2i.json — still PNG (Wan length=1 + SaveImage).\n"
+        "default.json — копия t2v.\n"
         f"MoCap: кадр по позе (стоя 576×1024 / лёжа 1024×576), MP4 {int(MOCAP_FPS)} fps, "
         f"длина 4n+1 (idle≈81), template rev {_TEMPLATE_REV}.\n"
         "Обновление: comfy_install / lab topic=comfy / авто при comfy_triple.\n"

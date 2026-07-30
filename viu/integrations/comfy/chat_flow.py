@@ -129,6 +129,8 @@ class ChatFlowOutcome:
     wan_positive: str = ""
     wan_negative: str = ""
     lora_indices: List[int] = field(default_factory=list)
+    shoot_mode: str = ""  # t2i | i2i | "" (video default)
+    seed_image_path: str = ""
     # ("photo"|"video", path)
 
 
@@ -465,24 +467,53 @@ def _shoot_confirm_message(text: str) -> str:
 
 
 def _invent_directed_package(
-    config: Config, text: str, *, look_ru: str = ""
-) -> Tuple[str, str, str, str, List[int], List[str], str]:
-    """Промпт + LoRA для directed shoot без панели.
+    config: Config,
+    text: str,
+    *,
+    look_ru: str = "",
+    has_image: bool = False,
+    teach_only: bool = False,
+) -> Tuple[str, str, str, str, List[int], List[str], str, str]:
+    """Промпт + LoRA для directed shoot / teach.
 
     Returns:
-        (process/action, positive, negative, show_style, lora_indices, lora_names, brief)
+        (process, positive, negative, show_style, lora_indices, lora_names, brief, shoot_mode)
     """
     from .lora import apply_recommended_loras_to_session
     from .prompt_invent import format_invent_brief, invent_prompt_package
+    from .shoot_settings import MODE_I2I, MODE_T2I
+    from .teach_store import TeachDraft, format_draft_for_chat, save_draft
 
     pkg = invent_prompt_package(
         config, text or "", look_ru=look_ru or get_pending_look(config)
     )
-    scratch: dict = {}
+    shoot_mode = MODE_I2I if has_image else MODE_T2I
+    scratch: dict = {"shoot_mode": shoot_mode}
     names, indices = apply_recommended_loras_to_session(
-        config, scratch, pkg.lora_query_tags, limit=2
+        config,
+        scratch,
+        pkg.lora_query_tags,
+        limit=2,
+        shoot_mode=shoot_mode,
     )
-    brief = format_invent_brief(pkg, lora_names=names or None)
+    draft = TeachDraft(
+        wish=(text or "")[:400],
+        edit_kind=pkg.edit_kind,
+        process=pkg.process,
+        positive=pkg.positive,
+        negative=pkg.negative,
+        show_style=pkg.show_style,
+        shoot_mode=shoot_mode,
+        lora_names=list(names),
+        lora_indices=list(indices),
+        look_ru=(look_ru or get_pending_look(config) or "")[:800],
+        teach_only=teach_only,
+    )
+    save_draft(config, draft)
+    if teach_only:
+        brief = format_draft_for_chat(draft, teach_only=True)
+    else:
+        brief = format_invent_brief(pkg, lora_names=names or None)
     return (
         pkg.process,
         pkg.positive,
@@ -491,6 +522,7 @@ def _invent_directed_package(
         list(indices),
         list(names),
         brief,
+        shoot_mode,
     )
 
 
@@ -531,6 +563,67 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
     raw = (text or "").strip()
     if not raw:
         return ChatFlowOutcome(False)
+
+    # Уроки / фидбек по последнему invent — раньше lab «ок» и directed.
+    from .teach_store import (
+        extract_wish_from_teach,
+        format_lessons_status,
+        is_lessons_status_ask,
+        is_praise,
+        is_teach_intent,
+        load_draft,
+        looks_like_teach_feedback,
+        parse_and_record_critique,
+        record_praise,
+    )
+
+    if is_lessons_status_ask(raw):
+        return ChatFlowOutcome(True, format_lessons_status(config))
+
+    draft = load_draft(config)
+    if draft is not None and looks_like_teach_feedback(raw) and not _TG_PHOTO_RE.match(raw):
+        if is_praise(raw):
+            return ChatFlowOutcome(True, record_praise(config, draft))
+        return ChatFlowOutcome(True, parse_and_record_critique(config, raw, draft))
+
+    # «Учим промпт» — invent без генерации.
+    if is_teach_intent(raw) and not _TG_PHOTO_RE.match(raw):
+        wish = extract_wish_from_teach(raw)
+        photo = get_pending_ref(config) or character_image_path(config, "viu")
+        if not wish or len(wish) < 4:
+            if photo is not None:
+                wish = "эту девушку, реалистичный кадр, full body"
+            else:
+                return ChatFlowOutcome(
+                    True,
+                    "Кинь фото или опиши сцену — соберу промпт и LoRA на разбор, "
+                    "без генерации. Потом «хорошо» / «Anime в negative».",
+                )
+        (
+            _proc,
+            wan_pos,
+            wan_neg,
+            show_style,
+            lora_idx,
+            _names,
+            brief,
+            shoot_mode,
+        ) = _invent_directed_package(
+            config,
+            wish,
+            has_image=photo is not None and Path(photo).is_file(),
+            teach_only=True,
+        )
+        return ChatFlowOutcome(
+            True,
+            brief,
+            wan_positive=wan_pos,
+            wan_negative=wan_neg,
+            lora_indices=lora_idx,
+            shoot_mode=shoot_mode,
+            show_style=show_style,
+            seed_image_path=str(photo) if photo else "",
+        )
 
     if _LAB_SHORT_RE.match(raw) and not _TG_PHOTO_RE.match(raw):
         return ChatFlowOutcome(False)
@@ -575,6 +668,42 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
             photo,
             caption=caption,
             pending_character=get_pending_character(config) or "",
+        )
+
+    # Фото + «учим промпт» — только черновик.
+    if new_photo and is_teach_intent(body):
+        wish = extract_wish_from_teach(body) or "эту девушку, реалистичный кадр, full body"
+        look_text = ""
+        try:
+            look_text = _maybe_look_and_store(config, photo, body=body, cid=None)
+        except Exception:  # noqa: BLE001
+            pass
+        (
+            _proc,
+            wan_pos,
+            wan_neg,
+            show_style,
+            lora_idx,
+            _names,
+            brief,
+            shoot_mode,
+        ) = _invent_directed_package(
+            config,
+            wish,
+            look_ru=look_text,
+            has_image=True,
+            teach_only=True,
+        )
+        bits = [look_text, brief] if look_text else [brief]
+        return ChatFlowOutcome(
+            True,
+            "\n\n".join(bits),
+            wan_positive=wan_pos,
+            wan_negative=wan_neg,
+            lora_indices=lora_idx,
+            shoot_mode=shoot_mode,
+            show_style=show_style,
+            seed_image_path=str(photo),
         )
 
     pending = get_pending_ref(config)
@@ -654,8 +783,11 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
         lora_idx: List[int] = []
         show_style = "realism"
         render_profile = ""
+        shoot_mode = ""
+        seed_path = ""
         if directed:
             start = True
+            seed_src = image if image is not None and image.is_file() else None
             (
                 shoot_action,
                 wan_pos,
@@ -664,11 +796,17 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
                 lora_idx,
                 _lora_names,
                 invent_brief,
+                shoot_mode,
             ) = _invent_directed_package(
-                config, body, look_ru=look_text or get_pending_look(config)
+                config,
+                body,
+                look_ru=look_text or get_pending_look(config),
+                has_image=seed_src is not None,
             )
+            if seed_src is not None:
+                seed_path = str(seed_src)
             auto_fire = True
-            # Аниме-правка — шоу-профиль; остальное MoCap с готовым Wan.
+            # Аниме-правка — шоу-профиль; still PNG всё равно через shoot_mode.
             if show_style == "anime":
                 render_profile = "show"
             bits.append(invent_brief)
@@ -694,6 +832,8 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
                 wan_positive=wan_pos,
                 wan_negative=wan_neg,
                 lora_indices=lora_idx,
+                shoot_mode=shoot_mode,
+                seed_image_path=seed_path,
             )
 
     if image is not None and image.is_file():
@@ -729,7 +869,8 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
                 lora_idx,
                 _names,
                 brief,
-            ) = _invent_directed_package(config, body)
+                shoot_mode,
+            ) = _invent_directed_package(config, body, has_image=True)
             return ChatFlowOutcome(
                 True,
                 brief,
@@ -741,6 +882,8 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
                 wan_positive=wan_pos,
                 wan_negative=wan_neg,
                 lora_indices=lora_idx,
+                shoot_mode=shoot_mode,
+                seed_image_path=str(image),
             )
 
     if _wants_lora(body):
@@ -755,7 +898,8 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
             lora_idx,
             _names,
             brief,
-        ) = _invent_directed_package(config, body)
+            shoot_mode,
+        ) = _invent_directed_package(config, body, has_image=False)
         return ChatFlowOutcome(
             True,
             brief,
@@ -767,15 +911,15 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
             wan_positive=wan_pos,
             wan_negative=wan_neg,
             lora_indices=lora_idx,
+            shoot_mode=shoot_mode,
         )
 
     # Comfy без явной сцены — коротко, по-человечески
     if mentions_comfy(body):
         return ChatFlowOutcome(
             True,
-            "Кинь фото и скажи что сделать — «сидящей в кресле», "
-            "«из аниме — реалистичной», «надень платье». "
-            "Сама напишу промпт, подберу LoRA и пришлю результат.",
+            "Кинь фото и скажи что сделать — или «учим промпт: …» без генерации. "
+            "Потом «хорошо» / «Anime в negative» / «на фото без i2v» — запомню.",
         )
 
     return ChatFlowOutcome(False)

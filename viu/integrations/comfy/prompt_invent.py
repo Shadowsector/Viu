@@ -133,7 +133,7 @@ def invent_process_line(
         pose = pose or "standing relaxed, full body"
         base = (
             f"{pose}, photorealistic skin, natural lighting, detailed fabric, "
-            "realistic proportions, not anime"
+            "realistic proportions"
         )
     elif kind == EDIT_ANIME:
         pose = map_scene_heuristics(wish) or scene_wish_to_en(wish, config=config)
@@ -175,6 +175,26 @@ def invent_prompt_package(
     positive = f"{SUBJECT_PREFIX} {process}".strip()
     negative = mocap_negative()
 
+    # Уроки Дена (Anime→negative, ban phrases, …)
+    try:
+        from .teach_store import apply_prompt_lessons
+
+        process, _pos_tmp, negative, _notes = apply_prompt_lessons(
+            config,
+            edit_kind=kind,
+            process=process,
+            positive=positive,
+            negative=negative,
+        )
+        positive = f"{SUBJECT_PREFIX} {process}".strip()
+        # realism: Anime в negative даже без явного урока (канон после фидбека Дена)
+        if kind == EDIT_REALISM or show_style == "realism":
+            if "anime" not in negative.lower():
+                negative = f"{negative}, Anime" if negative else "Anime"
+    except Exception:  # noqa: BLE001
+        if kind == EDIT_REALISM and "anime" not in negative.lower():
+            negative = f"{negative}, Anime" if negative else "Anime"
+
     tags: List[str] = []
     if kind == EDIT_ANIME or show_style == "anime":
         tags.extend(["anime", "wan", "style"])
@@ -183,8 +203,7 @@ def invent_prompt_package(
     if kind == EDIT_OUTFIT:
         tags.extend(["outfit", "clothing", "dress", "fashion"])
     if kind == EDIT_POSE:
-        tags.extend(["pose", "motion", "wan"])
-    # слова из wish как слабые теги
+        tags.extend(["pose", "wan"])
     for tok in re.findall(r"[A-Za-zА-Яа-яЁё]{4,}", wish or ""):
         tags.append(tok.lower())
 
@@ -212,7 +231,7 @@ def invent_prompt_package(
 
 def format_invent_brief(pkg: InventedPrompt, *, lora_names: Optional[List[str]] = None) -> str:
     lines = [
-        "Ок, сама соберу — без панели.",
+        "Ок, сама соберу PNG — без панели.",
         pkg.summary_ru,
         f"Negative: {pkg.negative}",
     ]
@@ -220,5 +239,8 @@ def format_invent_brief(pkg: InventedPrompt, *, lora_names: Optional[List[str]] 
         lines.append("LoRA: " + ", ".join(lora_names))
     else:
         lines.append("LoRA: чистый Wan (подходящих не нашла / нет на диске).")
-    lines.append("Болтаем дальше — когда будет готово, пришлю.")
+    lines.append("Болтаем дальше — когда будет готово, пришлю картинку.")
+    lines.append(
+        "Поправить можно в чате: «хорошо» / «Anime в negative» / «на фото без i2v»."
+    )
     return "\n".join(lines)

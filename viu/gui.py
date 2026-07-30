@@ -916,11 +916,13 @@ class ViuGUI:
                 wan_pos = str(getattr(out, "wan_positive", "") or "")
                 wan_neg = str(getattr(out, "wan_negative", "") or "")
                 lora_idx = list(getattr(out, "lora_indices", None) or [])
+                shoot_mode = str(getattr(out, "shoot_mode", "") or "")
+                seed_path = str(getattr(out, "seed_image_path", "") or "")
                 # Directed invent: промпт+LoRA готовы — снимаем без панели.
                 if auto_fire:
                     self.root.after(
                         0,
-                        lambda a=action, p=profile, s=style, wp=wan_pos, wn=wan_neg, li=lora_idx: self._lab_comfy_action(
+                        lambda a=action, p=profile, s=style, wp=wan_pos, wn=wan_neg, li=lora_idx, sm=shoot_mode, sp=seed_path: self._lab_comfy_action(
                             action=a or None,
                             render_profile=p,
                             show_style=s,
@@ -928,6 +930,8 @@ class ViuGUI:
                             wan_positive=wp,
                             wan_negative=wn,
                             lora_indices=li,
+                            shoot_mode=sm,
+                            seed_image_path=sp,
                         ),
                     )
                 # Шоу — в панель съёмки, не в lab→План MoCap.
@@ -2622,12 +2626,15 @@ class ViuGUI:
         wan_positive: str = "",
         wan_negative: str = "",
         lora_indices: list | None = None,
+        shoot_mode: str = "",
+        seed_image_path: str = "",
     ) -> None:
         """Вью сама выбирает кадр (каталог/граф). Без диалога idle stand.
 
         action= — явная сцена из чата (описание Дена), без invent.
         render_profile=show — шоу-дубль (SmoothMix / cinematic), не MoCap×5.
         auto_fire= — промпт+LoRA уже собраны в чате → сразу генерация (from_shoot_panel).
+        shoot_mode=t2i/i2i — still PNG в Telegram.
         """
         from .lab.comfy_director import invent_next_shot
         from .lab.comfy_pipeline import COMFY_TOPIC
@@ -2637,10 +2644,18 @@ class ViuGUI:
         chat_action = (action or "").strip()
         profile = (render_profile or "").strip().lower()
         if auto_fire and chat_action:
+            from pathlib import Path
+
             from .lab.session import new_session, save_session
             from .integrations.comfy.lora import (
                 spec_to_dict,
                 specs_from_indices,
+            )
+            from .integrations.comfy.shoot_settings import (
+                MODE_I2I,
+                MODE_T2I,
+                apply_shoot_settings,
+                normalize_shoot_mode,
             )
 
             existing = load_session(self.agent.config, COMFY_TOPIC)
@@ -2660,6 +2675,33 @@ class ViuGUI:
             )
             existing.meta["shot_reason"] = "chat: invent auto"
             existing.meta["prompt_user_edited"] = True
+            mode = normalize_shoot_mode(shoot_mode) if shoot_mode else MODE_T2I
+            seed_p = Path(seed_image_path) if seed_image_path else None
+            if seed_p is not None and seed_p.is_file() and mode == MODE_T2I:
+                mode = MODE_I2I
+            apply_shoot_settings(existing.meta, mode=mode)
+            if seed_p is not None and seed_p.is_file():
+                try:
+                    from .integrations.comfy.seed_pose import (
+                        save_seed_state,
+                        stage_seed_for_comfy,
+                    )
+
+                    ok_s, _msg_s, staged = stage_seed_for_comfy(
+                        self.agent.config, seed_p
+                    )
+                    if ok_s:
+                        save_seed_state(
+                            self.agent.config,
+                            enabled=True,
+                            path=str(seed_p),
+                            comfy_name=staged or "viu_pose_seed.png",
+                        )
+                        existing.meta["i2v_seed_enabled"] = True
+                        existing.meta["i2v_seed_path"] = str(seed_p)
+                        existing.meta["i2v_seed_comfy"] = staged or "viu_pose_seed.png"
+                except Exception:  # noqa: BLE001
+                    pass
             if profile in ("show", "шоу", "smoothmix", "beauty"):
                 from .integrations.comfy.show_profile import arm_show_profile
 
@@ -2688,11 +2730,13 @@ class ViuGUI:
             existing.meta.pop("lora_pick_done", None)
             existing.meta.pop("clip_batch_id", None)
             existing.meta.pop("clip_candidate_ids", None)
+            existing.meta.pop("clip_kept_id", None)
             save_session(self.agent.config, existing)
+            kind = "картинку" if mode in (MODE_T2I, MODE_I2I) else "клип"
             self._append(
                 "Вью",
-                f"Снимаю сама — {chat_action[:120]}.\n"
-                "Болтаем дальше; когда будет готово — пришлю.",
+                f"Снимаю сама ({mode}) — {chat_action[:120]}.\n"
+                f"Болтаем дальше; когда будет готово — пришлю {kind}.",
                 tag="viu",
             )
             start_args = {
