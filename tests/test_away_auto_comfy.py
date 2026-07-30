@@ -37,7 +37,8 @@ def test_away_auto_comfy_runtime_overrides_env(tmp_path, monkeypatch):
 
 
 def test_reflect_voice_splits_viu_and_shanya():
-    from viu.prompts.reflect_mode import REFLECT_VOICE
+    from viu.prompts.reflect_mode import REFLECT_BODY_BOUNDARY, REFLECT_VOICE
+    from viu.situational_context import _REFLECT_CHAT_BRIEF
 
     voice = REFLECT_VOICE.lower()
     assert "не шаня" in voice or "сама ты не шаня" in voice
@@ -45,3 +46,23 @@ def test_reflect_voice_splits_viu_and_shanya():
     assert "шаня" in voice
     # Не путать: «твой … уши и хвост» больше не про Вью.
     assert "твой смелый голос" not in voice
+    assert "твой смелый голос" not in _REFLECT_CHAT_BRIEF.lower()
+    boundary = REFLECT_BODY_BOUNDARY.lower()
+    assert "без хвоста" in boundary
+    assert "мужск" in boundary
+    assert "шанька" in boundary or "шаня" in boundary
+
+
+def test_reflect_life_block_body_before_shanya(tmp_path, monkeypatch):
+    from viu.config import Config
+    from viu.situational_context import format_reflect_life_block
+
+    monkeypatch.setenv("VIU_DATA_DIR", str(tmp_path / ".viu"))
+    cfg = Config(root=tmp_path / "Viu", data_dir=tmp_path / ".viu").ensure_dirs()
+    text = format_reflect_life_block(cfg)
+    assert "обычная человеческая девушка" in text.lower() or "без хвоста" in text.lower()
+    assert "не тело вью" in text.lower() or "отдельный персонаж" in text.lower()
+    # Тело Вью раньше канона Шани.
+    i_body = text.lower().find("тело вью")
+    i_shanya = text.lower().find("шанька")
+    assert i_body >= 0 and i_shanya > i_body

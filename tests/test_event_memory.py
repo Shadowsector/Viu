@@ -63,11 +63,44 @@ def test_maybe_capture_scene_event(tmp_path: Path, monkeypatch) -> None:
     cfg = Config(root=root, data_dir=root / ".viu").ensure_dirs()
     long = (
         "Я прижимаюсь к тебе грудью, пальцы скользят по коже, дыхание срывается — "
-        "хвост обвивает бедро, взгляд снизу вверх, мне жарко и сладко."
+        "взгляд снизу вверх, мне жарко и сладко, губы ищут твои."
     )
     ev = maybe_capture_scene_event(cfg, "представь сцену в сарае", long)
     assert ev is not None
     assert "сарае" in (ev.what + ev.title).lower() or len(ev.what) > 40
+
+
+def test_maybe_capture_skips_viu_tail_bleed(tmp_path: Path, monkeypatch) -> None:
+    """«Мой хвост» не пишется в жизнь Вью — иначе bleed в следующий reflect."""
+    from viu.event_memory import looks_like_viu_body_bleed
+
+    monkeypatch.setenv("VIU_ROOT", str(tmp_path / "Viu"))
+    root = tmp_path / "Viu"
+    root.mkdir()
+    cfg = Config(root=root, data_dir=root / ".viu").ensure_dirs()
+    bad = (
+        "Я прижимаюсь к тебе грудью, пальцы скользят по коже, дыхание срывается — "
+        "хвост обвивает бедро, взгляд снизу вверх, мне жарко и сладко."
+    )
+    assert looks_like_viu_body_bleed(bad)
+    assert maybe_capture_scene_event(cfg, "представь сцену в сарае", bad) is None
+
+
+def test_event_digest_marks_who_and_bleed(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("VIU_ROOT", str(tmp_path / "Viu"))
+    root = tmp_path / "Viu"
+    root.mkdir()
+    cfg = Config(root=root, data_dir=root / ".viu").ensure_dirs()
+    mem = get_event_memory(cfg)
+    mem.add(
+        title="Сарай",
+        what="Шаня прижалась у стены, хвост дрожал.",
+        who="Шанька",
+        where="сарай",
+    )
+    digest = format_events_digest(cfg)
+    assert "Шанька" in digest
+    assert "Сарай" in digest
 
 
 def test_clear_chat_transcripts_keeps_events(tmp_path: Path, monkeypatch) -> None:

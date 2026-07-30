@@ -281,7 +281,10 @@ def test_reflect_bare_sends_voice_in_system_by_default(tmp_path, monkeypatch):
     assert "Ден" in system
     # Жизнь/мечта из vision — всегда в bare.
     assert "vision" in system.lower() or "Мечта" in system or "Шань" in system
-
+    # Граница тела — в конце, не перекрывается голосом Anabarra.
+    assert "без хвоста" in system.lower()
+    assert "мужск" in system.lower()
+    assert system.lower().rfind("тело вью") > system.lower().find("вью")
 
 def test_format_reflect_life_block(tmp_path, monkeypatch):
     from viu.config import Config

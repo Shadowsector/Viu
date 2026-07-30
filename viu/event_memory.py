@@ -19,6 +19,21 @@ from .config import Config
 _EVENT_PATH = "event_memory.json"
 _MAX_EVENTS = 400
 
+# Первое лицо + хвост/мужская анатомия — не тело Вью (часто путаница с Шаней).
+_VIU_BODY_BLEED_RE = re.compile(
+    r"(?i)(?:"
+    r"(?:мой|моя|моё|моем|моём|мне|у\s+меня).{0,48}"
+    r"(?:хвост|кош\w*\s+уш|уш\w+\s+кош|пенис|член\b|futa|мужск\w*\s+орган)|"
+    r"хвост\s+(?:обвива|виля|распуш)|"
+    r"я\s+.{0,40}хвост"
+    r")"
+)
+
+
+def looks_like_viu_body_bleed(text: str) -> bool:
+    """«Мой хвост / мой член» от первого лица — не канон тела Вью."""
+    return bool(_VIU_BODY_BLEED_RE.search(text or ""))
+
 
 @dataclass
 class StoryEvent:
@@ -135,14 +150,17 @@ class EventMemory:
             "--- События (помни и вплетай; можно гибридизировать в новое) ---",
         ]
         for ev in recent:
-            bit = f"• [{ev.id}] {ev.title}: {ev.what}"
+            who = (ev.who or "").strip() or "?"
+            bit = f"• [{ev.id}] ({who}) {ev.title}: {ev.what}"
             if ev.where:
                 bit += f" ({ev.where})"
             if ev.senses:
                 bit += f" | ощущения/поза: {ev.senses}"
+            if looks_like_viu_body_bleed(f"{ev.what} {ev.senses}"):
+                bit += " | ⚠ не тело Вью — персонаж/сцена"
             if ev.hybrid_of:
                 bit += f" | из {','.join(ev.hybrid_of)}"
-            lines.append(bit[:320])
+            lines.append(bit[:360])
         if len(recent) >= 2:
             a, b = recent[-2], recent[-1]
             lines.append(
@@ -181,11 +199,21 @@ def apply_event_updates(config: Config, parsed: dict) -> list[str]:
     if isinstance(many, list):
         chunks.extend([x for x in many if isinstance(x, dict)])
     for raw in chunks:
+        what = str(raw.get("what") or raw.get("text") or "")
+        who = str(raw.get("who") or "")
+        if looks_like_viu_body_bleed(what) and (
+            not who or re.search(r"(?i)вью|viu|ден", who)
+        ):
+            who = "Шанька / сцена (не тело Вью)"
+            tags = list(raw.get("tags") or [])
+            if "не_тело_вью" not in tags:
+                tags.append("не_тело_вью")
+            raw = {**raw, "who": who, "tags": tags}
         ev = mem.add(
             title=str(raw.get("title") or ""),
-            what=str(raw.get("what") or raw.get("text") or ""),
+            what=what,
             where=str(raw.get("where") or ""),
-            who=str(raw.get("who") or ""),
+            who=str(raw.get("who") or who),
             senses=str(raw.get("senses") or ""),
             tags=list(raw.get("tags") or []),
             hybrid_of=list(raw.get("hybrid_of") or []),
@@ -223,6 +251,9 @@ def maybe_capture_scene_event(
         return None
     body = re.sub(r"\s+", " ", (assistant_text or "").strip())
     if len(body) < 80:
+        return None
+    # Не писать в жизнь Вью «мой хвост / мужские органы» — это bleed Шани.
+    if looks_like_viu_body_bleed(body):
         return None
     title = body[:56].rstrip(".,;:") + ("…" if len(body) > 56 else "")
     return get_event_memory(config).add(

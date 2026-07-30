@@ -37,9 +37,12 @@ _ASSIGN_RE = re.compile(
 
 _LOOK_RE = re.compile(
     r"(?i)(?:"
-    r"посмотри|глянь|взглян|посмотри\s+на\s+(?:себя|это|фото|картинк)|"
+    r"посмотри|глянь|взглян|"
+    r"посмотри\s+на\s+(?:себя|это|фото|картинк)|"
     r"какая\s+ты|какой\s+ты|как\s+ты\s+выгляд|"
-    r"красив|мило\s+выгляд|нравишься"
+    r"мило\s+выгляд|"
+    r"нравишься\s+(?:на\s+(?:этом\s+)?(?:фото|кадре)|себе)|"
+    r"красив\w*\s+на\s+(?:этом\s+)?(?:фото|кадре|картинк|снимк)"
     r")"
 )
 
@@ -301,6 +304,32 @@ def _caption_allows_pending_assign(body: str) -> bool:
 
 def _wants_look(text: str) -> bool:
     return bool(_LOOK_RE.search(text or "") or _ANALYZE_RE.search(text or ""))
+
+
+def _looks_like_photo_conversation(text: str) -> bool:
+    """Явный разговор про кадр/реф — не любой текст, пока висит pending.
+
+    «У тебя нет хвоста… только красивая» — жизнь/канон → reflect.
+    «Посмотри / надень / сними / это ты» — Comfy.
+    """
+    t = text or ""
+    if not t.strip():
+        return False
+    if _wants_look(t) or _wants_analyze(t) or _wants_process(t):
+        return True
+    if _ASSIGN_RE.search(t) or _LORA_RE.search(t):
+        return True
+    if _OUTFIT_EDIT_RE.search(t) or _STYLE_CONVERT_RE.search(t):
+        return True
+    if _SELFIE_RE.search(t) or _DIRECTED_SHOOT_RE.search(t) or _EXPLICIT_SHOOT_RE.search(t):
+        return True
+    if re.search(
+        r"(?i)(?:\bфото\b|\bкартинк|\bкадр\b|\bреф(?:еренс)?\b|\bснимк|"
+        r"на\s+(?:этом\s+)?(?:фото|кадре)|из\s+реф)",
+        t,
+    ):
+        return True
+    return False
 
 
 def _wants_analyze(text: str) -> bool:
@@ -808,8 +837,9 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
     directed = bool(body) and _wants_directed_shoot(body, config)
 
     # Текст «это ты / посмотри» без нового фото — ждать картинку (не reflect).
+    # Не цеплять канон/жизнь («только красивая…») — это не просьба глянуть кадр.
     if not new_photo and fresh is None and not directed:
-        if cid or _wants_look(body):
+        if cid or (_wants_look(body) and _looks_like_photo_conversation(body)):
             if cid:
                 set_pending_character(config, cid, note=body)
                 who = _TITLES.get(cid, "тебя")
@@ -821,99 +851,109 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
 
     # --- Есть картинка (новая / pending / сохранённый реф для съёмки) ---
     if image is not None and image.is_file() and (new_photo or body):
-        bits: List[str] = []
-        media: List[Tuple[str, str]] = []
-        look_text = ""
-
-        if new_photo or _wants_look(body) or _wants_analyze(body) or cid:
-            look_text = _maybe_look_and_store(config, image, body=body, cid=cid)
-            if look_text:
-                bits.append(look_text)
-
-        if cid:
-            _ok, msg = assign_character_ref(config, cid, image, notes=body[:200])
-            bits.append(msg)
-
-        if _wants_analyze(body) and not new_photo:
-            bits.append(_analyze_ref(config, image, hint=body))
-
-        # Process/assign только на новое фото или явный «обработай».
-        # Directed invent по старому рефу — без «запомнила тебя» и лишнего PNG.
-        if _wants_process(body) or (directed and new_photo):
-            pmsg, pout = _process_ref(
-                config,
-                image,
-                character=cid or ("viu" if directed else None),
-            )
-            # Не дублировать «запомнила», если уже assign выше
-            if not cid:
-                bits.append(pmsg)
-            elif pout is not None:
-                bits.append(f"Кадр для съёмки готов: {pout.name}")
-            if pout is not None:
-                media.append(("photo", str(pout)))
-        # directed без нового фото: реф уже есть — не process/assign spam
-
-        start = False
-        shoot_action = ""
-        auto_fire = False
-        wan_pos = ""
-        wan_neg = ""
-        lora_idx: List[int] = []
-        show_style = "realism"
-        render_profile = ""
-        shoot_mode = ""
-        seed_path = ""
-        if directed:
-            start = True
-            seed_src = image if image is not None and image.is_file() else None
-            (
-                shoot_action,
-                wan_pos,
-                wan_neg,
-                show_style,
-                lora_idx,
-                _lora_names,
-                invent_brief,
-                shoot_mode,
-            ) = _invent_directed_package(
-                config,
-                body,
-                look_ru=look_text or get_pending_look(config),
-                has_image=seed_src is not None,
-            )
-            if seed_src is not None:
-                seed_path = str(seed_src)
-            auto_fire = True
-            # Аниме-правка — шоу-профиль; still PNG всё равно через shoot_mode.
-            if show_style == "anime":
-                render_profile = "show"
-            bits.append(invent_brief)
-
-        if _wants_lora(body):
-            bits.append(_arm_lora_pick(config))
-
-        if new_photo and not cid and not (
-            directed or _wants_lora(body) or _wants_process(body)
+        # Pending висит, а Ден про жизнь/тело/канон — не Comfy-look, а reflect.
+        if (
+            not new_photo
+            and not directed
+            and not cid
+            and body
+            and not _looks_like_photo_conversation(body)
         ):
-            bits.append("Если это я — скажи «это ты», запомню целиком.")
+            pass  # fall through → not handled
+        else:
+            bits: List[str] = []
+            media: List[Tuple[str, str]] = []
+            look_text = ""
 
-        if bits:
-            return ChatFlowOutcome(
-                True,
-                "\n\n".join(bits),
-                start_shoot=start,
-                shoot_action=shoot_action,
-                render_profile=render_profile,
-                show_style=show_style,
-                media_to_send=media,
-                auto_fire=auto_fire,
-                wan_positive=wan_pos,
-                wan_negative=wan_neg,
-                lora_indices=lora_idx,
-                shoot_mode=shoot_mode,
-                seed_image_path=seed_path,
-            )
+            if new_photo or _wants_look(body) or _wants_analyze(body) or cid:
+                look_text = _maybe_look_and_store(config, image, body=body, cid=cid)
+                if look_text:
+                    bits.append(look_text)
+
+            if cid:
+                _ok, msg = assign_character_ref(config, cid, image, notes=body[:200])
+                bits.append(msg)
+
+            if _wants_analyze(body) and not new_photo:
+                bits.append(_analyze_ref(config, image, hint=body))
+
+            # Process/assign только на новое фото или явный «обработай».
+            # Directed invent по старому рефу — без «запомнила тебя» и лишнего PNG.
+            if _wants_process(body) or (directed and new_photo):
+                pmsg, pout = _process_ref(
+                    config,
+                    image,
+                    character=cid or ("viu" if directed else None),
+                )
+                # Не дублировать «запомнила», если уже assign выше
+                if not cid:
+                    bits.append(pmsg)
+                elif pout is not None:
+                    bits.append(f"Кадр для съёмки готов: {pout.name}")
+                if pout is not None:
+                    media.append(("photo", str(pout)))
+            # directed без нового фото: реф уже есть — не process/assign spam
+
+            start = False
+            shoot_action = ""
+            auto_fire = False
+            wan_pos = ""
+            wan_neg = ""
+            lora_idx: List[int] = []
+            show_style = "realism"
+            render_profile = ""
+            shoot_mode = ""
+            seed_path = ""
+            if directed:
+                start = True
+                seed_src = image if image is not None and image.is_file() else None
+                (
+                    shoot_action,
+                    wan_pos,
+                    wan_neg,
+                    show_style,
+                    lora_idx,
+                    _lora_names,
+                    invent_brief,
+                    shoot_mode,
+                ) = _invent_directed_package(
+                    config,
+                    body,
+                    look_ru=look_text or get_pending_look(config),
+                    has_image=seed_src is not None,
+                )
+                if seed_src is not None:
+                    seed_path = str(seed_src)
+                auto_fire = True
+                # Аниме-правка — шоу-профиль; still PNG всё равно через shoot_mode.
+                if show_style == "anime":
+                    render_profile = "show"
+                bits.append(invent_brief)
+
+            if _wants_lora(body):
+                bits.append(_arm_lora_pick(config))
+
+            if new_photo and not cid and not (
+                directed or _wants_lora(body) or _wants_process(body)
+            ):
+                bits.append("Если это я — скажи «это ты», запомню целиком.")
+
+            if bits:
+                return ChatFlowOutcome(
+                    True,
+                    "\n\n".join(bits),
+                    start_shoot=start,
+                    shoot_action=shoot_action,
+                    render_profile=render_profile,
+                    show_style=show_style,
+                    media_to_send=media,
+                    auto_fire=auto_fire,
+                    wan_positive=wan_pos,
+                    wan_negative=wan_neg,
+                    lora_indices=lora_idx,
+                    shoot_mode=shoot_mode,
+                    seed_image_path=seed_path,
+                )
 
     if image is not None and image.is_file():
         if cid:
@@ -922,7 +962,12 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
             _ok, msg = assign_character_ref(config, cid, image, notes=body[:200])
             return ChatFlowOutcome(True, f"{look}\n\n{msg}" if look else msg)
 
-        if _wants_look(body) or _wants_analyze(body):
+        if body and not new_photo and not directed and not _looks_like_photo_conversation(
+            body
+        ):
+            # Тот же pending: канон/жизнь — не look.
+            pass
+        elif _wants_look(body) or _wants_analyze(body):
             look = _look(
                 config,
                 image,
@@ -932,13 +977,13 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
             set_pending_ref(config, image, caption=body, look_text=look)
             return ChatFlowOutcome(True, look)
 
-        if _wants_process(body):
+        elif _wants_process(body):
             cid2 = resolve_character_id(body)
             pmsg, pout = _process_ref(config, image, character=cid2)
             media = [("photo", str(pout))] if pout else []
             return ChatFlowOutcome(True, pmsg, media_to_send=media)
 
-        if directed:
+        elif directed:
             _process_ref(config, image, character="viu")
             (
                 action,
