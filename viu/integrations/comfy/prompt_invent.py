@@ -230,17 +230,10 @@ def invent_prompt_package(
 
 
 def format_invent_brief(pkg: InventedPrompt, *, lora_names: Optional[List[str]] = None) -> str:
-    lines = [
-        "Ок, сама соберу PNG — без панели.",
-        pkg.summary_ru,
-        f"Negative: {pkg.negative}",
-    ]
-    if lora_names:
-        lines.append("LoRA: " + ", ".join(lora_names))
-    else:
-        lines.append("LoRA: чистый Wan (подходящих не нашла / нет на диске).")
-    lines.append("Болтаем дальше — когда будет готово, пришлю картинку.")
-    lines.append(
-        "Поправить можно в чате: «хорошо» / «Anime в negative» / «на фото без i2v»."
+    lora = ", ".join(lora_names[:2]) if lora_names else "чистый Wan"
+    return (
+        f"Делаю PNG · {pkg.edit_kind}\n"
+        f"{pkg.positive[:160]}{'…' if len(pkg.positive) > 160 else ''}\n"
+        f"LoRA: {lora}\n"
+        "Пришлю, когда будет. Правка: «хорошо» / «Anime в negative»."
     )
-    return "\n".join(lines)

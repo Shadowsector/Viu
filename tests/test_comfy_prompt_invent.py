@@ -111,7 +111,7 @@ def test_chat_anime_to_real_auto_invent(tmp_path, monkeypatch):
     assert out.start_shoot
     assert "photoreal" in out.wan_positive.lower() or "realistic" in out.wan_positive.lower()
     low = out.message.lower()
-    assert "реализм" in low or "промпт" in low
+    assert "realism" in low or "png" in low or "делаю" in low
 
 
 def test_chat_outfit_invent(tmp_path, monkeypatch):

@@ -804,7 +804,9 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
         if _wants_analyze(body) and not new_photo:
             bits.append(_analyze_ref(config, image, hint=body))
 
-        if _wants_process(body) or directed:
+        # Process/assign только на новое фото или явный «обработай».
+        # Directed invent по старому рефу — без «запомнила тебя» и лишнего PNG.
+        if _wants_process(body) or (directed and new_photo):
             pmsg, pout = _process_ref(
                 config,
                 image,
@@ -817,6 +819,7 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
                 bits.append(f"Кадр для съёмки готов: {pout.name}")
             if pout is not None:
                 media.append(("photo", str(pout)))
+        # directed без нового фото: реф уже есть — не process/assign spam
 
         start = False
         shoot_action = ""

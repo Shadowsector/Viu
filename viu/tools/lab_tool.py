@@ -252,6 +252,18 @@ class LabStartTool(Tool):
                 ).strip()
             if wan_neg:
                 meta_extra["wan_negative"] = wan_neg
+            shoot_mode = str(args.get("shoot_mode") or "").strip().lower()
+            if shoot_mode:
+                meta_extra["shoot_mode"] = shoot_mode
+            if str(args.get("auto_invent_shoot") or "").lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                meta_extra["auto_invent_shoot"] = True
+            length = str(args.get("video_length_frames") or "").strip()
+            if length.isdigit():
+                meta_extra["video_length_frames"] = int(length)
         elif topic == "interaction":
             meta_extra = {
                 "catalog_slug": str(args.get("catalog_slug") or "").strip(),

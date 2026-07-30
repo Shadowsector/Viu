@@ -13,7 +13,8 @@
 
 ## Telegram: фото → Вью сама
 
-Фото + пожелание → промпт + LoRA → **PNG** в Telegram.
+Фото + пожелание → промпт + LoRA → **PNG** в Telegram.  
+Invent: короткое «Делаю PNG…» → картинка; **без** простыни «Lab — шаг 1…8» и без ложного MoCap×5.
 
 **Учим промпт (Comfy):**  
 «учим промпт: сидящей в кресле» → Positive/Negative/LoRA без генерации → «хорошо» / правки → `.viu/comfy_teach_lessons.json`.

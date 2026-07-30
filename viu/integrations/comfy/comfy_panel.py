@@ -140,10 +140,11 @@ def apply_setup_and_start(
     """«Снять»: зафиксировать LoRA + approve и пойти в генерацию.
 
     jump_to_generate=True — снаружи (кнопка TG/чат): сразу шаг generate.
-    False — изнутри step_request_approval (away auto): step +=1 в pipeline
-    пройдёт LoRA no-op → generate.
+    False — изнутри step_request_approval (away / from_shoot_panel): step +=1
+    в pipeline пройдёт LoRA no-op → generate (не пропускать generate!).
     """
     from .lora import scan_loras, spec_to_dict, specs_from_indices
+    from .shoot_settings import mode_is_image, shoot_mode_from_meta
 
     action = str(session.meta.get("action") or session.meta.get("approved_action") or "")
     if "setup_lora_indices" in (session.meta or {}):
@@ -167,12 +168,12 @@ def apply_setup_and_start(
         session.step = 5
     save_session(config, session)
 
+    mode = shoot_mode_from_meta(session.meta)
+    still = mode_is_image(mode)
+    if still:
+        return f"Делаю PNG ({mode}): {action[:100] or '…'}"
     if not specs:
-        lora_msg = "Без LoRA — чистый Wan."
+        lora_bit = "без LoRA"
     else:
-        names = ", ".join(f"{s.file}@{s.strength}" for s in specs)
-        lora_msg = f"LoRA: {names}."
-    return (
-        f"Снимаю («{action[:80]}»).\n{lora_msg}\n"
-        f"Ставлю {mocap_take_count()} дублей в очередь Comfy…"
-    )
+        lora_bit = f"LoRA ×{len(specs)}"
+    return f"Снимаю клип: {action[:80] or '…'} · {lora_bit} · {mocap_take_count()} дубл."

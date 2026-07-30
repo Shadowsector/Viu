@@ -115,13 +115,17 @@ def test_invent_auto_from_shoot_panel_skips_awaiting(tmp_path, monkeypatch):
     session.meta["auto_invent_shoot"] = True
     session.meta["shot_reason"] = "chat: invent auto"
     session.meta["setup_lora_indices"] = []
+    session.meta["shoot_mode"] = "i2i"
     session.status = "running"
     save_session(cfg, session)
 
+    seen = {}
+
     def _fake_start(config, sess, jump_to_generate=False):
-        del config, jump_to_generate
+        del config
+        seen["jump"] = jump_to_generate
         save_session(cfg, sess)
-        return "Снимаю (invent)."
+        return "Делаю PNG (i2i)."
 
     with patch(
         "viu.integrations.comfy.comfy_panel.apply_setup_and_start",
@@ -130,8 +134,9 @@ def test_invent_auto_from_shoot_panel_skips_awaiting(tmp_path, monkeypatch):
         ok, msg, _ = step_request_approval(cfg, session)
     assert ok
     assert start.called
+    assert seen.get("jump") is False  # не пропускать generate
     assert "from_shoot_panel" not in (session.meta or {})
-    assert "Снимаю" in msg
+    assert "PNG" in msg or "Снимаю" in msg
     loaded = load_session(cfg, COMFY_TOPIC)
     assert loaded is not None
     assert "from_shoot_panel" not in (loaded.meta or {})
