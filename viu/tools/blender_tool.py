@@ -200,13 +200,15 @@ class BlenderExportShanyaTool(Tool):
 class BlenderMakeAnimTool(Tool):
     name = "blender_make_anim"
     description = (
-        "Сделать простой клип в Blender на арматуре персонажа: idle, wave, nod, "
-        "look_left, look_right, stretch. Сохраняет .blend с Action (грубый ключ; "
-        "полировка — в Cascadeur)."
+        "Сделать клип в Blender: позы-hold (stand/sit/kneel/all_fours/lie) "
+        "или motion (idle/wave/…). Опционально blend from→to. "
+        "Полировка — Cascadeur."
     )
     parameters = {
         "blend_file": "путь к .blend с ригом",
-        "preset": "idle|wave|nod|look_left|look_right|stretch",
+        "preset": "stand|sit|kneel|all_fours|lie|idle|wave|nod|look_left|look_right|stretch",
+        "from_preset": "стартовая поза для blend_to (опционально)",
+        "blend_frames": "кадров перехода (по умолчанию 12)",
         "action_name": "имя Action (опционально)",
         "out_blend": "куда сохранить .blend (опционально)",
     }
@@ -221,11 +223,18 @@ class BlenderMakeAnimTool(Tool):
         preset = str(args.get("preset") or "idle").strip().lower()
         if preset not in ANIM_PRESETS:
             return ToolResult(False, f"preset: {', '.join(ANIM_PRESETS)}")
+        from_preset = str(args.get("from_preset") or "").strip().lower()
+        try:
+            blend_frames = int(args.get("blend_frames") or 0)
+        except (TypeError, ValueError):
+            blend_frames = 0
         try:
             exe = resolve_blender_exe(ctx.config)
             path, meta = make_simple_anim(
                 blend,
                 preset=preset,
+                from_preset=from_preset,
+                blend_frames=blend_frames,
                 action_name=str(args.get("action_name") or ""),
                 out_blend=args.get("out_blend") or None,
                 blender_exe=exe,
@@ -235,9 +244,98 @@ class BlenderMakeAnimTool(Tool):
         return ToolResult(
             True,
             f"Клип готов: {path}\n"
-            f"action={meta.get('action')}, frames={meta.get('frames')}, "
-            f"bones={meta.get('bones_used')}\n"
+            f"action={meta.get('action')}, mode={meta.get('mode')}, "
+            f"frames={meta.get('frames')}, bones={meta.get('bones_used')}\n"
             "Дальше: blender_export_cascadeur_anim или blender_anim_to_cascadeur.",
+        )
+
+
+class BlenderPoseCharacterTool(Tool):
+    name = "blender_pose_character"
+    description = (
+        "Поставить персонажа (Шаня…) в позу-hold/motion на канон-риге. "
+        "Ищет .blend сама или по blend_file=."
+    )
+    parameters = {
+        "character": "shanya|viu (по умолчанию shanya)",
+        "pose": "stand|sit|kneel|all_fours|lie|idle|wave|…",
+        "blend_file": "явный .blend (опционально)",
+        "out_blend": "куда сохранить (опционально)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.blender.exe import resolve_blender_exe
+        from ..integrations.blender.pose_ops import format_pose_help, pose_character
+
+        pose = str(args.get("pose") or "").strip()
+        if not pose:
+            return ToolResult(False, "Нужен pose=.\n" + format_pose_help())
+        try:
+            exe = resolve_blender_exe(ctx.config)
+            path, meta = pose_character(
+                ctx.config,
+                str(args.get("character") or "shanya"),
+                pose,
+                blend_file=str(args.get("blend_file") or ""),
+                out_blend=args.get("out_blend") or None,
+                blender_exe=exe,
+            )
+        except (FileNotFoundError, RuntimeError, ValueError, OSError) as exc:
+            return ToolResult(False, str(exc))
+        return ToolResult(
+            True,
+            f"Поза «{pose}»: {path}\n"
+            f"action={meta.get('action')}, frames={meta.get('frames')}\n"
+            "Export: blender_export_cascadeur_anim.",
+        )
+
+
+class BlenderBlendToTool(Tool):
+    name = "blender_blend_to"
+    description = (
+        "Переход между позами в Blender: from_pose → to_pose за N кадров "
+        "(пример: stand→sit, frames=12)."
+    )
+    parameters = {
+        "character": "shanya|viu",
+        "to_pose": "целевая поза",
+        "from_pose": "старт (по умолчанию stand)",
+        "frames": "кадров (по умолчанию 12)",
+        "blend_file": "явный .blend (опционально)",
+        "out_blend": "куда сохранить (опционально)",
+    }
+
+    def run(self, args: Dict[str, Any], ctx: AgentContext) -> ToolResult:
+        from ..integrations.blender.exe import resolve_blender_exe
+        from ..integrations.blender.pose_ops import blend_to, format_pose_help
+
+        to_pose = str(args.get("to_pose") or args.get("pose") or "").strip()
+        if not to_pose:
+            return ToolResult(False, "Нужен to_pose=.\n" + format_pose_help())
+        try:
+            frames = int(args.get("frames") or 12)
+        except (TypeError, ValueError):
+            frames = 12
+        try:
+            exe = resolve_blender_exe(ctx.config)
+            path, meta = blend_to(
+                ctx.config,
+                str(args.get("character") or "shanya"),
+                to_pose,
+                from_pose=str(args.get("from_pose") or "stand"),
+                frames=frames,
+                blend_file=str(args.get("blend_file") or ""),
+                out_blend=args.get("out_blend") or None,
+                blender_exe=exe,
+            )
+        except (FileNotFoundError, RuntimeError, ValueError, OSError) as exc:
+            return ToolResult(False, str(exc))
+        return ToolResult(
+            True,
+            f"Переход → «{to_pose}»: {path}\n"
+            f"from={meta.get('from_preset')}, frames={meta.get('frames')}, "
+            f"mode={meta.get('mode')}\n"
+            "Дальше polish в Cascadeur или Unity.",
         )
 
 
@@ -280,7 +378,7 @@ class BlenderAnimToCascadeurTool(Tool):
     )
     parameters = {
         "blend_file": "путь к .blend с ригом",
-        "preset": "idle|wave|nod|look_left|look_right|stretch (если skip_make=0)",
+        "preset": "stand|sit|kneel|all_fours|lie|idle|wave|… (если skip_make=0)",
         "skip_make": "1 = не создавать клип, только экспорт уже готового .blend",
         "open_cascadeur": "1 = поднять Cascadeur (default 1)",
     }

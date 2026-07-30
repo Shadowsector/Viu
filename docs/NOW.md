@@ -2,6 +2,11 @@
 
 **Канон:** [`ANIMATION_CANON.md`](./ANIMATION_CANON.md) · для ламера [`BIPED_RERIG_SIMPLE.md`](./BIPED_RERIG_SIMPLE.md)
 
+## Blender-first позы (Шаня)
+
+Holds: `stand` / `sit` / `kneel` / `all_fours` / `lie` · переход: `blender_blend_to`.  
+Док: [`notes/BLENDER_ANIM_CASCADEUR.md`](./notes/BLENDER_ANIM_CASCADEUR.md). Cascadeur = polish.
+
 ## Живая Вью: сочинение + self-improve
 
 Ночью тихо копит **зёрна** (жизнь/квесты) из памяти чатов → утром может вплести в разговор.  

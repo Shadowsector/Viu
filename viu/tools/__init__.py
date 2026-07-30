@@ -5,6 +5,7 @@ from .ask_tool import AskUserTool
 from .base import AgentContext, Tool, ToolRegistry, ToolResult
 from .blender_tool import (
     BlenderAnimToCascadeurTool,
+    BlenderBlendToTool,
     BlenderCommandTool,
     BlenderExportCascadeurAnimTool,
     BlenderExportCascadeurBatchTool,
@@ -12,6 +13,7 @@ from .blender_tool import (
     BlenderExportShanyaTool,
     BlenderInfoTool,
     BlenderMakeAnimTool,
+    BlenderPoseCharacterTool,
     BlenderScanTool,
     BlenderScreenshotTool,
 )
@@ -275,6 +277,8 @@ def build_default_registry() -> ToolRegistry:
         BlenderExportCascadeurBatchTool(),
         BlenderExportCascadeurAnimTool(),
         BlenderMakeAnimTool(),
+        BlenderPoseCharacterTool(),
+        BlenderBlendToTool(),
         BlenderAnimToCascadeurTool(),
         BlenderExportShanyaTool(),
         BlenderScreenshotTool(),
