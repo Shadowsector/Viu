@@ -87,8 +87,11 @@ def test_chat_draw_in_comfy_armchair(tmp_path, monkeypatch):
     out = try_handle_comfy_chat(cfg, "Ок, нарисуй себя в Комфи, как ты сидишь в кресле")
     assert out.handled
     assert out.start_shoot
+    assert out.auto_fire
+    assert out.wan_positive.startswith("a fit girl")
     assert "armchair" in out.shoot_action.lower() or "chair" in out.shoot_action.lower()
     assert not re.search(r"[А-Яа-яЁё]", out.shoot_action.split("matching")[0])
+    assert "пришлю" in out.message.lower()
 
 
 def test_chat_sprawled_in_armchair_en(tmp_path, monkeypatch):
@@ -328,6 +331,8 @@ def test_chat_video_with_comfy_starts_shoot(tmp_path):
     out = try_handle_comfy_chat(cfg, "сделай видео в Комфи")
     assert out.handled
     assert out.start_shoot
+    assert out.auto_fire
+    assert out.wan_positive
 
 
 def test_chat_does_not_steal_lab_ok(tmp_path):
@@ -340,7 +345,8 @@ def test_chat_comfy_hint_without_job(tmp_path):
     cfg = _cfg(tmp_path)
     out = try_handle_comfy_chat(cfg, "Комфи как тебе?")
     assert out.handled
-    assert "реф" in out.message.lower() or "кадр" in out.message.lower()
+    low = out.message.lower()
+    assert "фото" in low or "промпт" in low or "lora" in low
 
 
 def test_set_pending_ref(tmp_path):

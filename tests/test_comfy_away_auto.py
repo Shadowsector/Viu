@@ -101,19 +101,39 @@ def test_away_lora_step_noop_after_auto(tmp_path, monkeypatch):
     assert session.status != "awaiting_lora_pick"
 
 
-def test_home_lab_awaits_panel(tmp_path, monkeypatch):
+def test_invent_auto_from_shoot_panel_skips_awaiting(tmp_path, monkeypatch):
+    """chat: invent auto + from_shoot_panel → сразу генерация, не панель."""
     cfg = _cfg(tmp_path, monkeypatch)
     set_presence(cfg, MODE_HOME)
     session = new_session(COMFY_TOPIC)
     session.step = 3
-    session.meta["action"] = "wave hello"
+    session.meta["action"] = "sitting in an armchair, full body"
+    session.meta["wan_positive"] = (
+        "a fit girl with a big fake breast and perfect body is sitting in an armchair"
+    )
+    session.meta["from_shoot_panel"] = True
+    session.meta["auto_invent_shoot"] = True
+    session.meta["shot_reason"] = "chat: invent auto"
+    session.meta["setup_lora_indices"] = []
     session.status = "running"
     save_session(cfg, session)
+
+    def _fake_start(config, sess, jump_to_generate=False):
+        del config, jump_to_generate
+        save_session(cfg, sess)
+        return "Снимаю (invent)."
+
     with patch(
-        "viu.integrations.comfy.comfy_panel.send_control_panel",
-        return_value=(True, "Панель в Telegram — жду «Снять»."),
-    ):
+        "viu.integrations.comfy.comfy_panel.apply_setup_and_start",
+        side_effect=_fake_start,
+    ) as start:
         ok, msg, _ = step_request_approval(cfg, session)
     assert ok
-    assert load_session(cfg, COMFY_TOPIC).status == "awaiting_prompt"
-    assert "панель" in msg.lower() or "жду" in msg.lower()
+    assert start.called
+    assert "from_shoot_panel" not in (session.meta or {})
+    assert "Снимаю" in msg
+    loaded = load_session(cfg, COMFY_TOPIC)
+    assert loaded is not None
+    assert "from_shoot_panel" not in (loaded.meta or {})
+    assert loaded.status != "awaiting_prompt"
+
