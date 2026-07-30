@@ -8,7 +8,6 @@ from typing import Any, Dict, Tuple
 from ...config import Config
 from ...lab.comfy_pipeline import COMFY_TOPIC, apply_prompt_decision, read_action_from_task
 from ...lab.session import append_journal, load_session, save_session
-from .angles import THREE_QUARTER
 from .prompts import draft_bundle, mocap_negative, mocap_prompt, mocap_take_count
 
 _TELEGRAM_PREFIX_RE = re.compile(r"^\s*\[telegram\]\s*", re.IGNORECASE)
@@ -18,15 +17,7 @@ _SHOW_STRICT_RE = re.compile(
     re.IGNORECASE,
 )
 _SHOW_LOOSE_RE = re.compile(
-    r"^\s*(?:покажи|show|что\s+за|какой|накинь|сделай|дай|напиши|сгенерируй)\s+"
-    r"(?:wan\s+|comfy\s+|mocap\s+|для\s+comfy(?:ui)?\s+)?промпт",
-    re.IGNORECASE,
-)
-_COMFY_TASK_RE = re.compile(
-    r"(?:промпт|prompt).{0,40}(?:comfy|wan|mocap)|"
-    r"(?:comfy|wan|mocap).{0,40}(?:промпт|prompt)|"
-    r"для\s+comfyui|под\s+(?:comfy|wan)|"
-    r"positive\s*(?:prompt)?\s*для",
+    r"^\s*(?:покажи|show|что\s+за|какой)\s+(?:wan\s+|comfy\s+|mocap\s+)?промпт",
     re.IGNORECASE,
 )
 _APPLY_PREFIX_RE = re.compile(
@@ -36,6 +27,7 @@ _APPLY_PREFIX_RE = re.compile(
 
 _WAN_POS_MARK = "--- POSITIVE (в ComfyUI / Wan) ---"
 _WAN_NEG_MARK = "--- NEGATIVE ---"
+# Старый маркер — только для разбора сохранённых черновиков; в UI больше не пишем.
 _WAN_ACT_MARK = "--- ДЕЙСТВИЕ (EN) ---"
 
 
@@ -52,19 +44,48 @@ def current_action(config: Config) -> str:
             val = str((session.meta or {}).get(key) or "").strip()
             if val:
                 return val
-    return read_action_from_task(config).strip() or "idle stand"
+        pos = str((session.meta or {}).get("wan_positive") or "").strip()
+        if pos:
+            from .prompts import process_from_positive
+
+            derived = process_from_positive(pos)
+            if derived:
+                return derived
+    return read_action_from_task(config).strip() or "posing in soft light"
 
 
 def resolved_wan_lines(config: Config) -> Tuple[str, str, str]:
-    """То, что реально уходит в Wan (positive для ¾ + negative + EN action)."""
+    """То, что реально уходит в Wan (positive + negative; process — внутренний хвост).
+
+    Учитывает профиль шоу (SmoothMix / anime) — не подставляет MoCap-формулу.
+    """
     session = load_session(config, COMFY_TOPIC)
     action = current_action(config)
     pos_ov = ""
     neg_ov = ""
+    meta: dict = {}
     if session is not None:
-        pos_ov = str((session.meta or {}).get("wan_positive") or "").strip()
-        neg_ov = str((session.meta or {}).get("wan_negative") or "").strip()
-    angle = THREE_QUARTER
+        meta = session.meta or {}
+        pos_ov = str(meta.get("wan_positive") or "").strip()
+        neg_ov = str(meta.get("wan_negative") or "").strip()
+
+    from .show_profile import (
+        find_show_unet,
+        is_show_profile,
+        show_negative,
+        show_positive,
+        show_style_from_meta,
+    )
+
+    if is_show_profile(meta):
+        style = show_style_from_meta(meta)
+        unet, _note = find_show_unet(config)
+        positive = pos_ov or show_positive(
+            action, style=style, has_smoothmix=bool(unet)
+        )
+        negative = neg_ov or show_negative(style=style)
+        return action, positive, negative
+
     from .angles import MOCAP_TAKES
 
     sample_angle = MOCAP_TAKES[0]
@@ -74,15 +95,25 @@ def resolved_wan_lines(config: Config) -> Tuple[str, str, str]:
 
 
 def format_wan_editor_text(config: Config) -> str:
-    """Редактируемый текст: только строки Wan, без «сценария режиссёра»."""
-    action, positive, negative = resolved_wan_lines(config)
+    """Редактируемый текст: только Positive + Negative (без «Действие»)."""
+    _action, positive, negative = resolved_wan_lines(config)
     session = load_session(config, COMFY_TOPIC)
     slug = ""
     st = ""
+    profile_line = "MoCap"
     if session is not None:
         slug = str(session.meta.get("catalog_slug") or "").strip()
         st = str(session.status or "")
-    head = "Это текст для ComfyUI (Wan), не описание сцены из каталога.\n"
+        from .show_profile import is_show_profile, show_style_from_meta
+
+        if is_show_profile(session.meta):
+            profile_line = f"ШОУ ({show_style_from_meta(session.meta)})"
+    head = (
+        "Это текст для ComfyUI (Wan).\n"
+        "Формула: «a fit girl with a big fake breast and perfect body is …» "
+        "+ процесс и антураж. Negative только: Tongue out, wet hair.\n"
+        f"Профиль: {profile_line}\n"
+    )
     if slug or st:
         head += f"(lab: {slug or '—'}, статус: {st or '—'})\n"
     return (
@@ -90,9 +121,7 @@ def format_wan_editor_text(config: Config) -> str:
         f"{_WAN_POS_MARK}\n"
         f"{positive}\n\n"
         f"{_WAN_NEG_MARK}\n"
-        f"{negative}\n\n"
-        f"{_WAN_ACT_MARK}\n"
-        f"{action}\n"
+        f"{negative}\n"
     )
 
 
@@ -114,13 +143,15 @@ def show_prompt_message(config: Config, *, for_telegram: bool = False) -> str:
     if for_telegram:
         return (
             body
-            + "\n\nПравка: ответь блоком с теми же --- POSITIVE --- / NEGATIVE / ДЕЙСТВИЕ "
+            + "\n\nПравка: ответь блоком --- POSITIVE --- / --- NEGATIVE --- "
             "или «промпт+:» + текст. GUI: кнопка «Промпт Wan → Comfy»."
         )
     return body + prompt_help_footer()
 
 
 def parse_wan_editor_text(text: str) -> Dict[str, str]:
+    from .prompts import process_from_positive
+
     raw = (text or "").strip()
     out: Dict[str, str] = {"action": "", "positive": "", "negative": "", "raw": raw}
     if _WAN_POS_MARK in raw:
@@ -138,6 +169,7 @@ def parse_wan_editor_text(text: str) -> Dict[str, str]:
         )
         if m_neg:
             out["negative"] = m_neg.group(1).strip()
+        # Старые черновики с ДЕЙСТВИЕ — ещё читаем; новые не пишем.
         m_act = re.search(
             re.escape(_WAN_ACT_MARK) + r"\s*\n(.+?)(?:\n\n|\Z)",
             raw,
@@ -145,12 +177,16 @@ def parse_wan_editor_text(text: str) -> Dict[str, str]:
         )
         if m_act:
             out["action"] = m_act.group(1).strip().split("\n")[0].strip()
+        elif out["positive"]:
+            out["action"] = process_from_positive(out["positive"])
         return out
     return parse_edited_draft(raw)
 
 
 def parse_edited_draft(text: str) -> Dict[str, str]:
-    """Разобрать старый bundle (Действие / Промпт / Negative)."""
+    """Разобрать bundle (старый с Действие или новый только Промпт/Negative)."""
+    from .prompts import process_from_positive
+
     raw = (text or "").strip()
     out: Dict[str, str] = {"action": "", "positive": "", "negative": "", "raw": raw}
     if not raw:
@@ -161,14 +197,18 @@ def parse_edited_draft(text: str) -> Dict[str, str]:
         out["action"] = m_action.group(1).strip()
 
     m_pos = re.search(
-        r"Промпт\s*\([^)]*\)\s*:\s*\n(.+?)(?:\n\nКадр:|\n\nНе добавляй:|\n\nNegative:|\Z)",
+        r"Промпт\s*\([^)]*\)\s*:\s*\n(.+?)(?:\n\nКадр:|\n\nФормула:|\n\nНе добавляй:|\n\nNegative:|\Z)",
         raw,
         re.DOTALL | re.IGNORECASE,
     )
     if m_pos:
         out["positive"] = m_pos.group(1).strip().replace("\n", " ")
 
-    m_neg = re.search(r"^Negative:\s*\n?(.+?)(?:\n\n|\Z)", raw, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+    m_neg = re.search(
+        r"^Negative:\s*\n?(.+?)(?:\n\n|\Z)",
+        raw,
+        re.DOTALL | re.IGNORECASE | re.MULTILINE,
+    )
     if m_neg:
         out["negative"] = m_neg.group(1).strip().replace("\n", " ")
 
@@ -176,6 +216,9 @@ def parse_edited_draft(text: str) -> Dict[str, str]:
         out["action"] = raw
     elif not out["action"] and not out["positive"]:
         out["positive"] = raw.replace("\n", " ").strip()
+
+    if out["positive"] and not out["action"]:
+        out["action"] = process_from_positive(out["positive"])
 
     return out
 
@@ -187,22 +230,20 @@ def apply_draft_to_session(
     *,
     rebuild_draft: bool = True,
 ) -> Tuple[bool, str]:
+    from .prompts import process_from_positive
+
     parsed = parse_wan_editor_text(text)
-    action = parsed.get("action") or str(session.meta.get("action") or "").strip()
     positive = parsed.get("positive") or ""
     negative = parsed.get("negative") or ""
+    action = parsed.get("action") or ""
+    if not action and positive:
+        action = process_from_positive(positive)
+    if not action:
+        action = str(session.meta.get("action") or "").strip()
 
     if action:
         session.meta["action"] = action
         session.meta["approved_action"] = action
-        from ...lab.comfy_director import infer_slug_from_action
-
-        inferred = infer_slug_from_action(action)
-        if inferred:
-            cur = str(session.meta.get("catalog_slug") or "").strip()
-            if not cur or cur != inferred:
-                session.meta["catalog_slug"] = inferred
-                session.meta["prompt_edit_slug"] = inferred
     if positive:
         session.meta["wan_positive"] = positive
     else:
@@ -212,12 +253,40 @@ def apply_draft_to_session(
     else:
         session.meta.pop("wan_negative", None)
 
-    session.meta["draft"] = (text or "").strip() or draft_bundle(action or current_action(config))
+    from .show_profile import (
+        draft_show_bundle,
+        find_show_unet,
+        is_show_profile,
+        show_style_from_meta,
+        show_take_count,
+    )
+
+    base_action = action or current_action(config)
     session.meta["prompt_user_edited"] = True
-    session.meta["prompt_edit_slug"] = str(session.meta.get("catalog_slug") or "").strip()
-    if rebuild_draft and _WAN_POS_MARK not in (text or ""):
-        base_action = action or current_action(config)
-        session.meta["draft"] = draft_bundle(base_action)
+    if is_show_profile(session.meta):
+        style = show_style_from_meta(session.meta)
+        unet, unet_note = find_show_unet(config)
+        if rebuild_draft and _WAN_POS_MARK not in (text or ""):
+            session.meta["draft"] = draft_show_bundle(
+                base_action,
+                style=style,
+                unet_note=unet_note,
+                has_smoothmix=bool(unet),
+            )
+        else:
+            session.meta["draft"] = (text or "").strip() or draft_show_bundle(
+                base_action,
+                style=style,
+                unet_note=unet_note,
+                has_smoothmix=bool(unet),
+            )
+        takes_line = f"Дублей: {show_take_count()} (шоу)."
+    else:
+        if rebuild_draft and _WAN_POS_MARK not in (text or ""):
+            session.meta["draft"] = draft_bundle(base_action)
+        else:
+            session.meta["draft"] = (text or "").strip() or draft_bundle(base_action)
+        takes_line = f"Дублей ¾: {mocap_take_count()}."
 
     save_session(config, session)
     append_journal(
@@ -227,13 +296,12 @@ def apply_draft_to_session(
     )
     _, pos_show, _ = resolved_wan_lines(config)
     lines = [
-        "Промпт для Comfy сохранён — подхвачу на следующей генерации (и при текущей, если ещё не сняли).",
-        f"Действие: {(action or session.meta.get('action') or '')[:100]}",
-        f"Positive: {pos_show[:200]}{'…' if len(pos_show) > 200 else ''}",
+        "Промпт для Comfy сохранён — подхвачу на следующей генерации.",
+        f"Positive: {pos_show[:220]}{'…' if len(pos_show) > 220 else ''}",
     ]
     if negative:
-        lines.append("Negative: обновлён.")
-    lines.append(f"Дублей ¾: {mocap_take_count()}.")
+        lines.append(f"Negative: {negative[:80]}")
+    lines.append(takes_line)
     return True, "\n".join(lines)
 
 
@@ -286,25 +354,10 @@ def is_prompt_show_request(text: str) -> bool:
     if _SHOW_LOOSE_RE.match(raw):
         return True
     low = raw.lower()
-    if "промпт" in low and any(
-        w in low for w in ("покажи", "show", "что за", "какой", "wan", "comfy", "накинь", "сделай", "дай")
-    ):
+    if "промпт" in low and any(w in low for w in ("покажи", "show", "что за", "какой", "wan", "comfy")):
         if "сценари" not in low and "граф" not in low:
             return True
-    if _COMFY_TASK_RE.search(raw) and len(raw) < 280:
-        if "сценари" not in low and "сюжет" not in low:
-            return True
     return False
-
-
-def is_comfy_short_task(text: str) -> bool:
-    """Reflect: короткая просьба про Comfy/Wan — без режиссёрского сценария."""
-    raw = _normalize_user_text(text)
-    if not raw or len(raw) > 400:
-        return False
-    if is_prompt_show_request(raw):
-        return True
-    return bool(_COMFY_TASK_RE.search(raw))
 
 
 def try_handle_comfy_prompt_chat(
@@ -318,7 +371,7 @@ def try_handle_comfy_prompt_chat(
     if _APPLY_PREFIX_RE.match(raw):
         body = _APPLY_PREFIX_RE.sub("", raw).strip()
         if not body:
-            return True, "После «промпт+:» вставь блок --- POSITIVE --- или строку действия."
+            return True, "После «промпт+:» вставь блок --- POSITIVE --- / --- NEGATIVE ---."
         _, msg = apply_draft_text(config, body, approve=False)
         return True, msg
     if _WAN_POS_MARK in raw or _WAN_NEG_MARK in raw:

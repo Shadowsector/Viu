@@ -60,9 +60,13 @@ def _prepare_lab_session_inner(
                 for key in (
                     "lora_last_pick",
                     "selected_loras",
+                    "setup_lora_indices",
                     "i2v_seed_enabled",
                     "i2v_seed_path",
                     "i2v_seed_comfy",
+                    "shoot_mode",
+                    "video_length_frames",
+                    "shoot_unet",
                 ):
                     val = (old.meta or {}).get(key)
                     if val is None or val == "" or val == []:
