@@ -55,14 +55,37 @@ def current_action(config: Config) -> str:
 
 
 def resolved_wan_lines(config: Config) -> Tuple[str, str, str]:
-    """То, что реально уходит в Wan (positive + negative; process — внутренний хвост)."""
+    """То, что реально уходит в Wan (positive + negative; process — внутренний хвост).
+
+    Учитывает профиль шоу (SmoothMix / anime) — не подставляет MoCap-формулу.
+    """
     session = load_session(config, COMFY_TOPIC)
     action = current_action(config)
     pos_ov = ""
     neg_ov = ""
+    meta: dict = {}
     if session is not None:
-        pos_ov = str((session.meta or {}).get("wan_positive") or "").strip()
-        neg_ov = str((session.meta or {}).get("wan_negative") or "").strip()
+        meta = session.meta or {}
+        pos_ov = str(meta.get("wan_positive") or "").strip()
+        neg_ov = str(meta.get("wan_negative") or "").strip()
+
+    from .show_profile import (
+        find_show_unet,
+        is_show_profile,
+        show_negative,
+        show_positive,
+        show_style_from_meta,
+    )
+
+    if is_show_profile(meta):
+        style = show_style_from_meta(meta)
+        unet, _note = find_show_unet(config)
+        positive = pos_ov or show_positive(
+            action, style=style, has_smoothmix=bool(unet)
+        )
+        negative = neg_ov or show_negative(style=style)
+        return action, positive, negative
+
     from .angles import MOCAP_TAKES
 
     sample_angle = MOCAP_TAKES[0]
@@ -77,13 +100,19 @@ def format_wan_editor_text(config: Config) -> str:
     session = load_session(config, COMFY_TOPIC)
     slug = ""
     st = ""
+    profile_line = "MoCap"
     if session is not None:
         slug = str(session.meta.get("catalog_slug") or "").strip()
         st = str(session.status or "")
+        from .show_profile import is_show_profile, show_style_from_meta
+
+        if is_show_profile(session.meta):
+            profile_line = f"ШОУ ({show_style_from_meta(session.meta)})"
     head = (
         "Это текст для ComfyUI (Wan).\n"
         "Формула: «a fit girl with a big fake breast and perfect body is …» "
         "+ процесс и антураж. Negative только: Tongue out, wet hair.\n"
+        f"Профиль: {profile_line}\n"
     )
     if slug or st:
         head += f"(lab: {slug or '—'}, статус: {st or '—'})\n"
@@ -224,13 +253,40 @@ def apply_draft_to_session(
     else:
         session.meta.pop("wan_negative", None)
 
-    session.meta["draft"] = (text or "").strip() or draft_bundle(
-        action or current_action(config)
+    from .show_profile import (
+        draft_show_bundle,
+        find_show_unet,
+        is_show_profile,
+        show_style_from_meta,
+        show_take_count,
     )
+
+    base_action = action or current_action(config)
     session.meta["prompt_user_edited"] = True
-    if rebuild_draft and _WAN_POS_MARK not in (text or ""):
-        base_action = action or current_action(config)
-        session.meta["draft"] = draft_bundle(base_action)
+    if is_show_profile(session.meta):
+        style = show_style_from_meta(session.meta)
+        unet, unet_note = find_show_unet(config)
+        if rebuild_draft and _WAN_POS_MARK not in (text or ""):
+            session.meta["draft"] = draft_show_bundle(
+                base_action,
+                style=style,
+                unet_note=unet_note,
+                has_smoothmix=bool(unet),
+            )
+        else:
+            session.meta["draft"] = (text or "").strip() or draft_show_bundle(
+                base_action,
+                style=style,
+                unet_note=unet_note,
+                has_smoothmix=bool(unet),
+            )
+        takes_line = f"Дублей: {show_take_count()} (шоу)."
+    else:
+        if rebuild_draft and _WAN_POS_MARK not in (text or ""):
+            session.meta["draft"] = draft_bundle(base_action)
+        else:
+            session.meta["draft"] = (text or "").strip() or draft_bundle(base_action)
+        takes_line = f"Дублей ¾: {mocap_take_count()}."
 
     save_session(config, session)
     append_journal(
@@ -245,7 +301,7 @@ def apply_draft_to_session(
     ]
     if negative:
         lines.append(f"Negative: {negative[:80]}")
-    lines.append(f"Дублей ¾: {mocap_take_count()}.")
+    lines.append(takes_line)
     return True, "\n".join(lines)
 
 

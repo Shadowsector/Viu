@@ -64,10 +64,26 @@ def run_single_angle(
     )
 
     show = normalize_profile(render_profile) == PROFILE_SHOW
-    unet_name = ""
+    from ...lab.comfy_pipeline import COMFY_TOPIC
+    from ...lab.session import load_session
+    from .shoot_settings import (
+        DEFAULT_MOCAP_FRAMES,
+        length_from_meta,
+        resolve_workflow_for_shoot,
+        unet_from_meta,
+    )
+    from .show_profile import SHOW_LENGTH
+
+    sess = load_session(config, COMFY_TOPIC)
+    meta = sess.meta if sess is not None and isinstance(sess.meta, dict) else {}
+    unet_name = unet_from_meta(meta)
     unet_note = ""
-    if show:
+    if unet_name:
+        unet_note = f"чекпоинт: {unet_name}"
+    elif show:
         unet_name, unet_note = find_show_unet(config)
+
+    if show:
         if (prompt_override or "").strip():
             prompt = prompt_override.strip()
         else:
@@ -117,10 +133,13 @@ def run_single_angle(
             )
         )
 
-    use_i2v = bool((seed_image_name or "").strip()) and not show
-    wf_name = workflow_name or choose_workflow_name(config, has_seed_image=use_i2v)
-    if show:
-        wf_name = "t2v"
+    has_seed = bool((seed_image_name or "").strip())
+    wf_name, mode_note = resolve_workflow_for_shoot(
+        config, meta, has_seed=has_seed, is_show=show
+    )
+    if workflow_name:
+        wf_name = workflow_name
+    use_i2v = has_seed and wf_name == "i2v"
     try:
         wf = load_workflow(config, wf_name)
     except (FileNotFoundError, ValueError, OSError) as exc:
@@ -167,36 +186,44 @@ def run_single_angle(
 
         wf = inject_seed_image(wf, seed_image_name.strip())
         # Конечный эталон — если нода/шаблон умеет end_image.
-        from ...lab.comfy_pipeline import COMFY_TOPIC
-        from ...lab.session import load_session
-
-        sess = load_session(config, COMFY_TOPIC)
-        end_name = ""
-        if sess is not None:
-            end_name = str(sess.meta.get("i2v_end_seed_comfy") or "").strip()
+        end_name = str(meta.get("i2v_end_seed_comfy") or "").strip()
         if end_name:
             wf = inject_end_seed_image(wf, end_name)
+
+    length_frames = length_from_meta(
+        meta, default=SHOW_LENGTH if show else DEFAULT_MOCAP_FRAMES
+    )
     if show:
         from .workflows import prepare_show_workflow
 
         wf = prepare_show_workflow(
-            wf, filename_prefix=file_prefix, unet_name=unet_name or ""
+            wf,
+            filename_prefix=file_prefix,
+            unet_name=unet_name or "",
+            length=length_frames,
         )
     else:
-        wf = prepare_mocap_workflow(wf, action=action, filename_prefix=file_prefix)
+        wf = prepare_mocap_workflow(
+            wf,
+            action=action,
+            filename_prefix=file_prefix,
+            length=length_frames,
+            unet_name=unet_name or "",
+        )
     from .workflows import inject_filename_prefix
 
     # Повторно вшить префикс: импортированные графы иногда оставляют viu_mocap.
     wf = inject_filename_prefix(wf, file_prefix)
 
     face_note = ""
-    i2v_note = ""
+    i2v_note = mode_note
     if use_i2v and wf_name == "i2v":
-        i2v_note = f"I2V seed={seed_image_name.strip()}"
-    elif use_i2v and wf_name != "i2v":
-        i2v_note = "эталон есть, но I2V не готов — T2V"
+        i2v_note = ((i2v_note + "; ") if i2v_note else "") + f"I2V seed={seed_image_name.strip()}"
+    elif has_seed and wf_name != "i2v":
+        i2v_note = ((i2v_note + "; ") if i2v_note else "") + "эталон есть, но I2V не готов — T2V"
     if show and unet_note:
         i2v_note = ((i2v_note + "; ") if i2v_note else "") + f"шоу: {unet_note}"
+    i2v_note = ((i2v_note + "; ") if i2v_note else "") + f"length={length_frames}"
 
     from .face_refs import (
         face_swap_enabled,
@@ -384,10 +411,24 @@ def run_triple_angles(
 
     seed_name = (seed_image_name or "").strip()
     seed_path, seed_comfy, seed_on = resolve_active_seed(config)
-    if not show and not seed_name and seed_on and seed_path is not None:
+    from .shoot_settings import MODE_T2V, mode_needs_seed, shoot_mode_from_meta
+
+    mode = shoot_mode_from_meta(meta)
+    # Правило эталона:
+    # - i2v/i2i → всегда, если есть
+    # - mocap + t2v (дефолт) → как раньше: подхватить эталон если есть (I2V когда готов)
+    # - шоу + t2v → без эталона; шоу + i2v → с эталоном
+    use_seed = False
+    if mode_needs_seed(mode):
+        use_seed = True
+    elif not show and mode == MODE_T2V:
+        use_seed = True  # совместимость mocap: seed → I2V
+    if use_seed and not seed_name and seed_on and seed_path is not None:
         ok_s, _msg_s, staged = stage_seed_for_comfy(config, seed_path)
         if ok_s:
             seed_name = staged or seed_comfy
+    if not use_seed:
+        seed_name = ""
 
     results: Dict[str, Any] = {
         "action": action,
@@ -400,7 +441,8 @@ def run_triple_angles(
         "files": [],
         "mode": "show_double" if show else "three_quarter_takes",
         "render_profile": "show" if show else "mocap",
-        "i2v_seed": seed_name if not show else "",
+        "shoot_mode": mode,
+        "i2v_seed": seed_name,
     }
     n = show_take_count() if show else len(angles)
     lines: List[str] = [
@@ -410,7 +452,8 @@ def run_triple_angles(
     ]
     if show:
         lines.append(f"Профиль: ШОУ ({style})")
-    if seed_name and not show:
+    lines.append(f"Режим: {mode}")
+    if seed_name:
         lines.append(f"Эталон I2V: {seed_name}")
     if queue_note:
         lines.insert(0, queue_note)
@@ -431,7 +474,7 @@ def run_triple_angles(
             lora_specs=lora_specs,
             prompt_override=prompt_override,
             negative_override=negative_override,
-            seed_image_name="" if show else seed_name,
+            seed_image_name=seed_name,
             render_profile="show" if show else "mocap",
             show_style=style,
         )

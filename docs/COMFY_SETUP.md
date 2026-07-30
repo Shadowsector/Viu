@@ -127,8 +127,8 @@ Wan на CPU крайне медленный — нужен CUDA torch.
 
 Отдельный профиль — **1 красивый клип**, не MoCap-ref для Cascadeur.
 
-В чате: **«шоу дубль»** / **«хочу шоу-дубль»** / `comfy_show`  
-Аниме: **«шоу аниме»** / `comfy_show style=anime`
+**GUI:** «Девушки → Шоу-дубль… / Съёмка видео» — одна панель (цель, режим, длина, чекпоинт, эталон ★, LoRA, промпт) → **Снять**.  
+В чате: **«шоу дубль»** / `comfy_show` · аниме: **«шоу аниме»**.
 
 Промпт — **тот же канон**, что у MoCap (не `young woman` / длинный negative):
 
@@ -138,16 +138,18 @@ positive: a fit girl with a big fake breast and perfect body is [процесс 
 negative: Tongue out, wet hair
 ```
 
-Отдельного блока Action нет. Черновик в чате показывает формулу до съёмки.
+Отдельного блока Action нет. Длина ролика задаётся в панели (сек → кадры).
 
 1. Положи **SmoothMix Wan 2.2** (`.safetensors` / `.gguf`) в  
    `U:\Viu\ComfyUI\models\diffusion_models\`  
-   (имя с `smoothmix` — Вью подхватит сама).
+   (имя с `smoothmix` — Вью подхватит сама; или выбери чекпоинт в панели).
 2. Или задай явно: `VIU_COMFY_SHOW_UNET=имя_файла.safetensors` в `.env`.
 3. Если модели нет — шоу всё равно идёт на **Wan 2.1** с cinematic-промптом  
-   (896×576, 49 кадров, euler/simple, steps=8).
+   (896×576, длина из панели, euler/simple, steps=8).
 
-MoCap снова: обычная съёмка / `comfy_mocap` (профиль сбрасывается).
+Режимы: **T2V** (текст→видео), **I2V** (эталон→видео). T2I/I2I — в UI уже есть; графы картинок подключим отдельно (пока fallback на video).
+
+MoCap снова: цель MoCap в панели / `comfy_mocap`.
 
 ### Подмена лица (ReActor)
 
