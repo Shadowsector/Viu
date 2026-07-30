@@ -55,6 +55,12 @@ class ComfyStudioCallbacks:
     # Новый контракт: снять с учётом профиля панели.
     on_shoot: Optional[Callable[[str, str], None]] = None
     on_new_clip: Optional[Callable[[str, str], None]] = None
+    # В фон (чат свободен, генерация идёт) / стоп генерации.
+    on_background_chat: Optional[Callable[[], None]] = None
+    on_stop_generation: Optional[Callable[[], None]] = None
+
+
+_OPEN_SHOOT_WIN: Optional[tk.Toplevel] = None
 
 
 def _strip_md_bold(text: str) -> str:
@@ -98,23 +104,43 @@ def open_comfy_studio(
     initial_profile: str = "",
     initial_style: str = "realism",
 ) -> None:
+    global _OPEN_SHOOT_WIN
+    if _OPEN_SHOOT_WIN is not None:
+        try:
+            if _OPEN_SHOOT_WIN.winfo_exists():
+                _OPEN_SHOOT_WIN.lift()
+                _OPEN_SHOOT_WIN.focus_force()
+                return
+        except tk.TclError:
+            _OPEN_SHOOT_WIN = None
+
     win = tk.Toplevel(master)
+    _OPEN_SHOOT_WIN = win
     win.title("СЪЁМКА ВИДЕО — не План MoCap")
-    win.geometry("1040x900")
-    win.minsize(860, 720)
+    win.geometry("1040x920")
+    win.minsize(860, 740)
 
     body = ttk.Frame(win, padding=10)
     body.pack(fill="both", expand=True)
 
     brief_var = tk.StringVar(value="")
+    progress_var = tk.StringVar(value="Статус: ожидание")
     ttk.Label(body, textvariable=brief_var, font=("Segoe UI", 11, "bold")).pack(
-        anchor="w", pady=(0, 4)
+        anchor="w", pady=(0, 2)
     )
     ttk.Label(
         body,
+        textvariable=progress_var,
+        font=("Segoe UI", 10),
+        foreground="#0d47a1",
+    ).pack(anchor="w", pady=(0, 4))
+    ttk.Label(
+        body,
         text=(
-            "Одна панель: цель → режим → длина → чекпоинт/LoRA → эталон → промпт → «Снять». "
-            "«Новый клип» сбрасывает сессию под выбранную цель — без чужого окна MoCap."
+            "Цель → режим → длина → чекпоинт/LoRA → эталон → лицо ReActor → промпт → «Снять». "
+            "«В фон» = закрыть панель и общаться (генерация идёт). "
+            "«Стоп генерации» = interrupt Comfy + пауза lab. "
+            "Стоп в Telegram на awaiting_prompt — отмена съёмки, не kill уже идущего job."
         ),
         wraplength=980,
     ).pack(anchor="w", pady=(0, 8))
@@ -192,6 +218,21 @@ def open_comfy_studio(
     seed_btns = ttk.Frame(seed_frame)
     seed_btns.pack(fill="x", pady=(6, 0))
     seed_entries: list = []
+
+    # --- ReActor лицо ---
+    face_frame = ttk.LabelFrame(
+        body, text="Лицо ReActor (подпапки FaceRefs/Ru, FaceRefs/Oli…)", padding=8
+    )
+    face_frame.pack(fill="x", pady=(0, 6))
+    face_var = tk.StringVar(value="")
+    ttk.Label(face_frame, textvariable=face_var, wraplength=980).pack(anchor="w")
+    face_list = tk.Listbox(
+        face_frame, height=4, font=("Consolas", 9), exportselection=False
+    )
+    face_list.pack(fill="x", pady=(4, 0))
+    face_btns = ttk.Frame(face_frame)
+    face_btns.pack(fill="x", pady=(6, 0))
+    face_entries: list = []
 
     # --- LoRA ---
     lora_frame = ttk.LabelFrame(body, text="LoRA", padding=8)
@@ -321,6 +362,71 @@ def open_comfy_studio(
                 out.append(index_by_row[i])
         return sorted(set(out))
 
+    def refresh_face_line() -> None:
+        nonlocal face_entries
+        from .face_refs import (
+            ensure_face_refs_dir,
+            face_list_labels,
+            face_swap_enabled,
+            list_face_ref_entries,
+            resolve_active_face_ref,
+        )
+
+        root = ensure_face_refs_dir(config)
+        active = resolve_active_face_ref(config)
+        swap = "on" if face_swap_enabled() else "off"
+        if active is not None:
+            face_var.set(f"ReActor ({swap}): ★ {active.name} — {root}")
+        else:
+            face_var.set(
+                f"ReActor ({swap}): не выбрано — default/random из {root}\n"
+                "Положи PNG в FaceRefs/Ru/, FaceRefs/Oli/ …"
+            )
+        face_list.delete(0, "end")
+        face_entries = list_face_ref_entries(config)
+        for line in face_list_labels(config):
+            face_list.insert("end", line)
+        for i, line in enumerate(face_list_labels(config)):
+            if "← ВЫБРАН" in line:
+                face_list.selection_set(i)
+                face_list.see(i)
+                break
+
+    def on_activate_face() -> None:
+        from .face_refs import set_active_face_ref
+
+        sel = face_list.curselection()
+        if not sel or int(sel[0]) >= len(face_entries):
+            messagebox.showinfo(
+                "ReActor", "Выбери лицо в списке (Ru/…, Oli/…).", parent=win
+            )
+            return
+        _label, path = face_entries[int(sel[0])]
+        ok, msg = set_active_face_ref(config, path)
+        if ok:
+            messagebox.showinfo("ReActor", msg, parent=win)
+        else:
+            messagebox.showerror("ReActor", msg, parent=win)
+        refresh_face_line()
+
+    def on_clear_face() -> None:
+        from .face_refs import clear_active_face_ref
+
+        msg = clear_active_face_ref(config)
+        messagebox.showinfo("ReActor", msg, parent=win)
+        refresh_face_line()
+
+    def on_open_face_folder() -> None:
+        from .face_refs import ensure_face_refs_dir
+
+        folder = ensure_face_refs_dir(config)
+        try:
+            import os
+
+            os.startfile(str(folder))  # type: ignore[attr-defined]
+        except Exception:
+            messagebox.showinfo("FaceRefs", str(folder), parent=win)
+
     def refresh_seed_line() -> None:
         nonlocal seed_entries
         from .seed_library import load_library
@@ -342,9 +448,23 @@ def open_comfy_studio(
         brief_var.set(comfy_pipeline_status_brief(config))
         session = load_session(config, COMFY_TOPIC)
         if session is not None:
+            st = str(session.status or "")
+            step = getattr(session, "step", 0)
+            progress_var.set(
+                f"Статус lab: {st} · шаг {step} — "
+                + (
+                    "генерация в Comfy…"
+                    if st == "running"
+                    else "жди «Снять» / панель"
+                    if st == "awaiting_prompt"
+                    else "готово к оценке клипов"
+                    if st == "awaiting_clip_pick"
+                    else "можно править и снимать"
+                )
+            )
             if is_show_profile(session.meta):
-                st = show_style_from_meta(session.meta)
-                profile_var.set("show_anime" if st == "anime" else "show_realism")
+                st_style = show_style_from_meta(session.meta)
+                profile_var.set("show_anime" if st_style == "anime" else "show_realism")
             else:
                 profile_var.set(PROFILE_MOCAP)
             mode_var.set(shoot_mode_from_meta(session.meta))
@@ -355,8 +475,11 @@ def open_comfy_studio(
             )
             fr = length_from_meta(session.meta, default=default)
             seconds_var.set(str(seconds_from_frames(fr)))
+        else:
+            progress_var.set("Статус: нет lab-сессии — «Новый клип» или «Снять»")
         _sync_frames_label()
         refresh_seed_line()
+        refresh_face_line()
         reload_ckpt_list()
 
     def on_open_seed_library() -> None:
@@ -542,6 +665,10 @@ def open_comfy_studio(
             return
         _read_ui_into_session()
         profile, style = _profile_pair()
+        session = _ensure_session(config)
+        session.meta["from_shoot_panel"] = True
+        session.meta["shoot_intent"] = True
+        save_session(config, session)
         if mode_needs_seed(mode_var.get()):
             from .seed_pose import resolve_active_seed
 
@@ -554,13 +681,37 @@ def open_comfy_studio(
                     parent=win,
                 )
                 return
+        progress_var.set("Статус: запускаю съёмку… смотри строку выше и чат Вью")
         if callbacks.on_shoot:
             callbacks.on_shoot(profile, style)
         elif profile == PROFILE_SHOW:
-            # Совместимость: старый колбэк только mocap.
             callbacks.on_mocap_shoot()
         else:
             callbacks.on_mocap_shoot()
+
+    def on_background() -> None:
+        if callbacks.on_background_chat:
+            callbacks.on_background_chat()
+        messagebox.showinfo(
+            "В фон",
+            "Панель закрою. Генерация (если уже идёт) продолжается в Comfy.\n"
+            "В чате Вью можно общаться — Стоп в Telegram на awaiting "
+            "≠ interrupt уже идущего job.\n"
+            "Чтобы убить job: «Стоп генерации».",
+            parent=win,
+        )
+        on_close()
+
+    def on_stop_gen() -> None:
+        if callbacks.on_stop_generation:
+            callbacks.on_stop_generation()
+        else:
+            messagebox.showinfo(
+                "Стоп",
+                "Нет колбэка стопа — в чате: comfy_queue_clear force=1",
+                parent=win,
+            )
+        refresh_status()
 
     def on_profile_change(*_a) -> None:
         _read_ui_into_session(refresh_prompt=True)
@@ -594,6 +745,16 @@ def open_comfy_studio(
         side="left", padx=8
     )
 
+    ttk.Button(face_btns, text="Выбрать ★ лицо", command=on_activate_face).pack(
+        side="left"
+    )
+    ttk.Button(face_btns, text="Сбросить лицо", command=on_clear_face).pack(
+        side="left", padx=6
+    )
+    ttk.Button(face_btns, text="Папка FaceRefs…", command=on_open_face_folder).pack(
+        side="left"
+    )
+
     ttk.Button(lora_btns, text="Пересканировать LoRA", command=on_rescan_lora).pack(
         side="left"
     )
@@ -611,6 +772,12 @@ def open_comfy_studio(
 
     ttk.Button(btn_row, text="Новый клип", command=on_new_clip).pack(side="left")
     ttk.Button(btn_row, text="Снять", command=on_shoot).pack(side="left", padx=(8, 0))
+    ttk.Button(btn_row, text="В фон / общаться", command=on_background).pack(
+        side="left", padx=(8, 0)
+    )
+    ttk.Button(btn_row, text="Стоп генерации", command=on_stop_gen).pack(
+        side="left", padx=(8, 0)
+    )
     ttk.Button(btn_row, text="Оценить видео", command=callbacks.on_pick_clips).pack(
         side="left", padx=(8, 0)
     )
@@ -630,6 +797,9 @@ def open_comfy_studio(
     )
 
     def on_close() -> None:
+        global _OPEN_SHOOT_WIN
+        if _OPEN_SHOOT_WIN is win:
+            _OPEN_SHOOT_WIN = None
         if on_finished:
             on_finished()
         win.destroy()

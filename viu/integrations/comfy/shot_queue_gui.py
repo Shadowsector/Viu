@@ -24,6 +24,8 @@ from .shot_queue import (
 from .studio_gui import apply_lora_from_indices
 from .lora import load_index, scan_loras
 
+_OPEN_SHOT_QUEUE: Optional[tk.Toplevel] = None
+
 
 def open_shot_queue_editor(
     master: tk.Misc,
@@ -39,9 +41,19 @@ def open_shot_queue_editor(
     on_edit_prompt — устаревший колбэк (игнорируется; всё в одном окне).
     focus_lab — сразу показать промпт текущей lab-сессии.
     """
+    global _OPEN_SHOT_QUEUE
     del on_edit_prompt  # совместимость вызовов
+    if _OPEN_SHOT_QUEUE is not None:
+        try:
+            if _OPEN_SHOT_QUEUE.winfo_exists():
+                _OPEN_SHOT_QUEUE.lift()
+                _OPEN_SHOT_QUEUE.focus_force()
+                return
+        except tk.TclError:
+            _OPEN_SHOT_QUEUE = None
 
     win = tk.Toplevel(master)
+    _OPEN_SHOT_QUEUE = win
     win.title("План MoCap — очередь, промпт Wan, LoRA")
     win.geometry("1040x780")
     win.minsize(860, 640)
@@ -573,7 +585,7 @@ def open_shot_queue_editor(
                         session.step = 3
                     save_session(config, session)
             msg += "\nЗапускаю съёмку с этим промптом."
-        win.destroy()
+        _close_shot_queue()
         if on_finished:
             on_finished(True, msg)
         if shoot and on_shoot:
@@ -582,7 +594,7 @@ def open_shot_queue_editor(
     def on_save_close() -> None:
         save_current()
         msg = format_queue_brief(config)
-        win.destroy()
+        _close_shot_queue()
         if on_finished:
             on_finished(True, msg)
 
@@ -654,6 +666,12 @@ def open_shot_queue_editor(
         side="left", padx=8
     )
 
+    def _close_shot_queue() -> None:
+        global _OPEN_SHOT_QUEUE
+        if _OPEN_SHOT_QUEUE is win:
+            _OPEN_SHOT_QUEUE = None
+        win.destroy()
+
     bottom = ttk.Frame(body)
     bottom.pack(fill="x", pady=(8, 0))
     ttk.Button(bottom, text="Убрать done/skipped", command=on_clear_done).pack(
@@ -662,7 +680,10 @@ def open_shot_queue_editor(
     ttk.Button(bottom, text="Сохранить и закрыть", command=on_save_close).pack(
         side="right"
     )
-    ttk.Button(bottom, text="Закрыть", command=win.destroy).pack(side="right", padx=8)
+    ttk.Button(bottom, text="Закрыть", command=_close_shot_queue).pack(
+        side="right", padx=8
+    )
+    win.protocol("WM_DELETE_WINDOW", _close_shot_queue)
 
     items = load_items(config)
     if not items:

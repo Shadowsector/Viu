@@ -2632,6 +2632,7 @@ class ViuGUI:
                 )
             chat_action = clean_action_for_wan(chat_action)
             keep = bool(existing.meta.get("prompt_user_edited"))
+            from_panel = bool(existing.meta.get("from_shoot_panel"))
             kept_pos = str(existing.meta.get("wan_positive") or "") if keep else ""
             kept_neg = str(existing.meta.get("wan_negative") or "") if keep else ""
             existing.status = "running"
@@ -2640,9 +2641,12 @@ class ViuGUI:
                 existing.meta,
                 style=show_style or "realism",
                 action=chat_action,
-                keep_prompts=keep,
+                keep_prompts=keep or from_panel,
             )
             existing.meta["catalog_slug"] = "show"
+            if from_panel:
+                existing.meta["from_shoot_panel"] = True
+                existing.meta["shoot_intent"] = True
             existing.meta.pop("lora_pick_done", None)
             existing.meta.pop("clip_batch_id", None)
             existing.meta.pop("clip_candidate_ids", None)
@@ -2658,13 +2662,17 @@ class ViuGUI:
                 f"Шоу-дубль ({show_style or 'realism'}) — {chat_action[:100]}.\n"
                 f"{note}\n"
                 + ("SmoothMix подхвачу. " if unet else "Пока без SmoothMix — cinematic Wan. ")
-                + "Снимаю по настройкам панели «Съёмка».",
+                + (
+                    "Снимаю сразу (панель Съёмка)."
+                    if from_panel
+                    else "Снимаю по настройкам панели «Съёмка»."
+                ),
                 tag="viu",
             )
             start_args = {
                 "topic": COMFY_TOPIC,
                 "run_all": "1",
-                "reset": "0" if keep else "1",
+                "reset": "0" if (keep or from_panel) else "1",
                 "shoot": "1",
                 "action": chat_action,
                 "catalog_slug": "show",
@@ -2672,6 +2680,8 @@ class ViuGUI:
                 "render_profile": "show",
                 "show_style": show_style or "realism",
             }
+            if from_panel:
+                start_args["from_shoot_panel"] = "1"
             if keep and kept_pos:
                 start_args["_wan_positive"] = kept_pos
             if keep and kept_neg:
@@ -2976,7 +2986,10 @@ class ViuGUI:
         self.root.after(8_000, tick)
 
     def _maybe_prompt_comfy_wan_editor(self) -> None:
-        """Дома: если ждут одобрения промпта — открыть редактор Wan."""
+        """Дома: если ждут одобрения промпта — напомнить в чате, НЕ открывать План MoCap.
+
+        План MoCap плодил окна. Съёмка идёт через «СЪЁМКА ВИДЕО».
+        """
         from .lab.comfy_pipeline import COMFY_TOPIC
         from .lab.session import load_session
         from .presence import is_away
@@ -2993,13 +3006,13 @@ class ViuGUI:
         self._comfy_prompt_prompt_open = True
         self._append(
             "Вью",
-            "Жду панель — открою «Промпт Wan → Comfy» (или «промпт comfy» / кнопка в TG).",
+            "Жду «Снять» в панели «СЪЁМКА ВИДЕО» (или ок / Снять в Telegram).\n"
+            "«План MoCap» сама не открываю — он для очереди по графам.",
             tag="viu",
         )
-        try:
-            self._open_comfy_prompt_editor()
-        finally:
-            self.root.after(60_000, lambda: setattr(self, "_comfy_prompt_prompt_open", False))
+        self.root.after(
+            60_000, lambda: setattr(self, "_comfy_prompt_prompt_open", False)
+        )
 
     def _maybe_prompt_comfy_clip_pick(self) -> None:
         from .lab.comfy_pipeline import COMFY_TOPIC
@@ -3170,7 +3183,7 @@ class ViuGUI:
 
         def shoot(profile: str, style: str) -> None:
             from .lab.comfy_pipeline import COMFY_TOPIC
-            from .lab.session import load_session
+            from .lab.session import load_session, save_session
 
             sess = load_session(self.agent.config, COMFY_TOPIC)
             action = ""
@@ -3180,6 +3193,16 @@ class ViuGUI:
                     or sess.meta.get("action")
                     or ""
                 ).strip()
+                sess.meta["from_shoot_panel"] = True
+                sess.meta["shoot_intent"] = True
+                save_session(self.agent.config, sess)
+            self._append(
+                "Вью",
+                "Снимаю из панели «Съёмка» — сразу в Comfy, без «План MoCap».\n"
+                "Статус: смотри строку в панели / comfy_status. "
+                "«В фон» = общаться; «Стоп генерации» = interrupt.",
+                tag="viu",
+            )
             if profile == "show":
                 self._lab_comfy_action(
                     action=action or None,
@@ -3197,6 +3220,53 @@ class ViuGUI:
                 tag="viu",
             )
 
+        def background_chat() -> None:
+            # Чат и так свободен при tool_busy; снимаем блокировку сайдбара/ожидания.
+            self._set_tool_busy(False)
+            from .lab.controller import lab_controller
+
+            lab_controller.clear_operator_priority()
+            self._append(
+                "Вью",
+                "Панель съёмки в фоне. Можно общаться.\n"
+                "Генерация в Comfy продолжается (если уже пошла).\n"
+                "Остановить job: снова открой Съёмку → «Стоп генерации» "
+                "или comfy_queue_clear force=1.",
+                tag="viu",
+            )
+
+        def stop_generation() -> None:
+            from .integrations.comfy.client import ComfyClient
+            from .integrations.comfy.queue_manage import clear_comfy_queue
+            from .lab.comfy_pipeline import COMFY_TOPIC
+            from .lab.controller import lab_controller
+            from .lab.session import load_session, save_session
+
+            lab_controller.request_operator_priority("стоп генерации из панели")
+            url = getattr(self.agent.config, "comfy_url", None) or "http://127.0.0.1:8188"
+            client = ComfyClient(base_url=str(url))
+            ok, ping = client.ping()
+            parts = []
+            if ok:
+                msg = clear_comfy_queue(client, interrupt_running=True, free_memory=False)
+                parts.append(msg)
+            else:
+                parts.append(f"Comfy недоступен: {ping}")
+            sess = load_session(self.agent.config, COMFY_TOPIC)
+            if sess is not None and sess.status in (
+                "running",
+                "awaiting_prompt",
+                "awaiting_lora_pick",
+                "awaiting_clip_pick",
+            ):
+                sess.status = "paused"
+                sess.pause_reason = "stopped_from_shoot_panel"
+                sess.meta.pop("from_shoot_panel", None)
+                save_session(self.agent.config, sess)
+                parts.append(f"Lab comfy → paused ({sess.pause_reason}).")
+            self._set_tool_busy(False)
+            self._append("Вью", "⏹ Стоп генерации:\n" + "\n".join(parts), tag="viu")
+
         cb = ComfyStudioCallbacks(
             on_ensure_comfy=lambda: self._ensure_comfy_from_studio(),
             on_mocap_shoot=lambda: self._lab_comfy_action(),
@@ -3209,6 +3279,8 @@ class ViuGUI:
             ),
             on_shoot=shoot,
             on_new_clip=new_clip,
+            on_background_chat=background_chat,
+            on_stop_generation=stop_generation,
         )
         open_comfy_studio(
             self.root,
