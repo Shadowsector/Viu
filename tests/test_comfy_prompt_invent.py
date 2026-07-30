@@ -49,6 +49,12 @@ def test_classify_edit_kinds():
     assert classify_edit_kind("сделай её из анимешной — реалистичной") == EDIT_REALISM
     assert classify_edit_kind("сделай аниме стиль") == EDIT_ANIME
     assert classify_edit_kind("надень на неё платье") == EDIT_OUTFIT
+    # Голое «из аниме» в разговоре ≠ режим realism.
+    from viu.integrations.comfy.prompt_invent import EDIT_GENERIC
+
+    kind = classify_edit_kind("поваспоминай тварей из аниме и фильмов")
+    assert kind in (EDIT_GENERIC, EDIT_POSE)
+    assert kind != EDIT_REALISM
 
 
 def test_invent_package_armchair_and_outfit(tmp_path):

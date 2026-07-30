@@ -65,7 +65,10 @@ def _is_redraft_request(text: str) -> bool:
         return False
     if _REDRAFT_COMPLAINT_RE.search(raw):
         return True
+    # «Нет, другой промпт» — коротко. «Нет, солнце, придумай тварей…» — разговор.
     if _REJECT_PREFIX_RE.match(raw) and not _REJECT_RE.match(raw):
+        if len(raw) > 72:
+            return False
         return True
     return False
 
@@ -228,8 +231,6 @@ def try_handle_comfy_telegram(
     action = str((session.meta or {}).get("action") or "").strip()
     decision, payload = parse_approval_reply(text, current_action=action)
     if decision == "unknown":
-        return True, (
-            "Жми кнопки панели: Снять / Промпт / LoRA / Стоп.\n"
-            "Или: ок | стоп | правки: sit_down | lora: 1"
-        )
+        # Не глотать разговор — пусть reflect / чат решат.
+        return False, ""
     return True, apply_prompt_decision(config, session, decision, payload)

@@ -281,6 +281,34 @@ def test_lore_read_does_not_auto_shoot(tmp_path, monkeypatch):
     assert out_ok.handled and out_ok.auto_fire
 
 
+def test_creative_fantasy_creatures_not_auto_png(tmp_path, monkeypatch):
+    """«Придумай тварей из фентези/аниме» → reflect, не PNG+NSFW LoRA."""
+    _mock_look(monkeypatch)
+    cfg = _cfg(tmp_path)
+    img = _png(tmp_path / "body.png")
+    assign_character_ref(cfg, "viu", img)
+    text = (
+        "Нет, солнце моё, придумывай новое. Мы же с тобой умные. "
+        "Повспоминай интересных тварей из фентези книг, из аниме, из фильмов."
+    )
+    out = try_handle_comfy_chat(cfg, text)
+    assert not out.handled
+    assert not out.start_shoot
+    assert not out.auto_fire
+
+    # Без рефа — тоже.
+    cfg2 = _cfg(tmp_path / "noref")
+    out2 = try_handle_comfy_chat(cfg2, text)
+    assert not out2.handled
+
+    # Явная съёмка с фентези — всё ещё Comfy.
+    out_ok = try_handle_comfy_chat(cfg, "сними себя в фентезийном пейзаже")
+    assert out_ok.handled and out_ok.start_shoot
+
+    out_draw = try_handle_comfy_chat(cfg, "нарисуй интересных тварей из фентези")
+    assert out_draw.handled and out_draw.start_shoot
+
+
 def test_scene_at_window_still_shoots(tmp_path, monkeypatch):
     _mock_look(monkeypatch)
     cfg = _cfg(tmp_path)
