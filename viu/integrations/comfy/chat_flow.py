@@ -129,6 +129,8 @@ class ChatFlowOutcome:
     wan_positive: str = ""
     wan_negative: str = ""
     lora_indices: List[int] = field(default_factory=list)
+    shoot_mode: str = ""  # t2i | i2i | "" (video default)
+    seed_image_path: str = ""
     # ("photo"|"video", path)
 
 
@@ -465,15 +467,16 @@ def _shoot_confirm_message(text: str) -> str:
 
 
 def _invent_directed_package(
-    config: Config, text: str, *, look_ru: str = ""
-) -> Tuple[str, str, str, str, List[int], List[str], str]:
+    config: Config, text: str, *, look_ru: str = "", has_image: bool = False
+) -> Tuple[str, str, str, str, List[int], List[str], str, str]:
     """Промпт + LoRA для directed shoot без панели.
 
     Returns:
-        (process/action, positive, negative, show_style, lora_indices, lora_names, brief)
+        (process, positive, negative, show_style, lora_indices, lora_names, brief, shoot_mode)
     """
     from .lora import apply_recommended_loras_to_session
     from .prompt_invent import format_invent_brief, invent_prompt_package
+    from .shoot_settings import MODE_I2I, MODE_T2I
 
     pkg = invent_prompt_package(
         config, text or "", look_ru=look_ru or get_pending_look(config)
@@ -483,6 +486,8 @@ def _invent_directed_package(
         config, scratch, pkg.lora_query_tags, limit=2
     )
     brief = format_invent_brief(pkg, lora_names=names or None)
+    # Фото/реф → I2I PNG; иначе T2I PNG (не видео-клип).
+    shoot_mode = MODE_I2I if has_image else MODE_T2I
     return (
         pkg.process,
         pkg.positive,
@@ -491,6 +496,7 @@ def _invent_directed_package(
         list(indices),
         list(names),
         brief,
+        shoot_mode,
     )
 
 
@@ -654,8 +660,11 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
         lora_idx: List[int] = []
         show_style = "realism"
         render_profile = ""
+        shoot_mode = ""
+        seed_path = ""
         if directed:
             start = True
+            seed_src = image if image is not None and image.is_file() else None
             (
                 shoot_action,
                 wan_pos,
@@ -664,11 +673,17 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
                 lora_idx,
                 _lora_names,
                 invent_brief,
+                shoot_mode,
             ) = _invent_directed_package(
-                config, body, look_ru=look_text or get_pending_look(config)
+                config,
+                body,
+                look_ru=look_text or get_pending_look(config),
+                has_image=seed_src is not None,
             )
+            if seed_src is not None:
+                seed_path = str(seed_src)
             auto_fire = True
-            # Аниме-правка — шоу-профиль; остальное MoCap с готовым Wan.
+            # Аниме-правка — шоу-профиль; still PNG всё равно через shoot_mode.
             if show_style == "anime":
                 render_profile = "show"
             bits.append(invent_brief)
@@ -694,6 +709,8 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
                 wan_positive=wan_pos,
                 wan_negative=wan_neg,
                 lora_indices=lora_idx,
+                shoot_mode=shoot_mode,
+                seed_image_path=seed_path,
             )
 
     if image is not None and image.is_file():
@@ -729,7 +746,8 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
                 lora_idx,
                 _names,
                 brief,
-            ) = _invent_directed_package(config, body)
+                shoot_mode,
+            ) = _invent_directed_package(config, body, has_image=True)
             return ChatFlowOutcome(
                 True,
                 brief,
@@ -741,6 +759,8 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
                 wan_positive=wan_pos,
                 wan_negative=wan_neg,
                 lora_indices=lora_idx,
+                shoot_mode=shoot_mode,
+                seed_image_path=str(image),
             )
 
     if _wants_lora(body):
@@ -755,7 +775,8 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
             lora_idx,
             _names,
             brief,
-        ) = _invent_directed_package(config, body)
+            shoot_mode,
+        ) = _invent_directed_package(config, body, has_image=False)
         return ChatFlowOutcome(
             True,
             brief,
@@ -767,6 +788,7 @@ def try_handle_comfy_chat(config: Config, text: str) -> ChatFlowOutcome:
             wan_positive=wan_pos,
             wan_negative=wan_neg,
             lora_indices=lora_idx,
+            shoot_mode=shoot_mode,
         )
 
     # Comfy без явной сцены — коротко, по-человечески

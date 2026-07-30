@@ -69,13 +69,17 @@ def run_single_angle(
     from .shoot_settings import (
         DEFAULT_MOCAP_FRAMES,
         length_from_meta,
+        mode_is_image,
         resolve_workflow_for_shoot,
+        shoot_mode_from_meta,
         unet_from_meta,
     )
     from .show_profile import SHOW_LENGTH
 
     sess = load_session(config, COMFY_TOPIC)
     meta = sess.meta if sess is not None and isinstance(sess.meta, dict) else {}
+    shoot_mode = shoot_mode_from_meta(meta)
+    still = mode_is_image(shoot_mode)
     unet_name = unet_from_meta(meta)
     unet_note = ""
     if unet_name:
@@ -139,7 +143,7 @@ def run_single_angle(
     )
     if workflow_name:
         wf_name = workflow_name
-    use_i2v = has_seed and wf_name == "i2v"
+    use_i2v = has_seed and wf_name in ("i2v", "i2i")
     try:
         wf = load_workflow(config, wf_name)
     except (FileNotFoundError, ValueError, OSError) as exc:
@@ -181,19 +185,32 @@ def run_single_angle(
 
     comfy_names = fetch_comfy_lora_names(client) if use_loras else []
     wf = inject_loras(wf, use_loras, comfy_lora_names=comfy_names)
-    if use_i2v and wf_name == "i2v":
+    if use_i2v and wf_name in ("i2v", "i2i"):
         from .workflows import inject_end_seed_image, inject_seed_image
 
         wf = inject_seed_image(wf, seed_image_name.strip())
-        # Конечный эталон — если нода/шаблон умеет end_image.
         end_name = str(meta.get("i2v_end_seed_comfy") or "").strip()
-        if end_name:
+        if end_name and wf_name == "i2v":
             wf = inject_end_seed_image(wf, end_name)
 
     length_frames = length_from_meta(
         meta, default=SHOW_LENGTH if show else DEFAULT_MOCAP_FRAMES
     )
-    if show:
+    if still:
+        from .workflows import prepare_still_workflow
+
+        still_prefix = file_prefix if file_prefix.startswith("viu_") else f"viu_still_{base_slug}_{angle.id}"
+        if "show" in (base_slug or "") or show:
+            still_prefix = f"viu_still_{base_slug or 'chat'}_{angle.id}"
+        wf = prepare_still_workflow(
+            wf,
+            action=action,
+            filename_prefix=still_prefix,
+            unet_name=unet_name or "",
+        )
+        file_prefix = still_prefix
+        length_frames = 1
+    elif show:
         from .workflows import prepare_show_workflow
 
         wf = prepare_show_workflow(
@@ -217,10 +234,12 @@ def run_single_angle(
 
     face_note = ""
     i2v_note = mode_note
-    if use_i2v and wf_name == "i2v":
-        i2v_note = ((i2v_note + "; ") if i2v_note else "") + f"I2V seed={seed_image_name.strip()}"
-    elif has_seed and wf_name != "i2v":
-        i2v_note = ((i2v_note + "; ") if i2v_note else "") + "эталон есть, но I2V не готов — T2V"
+    if still:
+        i2v_note = ((i2v_note + "; ") if i2v_note else "") + "still PNG"
+    if use_i2v and wf_name in ("i2v", "i2i"):
+        i2v_note = ((i2v_note + "; ") if i2v_note else "") + f"seed={seed_image_name.strip()}"
+    elif has_seed and wf_name not in ("i2v", "i2i"):
+        i2v_note = ((i2v_note + "; ") if i2v_note else "") + "эталон есть, но I2V/I2I не готов"
     if show and unet_note:
         i2v_note = ((i2v_note + "; ") if i2v_note else "") + f"шоу: {unet_note}"
     i2v_note = ((i2v_note + "; ") if i2v_note else "") + f"length={length_frames}"
@@ -268,27 +287,52 @@ def run_single_angle(
         return (
             False,
             f"prompt_id={prompt_id} без outputs (угол {angle.id}). "
-            "Проверь SaveVideo / VHS_VideoCombine в workflow.",
+            + (
+                "Проверь SaveImage в workflow (T2I/I2I)."
+                if still
+                else "Проверь SaveVideo / VHS_VideoCombine в workflow."
+            ),
             [],
         )
 
-    files = sorted(
-        files,
-        key=lambda m: (
-            0 if str(m.get("filename", "")).lower().endswith(".mp4") else 1,
-            0 if m.get("kind") == "videos" else 1,
-            m.get("filename") or "",
-        ),
-    )
-    if any(str(m.get("filename", "")).lower().endswith(".mp4") for m in files):
-        files = [m for m in files if str(m.get("filename", "")).lower().endswith(".mp4")]
+    _IMG_EXT = (".png", ".jpg", ".jpeg", ".webp")
+    if still:
+        files = sorted(
+            files,
+            key=lambda m: (
+                0 if str(m.get("filename", "")).lower().endswith(_IMG_EXT) else 1,
+                0 if m.get("kind") == "images" else 1,
+                m.get("filename") or "",
+            ),
+        )
+        img_files = [
+            m
+            for m in files
+            if str(m.get("filename", "")).lower().endswith(_IMG_EXT)
+        ]
+        if img_files:
+            files = img_files
+    else:
+        files = sorted(
+            files,
+            key=lambda m: (
+                0 if str(m.get("filename", "")).lower().endswith(".mp4") else 1,
+                0 if m.get("kind") == "videos" else 1,
+                m.get("filename") or "",
+            ),
+        )
+        if any(str(m.get("filename", "")).lower().endswith(".mp4") for m in files):
+            files = [
+                m for m in files if str(m.get("filename", "")).lower().endswith(".mp4")
+            ]
 
     refs = comfy_refs_dir(config)
     out_dir = comfy_out_dir(config)
     saved: List[str] = []
     copy_notes: List[str] = []
     for i, meta in enumerate(files):
-        ext = Path(meta["filename"]).suffix or ".mp4"
+        default_ext = ".png" if still else ".mp4"
+        ext = Path(meta["filename"]).suffix or default_ext
         name = f"{display_stem}{ext}" if i == 0 else f"{display_stem}_{i}{ext}"
         dest_out = out_dir / name
         try:
@@ -345,16 +389,20 @@ def run_single_angle(
                 saved,
             )
 
-        from .video_health import reactor_black_frame_hint, validate_mocap_mp4
+        if still:
+            if dest_ref.stat().st_size < 64:
+                return False, f"пустой PNG угол {angle.id}: {dest_ref.name}", saved
+        else:
+            from .video_health import reactor_black_frame_hint, validate_mocap_mp4
 
-        v_ok, v_msg = validate_mocap_mp4(dest_ref)
-        if not v_ok:
-            hint = reactor_black_frame_hint() if face_note else ""
-            return (
-                False,
-                f"битый mp4 угол {angle.id}: {v_msg}. {hint}".strip(),
-                saved,
-            )
+            v_ok, v_msg = validate_mocap_mp4(dest_ref)
+            if not v_ok:
+                hint = reactor_black_frame_hint() if face_note else ""
+                return (
+                    False,
+                    f"битый mp4 угол {angle.id}: {v_msg}. {hint}".strip(),
+                    saved,
+                )
 
         saved.append(str(dest_ref))
 
@@ -411,9 +459,15 @@ def run_triple_angles(
 
     seed_name = (seed_image_name or "").strip()
     seed_path, seed_comfy, seed_on = resolve_active_seed(config)
-    from .shoot_settings import MODE_T2V, mode_needs_seed, shoot_mode_from_meta
+    from .shoot_settings import (
+        MODE_T2V,
+        mode_is_image,
+        mode_needs_seed,
+        shoot_mode_from_meta,
+    )
 
     mode = shoot_mode_from_meta(meta)
+    still = mode_is_image(mode)
     # Правило эталона:
     # - i2v/i2i → всегда, если есть
     # - mocap + t2v (дефолт) → как раньше: подхватить эталон если есть (I2V когда готов)
@@ -430,6 +484,11 @@ def run_triple_angles(
     if not use_seed:
         seed_name = ""
 
+    if still:
+        from .angles import THREE_QUARTER
+
+        angles = (THREE_QUARTER,)
+
     results: Dict[str, Any] = {
         "action": action,
         "slug": slug_full,
@@ -439,27 +498,35 @@ def run_triple_angles(
         "seq": seq,
         "angles": {},
         "files": [],
-        "mode": "show_double" if show else "three_quarter_takes",
+        "mode": (
+            "still_image"
+            if still
+            else ("show_double" if show else "three_quarter_takes")
+        ),
         "render_profile": "show" if show else "mocap",
         "shoot_mode": mode,
         "i2v_seed": seed_name,
+        "still": still,
     }
-    n = show_take_count() if show else len(angles)
-    lines: List[str] = [
-        f"Comfy ×{n} "
-        + ("шоу-дубль" if show else "дубля (¾)")
-        + f" — «{action[:80]}»"
-    ]
-    if show:
+    n = 1 if still else (show_take_count() if show else len(angles))
+    if still:
+        lines = [f"Comfy still ({mode}) — «{action[:80]}»"]
+    else:
+        lines = [
+            f"Comfy ×{n} "
+            + ("шоу-дубль" if show else "дубля (¾)")
+            + f" — «{action[:80]}»"
+        ]
+    if show and not still:
         lines.append(f"Профиль: ШОУ ({style})")
     lines.append(f"Режим: {mode}")
     if seed_name:
-        lines.append(f"Эталон I2V: {seed_name}")
+        lines.append(f"Эталон: {seed_name}")
     if queue_note:
         lines.insert(0, queue_note)
     any_ok = False
     for i, angle in enumerate(angles):
-        take_action = diversify_action(action, i)
+        take_action = action if still else diversify_action(action, i)
         ok, msg, files = run_single_angle(
             config,
             action=take_action,
@@ -494,7 +561,7 @@ def run_triple_angles(
 
     from .vision_review import review_triple_results, vision_review_enabled
 
-    if vision_review_enabled() and any_ok:
+    if vision_review_enabled() and any_ok and not still:
         results, vision_msg = review_triple_results(config, results, action=action)
         if vision_msg:
             lines.append(vision_msg)
