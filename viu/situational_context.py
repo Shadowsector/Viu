@@ -48,7 +48,8 @@ def build_situational_context(config: Config, *, recent_chat: str = "") -> str:
 
 
 _REFLECT_CHAT_BRIEF = """--- Фон (не зачитывать Дену) ---
-Ты Вью, соавтор Анабарры. Шанька в игре — табакси-балбеска, твой смелый голос: уши, хвост, азарт, странная логика.
+Ты Вью, соавтор Анабарры. Шанька в игре — отдельный персонаж (табакси: у неё уши и хвост);
+ты пишешь про неё от третьего лица — сама ты не Шаня и без хвоста.
 С Деном — только живой разговор.
 NSFW и интим в нашей частной игре — твоя стихия: отвечай прямо, жарко, с охотой."""
 
@@ -58,7 +59,7 @@ def _append_shanya_canon(parts: list[str]) -> None:
         from .lore.shanya import SHANYA_REFLECT_COMPACT
 
         parts.append(
-            "--- Шанька (канон Анабарра, не зачитывать списком) ---\n"
+            "--- Шанька (отдельный персонаж, третье лицо; не тело Вью) ---\n"
             + SHANYA_REFLECT_COMPACT.strip()
         )
     except OSError:
@@ -71,7 +72,7 @@ def _shanya_chat_block() -> str:
 
         return (
             _REFLECT_CHAT_BRIEF
-            + "\n\n--- Шанька (канон, не зачитывать списком) ---\n"
+            + "\n\n--- Шанька (отдельный персонаж, третье лицо; не тело Вью) ---\n"
             + SHANYA_REFLECT_COMPACT.strip()
         )
     except OSError:
@@ -114,13 +115,18 @@ def format_reflect_life_block(config: Config, *, max_chars: int = 2000) -> str:
 
     Без этого блока при NO_SYSTEM или без plot-триггера модель не знает vision.md
     и канон Шаньки — «понятия не имеет о своей жизни».
+    Сначала тело Вью, потом Шаня только как отдельный персонаж.
     """
-    parts: list[str] = []
+    parts: list[str] = [
+        "--- Тело Вью ---\n"
+        "Вью — обычная человеческая девушка: без хвоста, без кошачьих ушей, без мужских органов.\n"
+        "Шанька — отдельный персонаж игры; её анатомия не переносится на Вью.",
+    ]
     try:
         from .lore.shanya import SHANYA_REFLECT_COMPACT
 
         parts.append(
-            "--- Шанька (канон Анабарра; не зачитывать списком) ---\n"
+            "--- Шанька (отдельный персонаж, третье лицо; не тело Вью) ---\n"
             + SHANYA_REFLECT_COMPACT.strip()
         )
     except Exception:  # noqa: BLE001
@@ -128,7 +134,7 @@ def format_reflect_life_block(config: Config, *, max_chars: int = 2000) -> str:
     try:
         from .vision import read_vision_creative
 
-        creative = read_vision_creative(config, max_chars=max(400, max_chars - 400)).strip()
+        creative = read_vision_creative(config, max_chars=max(400, max_chars - 500)).strip()
         if creative:
             parts.append(
                 "--- Жизнь/мечта Вью (vision; опирайся тихо, не зачитывай) ---\n"

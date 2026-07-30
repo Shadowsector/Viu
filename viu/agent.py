@@ -688,6 +688,7 @@ class Agent:
             NSFW_AFFIRM_FALLBACK,
             REFLECT_BARE,
             REFLECT_BARE_MINIMAL,
+            REFLECT_BODY_BOUNDARY,
             REFLECT_IDENTITY_ANCHOR,
             REFLECT_IMMERSION_ANCHOR,
             REFLECT_LIVING_HINT,
@@ -764,6 +765,7 @@ class Agent:
                     system += "\n\n" + life
             except Exception:  # noqa: BLE001
                 pass
+            system += "\n\n" + REFLECT_BODY_BOUNDARY
         else:
             # По умолчанию system = полный REFLECT_VOICE (жизнь/характер из reflect).
             # VIU_REFLECT_NO_SYSTEM=1 — только Modelfile; тогда якорь/жизнь едут в user.
@@ -881,6 +883,8 @@ class Agent:
                         "не зачитывай markdown списком) ---\n"
                         + plot_notes
                     )
+            # Граница тела — всегда последней (голос Anabarra её не вычеркивает).
+            _attach(REFLECT_BODY_BOUNDARY)
             if extra_user_blocks:
                 user_msg = user_text + "\n\n" + "\n\n".join(extra_user_blocks)
 
@@ -1310,6 +1314,9 @@ class Agent:
             system += hint
         if use_notes:
             system += "\n\n--- Заметки и память сюжета ---\n" + notes
+        from .prompts.reflect_mode import REFLECT_BODY_BOUNDARY
+
+        system += "\n\n" + REFLECT_BODY_BOUNDARY
 
         messages: List[Dict[str, str]] = []
         if not reflect_no_system():
