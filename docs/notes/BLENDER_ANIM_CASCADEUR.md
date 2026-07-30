@@ -9,7 +9,7 @@
 - Unity: Export → `U:\Anabarra\Animations` → «Обновить аниматор».
 
 Двое+ персонажей — **не** dual-mocap: клип Шани + клип партнёра + сокеты/IK
-(`interaction_catalog.assembly` → `assembly_job.json`).
+(`interaction_catalog.assembly` → `assembly_job.json` → Blender `assembly.blend`).
 
 ## Инструменты
 
@@ -44,6 +44,7 @@ Library/Lab/Anims/BlenderOut/       ← .blend с клипом
 Library/Lab/Anims/CascadeurReady/   ← *_anim.fbx
 Library/Cascadeur/Inbox/            ← копия для импорта
 Library/Lab/Interactions/<slug>/assembly/assembly_job.json  ← socket sync plan
+Library/Lab/Interactions/<slug>/assembly/assembly.blend     ← клипы + markers + socket
 ```
 
 Риг Шани: `Lab/Models/CascadeurReady/*Shanya*.blend` (или `blend_file=` явно).
@@ -56,7 +57,7 @@ Library/Lab/Interactions/<slug>/assembly/assembly_job.json  ← socket sync plan
 
 Пол / колени: `idle` → `kneel` → `all_fours` (граф в `animation_catalog`).
 
-Партнёр: отдельные клипы + `active_socket` + `SyncMarker` — см. `INTERACTION_PIPELINE.md` § фаза 5.
+Партнёр: отдельные клипы → Lab assembly (сцена) → позже constraints на `active_socket` — см. `INTERACTION_PIPELINE.md` § фаза 5.
 
 ## Ручной импорт в Cascadeur
 

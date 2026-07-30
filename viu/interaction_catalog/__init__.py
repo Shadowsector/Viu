@@ -1,6 +1,10 @@
 """Каталог совместных анимаций."""
 
-from .assembly import build_socket_sync_job, run_interaction_assembly
+from .assembly import (
+    build_socket_sync_job,
+    run_assembly_blender_job,
+    run_interaction_assembly,
+)
 from .blocking import build_blocking_job, resolve_actor_asset, run_interaction_blocking
 from .format_reflect import format_interactions_for_reflect
 from .master_comfy import run_interaction_master_draft, snap_wan_length
@@ -40,6 +44,7 @@ __all__ = [
     "interaction_lab_root",
     "interaction_scene_dir",
     "resolve_actor_asset",
+    "run_assembly_blender_job",
     "run_interaction_assembly",
     "run_interaction_blocking",
     "run_interaction_master_draft",
