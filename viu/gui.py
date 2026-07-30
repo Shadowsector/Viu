@@ -878,6 +878,35 @@ class ViuGUI:
         self._on_send()
         return "break"
 
+    def _maybe_handle_compose_chat(
+        self, text: str, *, echo_user: bool = True, notify_telegram: bool = False
+    ) -> bool:
+        """Сочинение квестов/зёрен + improve — без LLM."""
+        try:
+            from .self_compose import try_handle_compose_chat
+
+            out = try_handle_compose_chat(self.agent.config, text)
+            if not out.handled:
+                return False
+            if echo_user:
+                self._append("ты", text)
+                self._record_llm_turn("user", text)
+            self._append("Вью", out.message, tag="tool")
+            self._record_llm_turn("assistant", out.message)
+            try:
+                from .story_memory import get_story_memory
+
+                get_story_memory(self.agent.config).add_exchange(
+                    text, out.message, source="chat", tags=["compose"]
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            if notify_telegram and self._telegram is not None and out.message:
+                self._telegram.notify_chat(out.message[:3500])
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
     def _maybe_handle_comfy_chat(
         self, text: str, *, echo_user: bool = True, notify_telegram: bool = False
     ) -> bool:
@@ -1036,6 +1065,8 @@ class ViuGUI:
         if self._maybe_handle_comfy_reply(text):
             return
         if self._maybe_handle_comfy_chat(text):
+            return
+        if self._maybe_handle_compose_chat(text):
             return
         from .integrations.telegram.router import route_user_message
         from .modes import mode_log_label
@@ -2013,6 +2044,15 @@ class ViuGUI:
         except Exception:  # noqa: BLE001
             pass
 
+        try:
+            if self._maybe_handle_compose_chat(
+                text, echo_user=False, notify_telegram=True
+            ):
+                self._telegram_waiting_reply = False
+                return
+        except Exception:  # noqa: BLE001
+            pass
+
         from .gui_busy import can_accept_chat
 
         # Lab/Comfy ≠ LLM: болтовня из Telegram идёт, пока модель не думает.
@@ -2418,6 +2458,13 @@ class ViuGUI:
         if is_away(self.agent.config):
             return
         if in_quiet_hours(self.agent.config):
+            # Ночь: тихое зерно вместо пинга Дена (self-compose).
+            try:
+                from .self_compose import maybe_night_think
+
+                maybe_night_think(self.agent.config)
+            except Exception:  # noqa: BLE001
+                pass
             return
 
         ensure_vision(self.agent.config)
@@ -2464,6 +2511,12 @@ class ViuGUI:
         if not is_away(self.agent.config):
             return
         if in_quiet_hours(self.agent.config):
+            try:
+                from .self_compose import maybe_night_think
+
+                maybe_night_think(self.agent.config)
+            except Exception:  # noqa: BLE001
+                pass
             return
 
         ensure_vision(self.agent.config)
