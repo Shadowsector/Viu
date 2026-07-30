@@ -118,6 +118,46 @@ def test_remember_with_conversation_context(tmp_path: Path, monkeypatch) -> None
     assert "домового" in text.lower() or "сарай" in text.lower()
     assert _SECTION_EXPLICIT in text
 
+    from viu.event_memory import get_event_memory
+
+    events = get_event_memory(cfg).recent(5)
+    assert any("домово" in (e.what + e.title).lower() or "сарай" in (e.what + e.title).lower() for e in events)
+
+
+def test_remember_comfy_scene_not_event(tmp_path: Path, monkeypatch) -> None:
+    """«запомни сцену, потом в Комфи» — в explicit, не в event_memory."""
+    from viu.config import Config
+    from viu.event_memory import format_events_digest, get_event_memory
+    from viu.viu_memory import (
+        record_explicit_memory,
+        should_mirror_remember_to_events,
+    )
+
+    monkeypatch.setenv("VIU_ROOT", str(tmp_path / "Viu"))
+    root = tmp_path / "Viu"
+    root.mkdir()
+    cfg = Config(root=root, data_dir=root / ".viu").ensure_dirs()
+
+    user = "запомни эту сцену, потом сделаешь её в Комфи"
+    assert not should_mirror_remember_to_events(
+        user, "эту сцену, потом сделаешь её в Комфи"
+    )
+    assert record_explicit_memory(cfg, user)
+    assert get_event_memory(cfg).recent(10) == []
+    text = read_viu_memory(cfg)
+    assert "комфи" in text.lower() or "сцен" in text.lower()
+
+    # Старый мусор в файле не попадает в digest reflect.
+    get_event_memory(cfg).add(
+        title="Запись из чата",
+        what="эту сцену,  потом сделаешь её в Комфи",
+        tags=["explicit", "remember"],
+        source="chat",
+    )
+    digest = format_events_digest(cfg)
+    assert "Комфи" not in digest
+    assert "Запись из чата" not in digest
+
 
 def test_viu_memory_explicit_and_summary(tmp_path: Path, monkeypatch) -> None:
     from viu.config import Config

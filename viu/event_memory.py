@@ -143,7 +143,7 @@ class EventMemory:
         return ev
 
     def format_digest(self, *, limit: int = 10, max_chars: int = 1600) -> str:
-        recent = self.recent(limit)
+        recent = [ev for ev in self.recent(limit * 2) if not _event_is_noise(ev)][:limit]
         if not recent:
             return ""
         lines = [
@@ -170,6 +170,28 @@ class EventMemory:
         if len(text) > max_chars:
             return text[:max_chars].rstrip() + "\n…"
         return text
+
+
+def _event_is_noise(ev: StoryEvent) -> bool:
+    """Старые «Запись из чата» про Комфи и пустые remember-обрывки — не в digest."""
+    what = (ev.what or "").strip()
+    title = (ev.title or "").strip()
+    tags = {str(t).lower() for t in (ev.tags or [])}
+    if not what:
+        return True
+    # Meta/tool note that leaked into events
+    try:
+        from .viu_memory import looks_like_meta_or_tool_note
+
+        if looks_like_meta_or_tool_note(f"{title} {what}"):
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    if title == "Запись из чата" and (
+        len(what) < 48 or "remember" in tags or not (ev.who or "").strip()
+    ):
+        return True
+    return False
 
 
 def get_event_memory(config: Config) -> EventMemory:
