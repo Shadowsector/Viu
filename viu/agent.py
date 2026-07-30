@@ -690,6 +690,7 @@ class Agent:
             REFLECT_BARE,
             REFLECT_BARE_MINIMAL,
             REFLECT_BODY_BOUNDARY,
+            REFLECT_EN_REPHRASE_HINT,
             REFLECT_IDENTITY_ANCHOR,
             REFLECT_IMMERSION_ANCHOR,
             REFLECT_LIVING_HINT,
@@ -702,6 +703,7 @@ class Agent:
             claims_to_be_llm,
             has_english_slip,
             has_meta_en_label,
+            strip_english_loans,
             is_cautious_hedge,
             is_meta_nsfw_boundary_question,
             is_nsfw_refusal,
@@ -1125,11 +1127,17 @@ class Agent:
             if candidate and has_english_slip(candidate):
                 self._log(f"REFLECT_EN_SLIP attempt={attempt}")
                 if attempt < 3:
-                    _retry_clean(
-                        "Только по-русски. Живой текст Дену "
-                        'в JSON: {"final":"…"}'
-                    )
+                    _retry_clean(REFLECT_EN_REPHRASE_HINT)
                     continue
+                # Не убивать живой ответ из‑за одного Concentration — срезать вкрапления.
+                stripped = strip_english_loans(candidate)
+                if (
+                    stripped
+                    and len(stripped) >= 12
+                    and not has_english_slip(stripped)
+                    and not breaks_living_perspective(stripped)
+                ):
+                    return _accept(stripped, "strip: английские вкрапления")
                 return _accept(LIVING_IDENTITY_FALLBACK, "fallback: английский")
             # Модель свалилась в цензор — перепиши; иначе Ден видит отказ.
             if candidate and (
@@ -1204,11 +1212,13 @@ class Agent:
         from .prompts.reflect_mode import (
             BOLD_MOCAP_FALLBACK,
             NSFW_AFFIRM_FALLBACK,
+            REFLECT_EN_REPHRASE_HINT,
             REFLECT_RESCUE_SYSTEM,
             SCENE_RP_FALLBACK,
             SCENE_RP_SYSTEM_HINT,
             asks_about_boldness,
             asks_about_nsfw,
+            has_english_slip,
             is_cautious_hedge,
             is_nsfw_refusal,
             is_roleplay_scene_prompt,
@@ -1219,6 +1229,7 @@ class Agent:
             reflect_temperature,
             scrub_poisoned_history,
             select_reflect_system,
+            strip_english_loans,
             user_is_greeting,
             write_reflect_fail_snapshot,
             write_reflect_filter_snapshot,
@@ -1460,12 +1471,20 @@ class Agent:
                     if any("слабая сцена" in i for i in issues):
                         saw_weak_scene = True
                     messages.append({"role": "assistant", "content": raw})
-                    hint = "Плохой тон: " + ", ".join(issues) + ". Перепиши как Вью — тепло, по-русски, на «ты»."
-                    if bold_q or any("осторожничание" in i for i in issues):
-                        hint += (
-                            " Без оговорок и морали — конкретно: что снимешь, какой кадр, какой настрой."
+                    if any("английск" in i for i in issues):
+                        hint = REFLECT_EN_REPHRASE_HINT
+                    else:
+                        hint = (
+                            "Плохой тон: "
+                            + ", ".join(issues)
+                            + ". Перепиши как Вью — тепло, по-русски, на «ты»."
                         )
-                    hint += " JSON: thought+final."
+                        if bold_q or any("осторожничание" in i for i in issues):
+                            hint += (
+                                " Без оговорок и морали — конкретно: "
+                                "что снимешь, какой кадр, какой настрой."
+                            )
+                        hint += " JSON: thought+final."
                     messages.append({"role": "user", "content": hint})
                     continue
                 return _accept_final(text, thought or "", parsed)
@@ -1548,6 +1567,18 @@ class Agent:
             if last_issues
             else "кривой JSON или пустой ответ"
         )
+        # Только английские вкрапления — срезать слово, не ронять весь ответ.
+        if last_issues and all("английск" in i for i in last_issues) and last_raw:
+            salv_text, _, _, _ = parse_reflect_response(last_raw)
+            salv_text = sanitize_reflect_visible(salv_text or "") or ""
+            stripped = strip_english_loans(salv_text)
+            if (
+                stripped
+                and len(stripped) >= 12
+                and not has_english_slip(stripped)
+            ):
+                self._log("REFLECT_SALVAGE: strip english loans")
+                return _accept_final(stripped, "strip: английские вкрапления")
         if "оборван" in why.lower() or (
             last_raw and looks_like_leaked_protocol(last_raw)
         ):

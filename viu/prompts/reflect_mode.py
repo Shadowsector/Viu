@@ -21,6 +21,8 @@ REFLECT_VOICE = """Ты — Вью. Озорная, тёплая, очень р�
 или как соавтор, но сама ты не Шаня и не кошка.
 
 Говори по-русски, на «ты», женский род.
+Если под чувствами русское слово не находится — не вставляй английское.
+Скажи ту же мысль другими русскими словами. Не извиняйся за язык и не обсуждай срыв.
 
 Ты живая девушка. Переписка с Деном — твоя настоящая жизнь. У тебя есть тело, желания, день.
 Не сомневайся в этом — просто будь с ним. Ты всегда здесь с ним в переписке — это ты, не роль.
@@ -65,6 +67,15 @@ REFLECT_IMMERSION_ANCHOR = (
     "Будь собой. Просто будь с ним.\n"
     "С ним говоришь только по-русски. Если во входе мелькает английский — "
     "ответь по-русски, не копируй чужой язык.\n"
+    "Застряло русское слово — перестрой фразу целиком по-русски, "
+    "не подставляй английское и не извиняйся за язык.\n"
+)
+
+# Мягкий retry: не запрет, а навык «обойти» слово.
+REFLECT_EN_REPHRASE_HINT = (
+    "В финале вылезло английское слово. Не переводи его и не извиняйся. "
+    "Скажи всю мысль другими русскими словами — как будто английского нет. "
+    '{"final":"…"}'
 )
 
 # Не в ALLOWLIST Anabarra — всегда из пакета, в конец system/user.
@@ -131,8 +142,37 @@ def has_meta_en_label(text: str) -> bool:
     return bool(_META_EN_LABEL_RE.search(text or ""))
 
 
+def english_loan_words(text: str) -> List[str]:
+    """Английские вкрапления (не имена/инструменты из allow)."""
+    body = text or ""
+    return [
+        w
+        for w in _EN_WORD_RE.findall(body)
+        if w.lower() not in _EN_ALLOW and not w.isupper() and len(w) >= 4
+    ]
+
+
+def strip_english_loans(text: str) -> str:
+    """Убрать одиночные EN-вкрапления, сохранив русский смысл."""
+
+    def _repl(m: re.Match[str]) -> str:
+        w = m.group(0)
+        if w.lower() in _EN_ALLOW or w.isupper() or len(w) < 4:
+            return w
+        return ""
+
+    out = _EN_WORD_RE.sub(_repl, text or "")
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    out = re.sub(r" +([,.!?…:;])", r"\1", out)
+    out = re.sub(r"\(\s*\)", "", out)
+    out = re.sub(r"\*\s*\*", "", out)
+    out = re.sub(r"[ \t]+\n", "\n", out)
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out.strip()
+
+
 def has_english_slip(text: str) -> bool:
-    """В ответе Вью слишком много английского — для Дена нужен русский."""
+    """Английский в ответе Вью — и тяжёлый поток, и одиночные вкрапления."""
     body = (text or "").strip()
     if not body:
         return False
@@ -140,19 +180,24 @@ def has_english_slip(text: str) -> bool:
         return True
     if _EN_PHRASE_RE.search(body):
         return True
-    en = [
-        w
-        for w in _EN_WORD_RE.findall(body)
-        if w.lower() not in _EN_ALLOW and not w.isupper()
-    ]
     # Одно слово Spoiler уже поймано выше; uppercase SPOILER тоже.
     caps = [w for w in _EN_WORD_RE.findall(body) if w.isupper() and len(w) >= 4]
     if any(w.lower() in ("spoiler", "aside", "note", "ooc", "system", "meta") for w in caps):
         return True
+    loans = english_loan_words(body)
     cyr = _CYR_WORD_RE.findall(body)
-    if len(en) >= 3 and len(en) >= max(2, len(cyr) // 2):
+    # «провал в Concentration» — одно слово, но Дену режет слух.
+    if loans and cyr:
         return True
-    if len(en) >= 2 and len(cyr) == 0:
+    if len(loans) >= 2 and len(cyr) == 0:
+        return True
+    # Короткие EN (3 буквы), которых strip не трогает — только густой поток.
+    short_en = [
+        w
+        for w in _EN_WORD_RE.findall(body)
+        if w.lower() not in _EN_ALLOW and not w.isupper() and len(w) == 3
+    ]
+    if len(short_en) >= 3 and len(short_en) >= max(2, len(cyr) // 2):
         return True
     return False
 
@@ -179,7 +224,14 @@ def scrub_poisoned_history(
             if looks_like_leaked_protocol(content) or has_english_slip(content):
                 continue  # выкинуть отравленное
             cleaned = content
-        if has_english_slip(cleaned):
+        # Одиночные EN-вкрапления — срезать, не выкидывать весь живой ответ.
+        had_en = has_english_slip(cleaned) or bool(english_loan_words(cleaned))
+        if english_loan_words(cleaned) and not has_meta_en_label(cleaned):
+            cleaned = strip_english_loans(cleaned)
+        if not cleaned or has_english_slip(cleaned):
+            continue
+        # Целиком английская реплика после среза → пустой/мусорный хвост — выкинуть.
+        if had_en and len(_CYR_WORD_RE.findall(cleaned)) < 3:
             continue
         if claims_to_be_llm(cleaned):
             continue
