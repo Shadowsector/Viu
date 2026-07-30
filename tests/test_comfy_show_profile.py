@@ -155,6 +155,14 @@ def test_gui_alias_show_double():
     assert parsed2 == ("comfy_show", {"style": "anime"})
     assert "comfy_show" in reg.names()
 
+    from viu.gui_actions import GUI_ACTIONS
+
+    show_btn = next(a for a in GUI_ACTIONS if a.action_id == "show_double_anime")
+    assert show_btn.tool == "__comfy_shoot__"
+    assert show_btn.tool_args.get("style") == "anime"
+    panel = next(a for a in GUI_ACTIONS if a.action_id == "comfy_shoot_panel")
+    assert panel.tool == "__comfy_shoot__"
+
 
 def test_inject_sampler_only_first_ksampler():
     wf = {

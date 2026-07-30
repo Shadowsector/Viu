@@ -1110,6 +1110,11 @@ class ViuGUI:
         if action.tool == "__comfy_studio__":
             self._open_comfy_studio()
             return
+        if action.tool == "__comfy_shoot__":
+            profile = str((action.tool_args or {}).get("profile") or "")
+            style = str((action.tool_args or {}).get("style") or "realism")
+            self._open_comfy_studio(initial_profile=profile, initial_style=style)
+            return
         if action.tool == "__comfy_prompt__":
             self._open_comfy_shot_queue(focus_lab=True)
             return
@@ -1522,6 +1527,7 @@ class ViuGUI:
             "biped_guide",
             "show_double",
             "show_double_anime",
+            "comfy_shoot_panel",
         )
         by_id = {a.action_id: a for a in GUI_ACTIONS}
         for aid in hub_ids:
@@ -2570,23 +2576,36 @@ class ViuGUI:
             )
             from .lab.session import new_session, save_session
 
-            if not chat_action:
-                chat_action = "standing relaxed in soft light, cinematic atmosphere"
-            chat_action = clean_action_for_wan(chat_action)
             existing = load_session(self.agent.config, COMFY_TOPIC)
             if existing is None:
                 existing = new_session(COMFY_TOPIC)
+            if not chat_action:
+                chat_action = (
+                    str(existing.meta.get("approved_action") or "").strip()
+                    or str(existing.meta.get("action") or "").strip()
+                    or "standing relaxed in soft light, cinematic atmosphere"
+                )
+            chat_action = clean_action_for_wan(chat_action)
+            keep = bool(existing.meta.get("prompt_user_edited"))
+            kept_pos = str(existing.meta.get("wan_positive") or "") if keep else ""
+            kept_neg = str(existing.meta.get("wan_negative") or "") if keep else ""
             existing.status = "running"
             existing.step = 0
             arm_show_profile(
                 existing.meta,
                 style=show_style or "realism",
                 action=chat_action,
+                keep_prompts=keep,
             )
             existing.meta["catalog_slug"] = "show"
             existing.meta.pop("lora_pick_done", None)
             existing.meta.pop("clip_batch_id", None)
             existing.meta.pop("clip_candidate_ids", None)
+            if keep and kept_pos:
+                existing.meta["wan_positive"] = kept_pos
+                existing.meta["prompt_user_edited"] = True
+            if keep and kept_neg:
+                existing.meta["wan_negative"] = kept_neg
             save_session(self.agent.config, existing)
             unet, note = find_show_unet(self.agent.config)
             self._append(
@@ -2594,22 +2613,27 @@ class ViuGUI:
                 f"Шоу-дубль ({show_style or 'realism'}) — {chat_action[:100]}.\n"
                 f"{note}\n"
                 + ("SmoothMix подхвачу. " if unet else "Пока без SmoothMix — cinematic Wan. ")
-                + "Панель в Telegram: Промпт / LoRA, потом «Снять».",
+                + "Снимаю по настройкам панели (промпт / длина / чекпоинт).",
                 tag="viu",
             )
+            start_args = {
+                "topic": COMFY_TOPIC,
+                "run_all": "1",
+                "reset": "0" if keep else "1",
+                "shoot": "1",
+                "action": chat_action,
+                "catalog_slug": "show",
+                "shot_reason": "chat: show double",
+                "render_profile": "show",
+                "show_style": show_style or "realism",
+            }
+            if keep and kept_pos:
+                start_args["_wan_positive"] = kept_pos
+            if keep and kept_neg:
+                start_args["_wan_negative"] = kept_neg
             self._run_tool(
                 "lab_start",
-                {
-                    "topic": COMFY_TOPIC,
-                    "run_all": "1",
-                    "reset": "1",
-                    "shoot": "1",
-                    "action": chat_action,
-                    "catalog_slug": "show",
-                    "shot_reason": "chat: show double",
-                    "render_profile": "show",
-                    "show_style": show_style or "realism",
-                },
+                start_args,
                 label="Шоу-дубль",
                 echo_user=True,
             )
@@ -3091,8 +3115,46 @@ class ViuGUI:
         """Совместимость: открывает объединённый «План MoCap» в режиме lab."""
         self._open_comfy_shot_queue(focus_lab=True)
 
-    def _open_comfy_studio(self) -> None:
+    def _open_comfy_studio(
+        self,
+        *,
+        initial_profile: str = "",
+        initial_style: str = "realism",
+    ) -> None:
         from .integrations.comfy.studio_gui import ComfyStudioCallbacks, open_comfy_studio
+
+        def shoot(profile: str, style: str) -> None:
+            from .lab.comfy_pipeline import COMFY_TOPIC
+            from .lab.session import load_session
+
+            sess = load_session(self.agent.config, COMFY_TOPIC)
+            action = ""
+            if sess is not None:
+                action = str(
+                    sess.meta.get("approved_action")
+                    or sess.meta.get("action")
+                    or ""
+                ).strip()
+            if profile == "show":
+                self._lab_comfy_action(
+                    action=action or None,
+                    render_profile="show",
+                    show_style=style or "realism",
+                )
+            else:
+                self._lab_comfy_action(action=action or None)
+
+        def new_clip(profile: str, style: str) -> None:
+            label = (
+                f"шоу ({style})"
+                if profile == "show"
+                else "MoCap"
+            )
+            self._append(
+                "Вью",
+                f"Новый клип — профиль {label}. Правишь в панели → «Снять».",
+                tag="viu",
+            )
 
         cb = ComfyStudioCallbacks(
             on_ensure_comfy=lambda: self._ensure_comfy_from_studio(),
@@ -3104,8 +3166,16 @@ class ViuGUI:
             on_comfy_diag=lambda: self._run_tool(
                 "comfy_diag", {}, label="Диагностика Comfy", echo_user=True
             ),
+            on_shoot=shoot,
+            on_new_clip=new_clip,
         )
-        open_comfy_studio(self.root, self.agent.config, cb)
+        open_comfy_studio(
+            self.root,
+            self.agent.config,
+            cb,
+            initial_profile=initial_profile,
+            initial_style=initial_style,
+        )
 
     def _ensure_comfy_from_studio(self) -> None:
         """Студия «Поднять» — всегда restart, чтобы не залипать на зомби :8188."""

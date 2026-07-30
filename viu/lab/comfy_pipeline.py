@@ -564,8 +564,12 @@ def step_generate_triple(config: Config, session: LabSession) -> StepResult:
     from ..integrations.comfy.seed_pose import resolve_active_seed, stage_seed_for_comfy
     from ..integrations.comfy.show_profile import is_show_profile, show_take_count
 
-    # Шоу-дубль — чистый T2V, без I2V эталона.
-    if not is_show_profile(session.meta):
+    # Эталон I2V: для шоу — только если режим i2v/i2i; для mocap — как раньше.
+    from ..integrations.comfy.shoot_settings import mode_needs_seed, shoot_mode_from_meta
+
+    mode = shoot_mode_from_meta(session.meta)
+    allow_seed = mode_needs_seed(mode) or not is_show_profile(session.meta)
+    if allow_seed:
         # Привязка библиотеки эталонов к slug (если глобальный seed ещё не выбран вручную).
         _path0, _n0, seed_already = resolve_active_seed(config)
         if not seed_already and slug:
