@@ -2766,7 +2766,9 @@ class ViuGUI:
                 )
                 existing.meta["render_profile"] = "show"
             else:
-                existing.meta["render_profile"] = "mocap"
+                existing.meta["render_profile"] = (
+                    "still" if mode in (MODE_T2I, MODE_I2I) else "mocap"
+                )
                 existing.meta.pop("show_style", None)
             if wan_positive.strip():
                 existing.meta["wan_positive"] = wan_positive.strip()
@@ -2785,11 +2787,10 @@ class ViuGUI:
             existing.meta.pop("clip_candidate_ids", None)
             existing.meta.pop("clip_kept_id", None)
             save_session(self.agent.config, existing)
-            kind = "картинку" if mode in (MODE_T2I, MODE_I2I) else "клип"
+            kind = "PNG" if mode in (MODE_T2I, MODE_I2I) else "клип"
             self._append(
                 "Вью",
-                f"Снимаю сама ({mode}) — {chat_action[:120]}.\n"
-                f"Болтаем дальше; когда будет готово — пришлю {kind}.",
+                f"Ок — {kind} ({mode}). Пришлю.",
                 tag="viu",
             )
             start_args = {
@@ -2801,9 +2802,14 @@ class ViuGUI:
                 "catalog_slug": existing.meta["catalog_slug"],
                 "shot_reason": "chat: invent auto",
                 "from_shoot_panel": "1",
+                "auto_invent_shoot": "1",
+                "shoot_mode": mode,
                 "render_profile": existing.meta.get("render_profile") or "mocap",
                 "show_style": show_style or "realism",
             }
+            if mode in (MODE_T2I, MODE_I2I):
+                start_args["video_length_frames"] = "1"
+                start_args["render_profile"] = "still"
             if wan_positive.strip():
                 start_args["_wan_positive"] = wan_positive.strip()
             if wan_negative.strip():

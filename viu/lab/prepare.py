@@ -67,6 +67,10 @@ def _prepare_lab_session_inner(
                     "shoot_mode",
                     "video_length_frames",
                     "shoot_unet",
+                    "auto_invent_shoot",
+                    "wan_positive",
+                    "wan_negative",
+                    "prompt_user_edited",
                 ):
                     val = (old.meta or {}).get(key)
                     if val is None or val == "" or val == []:
@@ -109,12 +113,44 @@ def _prepare_lab_session_inner(
         notes.append(
             f"Обновление Viu ({session.viu_build_stamp or '?'} → {current_stamp}) — lab с шага 1."
         )
+        preserved_build: dict = {}
+        if topic == "comfy":
+            for key in (
+                "shoot_mode",
+                "video_length_frames",
+                "auto_invent_shoot",
+                "from_shoot_panel",
+                "wan_positive",
+                "wan_negative",
+                "prompt_user_edited",
+                "action",
+                "approved_action",
+                "catalog_slug",
+                "shot_reason",
+                "setup_lora_indices",
+                "selected_loras",
+                "lora_last_pick",
+                "lora_pick_done",
+                "render_profile",
+                "show_style",
+                "i2v_seed_enabled",
+                "i2v_seed_path",
+                "i2v_seed_comfy",
+                "shoot_intent",
+            ):
+                val = (session.meta or {}).get(key)
+                if val is None or val == "" or val == []:
+                    continue
+                preserved_build[key] = val
         session = new_session(topic)
         session.viu_build_stamp = current_stamp
         if topic == "comfy":
             session.steps_total = 6
         if topic == "interaction":
             session.steps_total = 8
+        if preserved_build:
+            session.meta.update(preserved_build)
+            notes.append("Сохранила режим съёмки / промпт с прошлой сессии.")
         save_session(config, session)
         return session, "fresh", "\n".join(notes)
 
@@ -150,10 +186,15 @@ def _prepare_lab_session_inner(
                 "draft",
                 "lora_last_pick",
                 "selected_loras",
+                "setup_lora_indices",
                 "shoot_intent",
                 "auto_approved_shoot",
+                "auto_invent_shoot",
                 "render_profile",
                 "show_style",
+                "shoot_mode",
+                "video_length_frames",
+                "from_shoot_panel",
             ):
                 val = (session.meta or {}).get(key)
                 if val is None or val == "" or val == []:
@@ -234,6 +275,15 @@ def run_lab_prepared(
                 if v is None or v == "" or v == []:
                     continue
                 session.meta[k] = v
+            # Явный shoot_mode из чата — дожать length/профиль.
+            sm = str(meta_extra.get("shoot_mode") or "").strip()
+            if sm:
+                try:
+                    from ..integrations.comfy.shoot_settings import apply_shoot_settings
+
+                    apply_shoot_settings(session.meta, mode=sm)
+                except Exception:  # noqa: BLE001
+                    session.meta["shoot_mode"] = sm
         save_session(config, session)
         # Панель съёмки / LoRA — всегда ждём Дена (кнопки живые).
         if mode == "continue" and session.status == "awaiting_prompt":

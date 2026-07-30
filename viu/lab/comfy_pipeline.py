@@ -237,9 +237,11 @@ def step_request_approval(config: Config, session: LabSession) -> StepResult:
     session.meta.pop("lora_pick_done", None)
 
     # Панель «Съёмка» уже сохранила промпт и нажала «Снять».
+    # jump_to_generate=False: мы УЖЕ на шаге approval; step+=1 → LoRA → generate.
+    # True ставил step=5 и после +=1 пропускал генерацию (0 файлов).
     if session.meta.pop("from_shoot_panel", None):
         session.meta["approved_action"] = action
-        msg = apply_setup_and_start(config, session, jump_to_generate=True)
+        msg = apply_setup_and_start(config, session, jump_to_generate=False)
         append_journal(config, COMFY_TOPIC, f"### Съёмка из панели\n\n{msg}\n\n{draft}")
         return True, msg, None
 
@@ -849,7 +851,33 @@ def step_report(config: Config, session: LabSession) -> StepResult:
     seed = session.meta.get("clip_seed_frame")
     files = session.artifacts[-12:]
     from ..integrations.comfy.focus import focus_cycle_status
+    from ..integrations.comfy.shoot_settings import mode_is_image, shoot_mode_from_meta
     from .paths import journal_path
+
+    mode = shoot_mode_from_meta(session.meta)
+    still = mode_is_image(mode) or str(session.meta.get("clip_kept_id") or "") == "still_auto"
+    invent = bool(session.meta.get("auto_invent_shoot"))
+
+    if still or invent:
+        n = len(files)
+        sent = int(session.meta.get("still_sent") or 0)
+        if still:
+            report = (
+                f"PNG готово ({mode}). "
+                + (f"В Telegram: {sent}." if sent else f"Файлов: {n}.")
+                + f"\n{str(action or '')[:120]}"
+            )
+        else:
+            report = (
+                f"Съёмка из чата · kept={kept or '—'}\n"
+                f"{str(action or '')[:120]}"
+            )
+        session.last_report = report
+        session.status = "awaiting_rating"
+        append_journal(config, COMFY_TOPIC, f"### Отчёт\n\n{report}")
+        if not invent and not still:
+            notify_lab_awaiting_rating(config, report[:400])
+        return True, report, None
 
     draft = str(session.meta.get("draft") or "").strip()
     draft_block = ""
