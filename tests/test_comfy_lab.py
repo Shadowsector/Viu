@@ -87,6 +87,12 @@ def test_parse_approval():
     assert d3 == "edit"
     d4, _ = parse_approval_reply("другой кадр", current_action="sit")
     assert d4 == "redraft"
+    # Длинный разговор после «Нет,» — не redraft панели.
+    d5, _ = parse_approval_reply(
+        "Нет, солнце моё, придумывай новое. Повспоминай интересных тварей из фентези.",
+        current_action="sit",
+    )
+    assert d5 == "unknown"
 
 
 def test_redraft_does_not_approve_complaint(tmp_path, monkeypatch):

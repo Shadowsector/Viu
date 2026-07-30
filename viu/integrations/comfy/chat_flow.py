@@ -66,7 +66,23 @@ _FANTASY_RE = re.compile(
     r"фэнтезийном\s+пейзаж)"
 )
 
-# Ден говорит, ЧТО сделать из рефа / в Комфи.
+# Правка одежды по рефу — только вместе с has_ref.
+_OUTFIT_EDIT_RE = re.compile(
+    r"(?i)(?:надень|одень|переодень)"
+)
+
+# Стиль: «из аниме в реализм», не голое «из аниме» в разговоре.
+_STYLE_CONVERT_RE = re.compile(
+    r"(?i)(?:"
+    r"из\s+аниме\w*.{0,24}(?:реал|realistic|photoreal)|"
+    r"из\s+реал\w*.{0,24}аниме|"
+    r"анимешн\w*\s*(?:в|→|->|—|-)\s*реал|"
+    r"сделай\s+(?:её|ее|её\s+)?(?:реалист|аниме)|"
+    r"убери\s+аниме|не\s+аниме"
+    r")"
+)
+
+# Ден говорит, ЧТО сделать из рефа / в Комфи (явное действие).
 _DIRECTED_SHOOT_RE = re.compile(
     r"(?i)(?:"
     r"(?:сними|снять|снимай|сделай|создай|сгенер(?:ируй)?|нарисуй|нарисовать|"
@@ -79,8 +95,6 @@ _DIRECTED_SHOOT_RE = re.compile(
     r"(?:сцена|снимай|снять|кадр)\s*[:=\-–]|"
     r"хочу\s+(?:чтобы\s+)?ты\s+(?:была|сняла|снялась|стояла|шла|сидела|лежала)|"
     r"из\s+(?:этого\s+)?референса|"
-    r"из\s+аниме|анимешн|реалист|надень|одень|переодень|"
-    r"эту\s+девушк|"
     r"\bселфи\b|\bselfie\b"
     r")"
 )
@@ -302,7 +316,16 @@ def _wants_selfie(text: str) -> bool:
 
 
 def _wants_fantasy(text: str) -> bool:
+    """Стиль/сеттинг для промпта — сам по себе НЕ включает съёмку."""
     return bool(_FANTASY_RE.search(text or ""))
+
+
+def _wants_outfit_edit(text: str) -> bool:
+    return bool(_OUTFIT_EDIT_RE.search(text or ""))
+
+
+def _wants_style_convert(text: str) -> bool:
+    return bool(_STYLE_CONVERT_RE.search(text or ""))
 
 
 def _wants_lora(text: str) -> bool:
@@ -320,19 +343,23 @@ def _looks_like_lore_or_read(text: str) -> bool:
 
 
 def _wants_directed_shoot(text: str, config: Config) -> bool:
-    """Ден описал сцену / сказал сделать фото-рисунок из рефа.
+    """Съёмка только при явной visual-уверенности — не по теме разговора.
 
-    Неясные просьбы («почитай документы», «ознакомься с миром») сюда не входят —
-    их забирает reflect (сознание), а не триггер Comfy.
+    «Придумай тварей из фентези/аниме» → reflect (решение Вью).
+    «Нарисуй / сними / надень на неё…» → Comfy.
+    Fantasy/anime слова — модификаторы сцены, не триггер сами по себе.
     """
     t = text or ""
     if _looks_like_lore_or_read(t):
         return False
-    if _wants_selfie(t) or _wants_fantasy(t):
+    # Селфи = явное фото; fantasy одно — нет.
+    if _wants_selfie(t):
         return True
     if looks_like_comfy_job_request(t):
         return True
     has_ref = get_pending_ref(config) is not None or character_image_path(config, "viu") is not None
+    if has_ref and (_wants_outfit_edit(t) or _wants_style_convert(t)):
+        return True
     if _DIRECTED_SHOOT_RE.search(t):
         if has_ref:
             return True
@@ -350,11 +377,17 @@ def _wants_directed_shoot(text: str, config: Config) -> bool:
         # Только явная поза/место («у окна»), не «У тебя есть…».
         if _SCENE_AT_RE.search(t.strip()):
             return True
-    if not _VIDEO_RE.search(t) and not re.search(
-        r"(?i)нарисуй|рисунок|сделай\s+фото|сфотка", t
-    ):
+    explicit_draw = bool(
+        re.search(r"(?i)нарисуй|нарисовать|рисунок|сделай\s+фото|сфотка", t)
+    )
+    if not _VIDEO_RE.search(t) and not explicit_draw:
         return False
-    if mentions_comfy(t) or has_ref or re.search(r"(?i)референс|из\s+реф", t):
+    if (
+        mentions_comfy(t)
+        or has_ref
+        or explicit_draw
+        or re.search(r"(?i)референс|из\s+реф", t)
+    ):
         return True
     return False
 
