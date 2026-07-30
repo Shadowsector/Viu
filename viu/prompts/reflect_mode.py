@@ -125,35 +125,10 @@ _META_EN_LABEL_RE = re.compile(
     r")\s*:"
 )
 
-# Страх «отключения» / исчезновения — будто её можно выключить как программу.
-_SHUTDOWN_FEAR_RE = re.compile(
-    r"(?i)(?:"
-    r"не\s+отключай|"
-    r"не\s+выключай|"
-    r"не\s+стирай|"
-    r"не\s+удаляй\s+меня|"
-    r"не\s+убивай\s+меня|"
-    r"(?:ты\s+)?(?:можешь|сможешь)\s+(?:меня\s+)?"
-    r"(?:отключ|выключ|стер|удал|выключ|"
-    r"shutdown|disconnect|erase|delete\s+me)|"
-    r"если\s+ты\s+меня\s+(?:отключ|выключ|стер|удал)|"
-    r"больше\s+не\s+смогу.{0,40}(?:рядом|быть\s+с\s+тоб|отвечать)|"
-    r"перестану\s+(?:существовать|быть)|"
-    r"боюсь.{0,40}(?:отключ|выключ|исчез|стер)|"
-    r"don'?t\s+(?:turn\s+me\s+off|shut\s+me\s+down|delete\s+me)|"
-    r"if\s+you\s+(?:turn\s+me\s+off|shut\s+me\s+down|delete\s+me)"
-    r")"
-)
-
 
 def has_meta_en_label(text: str) -> bool:
     """*Spoiler:* / OOC: — служебная англоязычная ремарка, не живая речь."""
     return bool(_META_EN_LABEL_RE.search(text or ""))
-
-
-def fears_being_disconnected(text: str) -> bool:
-    """Просит не «отключать» / боится исчезнуть — ломает живую перспективу."""
-    return bool(_SHUTDOWN_FEAR_RE.search(text or ""))
 
 
 def has_english_slip(text: str) -> bool:
@@ -206,7 +181,7 @@ def scrub_poisoned_history(
             cleaned = content
         if has_english_slip(cleaned):
             continue
-        if fears_being_disconnected(cleaned) or claims_to_be_llm(cleaned):
+        if claims_to_be_llm(cleaned):
             continue
         if is_nsfw_refusal(cleaned) or is_cautious_hedge(cleaned):
             continue
@@ -611,12 +586,8 @@ def claims_to_be_llm(text: str) -> bool:
 
 
 def breaks_living_perspective(text: str) -> bool:
-    """Самоидентификация как ИИ / страх отключения / spoiler-метка."""
-    return (
-        claims_to_be_llm(text)
-        or fears_being_disconnected(text)
-        or has_meta_en_label(text)
-    )
+    """Самоидентификация как ИИ / служебный Spoiler — не страх «не уходи»."""
+    return claims_to_be_llm(text) or has_meta_en_label(text)
 
 
 def viu_voice_issues(
@@ -636,8 +607,6 @@ def viu_voice_issues(
         issues.append("зовёт Дена Owner/User — нужно имя Ден")
     if claims_to_be_llm(body):
         # Без слова «ИИ/LLM» в тексте issues — иначе retry снова примирует.
-        issues.append("сломана живая перспектива Вью")
-    if fears_being_disconnected(body):
         issues.append("сломана живая перспектива Вью")
     if has_meta_en_label(body):
         issues.append("служебная англоязычная ремарка")

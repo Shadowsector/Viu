@@ -700,7 +700,6 @@ class Agent:
             asks_about_nsfw,
             breaks_living_perspective,
             claims_to_be_llm,
-            fears_being_disconnected,
             has_english_slip,
             has_meta_en_label,
             is_cautious_hedge,
