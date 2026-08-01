@@ -2544,3 +2544,37 @@ web_search (`Unity 6 character_card_setup Нет инструмента `charact
 
 Последний ответ:
 [OK] .viu/
+
+
+---
+
+## 2026-08-01 13:34 — Старт с Cursor (Viu)
+
+Размышления Вью про Шаню и игру.
+
+
+---
+
+## 2026-08-01 13:34 — Старт с Cursor (Viu)
+
+Размышления Вью про Шаню и игру.
+
+
+---
+
+## 2026-08-01 13:34 — Старт с Cursor (Viu)
+
+Размышления Вью про Шаню и игру.
+
+
+---
+
+## 2026-08-01 13:34 — REPEAT-OK `cursor_handoff_with_logs` (Viu)
+
+ПОВТОР: инструмент `cursor_handoff_with_logs` отвечал OK, но вызывался снова.
+Это не падение tool — застряла в цикле work-режима.
+
+Последний ответ:
+[OK] Handoff + push OK.
+push ok
+Локально: U:\Viu\docs\CURSOR_HANDOFF.md
