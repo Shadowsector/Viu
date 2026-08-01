@@ -2578,3 +2578,14 @@ web_search (`Unity 6 character_card_setup Нет инструмента `charact
 [OK] Handoff + push OK.
 push ok
 Локально: U:\Viu\docs\CURSOR_HANDOFF.md
+
+
+---
+
+## 2026-08-01 21:22 — REPEAT-OK `list_dir` (Viu)
+
+ПОВТОР: инструмент `list_dir` отвечал OK, но вызывался снова.
+Это не падение tool — застряла в цикле work-режима.
+
+Последний ответ:
+[OK] .viu/
