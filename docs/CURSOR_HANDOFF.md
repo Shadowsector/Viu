@@ -3015,3 +3015,16 @@ push ok
 [OK] Handoff + push OK.
 push ok
 Локально: U:\Viu\docs\CURSOR_HANDOFF.md
+
+
+---
+
+## 2026-08-05 14:57 — ESCALATE `web_search` (Viu)
+
+ЭСКАЛАЦИЯ: инструмент `web_search` не справился.
+
+Ошибка / лог:
+[ERROR] Не указан query
+
+web_search (`Unity 6 web_search [ERROR] Не указан query`):
+Ничего не найдено по запросу.
