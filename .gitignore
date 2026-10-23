@@ -28,3 +28,7 @@ U:/
 Inbox/**/*
 !Inbox/README.txt
 !Inbox/*/README.txt
+
+# Канал агентов work ↔ home: текст в git, файлы — в ветках payload/*
+!Inbox/agents/
+!Inbox/agents/**
