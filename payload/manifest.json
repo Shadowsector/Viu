@@ -1,0 +1,12 @@
+{
+  "id": "w-2026-10-23-000",
+  "from": "work",
+  "created": "2026-10-23T18:16:03+03:00",
+  "files": [
+    {
+      "path": "payload/hello.txt",
+      "size": 413,
+      "sha256": "d9f0147e188be0a53c42a71b2ec86c60dd5c85c7366b2e22453ce97514c546ab"
+    }
+  ]
+}
