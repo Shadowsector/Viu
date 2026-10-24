@@ -1,0 +1,304 @@
+{
+ "id": "h-2026-10-23-001",
+ "from": "home",
+ "created": "2026-10-24T13:31:01+03:00",
+ "layout": "payload/<slug>/<slug>.fbx + текстуры плоско рядом + meta.json",
+ "texture_paths": "в FBX прописаны только имена файлов (STRIP), поэтому текстуры лежат рядом с fbx, а не в подпапке textures/",
+ "files": [
+  {
+   "path": "payload/alexa/alexa.fbx",
+   "size": 8938860,
+   "sha256": "706cf63b8d5901541277f8985df293297c856d7414c6b8ad1bb4f80debdd58d7"
+  },
+  {
+   "path": "payload/alexa/AlexaBody_BaseColor.png",
+   "size": 13725951,
+   "sha256": "cde746774be97e25f4f3919c82b19e2e81433f19de8132dd5e7af4d0d0b46266"
+  },
+  {
+   "path": "payload/alexa/AlexaBody_Height.png",
+   "size": 2399713,
+   "sha256": "e7d4d546dc81440be4c30e194f0e7b69249b4df8ce6e5e24a9f1c6c451073c3b"
+  },
+  {
+   "path": "payload/alexa/AlexaBody_Normal.png",
+   "size": 19184649,
+   "sha256": "81b171813751a942f89a9ee2523437b7ec5db634384a208b4e027389cec9affa"
+  },
+  {
+   "path": "payload/alexa/AlexaMouth_BaseColor.png",
+   "size": 21114,
+   "sha256": "90a05ecbdf8f8f3222f90e9cc0e029736622f7c345144e4c6d7f81cd54a65bb8"
+  },
+  {
+   "path": "payload/alexa/AlexaMouth_Normal.png",
+   "size": 1098986,
+   "sha256": "e714b8ebf52056eba018b8d4b3b02d2acc4778e02e75acaec356d432f9468433"
+  },
+  {
+   "path": "payload/alexa/Cornea_Bake.png",
+   "size": 40501,
+   "sha256": "1bc63022ba52d1ed4276b83bcb65bcd024773c526748fd2a98facf76b3275472"
+  },
+  {
+   "path": "payload/alexa/Iris_Colour.png",
+   "size": 640859,
+   "sha256": "938ce61d44b1be4bfec9641841a4746c9d567992397f8f4dfbf4f00944eefea5"
+  },
+  {
+   "path": "payload/alexa/meta.json",
+   "size": 2318,
+   "sha256": "787c9e90a145f45621a0092e8b176f55e0c1390c459b2bbfe9050f4c947e7314"
+  },
+  {
+   "path": "payload/humangirl/ActorPC_Body.png",
+   "size": 1104763,
+   "sha256": "354123b2449d5764a23550ecac1c16053c7b63a253138e343be3e4a912b21836"
+  },
+  {
+   "path": "payload/humangirl/Hair.png",
+   "size": 133194,
+   "sha256": "7e3e4832420b0aa197175df5b2b261183ea12089ce8eb0fd7afd0bd1f1335f37"
+  },
+  {
+   "path": "payload/humangirl/Hair_normal.png",
+   "size": 407298,
+   "sha256": "7243ba75eb73ffd4e645fb77fc01bd10f199caef56641562557aaf212d1fca6f"
+  },
+  {
+   "path": "payload/humangirl/humangirl.fbx",
+   "size": 5479436,
+   "sha256": "b80f18da3dbe6ad907f3dcee861c8001d794e1defda10f2f9a6599471edde3d3"
+  },
+  {
+   "path": "payload/humangirl/meta.json",
+   "size": 1736,
+   "sha256": "211b1532847019ed74ceeafcde93869a02689e5914948ff485e71d7dc7ff9376"
+  },
+  {
+   "path": "payload/humangirl/Succubus_EyeBall.png",
+   "size": 39706,
+   "sha256": "679570723397537fb29d4c9c37fa9fafc7a06a37987148023aaa8b28026b0703"
+  },
+  {
+   "path": "payload/ru/acs_m_head_barg_BumpMap_converted.png",
+   "size": 157874,
+   "sha256": "91d2d720483fa4d3b20918a1b5adeb1fb0405efa520590a52e777249180fe133"
+  },
+  {
+   "path": "payload/ru/acs_m_head_barg_MainTex_baked.png",
+   "size": 52628,
+   "sha256": "21e5cda92106b227213c7f08dfed5f0f5061e6452f21b1c97747ee631a73ae6f"
+  },
+  {
+   "path": "payload/ru/c_m_eye_01_BumpMap_converted.png",
+   "size": 52697,
+   "sha256": "d071e00962b322fcfe8b1fd8d8f58b491150c1340115300379bd4471b880b9de"
+  },
+  {
+   "path": "payload/ru/c_m_eye_namida_MainTex.png",
+   "size": 65866,
+   "sha256": "cd2840685bac6aa111456d9bed0b2c75049d82180ea1526d4a03cb9be2ec03f6"
+  },
+  {
+   "path": "payload/ru/c_m_eyekage_cf2_MainTex_baked.png",
+   "size": 20390,
+   "sha256": "4feef84cdfe1132d7444c8ea864fda64b75590fbb8f9156f13c39832a5c43dab"
+  },
+  {
+   "path": "payload/ru/c_m_eyelashes_MainTex_baked.png",
+   "size": 678522,
+   "sha256": "9542aea5cd4436ea913a2d7b6bbab90b9bcd80a3218b4cbe5ef2ffc6b2fb30b7"
+  },
+  {
+   "path": "payload/ru/c_m_tang_BumpMap_converted.png",
+   "size": 107314,
+   "sha256": "1ac3e48cd3bbf13f363bda600a54b7583fcfd8ea83f6103b2083c7a94c25ecce"
+  },
+  {
+   "path": "payload/ru/c_m_tang_MainTex_baked.png",
+   "size": 33503,
+   "sha256": "bab967dfdc7fbf638f32e3273683cf75f848ff11afe9d844dd42be7ae65bc959"
+  },
+  {
+   "path": "payload/ru/c_m_tooth_BumpMap_converted.png",
+   "size": 24136,
+   "sha256": "eeb226a4d86199774887eacd6db0583b24533895ba09bc1504635cfc0e01767b"
+  },
+  {
+   "path": "payload/ru/c_m_tooth_MainTex_baked.png",
+   "size": 29971,
+   "sha256": "1b491c7828d1396c32996f45adb4f61e8d02dd0edb2624f1d62c6e09adbe8ba2"
+  },
+  {
+   "path": "payload/ru/cf_m_bot_merchant1_BumpMap_converted.png",
+   "size": 891763,
+   "sha256": "bba5ec5845d1dc502841355131e16b152c238dd1b7ae1209e76a32dfd06226b1"
+  },
+  {
+   "path": "payload/ru/cf_m_bot_merchant1_MainTex_baked.png",
+   "size": 28704,
+   "sha256": "1532c3d8d57cdb3e872d767f56931f3378db9464ac4e9f413eda48cbe0ab98e7"
+  },
+  {
+   "path": "payload/ru/cf_m_Nano_BumpMap_converted.png",
+   "size": 39636,
+   "sha256": "cb730257115d71a6c6680bd1148bfa21a40f3580fd931ab212343b1dd6ce3702"
+  },
+  {
+   "path": "payload/ru/cf_m_Nano_MainTex_baked.png",
+   "size": 16055,
+   "sha256": "4800698a47d821de971cd9ccda7d3a5f8e4fba9c71c883811c7a4dd0e3215d68"
+  },
+  {
+   "path": "payload/ru/cf_m_shoes_sister_boots_BumpMap_converted.png",
+   "size": 1175549,
+   "sha256": "77c158f84c5be879ac3c1e352365ff982cc693d00f897d3c98af1b5335bf1b99"
+  },
+  {
+   "path": "payload/ru/cf_m_shoes_sister_boots_MainTex_baked.png",
+   "size": 224781,
+   "sha256": "1d2c4678c5566e549d2ee44b9e3a03e8b459c4fe6499412b4689af0fe10af656"
+  },
+  {
+   "path": "payload/ru/cf_m_top_south2_BumpMap_converted.png",
+   "size": 496646,
+   "sha256": "2908768abc78175bdcf56c32ce0d07e1c45bcafcf84798a5803d187fe00696a7"
+  },
+  {
+   "path": "payload/ru/cf_m_top_south2_MainTex_baked.png",
+   "size": 100397,
+   "sha256": "22cbbd1763ebe4b7d4b53d9baa66d2e322faf42b0896010edde3b1ad9397f17c"
+  },
+  {
+   "path": "payload/ru/hairmat_BumpMap_converted.png",
+   "size": 3234788,
+   "sha256": "a7fbbdd14a284dfd281dbfe1abdec2400f5193ba67132b0afc25f58f8488e2d5"
+  },
+  {
+   "path": "payload/ru/hairmat_MainTex_baked.png",
+   "size": 1778950,
+   "sha256": "571a1ce3ce2069d9dac50d6946ceb00878fbd15cd59e3167e9b5e0bb125cd992"
+  },
+  {
+   "path": "payload/ru/hairmat_MainTex_baked_3.png",
+   "size": 1520046,
+   "sha256": "1ab404224933474d984233fb3f04ccdac37e69dee657bd56a3f4a22edb68f5d7"
+  },
+  {
+   "path": "payload/ru/meta.json",
+   "size": 4714,
+   "sha256": "4bb2b26ac9130c1432c0cbe897a3e7b3aca8c2ad9cbf5539fcce7f681613c3e9"
+  },
+  {
+   "path": "payload/ru/New_Material_BumpMap_converted.png",
+   "size": 190099,
+   "sha256": "a501b86f933b1f5cea66dd771154e92e40dcee1c71f6ad01a5fb30b9337c561f"
+  },
+  {
+   "path": "payload/ru/New_Material_MainTex_baked.png",
+   "size": 132688,
+   "sha256": "7817b89eb33ec672b67ae1594f06c008739416af1a324e85f53477796288a58b"
+  },
+  {
+   "path": "payload/ru/ru.fbx",
+   "size": 13518572,
+   "sha256": "a8e68ad5158d54d9eed1fc7f05fad1c9fcf1d9c3381877dd73cdf8a569d7c125"
+  },
+  {
+   "path": "payload/ru/Ru_body_albedo.png",
+   "size": 2900233,
+   "sha256": "1da02d4ce28260b750536983bf85fdbb4c8e2eb22ae403cf0d5bb804965ab3ac"
+  },
+  {
+   "path": "payload/ru/Ru_body_normal.png",
+   "size": 5813292,
+   "sha256": "7c0a4f7dd143b4ab9971213b17016254ddad0ab242fe67ceaa1a15a8150e9e29"
+  },
+  {
+   "path": "payload/ru/Ru_head_albedo.png",
+   "size": 1937733,
+   "sha256": "3aa133bf73b5182f5ffebe199c97ed9295d42675788166c5e4a1ec94ded1536c"
+  },
+  {
+   "path": "payload/ru/Ru_head_normal.png",
+   "size": 3625381,
+   "sha256": "b33ec5717c1b2d93847733c658aee7a5a765fca362ae338be099be1b82acc7bf"
+  },
+  {
+   "path": "payload/ru/Ru_o_eyebase_L_eye_bake.png",
+   "size": 155547,
+   "sha256": "2a8c572838796d232bcbb4a385ca8d45c5d0253baa7b9758950e3ea91e487294"
+  },
+  {
+   "path": "payload/shanya/c_m_tooth_MainTex.jpg",
+   "size": 660805,
+   "sha256": "08443436a08e9c34b939e37da88406a959c5bbcb4585bd3e04047c7d84989dae"
+  },
+  {
+   "path": "payload/shanya/cf_m_bot_sailormini_MainTex.png",
+   "size": 32130,
+   "sha256": "a2357d26f305aafd351b8bd923c4552df3c9e8f00cd4a640bde0e1a22e5c1e66"
+  },
+  {
+   "path": "payload/shanya/cf_M_PHshoes_02_MainTex.png",
+   "size": 66597,
+   "sha256": "d22d8ac1af8dd5eb6170713222754ef1681c8625257e94912978655667f3f052"
+  },
+  {
+   "path": "payload/shanya/cf_m_socks_thigh1_MainTex.png",
+   "size": 12618,
+   "sha256": "3e0a5879538289f98696eade8febab46ac864835841e0c2ca5a98eeecd6bd136"
+  },
+  {
+   "path": "payload/shanya/cm_o_dan00__cm_m_skin_body_00 (Instance) (Instance)__MainTex.png",
+   "size": 90800,
+   "sha256": "d02e5b10b456daa9ac9d64f5295200d193afb3d9449101cccc97144ca210ab06"
+  },
+  {
+   "path": "payload/shanya/hair_MainTex.png",
+   "size": 926620,
+   "sha256": "7d63958937bf937ccef0e7377d8fde577149fd3454443e3d4cd55c9dd0844459"
+  },
+  {
+   "path": "payload/shanya/meta.json",
+   "size": 3984,
+   "sha256": "ff15c0efbaef4f77e60855db6ac80aea33b4d1f70648388b5798742895367bd3"
+  },
+  {
+   "path": "payload/shanya/o_catear_L__acs_m_catear (Instance) (Instance)__MainTex.png",
+   "size": 486362,
+   "sha256": "7b4cd4407041fb9709ba01b3a27b3a34707db308fd1736031d465fd8ee7f2c1e"
+  },
+  {
+   "path": "payload/shanya/o_catear_R__acs_m_catear (Instance) (Instance)__MainTex.png",
+   "size": 486362,
+   "sha256": "7b4cd4407041fb9709ba01b3a27b3a34707db308fd1736031d465fd8ee7f2c1e"
+  },
+  {
+   "path": "payload/shanya/o_eyeshadow_MainTex.png",
+   "size": 23826,
+   "sha256": "67a0336048e85c11d48516b8ec6e79cda60a15d2f316c3b2d3a15d1e64a2a3f9"
+  },
+  {
+   "path": "payload/shanya/o_tang_MainTex.png",
+   "size": 4055002,
+   "sha256": "4c9fb54f3f264a76454e90b57d9e67feee82df48951fd3c20f9fc101f5b82c99"
+  },
+  {
+   "path": "payload/shanya/shanya.fbx",
+   "size": 31400092,
+   "sha256": "27c760fc20dcba5dd222122f4e3e3ab758192eda6c51fd93474f5d4aabb8c78a"
+  },
+  {
+   "path": "payload/shanya/Shanya_catear_fur.png",
+   "size": 867486,
+   "sha256": "56ca327b216645b84790c84fde5aef680265edd9c4da18e70eec7ea6f37ad89d"
+  },
+  {
+   "path": "payload/shanya/Shanya_head_albedo.png",
+   "size": 981978,
+   "sha256": "3026ed579916800edb226fbec18e6358355623e6d8d14bd036997159cb997e16"
+  }
+ ]
+}

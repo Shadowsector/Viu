@@ -1,0 +1,129 @@
+{
+ "slug": "shanya",
+ "name": "Shanya",
+ "source": "U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Shanya_Check.fbx",
+ "source_root": "unity",
+ "source_ext": ".fbx",
+ "source_mb": 30.96,
+ "in_catalog": true,
+ "locomotion": "unknown",
+ "size_class": "",
+ "catalog_height_m": 0.0,
+ "exported_at": "2026-10-19T14:51:02",
+ "alternates": [
+  {
+   "root": "unity",
+   "path": "U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Shanya\\Shanya_Erisa.fbx",
+   "ext": ".fbx"
+  },
+  {
+   "root": "models3d",
+   "path": "U:\\3D Models\\Шаня\\20250412000934_Shanya_Temp_8\\Shanya_Temp_8.fbx",
+   "ext": ".fbx"
+  },
+  {
+   "root": "mascot",
+   "path": "U:\\Desktop Mascot\\Women\\Erisa  Fortnite\\Shanya_Erisa.fbx",
+   "ext": ".fbx"
+  },
+  {
+   "root": "biped_scan",
+   "path": "U:\\Viu\\sandbox\\biped_scan\\03_Unity_Ready_FBX\\Shanya_Ready.fbx",
+   "ext": ".fbx"
+  },
+  {
+   "root": "inbox",
+   "path": "U:\\Anabarra\\Inbox\\creatures\\Shanya_Erisa.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "inbox",
+   "path": "U:\\Anabarra\\Inbox\\creatures\\Shanya.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Shanya.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Shanya_rt.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Shanya_check_quad.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Shanya_check.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Shanya_check_canon.blend",
+   "ext": ".blend"
+  }
+ ],
+ "fbx": "shanya.fbx",
+ "height_m": 1.8137,
+ "export_ok": true,
+ "export_message": "copied",
+ "textures_copied": 45,
+ "texture_layout": "flat",
+ "fbx_texture_refs": true,
+ "issues": [],
+ "seconds": 0.2,
+ "bones": 417,
+ "textures_wired": 44,
+ "materials_unmatched": [],
+ "shot": "shanya.png",
+ "height_measured": 1.8137,
+ "height_bones": 3.380144,
+ "height_mesh": 1.813702,
+ "height_source": "blender:bones+mesh",
+ "height_rule": "in_band",
+ "scale_applied": 1.0,
+ "height_auto_fixed": false,
+ "ue_import_uniform_scale": 100.0,
+ "needs_height_review": false,
+ "height_in_file_m": 1.8137,
+ "height_ue_m": 1.968,
+ "height_ue_checked": "2026-10-19",
+ "bundle": {
+  "id": "h-2026-10-23-001",
+  "slug": "shanya",
+  "fbx": [
+   "shanya.fbx"
+  ],
+  "textures_flat": [
+   "Shanya_catear_fur.png",
+   "Shanya_head_albedo.png",
+   "c_m_tooth_MainTex.jpg",
+   "cf_M_PHshoes_02_MainTex.png",
+   "cf_m_bot_sailormini_MainTex.png",
+   "cf_m_socks_thigh1_MainTex.png",
+   "cm_o_dan00__cm_m_skin_body_00 (Instance) (Instance)__MainTex.png",
+   "hair_MainTex.png",
+   "o_catear_L__acs_m_catear (Instance) (Instance)__MainTex.png",
+   "o_catear_R__acs_m_catear (Instance) (Instance)__MainTex.png",
+   "o_eyeshadow_MainTex.png",
+   "o_tang_MainTex.png"
+  ],
+  "texture_layout": "flat_next_to_fbx",
+  "texture_path_mode": "STRIP",
+  "embed_textures": false,
+  "source_dir_home": "U:\\Anabarra\\ModelReview\\in\\shanya",
+  "role": "проверка отсутствующей body-текстуры",
+  "known_issues": [
+   "body/скин-текстуры в исходнике нет — тело будет белым или дефолтным материалом UE; это не ошибка переноса",
+   "в исходной папке три FBX (shanya.fbx, shanya_test.fbx, shanya_test2.fbx), все ~29.9 МБ; отправлен только shanya.fbx — основной",
+   "417 костей, имена HS2 (cf_J_*), Humanoid-маппинг требует проверки"
+  ],
+  "texture_note": "51 png в исходнике, FBX ссылается на 12. Часть текстур — jpg.",
+  "textures_used": 12,
+  "textures_total_in_source": 51
+ }
+}

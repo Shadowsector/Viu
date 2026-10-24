@@ -1,0 +1,147 @@
+{
+ "slug": "ru",
+ "name": "Ru",
+ "source": "U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Ru\\Ru_painted.fbx",
+ "source_root": "unity",
+ "source_ext": ".fbx",
+ "source_mb": 28.65,
+ "in_catalog": true,
+ "locomotion": "biped",
+ "size_class": "",
+ "catalog_height_m": 0.0,
+ "exported_at": "2026-10-19T14:49:50",
+ "alternates": [
+  {
+   "root": "unity",
+   "path": "U:\\Anabarra\\Unity\\Anabarra\\Assets\\Characters\\Ru\\Ru.fbx",
+   "ext": ".fbx"
+  },
+  {
+   "root": "biped_scan",
+   "path": "U:\\Viu\\sandbox\\biped_scan\\03_Unity_Ready_FBX\\Ru_Ready.fbx",
+   "ext": ".fbx"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Ru_Standardized.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Ru_free_swapGE.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Ru_free_appended.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Ru.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Ru_free.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Ru_free_swapped.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Ru_rt.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Ru_check.blend",
+   "ext": ".blend"
+  },
+  {
+   "root": "trash",
+   "path": "U:\\Anabarra\\Library\\Lab2\\00_Trash\\Ru_fresh.blend",
+   "ext": ".blend"
+  }
+ ],
+ "fbx": "ru.fbx",
+ "height_m": 1.9207,
+ "export_ok": true,
+ "export_message": "copied",
+ "textures_copied": 123,
+ "texture_layout": "flat",
+ "fbx_texture_refs": true,
+ "issues": [],
+ "seconds": 0.4,
+ "bones": 380,
+ "textures_wired": 0,
+ "materials_unmatched": [
+  "_hidden"
+ ],
+ "shot": "ru.png",
+ "height_measured": 0.1921,
+ "height_bones": 0.192075,
+ "height_mesh": 0.924688,
+ "height_source": "blender:bones+mesh",
+ "height_rule": "unit_fix_small_rig",
+ "scale_applied": 10.0,
+ "height_auto_fixed": true,
+ "ue_import_uniform_scale": 100.0,
+ "needs_height_review": false,
+ "height_in_file_m": 1.9207,
+ "height_ue_m": 1.613,
+ "height_ue_checked": "2026-10-19",
+ "bundle": {
+  "id": "h-2026-10-23-001",
+  "slug": "ru",
+  "fbx": [
+   "ru.fbx"
+  ],
+  "textures_flat": [
+   "New_Material_BumpMap_converted.png",
+   "New_Material_MainTex_baked.png",
+   "Ru_body_albedo.png",
+   "Ru_body_normal.png",
+   "Ru_head_albedo.png",
+   "Ru_head_normal.png",
+   "Ru_o_eyebase_L_eye_bake.png",
+   "acs_m_head_barg_BumpMap_converted.png",
+   "acs_m_head_barg_MainTex_baked.png",
+   "c_m_eye_01_BumpMap_converted.png",
+   "c_m_eye_namida_MainTex.png",
+   "c_m_eyekage_cf2_MainTex_baked.png",
+   "c_m_eyelashes_MainTex_baked.png",
+   "c_m_tang_BumpMap_converted.png",
+   "c_m_tang_MainTex_baked.png",
+   "c_m_tooth_BumpMap_converted.png",
+   "c_m_tooth_MainTex_baked.png",
+   "cf_m_Nano_BumpMap_converted.png",
+   "cf_m_Nano_MainTex_baked.png",
+   "cf_m_bot_merchant1_BumpMap_converted.png",
+   "cf_m_bot_merchant1_MainTex_baked.png",
+   "cf_m_shoes_sister_boots_BumpMap_converted.png",
+   "cf_m_shoes_sister_boots_MainTex_baked.png",
+   "cf_m_top_south2_BumpMap_converted.png",
+   "cf_m_top_south2_MainTex_baked.png",
+   "hairmat_BumpMap_converted.png",
+   "hairmat_MainTex_baked.png",
+   "hairmat_MainTex_baked_3.png"
+  ],
+  "texture_layout": "flat_next_to_fbx",
+  "texture_path_mode": "STRIP",
+  "embed_textures": false,
+  "source_dir_home": "U:\\Anabarra\\ModelReview\\in\\ru",
+  "role": "проверка посадки и мусорного элемента меша",
+  "known_issues": [
+   "в меше есть посторонний элемент на высоте около -11.68 м (-1168 см), из-за него центр габаритов уезжает и модель висит в небе; сажать надо по костям стоп, а не по minZ габаритов",
+   "FBX ссылается на 1_MainTex_baked.png — этого файла нет в исходнике, один материал останется без текстуры",
+   "имена костей HS2 (cf_J_*), 380 костей"
+  ],
+  "texture_note": "из 184 png используются 28; остальные 156 — от других вариантов тела/одежды. Один png в исходнике 100.2 МБ, в пакет не входит.",
+  "textures_used": 28,
+  "textures_total_in_source": 184
+ }
+}

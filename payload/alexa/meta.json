@@ -1,0 +1,71 @@
+{
+ "slug": "alexa",
+ "name": "Alexa",
+ "source": "U:\\Anabarra\\Inbox\\creatures\\Alexa\\Alexa.blend",
+ "source_root": "inbox",
+ "source_ext": ".blend",
+ "source_mb": 47.72,
+ "in_catalog": true,
+ "locomotion": "unknown",
+ "size_class": "",
+ "catalog_height_m": 0.0,
+ "exported_at": "2026-10-19T14:04:32",
+ "alternates": [
+  {
+   "root": "mascot",
+   "path": "U:\\Desktop Mascot\\Women\\Alexa\\Alexa.blend",
+   "ext": ".blend"
+  }
+ ],
+ "fbx": "alexa.fbx",
+ "height_m": 3.7759,
+ "export_ok": true,
+ "export_message": "FBX: alexa.fbx (10 dup-obj, сцена не тронута, текстур 12 (файлов 12, embed))",
+ "textures_copied": 12,
+ "texture_layout": "flat",
+ "fbx_texture_refs": true,
+ "issues": [],
+ "seconds": 7.6,
+ "bones": 167,
+ "textures_wired": 20,
+ "materials_unmatched": [],
+ "shot": "alexa.png",
+ "height_measured": 3.7759,
+ "height_bones": 3.775899,
+ "height_mesh": 19.457956,
+ "height_source": "blender:bones+mesh",
+ "height_rule": "in_band",
+ "scale_applied": 1.0,
+ "height_auto_fixed": false,
+ "ue_import_uniform_scale": 100.0,
+ "needs_height_review": false,
+ "height_in_file_m": 3.7759,
+ "bundle": {
+  "id": "h-2026-10-23-001",
+  "slug": "alexa",
+  "fbx": [
+   "alexa.fbx"
+  ],
+  "textures_flat": [
+   "AlexaBody_BaseColor.png",
+   "AlexaBody_Height.png",
+   "AlexaBody_Normal.png",
+   "AlexaMouth_BaseColor.png",
+   "AlexaMouth_Normal.png",
+   "Cornea_Bake.png",
+   "Iris_Colour.png"
+  ],
+  "texture_layout": "flat_next_to_fbx",
+  "texture_path_mode": "STRIP",
+  "embed_textures": false,
+  "source_dir_home": "U:\\Anabarra\\ModelReview\\in\\alexa",
+  "role": "проверка гигантского баунда",
+  "known_issues": [
+   "габариты меша ~19.5 м из-за посторонних объектов в сцене (рост по костям 3.78 м) — при постановке в ряд считать по костям, не по bounds",
+   "рост 3.78 м: это выше человеческого, вероятно исходный масштаб сцены, не модели"
+  ],
+  "texture_note": "12 текстур были вшиты в FBX при экспорте (embed), 7 лежат рядом файлами",
+  "textures_used": 7,
+  "textures_total_in_source": 17
+ }
+}
